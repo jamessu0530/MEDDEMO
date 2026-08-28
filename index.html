@@ -3,62 +3,195 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>中化裕民業務 AI 系統 · 介面原型</title>
-<meta name="description" content="中化裕民業務 AI 系統的介面原型與架構圖">
+<title>中化裕民業務 AI 系統 · 可點擊原型</title>
+<meta name="description" content="中化裕民業務 AI 系統的可互動介面原型">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;700;900&display=swap">
 <style>
   *,*::before,*::after{box-sizing:border-box}
-  body{margin:0;background:#F2F0F6;color:#1A1626;
+  body{margin:0;background:#EDEAF3;color:#1A1626;
     font-family:'IBM Plex Sans','Noto Sans TC',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
   p{margin:0}
   @keyframes pulse{0%{transform:scale(1);opacity:.35}70%{transform:scale(1.45);opacity:0}100%{transform:scale(1.45);opacity:0}}
-  header.top{padding:56px 24px 36px;max-width:1360px;margin:0 auto}
-  header.top h1{margin:0 0 10px;font-size:clamp(24px,4vw,34px);font-weight:600;letter-spacing:-.02em}
-  header.top p{font-size:15px;line-height:1.7;color:#605A6E;max-width:62ch}
-  nav.jump{display:flex;flex-wrap:wrap;gap:10px;margin-top:22px}
-  nav.jump a{font-size:13px;text-decoration:none;color:#7E3AC4;background:#fff;
-    border:1px solid #E2DDEA;border-radius:999px;padding:8px 15px}
-  nav.jump a:hover{background:#9B51E0;color:#fff;border-color:#9B51E0}
-  main{max-width:1360px;margin:0 auto;padding:0 24px 80px}
-  section{margin-top:52px}
-  section>h2{margin:0 0 6px;font-size:19px;font-weight:600;letter-spacing:-.01em}
-  section>p.lead{margin:0 0 24px;font-size:13.5px;line-height:1.7;color:#605A6E;max-width:62ch}
-  .grid{display:flex;flex-wrap:wrap;gap:28px}
-  .stack{display:flex;flex-direction:column;gap:36px}
-  .item{margin:0;display:flex;flex-direction:column;gap:10px}
-  .grid .item{width:390px;max-width:100%}
-  .stack .item{width:100%}
+  @keyframes fadeup{from{opacity:0;transform:translate(-50%,8px)}to{opacity:1;transform:translate(-50%,0)}}
+  @keyframes slidein{from{opacity:.4;transform:translateX(14px)}to{opacity:1;transform:translateX(0)}}
+
+  header.bar{background:#fff;border-bottom:1px solid #E0DBE9;padding:0 22px;
+    display:flex;align-items:center;gap:22px;height:60px;position:sticky;top:0;z-index:30}
+  header.bar .logo{font-size:14.5px;font-weight:600;letter-spacing:-.01em;white-space:nowrap}
+  header.bar .logo small{display:block;font-size:11px;font-weight:400;color:#8A8595;margin-top:2px}
+  .tabs{display:flex;gap:6px;margin-left:auto}
+  .tabs button{border:1px solid #E0DBE9;background:#fff;border-radius:999px;padding:8px 16px;
+    font-family:inherit;font-size:13px;color:#4A4655;cursor:pointer}
+  .tabs button.on{background:#9B51E0;border-color:#9B51E0;color:#fff;font-weight:500}
+
+  .view{display:none}
+  .view.on{display:block}
+
+  .proto{display:grid;grid-template-columns:minmax(0,420px) minmax(0,1fr);gap:44px;
+    max-width:1180px;margin:0 auto;padding:38px 24px 70px;align-items:start}
+
+  .stage{display:flex;flex-direction:column;align-items:center;gap:14px;
+    position:sticky;top:88px}
+  .device{width:414px;height:868px;background:#181322;border-radius:46px;padding:12px;
+    box-shadow:0 26px 60px rgba(26,22,38,.30);flex-shrink:0;transform-origin:top center}
+  .viewport{width:390px;height:844px;border-radius:36px;overflow:hidden;position:relative;background:#fff}
+  .scr{position:absolute;inset:0;display:none}
+  .scr.on{display:block;animation:slidein .18s ease}
+  .devnote{font-size:12px;color:#7A7488;text-align:center;line-height:1.7}
+
+  .toast{position:absolute;left:50%;bottom:104px;transform:translate(-50%,0);z-index:60;
+    background:rgba(24,19,34,.93);color:#fff;font-size:12.5px;line-height:1.6;
+    padding:11px 16px;border-radius:12px;max-width:300px;text-align:center;
+    animation:fadeup .18s ease;pointer-events:none}
+
+  .hot{cursor:pointer}
+  body.reveal .hot{outline:2px dashed #9B51E0;outline-offset:2px;border-radius:8px;
+    background:rgba(155,81,224,.09)}
+
+  .side h1{margin:0 0 10px;font-size:24px;font-weight:600;letter-spacing:-.02em;line-height:1.4}
+  .side .lede{font-size:13.5px;line-height:1.85;color:#605A6E;margin-bottom:20px}
+  .ctrls{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:24px}
+  .ctrls button{border:1px solid #E0DBE9;background:#fff;border-radius:10px;padding:9px 14px;
+    font-family:inherit;font-size:12.5px;color:#4A4655;cursor:pointer}
+  .ctrls button:hover{border-color:#9B51E0;color:#7E3AC4}
+  .ctrls button.on{background:#9B51E0;border-color:#9B51E0;color:#fff}
+
+  .steplist{display:flex;flex-direction:column;gap:8px}
+  .step{display:flex;gap:12px;text-decoration:none;color:inherit;background:#fff;
+    border:1px solid #E0DBE9;border-radius:13px;padding:12px 14px}
+  .step:hover{border-color:#C39BE9}
+  .step.on{border-color:#9B51E0;box-shadow:0 6px 18px rgba(126,58,196,.13)}
+  .step .num{width:22px;height:22px;border-radius:999px;background:#F1EAFA;color:#7E3AC4;
+    display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:600;flex-shrink:0;margin-top:1px}
+  .step.on .num{background:#9B51E0;color:#fff}
+  .step .txt{display:flex;flex-direction:column;gap:4px;min-width:0}
+  .step strong{font-size:13.5px;font-weight:600;letter-spacing:-.01em}
+  .step em{font-style:normal;font-size:12px;line-height:1.65;color:#7A7488}
+
+  .note{margin-top:22px;font-size:12px;line-height:1.85;color:#8A8595;
+    border-top:1px solid #E0DBE9;padding-top:16px}
+
+  /* ---------- hero ---------- */
+  .hero{background:linear-gradient(140deg,#2B1046 0%,#4C1D7E 46%,#7B33C0 100%);color:#fff;
+    padding:74px 24px 66px;position:relative;overflow:hidden}
+  .hero::after{content:'';position:absolute;right:-160px;top:-160px;width:520px;height:520px;
+    border-radius:999px;background:radial-gradient(circle,rgba(190,140,255,.34),transparent 66%)}
+  .hero .in{max-width:1180px;margin:0 auto;position:relative;z-index:1}
+  .eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:12px;letter-spacing:.14em;
+    color:#E4CDFF;border:1px solid rgba(228,205,255,.36);border-radius:999px;padding:6px 14px;margin-bottom:22px}
+  .hero h1{margin:0 0 18px;font-size:clamp(28px,4.6vw,46px);font-weight:700;
+    letter-spacing:-.03em;line-height:1.28;max-width:19ch}
+  .hero h1 u{text-decoration:none;white-space:nowrap;background:linear-gradient(transparent 62%,rgba(190,140,255,.42) 62%)}
+  .hero .lede{font-size:15px;line-height:1.95;color:#DCCDF0;max-width:60ch}
+  .stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:38px;max-width:840px}
+  .stat{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);
+    border-radius:16px;padding:18px 20px;backdrop-filter:blur(2px)}
+  .stat .k{display:flex;align-items:baseline;gap:8px;font-weight:700;letter-spacing:-.02em}
+  .stat .k b{font-size:clamp(24px,3.4vw,34px);font-variant-numeric:tabular-nums}
+  .stat .k s{text-decoration:none;font-size:15px;color:#B79BE0;font-weight:500}
+  .stat .k i{font-style:normal;font-size:16px;color:#C6A9F0}
+  .stat p{margin-top:7px;font-size:12.5px;line-height:1.7;color:#CFC0E6}
+  .heronote{margin-top:22px;font-size:11.5px;line-height:1.8;color:#B29AD0;max-width:62ch}
+  .cue{display:inline-flex;align-items:center;gap:8px;margin-top:30px;font-size:13px;
+    color:#fff;text-decoration:none;border-bottom:1px solid rgba(255,255,255,.4);padding-bottom:4px}
+
+  /* ---------- 工時對照 ---------- */
+  .band{background:#fff;border-bottom:1px solid #E0DBE9;padding:58px 24px}
+  .band .in{max-width:1180px;margin:0 auto}
+  .band h2{margin:0 0 10px;font-size:clamp(20px,2.8vw,26px);font-weight:600;letter-spacing:-.02em}
+  .band .sub{font-size:13.5px;line-height:1.85;color:#605A6E;max-width:62ch;margin-bottom:26px}
+  .chartwrap{display:grid;grid-template-columns:minmax(0,1fr) 232px;gap:34px;align-items:start}
+  .legend{display:flex;gap:18px;margin-bottom:18px}
+  .legend span{display:flex;align-items:center;gap:7px;font-size:12.5px;color:#4A4655}
+  .legend i{width:11px;height:11px;border-radius:3px;display:block}
+  .rows{display:flex;flex-direction:column;gap:16px}
+  .row{display:grid;grid-template-columns:158px minmax(0,1fr);gap:16px;align-items:center;
+    padding:6px 8px;margin:-6px -8px;border-radius:10px}
+  .row:hover{background:#F7F4FC}
+  .rowname{font-size:13px;line-height:1.5;color:#3B364A}
+  .bars{display:flex;flex-direction:column;gap:6px}
+  .bar{display:flex;align-items:center;gap:9px}
+  .bar .track{flex-grow:1;height:15px;position:relative}
+  .bar .fill{position:absolute;left:0;top:0;bottom:0;border-radius:0 4px 4px 0;
+    box-shadow:0 0 0 2px #fff}
+  .bar .val{width:132px;flex-shrink:0;font-size:12px;font-variant-numeric:tabular-nums;color:#605A6E}
+  .bar.now .val strong{color:#8C5327}
+  .bar.aft .val strong{color:#7E3AC4}
+  .bar .val strong{font-weight:600}
+  .total{background:#F7F4FC;border:1px solid #E4DCF2;border-radius:16px;padding:22px}
+  .total .lab{font-size:12px;letter-spacing:.08em;color:#7A7488}
+  .total .big{display:flex;align-items:baseline;gap:10px;margin-top:10px;letter-spacing:-.02em}
+  .total .big s{text-decoration:line-through;font-size:22px;color:#A69CB8;font-variant-numeric:tabular-nums}
+  .total .big b{font-size:36px;color:#7E3AC4;font-variant-numeric:tabular-nums}
+  .total .big em{font-style:normal;font-size:14px;color:#605A6E}
+  .total p{margin-top:12px;font-size:12px;line-height:1.8;color:#7A7488}
+  .tablebtn{margin-top:14px;border:1px solid #E0DBE9;background:#fff;border-radius:9px;
+    padding:7px 12px;font-family:inherit;font-size:12px;color:#4A4655;cursor:pointer}
+  table.data{display:none;margin-top:16px;border-collapse:collapse;font-size:12.5px}
+  table.data.on{display:table}
+  table.data th,table.data td{border:1px solid #E0DBE9;padding:7px 12px;text-align:left;color:#4A4655}
+  table.data th{background:#F7F4FC;font-weight:600}
+  table.data td.n{text-align:right;font-variant-numeric:tabular-nums}
+  .caveat{margin-top:16px;font-size:11.5px;line-height:1.8;color:#8A8595;max-width:70ch}
+
+  /* ---------- 三件事 ---------- */
+  .three{background:#EDEAF3;padding:54px 24px 10px}
+  .three .in{max-width:1180px;margin:0 auto}
+  .three h2{margin:0 0 22px;font-size:clamp(19px,2.6vw,24px);font-weight:600;letter-spacing:-.02em}
+  .tcards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+  .tcard{background:#fff;border:1px solid #E0DBE9;border-radius:16px;padding:22px}
+  .tcard .ic{width:38px;height:38px;border-radius:11px;background:#F1EAFA;color:#7E3AC4;
+    display:flex;align-items:center;justify-content:center;margin-bottom:14px}
+  .tcard h3{margin:0 0 8px;font-size:15.5px;font-weight:600;letter-spacing:-.01em}
+  .tcard p{font-size:12.5px;line-height:1.85;color:#605A6E}
+  .tcard .tag{display:inline-block;margin-top:12px;font-size:11.5px;color:#7E3AC4;
+    background:#F4EDFC;border-radius:6px;padding:4px 9px}
+
+  @media (max-width:900px){
+    .stats{grid-template-columns:1fr}
+    .chartwrap{grid-template-columns:1fr;gap:24px}
+    .tcards{grid-template-columns:1fr}
+    .row{grid-template-columns:1fr;gap:8px}
+    .hero{padding:52px 20px 46px}
+    .band{padding:42px 20px}
+  }
+
+  .boards{max-width:1360px;margin:0 auto;padding:34px 24px 80px;
+    display:flex;flex-direction:column;gap:40px}
+  .board{margin:0;display:flex;flex-direction:column;gap:10px}
   figcaption{font-size:12.5px;font-weight:500;color:#605A6E}
   .fit{width:100%;overflow:hidden}
-  .screen{transform-origin:top left;border-radius:14px;overflow:hidden;
+  .bscreen{transform-origin:top left;border-radius:14px;overflow:hidden;
     box-shadow:0 10px 30px rgba(26,22,38,.10);background:#fff}
-  footer{max-width:1360px;margin:0 auto;padding:0 24px 60px;font-size:12.5px;color:#8A8595;line-height:1.8}
+
+  @media (max-width:1040px){
+    .proto{grid-template-columns:1fr;gap:30px;padding-top:26px}
+    .stage{position:static;order:-1}
+    header.bar{padding:0 14px;gap:12px}
+  }
 </style>
 </head>
 <body>
 
-<header class="top">
-  <h1>中化裕民業務 AI 系統 · 介面原型</h1>
-  <p>這是提案中所有介面與圖表的靜態原型。手機畫面依照業務一天的實際順序排列,從早上開啟今日路線,到拜訪後口述、AI 抽出欄位、一鍵回寫三個系統。所有畫面皆為設計稿,未串接真實資料。</p>
-  <nav class="jump">
-    <a href="#flow">業務的一天</a>
-    <a href="#ask">問答與主管端</a>
-    <a href="#analysis">分析與架構</a>
-    <a href="#slides">簡報版本</a>
-  </nav>
+<header class="bar">
+  <div class="logo">中化裕民業務 AI 系統<small>可點擊介面原型</small></div>
+  <div class="tabs">
+    <button id="tab-proto" class="on">互動原型</button>
+    <button id="tab-boards">圖表與簡報</button>
+  </div>
 </header>
 
-<main>
+<div class="view on" id="v-proto">
 
-<section id="flow">
-  <h2>業務的一天</h2>
-  <p class="lead">六個畫面連起來就是一次完整的拜訪:看清單、查客戶、談判準備、口述紀錄、確認欄位、回寫完成。</p>
-  <div class="grid">
-<figure class="item">
-<figcaption>① 早上 · 今日路線</figcaption>
-<div class="fit" data-w="390" data-h="844">
+
+<div class="proto" id="try">
+
+  <div class="stage">
+    <div class="device" id="device">
+      <div class="viewport" id="viewport">
+<div class="scr" id="s-route" data-name="今日路線">
 <div class="screen" style="font-family:'IBM Plex Sans','Noto Sans TC',system-ui,sans-serif">
 <div style="width: 390px; height: 844px; background: #F6F5F9; color: #1A1626; display: flex; flex-direction: column; overflow: hidden;">
 
@@ -87,9 +220,10 @@
       </div>
 
       <article style="background: #FBEDE8; border: 1px solid #F0D9CF; border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 10px;">
-        <span style="font-size: 11px; color: #FFFFFF; background: #B04226; padding: 4px 9px; border-radius: 6px; align-self: flex-start;">品類異常</span>
+        <span style="font-size: 11px; color: #FFFFFF; background: #B04226; padding: 4px 9px; border-radius: 6px; align-self: flex-start;">保健品類 · 進貨間隔異常</span>
         <div style="font-size: 15px; font-weight: 600;">康泰連鎖藥局 · 忠孝店</div>
-        <p style="font-size: 12.5px; line-height: 1.65; color: #5C453D;">進貨間隔拉長 4 成,金額持平</p>
+        <p style="font-size: 12.5px; line-height: 1.65; color: #5C453D;">進貨間隔 21 → 34 天,拉長 4 成,金額持平</p>
+        <p style="font-size: 11.5px; line-height: 1.6; color: #7A5A50;">金額沒掉代表還在進貨,間隔拉長代表補貨次數被分走,通常是陳列位被競品換掉的前兆</p>
         <div style="display: flex; gap: 8px; margin-top: 2px;">
           <button style="flex-grow: 1; height: 46px; border: none; border-radius: 12px; background: #B04226; color: #FFFFFF; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer;">插入下一站</button>
           <button style="width: 70px; height: 46px; border: 1px solid #E2CFC6; border-radius: 12px; background: #FFFFFF; color: #6E6A78; font-family: inherit; font-size: 12.5px; cursor: pointer;">暫緩</button>
@@ -175,10 +309,7 @@
 </div>
 </div>
 </div>
-</figure>
-<figure class="item">
-<figcaption>② 進門前 · 客戶檔案</figcaption>
-<div class="fit" data-w="390" data-h="844">
+<div class="scr" id="s-customer" data-name="客戶檔案">
 <div class="screen" style="font-family:'IBM Plex Sans','Noto Sans TC',system-ui,sans-serif">
 <div style="width: 390px; height: 844px; background: #F6F5F9; color: #1A1626; display: flex; flex-direction: column; overflow: hidden;">
 
@@ -274,10 +405,7 @@
 </div>
 </div>
 </div>
-</figure>
-<figure class="item">
-<figcaption>③ 對連鎖 · 談判卡</figcaption>
-<div class="fit" data-w="390" data-h="844">
+<div class="scr" id="s-negotiation" data-name="談判卡">
 <div class="screen" style="font-family:'IBM Plex Sans','Noto Sans TC',system-ui,sans-serif">
 <div style="width: 390px; height: 844px; background: #F6F5F9; color: #1A1626; display: flex; flex-direction: column; overflow: hidden;">
 
@@ -369,10 +497,7 @@
 </div>
 </div>
 </div>
-</figure>
-<figure class="item">
-<figcaption>④ 拜訪後 · 口述</figcaption>
-<div class="fit" data-w="390" data-h="844">
+<div class="scr" id="s-voice" data-name="口述拜訪紀錄">
 <div class="screen" style="font-family:'IBM Plex Sans','Noto Sans TC',system-ui,sans-serif">
 <div style="width: 390px; height: 844px; background: #F6F5F9; color: #1A1626; display: flex; flex-direction: column; overflow: hidden;">
 
@@ -422,10 +547,7 @@
 </div>
 </div>
 </div>
-</figure>
-<figure class="item">
-<figcaption>⑤ AI 抽欄位 · 確認</figcaption>
-<div class="fit" data-w="390" data-h="844">
+<div class="scr" id="s-capture" data-name="AI 抽出欄位">
 <div class="screen" style="font-family:'IBM Plex Sans','Noto Sans TC',system-ui,sans-serif">
 <div style="width: 390px; height: 844px; background: #F6F5F9; color: #1A1626; display: flex; flex-direction: column; overflow: hidden;">
 
@@ -522,10 +644,7 @@
 </div>
 </div>
 </div>
-</figure>
-<figure class="item">
-<figcaption>⑥ 一鍵回寫完成</figcaption>
-<div class="fit" data-w="390" data-h="844">
+<div class="scr" id="s-writeback" data-name="回寫完成">
 <div class="screen" style="font-family:'IBM Plex Sans','Noto Sans TC',system-ui,sans-serif">
 <div style="width: 390px; height: 844px; background: #F6F5F9; color: #1A1626; display: flex; flex-direction: column; overflow: hidden;">
 
@@ -582,17 +701,7 @@
 </div>
 </div>
 </div>
-</figure>
-  </div>
-</section>
-
-<section id="ask">
-  <h2>問答與主管端</h2>
-  <p class="lead">業務隨時可以問資料或問方法;主管端則負責把判斷方法注入系統,並看見每一條方法的效果數據。</p>
-  <div class="grid">
-<figure class="item">
-<figcaption>⑦ 問答 · 查資料</figcaption>
-<div class="fit" data-w="390" data-h="844">
+<div class="scr" id="s-agent" data-name="問答 · 查資料">
 <div class="screen" style="font-family:'IBM Plex Sans','Noto Sans TC',system-ui,sans-serif">
 <div style="width: 390px; height: 844px; background: #F6F5F9; color: #1A1626; display: flex; flex-direction: column; overflow: hidden;">
 
@@ -675,10 +784,7 @@
 </div>
 </div>
 </div>
-</figure>
-<figure class="item">
-<figcaption>⑧ 問答 · 查方法</figcaption>
-<div class="fit" data-w="390" data-h="844">
+<div class="scr" id="s-knowledge" data-name="問答 · 查方法">
 <div class="screen" style="font-family:'IBM Plex Sans','Noto Sans TC',system-ui,sans-serif">
 <div style="width: 390px; height: 844px; background: #F6F5F9; color: #1A1626; display: flex; flex-direction: column; overflow: hidden;">
 
@@ -758,12 +864,45 @@
 </div>
 </div>
 </div>
-</figure>
+      </div>
+    </div>
+    <p class="devnote" id="devnote">直接點畫面上的元素,內容也可以往下滑</p>
   </div>
-  <div class="stack" style="margin-top:36px">
-<figure class="item">
-<figcaption>⑨ 主管端 · 方法注入與知識庫</figcaption>
+
+  <div class="side">
+    <h1>這是一支可以點的原型</h1>
+    <p class="lede">左邊手機裡的畫面都是活的:卡片可以點、按鈕會跳頁、底部分頁列會切換。整條動線從早上看路線開始,一路點到拜訪後口述、AI 抽欄位、一鍵回寫三個系統。所有資料皆為設計稿,未串接真實系統。</p>
+
+    <div class="ctrls">
+      <button id="btn-back">← 上一步</button>
+      <button id="btn-reset">回到開頭</button>
+      <button id="btn-reveal">顯示可點區域</button>
+      <button id="btn-auto">自動播放動線</button>
+    </div>
+
+    <div class="steplist">
+<a class="step" href="#route" data-step="route"><span class="num">1</span><span class="txt"><strong>今日路線</strong><em>點紅色警示卡看客戶檔案,或按開啟拜訪準備進談判卡。下面的分頁列可以切到問答。</em></span></a>
+<a class="step" href="#customer" data-step="customer"><span class="num">2</span><span class="txt"><strong>客戶檔案</strong><em>左上角返回今日路線。右下角語音記錄開始口述。</em></span></a>
+<a class="step" href="#negotiation" data-step="negotiation"><span class="num">3</span><span class="txt"><strong>談判卡</strong><em>客戶檔案回上一頁,開始拜訪進入口述。</em></span></a>
+<a class="step" href="#voice" data-step="voice"><span class="num">4</span><span class="txt"><strong>口述拜訪紀錄</strong><em>按說完了,整理成紀錄,交給 AI 抽欄位。左上角的叉可以取消回今日路線。</em></span></a>
+<a class="step" href="#capture" data-step="capture"><span class="num">5</span><span class="txt"><strong>AI 抽出欄位</strong><em>確認並回寫會同時寫進三套系統。抽錯了可以按這裡抽錯了。</em></span></a>
+<a class="step" href="#writeback" data-step="writeback"><span class="num">6</span><span class="txt"><strong>回寫完成</strong><em>按回今日路線繼續跑下一站。</em></span></a>
+<a class="step" href="#agent" data-step="agent"><span class="num">7</span><span class="txt"><strong>問答 · 查資料</strong><em>系統自己迭代三輪才給結論。可以按排入拜訪或看查詢軌跡。</em></span></a>
+<a class="step" href="#knowledge" data-step="knowledge"><span class="num">8</span><span class="txt"><strong>問答 · 查方法</strong><em>答案附出處與採用成效,兩顆回饋鈕會回寫到知識庫。</em></span></a>
+    </div>
+
+    <p class="note">主管端的方法注入與知識庫、冰山圖、系統架構圖與簡報版本都在上方的圖表與簡報分頁。</p>
+  </div>
+
+</div>
+</div>
+
+<div class="view" id="v-boards">
+  <div class="boards">
+<figure class="board" id="b-method">
+<figcaption>主管端 · 方法注入與知識庫</figcaption>
 <div class="fit" data-w="1280" data-h="720">
+<div class="bscreen" style="font-family:'IBM Plex Sans','Noto Sans TC',system-ui,sans-serif">
 <div class="screen" style="font-family:'IBM Plex Sans','Noto Sans TC',system-ui,sans-serif">
 <div style="width: 1280px; height: 720px; background: #F6F5F9; color: #1A1626; display: flex; flex-direction: column; overflow: hidden;">
 
@@ -906,17 +1045,13 @@
 </div>
 </div>
 </div>
+</div>
 </figure>
-  </div>
-</section>
 
-<section id="analysis">
-  <h2>分析與架構</h2>
-  <p class="lead">冰山圖說明兩個痛點與水面下的成因,以及每個成因由哪一層處理;架構圖說明四層的分工與回饋閉環。</p>
-  <div class="stack">
-<figure class="item">
+<figure class="board" id="b-icebergpairs">
 <figcaption>冰山 · 兩個痛點與水面下的成因</figcaption>
 <div class="fit" data-w="1280" data-h="760">
+<div class="bscreen" style="font-family:'IBM Plex Sans','Noto Sans TC',system-ui,sans-serif">
 <div class="screen" style="font-family:'IBM Plex Sans','Noto Sans TC',system-ui,sans-serif">
 <div style="width: 1280px; height: 760px; background: #F6F5F9; color: #1A1626; padding: 30px 32px; display: flex; flex-direction: column; gap: 18px; overflow: hidden;">
 
@@ -1010,10 +1145,13 @@
 </div>
 </div>
 </div>
+</div>
 </figure>
-<figure class="item">
+
+<figure class="board" id="b-iceberg">
 <figcaption>水面下的成因 → 對應到哪一層</figcaption>
 <div class="fit" data-w="1280" data-h="830">
+<div class="bscreen" style="font-family:'IBM Plex Sans','Noto Sans TC',system-ui,sans-serif">
 <div class="screen" style="font-family:'IBM Plex Sans','Noto Sans TC',system-ui,sans-serif">
 <div style="width: 1280px; height: 830px; background: #F6F5F9; color: #1A1626; padding: 30px 32px; display: flex; flex-direction: column; gap: 18px; overflow: hidden;">
 
@@ -1145,10 +1283,13 @@
 </div>
 </div>
 </div>
+</div>
 </figure>
-<figure class="item">
+
+<figure class="board" id="b-architecture">
 <figcaption>系統架構</figcaption>
 <div class="fit" data-w="1200" data-h="640">
+<div class="bscreen" style="font-family:'IBM Plex Sans','Noto Sans TC',system-ui,sans-serif">
 <div class="screen" style="font-family:'IBM Plex Sans','Noto Sans TC',system-ui,sans-serif">
 <div style="width: 1200px; height: 640px; background: #F6F5F9; color: #1A1626; padding: 28px 32px; display: flex; flex-direction: column; gap: 18px; overflow: hidden;">
 
@@ -1250,17 +1391,13 @@
 </div>
 </div>
 </div>
+</div>
 </figure>
-  </div>
-</section>
 
-<section id="slides">
-  <h2>簡報版本</h2>
-  <p class="lead">同樣三張圖的簡報配色版本,16:9 尺寸,配合提案簡報母片。</p>
-  <div class="stack">
-<figure class="item">
+<figure class="board" id="b-slidea">
 <figcaption>簡報 A · 痛點洞察</figcaption>
 <div class="fit" data-w="1280" data-h="720">
+<div class="bscreen" style="font-family:'IBM Plex Sans','Noto Sans TC',system-ui,sans-serif">
 <div class="screen" style="font-family:'Noto Sans TC','Microsoft JhengHei',system-ui,sans-serif">
 <div style="width: 1280px; height: 720px; background: #FFFFFF; color: #111111; display: flex; flex-direction: column; overflow: hidden;">
 
@@ -1354,10 +1491,13 @@
 </div>
 </div>
 </div>
+</div>
 </figure>
-<figure class="item">
+
+<figure class="board" id="b-slideb">
 <figcaption>簡報 B · 解決架構</figcaption>
 <div class="fit" data-w="1280" data-h="720">
+<div class="bscreen" style="font-family:'IBM Plex Sans','Noto Sans TC',system-ui,sans-serif">
 <div class="screen" style="font-family:'Noto Sans TC','Microsoft JhengHei',system-ui,sans-serif">
 <div style="width: 1280px; height: 720px; background: #FFFFFF; color: #111111; display: flex; flex-direction: column; overflow: hidden;">
 
@@ -1487,10 +1627,13 @@
 </div>
 </div>
 </div>
+</div>
 </figure>
-<figure class="item">
+
+<figure class="board" id="b-slidec">
 <figcaption>簡報 C · 系統架構</figcaption>
 <div class="fit" data-w="1280" data-h="720">
+<div class="bscreen" style="font-family:'IBM Plex Sans','Noto Sans TC',system-ui,sans-serif">
 <div class="screen" style="font-family:'Noto Sans TC','Microsoft JhengHei',system-ui,sans-serif">
 <div style="width: 1280px; height: 720px; background: #FFFFFF; color: #111111; display: flex; flex-direction: column; overflow: hidden;">
 
@@ -1594,31 +1737,230 @@
 </div>
 </div>
 </div>
+</div>
 </figure>
   </div>
-</section>
-
-</main>
-
-<footer>
-  介面原型 · 靜態展示,未串接後端資料。<br>
-  本頁所有畫面與圖表皆為提案用設計稿。
-</footer>
+</div>
 
 <script>
-  function fit(){
-    document.querySelectorAll('.fit').forEach(function(w){
-      var el=w.firstElementChild;
-      var nw=parseFloat(w.dataset.w), nh=parseFloat(w.dataset.h);
-      var s=Math.min(1, w.clientWidth/nw);
-      el.style.transform='scale('+s+')';
-      w.style.height=(nh*s)+'px';
+(function(){
+  var HOT = [["route", "康泰連鎖藥局 · 忠孝店", 1, "->customer"], ["route", "開啟拜訪準備", 0, "->negotiation"], ["route", "插入下一站", 0, "已插入為下一站,路線已重排"], ["route", "暫緩", 0, "已暫緩,今天不再提醒這一筆"], ["route", "誤判", 0, "已記錄為誤判,這筆回饋會進到模型"], ["route", "康是美 · 民生店", 2, "原型只做完整示範康泰這一條動線"], ["route", "家家藥局 · 長春店", 2, "原型只做完整示範康泰這一條動線"], ["customer", "語音記錄", 0, "->voice"], ["customer", "開報價", 0, "會帶入 SAP 報價草稿,原型未實作"], ["negotiation", "客戶檔案", 0, "->customer"], ["negotiation", "開始拜訪", 0, "->voice"], ["voice", "說完了,整理成紀錄", 0, "->capture"], ["capture", "確認並回寫", 0, "->writeback"], ["capture", "這裡抽錯了", 0, "可以直接改欄位,修正會回寫成訓練資料"], ["writeback", "回今日路線 · 還有 2 站", 0, "->route"], ["agent", "排入拜訪", 0, "3 家連鎖已排入本週路線"], ["agent", "看查詢軌跡", 0, "會展開三輪查詢用到的資料表與條件"], ["knowledge", "這招有用", 0, "已回饋,這條方法的採用次數 +1"], ["knowledge", "沒幫上", 0, "已回饋,系統會追蹤這條方法的成效"]];
+  var BACK = {"customer": "route", "negotiation": "route", "capture": "voice"};
+  var CLOSE = {"voice": "route"};
+  var NAV = ["route", "customer", "voice", "agent", null];
+  var ORDER = ["route", "customer", "negotiation", "voice", "capture", "writeback", "agent", "knowledge"];
+  var HINTS = {"route": "點紅色警示卡看客戶檔案,或按開啟拜訪準備進談判卡。下面的分頁列可以切到問答。", "customer": "左上角返回今日路線。右下角語音記錄開始口述。", "negotiation": "客戶檔案回上一頁,開始拜訪進入口述。", "voice": "按說完了,整理成紀錄,交給 AI 抽欄位。左上角的叉可以取消回今日路線。", "capture": "確認並回寫會同時寫進三套系統。抽錯了可以按這裡抽錯了。", "writeback": "按回今日路線繼續跑下一站。", "agent": "系統自己迭代三輪才給結論。可以按排入拜訪或看查詢軌跡。", "knowledge": "答案附出處與採用成效,兩顆回饋鈕會回寫到知識庫。"};
+
+  var vp = document.getElementById('viewport');
+  var hist = [], cur = null, autoT = null;
+
+  /* ---------- helpers ---------- */
+  function scr(id){ return document.getElementById('s-' + id); }
+
+  function findText(root, text){
+    var all = root.querySelectorAll('*'), best = null;
+    for(var i=0;i<all.length;i++){
+      var t = (all[i].textContent || '').replace(/\s+/g,' ').trim();
+      if(t === text){ if(!best || all[i].contains(best) === false) best = all[i]; }
+    }
+    if(best){
+      /* prefer the deepest element that still matches */
+      var deeper = best.querySelectorAll('*');
+      for(var j=0;j<deeper.length;j++){
+        var t2 = (deeper[j].textContent || '').replace(/\s+/g,' ').trim();
+        if(t2 === text) best = deeper[j];
+      }
+    }
+    return best;
+  }
+
+  function climb(el, n){ for(var k=0;k<n && el && el.parentElement;k++) el = el.parentElement; return el; }
+
+  function toast(msg){
+    var old = vp.querySelector('.toast');
+    if(old) old.remove();
+    var d = document.createElement('div');
+    d.className = 'toast';
+    d.textContent = msg;
+    vp.appendChild(d);
+    setTimeout(function(){ if(d.parentNode) d.remove(); }, 2200);
+  }
+
+  function go(id, push){
+    if(!scr(id)) return;
+    if(push !== false && cur && cur !== id) hist.push(cur);
+    var all = vp.querySelectorAll('.scr');
+    for(var i=0;i<all.length;i++) all[i].classList.remove('on');
+    var el = scr(id);
+    el.classList.add('on');
+    cur = id;
+    /* reset inner scroll */
+    var sc = el.querySelectorAll('[data-scroll]');
+    for(var j=0;j<sc.length;j++) sc[j].scrollTop = 0;
+    var steps = document.querySelectorAll('.step');
+    for(var k=0;k<steps.length;k++) steps[k].classList.toggle('on', steps[k].dataset.step === id);
+    document.getElementById('devnote').textContent = HINTS[id] || '';
+    if(push !== false && location.hash.slice(1) !== id) history.replaceState(null,'','#'+id);
+  }
+
+  /* ---------- make inner content scrollable ---------- */
+  var all = vp.querySelectorAll('.scr *');
+  for(var i=0;i<all.length;i++){
+    var st = all[i].getAttribute('style') || '';
+    if(st.indexOf('flex-grow: 1') > -1 && st.indexOf('overflow: hidden') > -1
+       && st.indexOf('height:') === -1){
+      all[i].style.overflowY = 'auto';
+      all[i].style.overflowX = 'hidden';
+      all[i].style.webkitOverflowScrolling = 'touch';
+      all[i].setAttribute('data-scroll','1');
+    }
+  }
+
+  /* ---------- wire hotspots ---------- */
+  function wire(el, fn){
+    if(!el) return;
+    el.classList.add('hot');
+    el.addEventListener('click', function(e){ e.stopPropagation(); stopAuto(); fn(); });
+  }
+
+  for(var h=0;h<HOT.length;h++){
+    (function(rule){
+      var s = scr(rule[0]);
+      if(!s) return;
+      var el = climb(findText(s, rule[1]), rule[2]);
+      var act = rule[3];
+      wire(el, function(){
+        if(act.indexOf('->') === 0) go(act.slice(2)); else toast(act);
+      });
+    })(HOT[h]);
+  }
+
+  /* back chevrons */
+  for(var b in BACK){
+    (function(from, to){
+      var s = scr(from); if(!s) return;
+      var svgs = s.querySelectorAll('svg'), target = null;
+      for(var i=0;i<svgs.length && !target;i++){
+        if(svgs[i].innerHTML.indexOf('M12 5l-5 5 5 5') > -1) target = svgs[i].parentElement;
+      }
+      wire(target, function(){ go(to); });
+    })(b, BACK[b]);
+  }
+
+  /* close (X) icons */
+  for(var x in CLOSE){
+    (function(from, to){
+      var s = scr(from); if(!s) return;
+      var svgs = s.querySelectorAll('svg'), target = null;
+      for(var i=0;i<svgs.length && !target;i++){
+        if(svgs[i].innerHTML.indexOf('M15 5 5 15') > -1) target = svgs[i].parentElement;
+      }
+      wire(target, function(){ toast('已取消,這段錄音不會保存'); setTimeout(function(){ go(to); }, 700); });
+    })(x, CLOSE[x]);
+  }
+
+  /* bottom nav + FAB */
+  var scrs = vp.querySelectorAll('.scr');
+  for(var n=0;n<scrs.length;n++){
+    var nav = scrs[n].querySelector('nav');
+    if(!nav) continue;
+    var kids = nav.children;
+    for(var c=0;c<kids.length && c<NAV.length;c++){
+      (function(el, dest){
+        if(dest){ wire(el, function(){ go(dest); }); }
+        else { wire(el, function(){ toast('個人頁面在原型中未實作'); }); }
+      })(kids[c], NAV[c]);
+    }
+  }
+
+  /* ---------- controls ---------- */
+  document.getElementById('btn-back').addEventListener('click', function(){
+    stopAuto();
+    if(hist.length) go(hist.pop(), false);
+  });
+  document.getElementById('btn-reset').addEventListener('click', function(){
+    stopAuto(); hist = []; go('route', false);
+  });
+  var rv = document.getElementById('btn-reveal');
+  rv.addEventListener('click', function(){
+    document.body.classList.toggle('reveal');
+    rv.classList.toggle('on', document.body.classList.contains('reveal'));
+    rv.textContent = document.body.classList.contains('reveal') ? '隱藏可點區域' : '顯示可點區域';
+  });
+
+  var ab = document.getElementById('btn-auto');
+  var AUTO = ['route','customer','voice','capture','writeback','route','agent','knowledge'];
+  function stopAuto(){ if(autoT){ clearTimeout(autoT); autoT = null; ab.classList.remove('on'); ab.textContent = '自動播放動線'; } }
+  ab.addEventListener('click', function(){
+    if(autoT){ stopAuto(); return; }
+    ab.classList.add('on'); ab.textContent = '停止播放';
+    var k = 0;
+    (function tick(){
+      go(AUTO[k], false);
+      k++;
+      if(k < AUTO.length) autoT = setTimeout(tick, 2100);
+      else { autoT = setTimeout(function(){ stopAuto(); }, 1800); }
+    })();
+  });
+
+  var steps = document.querySelectorAll('.step');
+  for(var s2=0;s2<steps.length;s2++){
+    steps[s2].addEventListener('click', function(e){
+      e.preventDefault(); stopAuto(); go(this.dataset.step);
     });
   }
-  window.addEventListener('resize', fit);
-  window.addEventListener('load', fit);
-  fit();
-</script>
 
+  /* ---------- 工時表格切換 ---------- */
+  var tb = document.getElementById('tblbtn');
+  if(tb){
+    tb.addEventListener('click', function(){
+      var t = document.getElementById('tbl');
+      t.classList.toggle('on');
+      tb.textContent = t.classList.contains('on') ? '收起數字' : '看數字';
+    });
+  }
+
+  /* ---------- tabs ---------- */
+  function tab(which){
+    document.getElementById('v-proto').classList.toggle('on', which === 'proto');
+    document.getElementById('v-boards').classList.toggle('on', which === 'boards');
+    document.getElementById('tab-proto').classList.toggle('on', which === 'proto');
+    document.getElementById('tab-boards').classList.toggle('on', which === 'boards');
+    window.scrollTo(0,0);
+    if(which === 'boards') fitBoards();
+  }
+  document.getElementById('tab-proto').addEventListener('click', function(){ tab('proto'); });
+  document.getElementById('tab-boards').addEventListener('click', function(){ tab('boards'); });
+
+  function fitBoards(){
+    var ws = document.querySelectorAll('#v-boards .fit');
+    for(var i=0;i<ws.length;i++){
+      var w = ws[i], el = w.firstElementChild;
+      var nw = parseFloat(w.dataset.w), nh = parseFloat(w.dataset.h);
+      var s = Math.min(1, w.clientWidth / nw);
+      el.style.transform = 'scale(' + s + ')';
+      w.style.height = (nh * s) + 'px';
+    }
+  }
+
+  /* ---------- fit the device to short viewports ---------- */
+  function fitDevice(){
+    var d = document.getElementById('device');
+    var wrap = d.parentElement;
+    var avail = Math.min(wrap.clientWidth, window.innerWidth - 40);
+    var sw = Math.min(1, avail / 414);
+    var sh = Math.min(1, (window.innerHeight - 150) / 868);
+    var s = Math.max(0.42, Math.min(sw, sh));
+    d.style.transform = 'scale(' + s + ')';
+    d.style.marginBottom = (868 * s - 868) + 'px';
+  }
+  window.addEventListener('resize', function(){ fitDevice(); fitBoards(); });
+
+  /* ---------- start ---------- */
+  var start = location.hash.slice(1);
+  go(ORDER.indexOf(start) > -1 ? start : 'route', false);
+  fitDevice();
+})();
+</script>
 </body>
 </html>
