@@ -161,10 +161,23 @@
   .boards{max-width:1360px;margin:0 auto;padding:34px 24px 80px;
     display:flex;flex-direction:column;gap:40px}
   .board{margin:0;display:flex;flex-direction:column;gap:10px}
-  figcaption{font-size:12.5px;font-weight:500;color:#605A6E}
-  .fit{width:100%;overflow:hidden}
+  figcaption{font-size:12.5px;font-weight:500;color:#605A6E;display:flex;gap:10px;align-items:baseline}
+  .fit{width:100%;overflow:hidden;cursor:zoom-in}
   .bscreen{transform-origin:top left;border-radius:14px;overflow:hidden;
     box-shadow:0 10px 30px rgba(26,22,38,.10);background:#fff}
+  .zoomhint{font-size:11.5px;color:#8A8595}
+
+  #lb{display:none;position:fixed;inset:0;z-index:100;background:rgba(20,16,28,.95);
+    flex-direction:column}
+  #lb.on{display:flex}
+  #lbbar{display:flex;align-items:center;gap:8px;padding:10px 14px;flex-shrink:0;flex-wrap:wrap}
+  #lbbar strong{color:#fff;font-size:13.5px;font-weight:500;margin-right:auto;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:52%}
+  #lbbar button{border:1px solid rgba(255,255,255,.28);background:rgba(255,255,255,.10);
+    color:#fff;border-radius:9px;padding:8px 13px;font-family:inherit;font-size:13px;cursor:pointer}
+  #lbbar button:hover{background:rgba(255,255,255,.2)}
+  #lbpct{color:#CFC8DA;font-size:12.5px;min-width:46px;text-align:center}
+  #lbwrap{flex-grow:1;overflow:auto;-webkit-overflow-scrolling:touch;padding:0 14px 20px}
 
   @media (max-width:1040px){
     .proto{grid-template-columns:1fr;gap:30px;padding-top:26px}
@@ -897,8 +910,198 @@
 </div>
 </div>
 
+<div id="lb">
+  <div id="lbbar">
+    <strong id="lbtitle"></strong>
+    <button id="lbout">−</button><span id="lbpct">100%</span><button id="lbin">＋</button>
+    <button id="lbfit">符合寬度</button>
+    <button id="lbclose">關閉</button>
+  </div>
+  <div id="lbwrap"></div>
+</div>
+
 <div class="view" id="v-boards">
   <div class="boards">
+<figure class="board" id="b-uxflow">
+<figcaption>UX Flow · 三個迴圈與例外狀態</figcaption>
+<div class="fit" data-w="1340" data-h="880">
+<div class="bscreen" style="font-family:'IBM Plex Sans','Noto Sans TC',system-ui,sans-serif">
+<div style="width: 1340px; height: 880px; background: #FFFFFF; color: #1A1626; position: relative; overflow: hidden; font-family: 'IBM Plex Sans', 'Noto Sans TC', system-ui, sans-serif;">
+
+  <svg width="1340" height="880" style="position: absolute; inset: 0;">
+    <defs>
+      <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#8A8595"/>
+      </marker>
+      <marker id="arP" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#9B51E0"/>
+      </marker>
+      <marker id="arT" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#0F7B8A"/>
+      </marker>
+      <marker id="arO" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#B5711F"/>
+      </marker>
+    </defs>
+
+    <!-- 主迴圈 -->
+    <path d="M230 182 H272" stroke="#9B51E0" stroke-width="2" fill="none" marker-end="url(#arP)"/>
+    <path d="M460 182 H502" stroke="#9B51E0" stroke-width="2" fill="none" marker-end="url(#arP)"/>
+    <path d="M690 182 H732" stroke="#9B51E0" stroke-width="2" fill="none" marker-end="url(#arP)"/>
+    <path d="M920 182 H962" stroke="#9B51E0" stroke-width="2" fill="none" marker-end="url(#arP)"/>
+    <path d="M140 214 V276 H272" stroke="#9B51E0" stroke-width="2" fill="none" marker-end="url(#arP)"/>
+    <path d="M460 276 H482 Q502 276 502 252 V214" stroke="#9B51E0" stroke-width="2" fill="none" marker-end="url(#arP)"/>
+    <path d="M1060 150 V96 H140 V152" stroke="#9B51E0" stroke-width="2" fill="none" stroke-dasharray="6 5" marker-end="url(#arP)"/>
+    <!-- 例外狀態虛線 -->
+    <path d="M600 214 V344" stroke="#BDB8C6" stroke-width="1.6" fill="none" stroke-dasharray="5 5"/>
+    <path d="M830 214 V344" stroke="#BDB8C6" stroke-width="1.6" fill="none" stroke-dasharray="5 5"/>
+    <path d="M1060 214 V344" stroke="#BDB8C6" stroke-width="1.6" fill="none" stroke-dasharray="5 5"/>
+    <!-- 主迴圈到查詢迴圈 -->
+    <path d="M140 214 V552 H272" stroke="#0F7B8A" stroke-width="2" fill="none" marker-end="url(#arT)"/>
+
+    <!-- 查詢迴圈 -->
+    <path d="M460 552 H502" stroke="#0F7B8A" stroke-width="2" fill="none" marker-end="url(#arT)"/>
+    <path d="M690 552 H732" stroke="#0F7B8A" stroke-width="2" fill="none" marker-end="url(#arT)"/>
+    <path d="M600 584 V652" stroke="#BDB8C6" stroke-width="1.6" fill="none" stroke-dasharray="5 5"/>
+
+    <!-- 治理迴圈 -->
+    <path d="M230 762 H272" stroke="#B5711F" stroke-width="2" fill="none" marker-end="url(#arO)"/>
+    <path d="M460 762 H502" stroke="#B5711F" stroke-width="2" fill="none" marker-end="url(#arO)"/>
+    <path d="M690 762 H732" stroke="#B5711F" stroke-width="2" fill="none" marker-end="url(#arO)"/>
+    <path d="M920 762 H962" stroke="#B5711F" stroke-width="2" fill="none" marker-end="url(#arO)"/>
+  </svg>
+
+  <!-- 標題 -->
+  <div style="position: absolute; top: 26px; left: 40px; display: flex; align-items: baseline; gap: 14px;">
+    <span style="font-size: 19px; font-weight: 700; letter-spacing: -0.01em;">UX Flow · 使用者做了什麼</span>
+    <span style="font-size: 12.5px; color: #7A7488;">只畫人看得到與人按得到的步驟，實線為主要動線，虛線框為例外狀況</span>
+  </div>
+
+  <!-- 迴圈標籤 -->
+  <div style="position: absolute; top: 136px; left: 1188px; width: 132px;">
+    <div style="font-size: 12px; font-weight: 700; letter-spacing: 0.08em; color: #9B51E0;">業務 · 每天</div>
+    <div style="font-size: 11.5px; line-height: 1.6; color: #7A7488; margin-top: 4px;">一天跑三到五次</div>
+  </div>
+  <div style="position: absolute; top: 506px; left: 1188px; width: 132px;">
+    <div style="font-size: 12px; font-weight: 700; letter-spacing: 0.08em; color: #0F7B8A;">業務 · 隨時</div>
+    <div style="font-size: 11.5px; line-height: 1.6; color: #7A7488; margin-top: 4px;">想到就問，不必等回公司</div>
+  </div>
+  <div style="position: absolute; top: 716px; left: 1188px; width: 132px;">
+    <div style="font-size: 12px; font-weight: 700; letter-spacing: 0.08em; color: #B5711F;">主管 · 每月</div>
+    <div style="font-size: 11.5px; line-height: 1.6; color: #7A7488; margin-top: 4px;">想到一條經驗就講一次</div>
+  </div>
+
+  <!-- ===== 主迴圈 ===== -->
+  <div style="position: absolute; top: 152px; left: 50px; width: 180px; height: 62px; box-sizing: border-box; background: #FFFFFF; border: 1.5px solid #E0DBE9; border-left: 4px solid #9B51E0; border-radius: 12px; padding: 11px 14px; box-shadow: 0 2px 6px rgba(26,22,38,.05);">
+    <div style="font-size: 14px; font-weight: 600;">打開 App 看今日清單</div>
+    <div style="font-size: 11px; color: #7A7488; margin-top: 3px;">每一筆都附一行理由</div>
+  </div>
+
+  <div style="position: absolute; top: 152px; left: 280px; width: 180px; height: 62px; box-sizing: border-box; background: #FFFFFF; border: 1.5px solid #E0DBE9; border-left: 4px solid #9B51E0; border-radius: 12px; padding: 11px 14px; box-shadow: 0 2px 6px rgba(26,22,38,.05);">
+    <div style="font-size: 14px; font-weight: 600;">點開客戶，看一頁檔案</div>
+    <div style="font-size: 11px; color: #7A7488; margin-top: 3px;">進門前三分鐘</div>
+  </div>
+
+  <div style="position: absolute; top: 246px; left: 280px; width: 180px; height: 62px; box-sizing: border-box; background: #FFFFFF; border: 1.5px solid #E0DBE9; border-left: 4px solid #9B51E0; border-radius: 12px; padding: 11px 14px; box-shadow: 0 2px 6px rgba(26,22,38,.05);">
+    <div style="font-size: 14px; font-weight: 600;">連鎖客戶多看談判卡</div>
+    <div style="font-size: 11px; color: #7A7488; margin-top: 3px;">帶數字上談判桌</div>
+  </div>
+
+  <div style="position: absolute; top: 152px; left: 510px; width: 180px; height: 62px; box-sizing: border-box; background: #FFFFFF; border: 1.5px solid #E0DBE9; border-left: 4px solid #9B51E0; border-radius: 12px; padding: 11px 14px; box-shadow: 0 2px 6px rgba(26,22,38,.05);">
+    <div style="font-size: 14px; font-weight: 600;">走出店門，講一分鐘</div>
+    <div style="font-size: 11px; color: #7A7488; margin-top: 3px;">想到什麼講什麼</div>
+  </div>
+
+  <div style="position: absolute; top: 152px; left: 740px; width: 180px; height: 62px; box-sizing: border-box; background: #FFFFFF; border: 1.5px solid #E0DBE9; border-left: 4px solid #9B51E0; border-radius: 12px; padding: 11px 14px; box-shadow: 0 2px 6px rgba(26,22,38,.05);">
+    <div style="font-size: 14px; font-weight: 600;">確認整理好的欄位</div>
+    <div style="font-size: 11px; color: #7A7488; margin-top: 3px;">預設全對，只改錯的</div>
+  </div>
+
+  <div style="position: absolute; top: 152px; left: 970px; width: 180px; height: 62px; box-sizing: border-box; background: #FFFFFF; border: 1.5px solid #E0DBE9; border-left: 4px solid #9B51E0; border-radius: 12px; padding: 11px 14px; box-shadow: 0 2px 6px rgba(26,22,38,.05);">
+    <div style="font-size: 14px; font-weight: 600;">按送出，看到完成</div>
+    <div style="font-size: 11px; color: #7A7488; margin-top: 3px;">三套系統都寫好了</div>
+  </div>
+
+  <!-- 例外狀況 -->
+  <div style="position: absolute; top: 344px; left: 510px; width: 180px; box-sizing: border-box; border: 1.5px dashed #BDB8C6; border-radius: 10px; padding: 9px 12px; background: #FAFAFC;">
+    <div style="font-size: 12px; font-weight: 600; color: #5A5566;">沒訊號</div>
+    <div style="font-size: 10.5px; color: #8A8595; line-height: 1.55; margin-top: 3px;">先存著，回到收訊區自動送出</div>
+  </div>
+
+  <div style="position: absolute; top: 344px; left: 740px; width: 180px; box-sizing: border-box; border: 1.5px dashed #BDB8C6; border-radius: 10px; padding: 9px 12px; background: #FAFAFC;">
+    <div style="font-size: 12px; font-weight: 600; color: #5A5566;">有欄位抓錯</div>
+    <div style="font-size: 10.5px; color: #8A8595; line-height: 1.55; margin-top: 3px;">直接改那一格，或整段重講</div>
+  </div>
+
+  <div style="position: absolute; top: 344px; left: 970px; width: 180px; box-sizing: border-box; border: 1.5px dashed #BDB8C6; border-radius: 10px; padding: 9px 12px; background: #FAFAFC;">
+    <div style="font-size: 12px; font-weight: 600; color: #5A5566;">有一套沒寫進去</div>
+    <div style="font-size: 10.5px; color: #8A8595; line-height: 1.55; margin-top: 3px;">畫面會標出來，可以單獨重送</div>
+  </div>
+
+  <!-- 回饋鈕 -->
+  <div style="position: absolute; top: 428px; left: 740px; width: 410px; box-sizing: border-box; background: rgba(155,81,224,0.07); border: 1.5px solid rgba(155,81,224,0.3); border-radius: 12px; padding: 12px 16px;">
+    <div style="font-size: 12.5px; font-weight: 700; color: #7E3AC4;">清單上每一則建議，旁邊都有三顆鈕</div>
+    <div style="font-size: 11.5px; color: #5A5566; line-height: 1.7; margin-top: 4px;">已排定　·　暫不處理　·　誤判（會再問一次為什麼，用點選的）</div>
+  </div>
+
+  <!-- ===== 查詢迴圈 ===== -->
+  <div style="position: absolute; top: 522px; left: 50px; width: 180px; height: 62px; box-sizing: border-box; background: #FFFFFF; border: 1.5px solid #E0DBE9; border-left: 4px solid #0F7B8A; border-radius: 12px; padding: 11px 14px; box-shadow: 0 2px 6px rgba(26,22,38,.05);">
+    <div style="font-size: 14px; font-weight: 600;">切到問答</div>
+    <div style="font-size: 11px; color: #7A7488; margin-top: 3px;">任何一頁都進得去</div>
+  </div>
+
+  <div style="position: absolute; top: 522px; left: 280px; width: 180px; height: 62px; box-sizing: border-box; background: #FFFFFF; border: 1.5px solid #E0DBE9; border-left: 4px solid #0F7B8A; border-radius: 12px; padding: 11px 14px; box-shadow: 0 2px 6px rgba(26,22,38,.05);">
+    <div style="font-size: 14px; font-weight: 600;">照平常講話問一句</div>
+    <div style="font-size: 11px; color: #7A7488; margin-top: 3px;">問數字，或問怎麼談</div>
+  </div>
+
+  <div style="position: absolute; top: 522px; left: 510px; width: 180px; height: 62px; box-sizing: border-box; background: #FFFFFF; border: 1.5px solid #E0DBE9; border-left: 4px solid #0F7B8A; border-radius: 12px; padding: 11px 14px; box-shadow: 0 2px 6px rgba(26,22,38,.05);">
+    <div style="font-size: 14px; font-weight: 600;">看到答案與依據</div>
+    <div style="font-size: 11px; color: #7A7488; margin-top: 3px;">誰說的、用過幾次</div>
+  </div>
+
+  <div style="position: absolute; top: 522px; left: 740px; width: 200px; height: 62px; box-sizing: border-box; background: #FFFFFF; border: 1.5px solid #E0DBE9; border-left: 4px solid #0F7B8A; border-radius: 12px; padding: 11px 14px; box-shadow: 0 2px 6px rgba(26,22,38,.05);">
+    <div style="font-size: 14px; font-weight: 600;">排入拜訪，或給回饋</div>
+    <div style="font-size: 11px; color: #7A7488; margin-top: 3px;">這招有用　·　沒幫上</div>
+  </div>
+
+  <div style="position: absolute; top: 652px; left: 510px; width: 180px; box-sizing: border-box; border: 1.5px dashed #BDB8C6; border-radius: 10px; padding: 9px 12px; background: #FAFAFC;">
+    <div style="font-size: 12px; font-weight: 600; color: #5A5566;">查不到</div>
+    <div style="font-size: 10.5px; color: #8A8595; line-height: 1.55; margin-top: 3px;">系統直說沒有，可以轉給主管回答</div>
+  </div>
+
+  <!-- ===== 治理迴圈 ===== -->
+  <div style="position: absolute; top: 732px; left: 50px; width: 180px; height: 62px; box-sizing: border-box; background: #FFFFFF; border: 1.5px solid #E0DBE9; border-left: 4px solid #B5711F; border-radius: 12px; padding: 11px 14px; box-shadow: 0 2px 6px rgba(26,22,38,.05);">
+    <div style="font-size: 14px; font-weight: 600;">主管講一條方法</div>
+    <div style="font-size: 11px; color: #7A7488; margin-top: 3px;">用講的，一句話</div>
+  </div>
+
+  <div style="position: absolute; top: 732px; left: 280px; width: 180px; height: 62px; box-sizing: border-box; background: #FFFFFF; border: 1.5px solid #E0DBE9; border-left: 4px solid #B5711F; border-radius: 12px; padding: 11px 14px; box-shadow: 0 2px 6px rgba(26,22,38,.05);">
+    <div style="font-size: 14px; font-weight: 600;">檢查整理出來的內容</div>
+    <div style="font-size: 11px; color: #7A7488; margin-top: 3px;">不對可以直接改</div>
+  </div>
+
+  <div style="position: absolute; top: 732px; left: 510px; width: 180px; height: 62px; box-sizing: border-box; background: #FFFFFF; border: 1.5px solid #E0DBE9; border-left: 4px solid #B5711F; border-radius: 12px; padding: 11px 14px; box-shadow: 0 2px 6px rgba(26,22,38,.05);">
+    <div style="font-size: 14px; font-weight: 600;">送出，掛上自己的名字</div>
+    <div style="font-size: 11px; color: #7A7488; margin-top: 3px;">全區處都查得到</div>
+  </div>
+
+  <div style="position: absolute; top: 732px; left: 740px; width: 180px; height: 62px; box-sizing: border-box; background: #FFFFFF; border: 1.5px solid #E0DBE9; border-left: 4px solid #B5711F; border-radius: 12px; padding: 11px 14px; box-shadow: 0 2px 6px rgba(26,22,38,.05);">
+    <div style="font-size: 14px; font-weight: 600;">看到被用了幾次</div>
+    <div style="font-size: 11px; color: #7A7488; margin-top: 3px;">以及用了有沒有效</div>
+  </div>
+
+  <div style="position: absolute; top: 732px; left: 970px; width: 180px; height: 62px; box-sizing: border-box; background: #FFFFFF; border: 1.5px solid #E0DBE9; border-left: 4px solid #B5711F; border-radius: 12px; padding: 11px 14px; box-shadow: 0 2px 6px rgba(26,22,38,.05);">
+    <div style="font-size: 14px; font-weight: 600;">收到通知：已下架</div>
+    <div style="font-size: 11px; color: #7A7488; margin-top: 3px;">沒效的方法會被換掉</div>
+  </div>
+
+</div>
+
+</div>
+</div>
+</figure>
+
 <figure class="board" id="b-method">
 <figcaption>主管端 · 方法注入與知識庫</figcaption>
 <div class="fit" data-w="1280" data-h="720">
@@ -1739,6 +1942,238 @@
 </div>
 </div>
 </figure>
+
+<figure class="board" id="b-benefit">
+<figcaption>簡報 D · 預期效益(三種角色的過去與未來)</figcaption>
+<div class="fit" data-w="1280" data-h="760">
+<div class="bscreen" style="font-family:'IBM Plex Sans','Noto Sans TC',system-ui,sans-serif">
+<div style="width: 1280px; height: 760px; background: #FFFFFF; color: #2A1B22; display: flex; overflow: hidden; position: relative; font-family: 'IBM Plex Sans', 'Noto Sans TC', system-ui, sans-serif;">
+
+  <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; padding: 30px 26px 60px 34px;">
+
+    <div style="display: flex; align-items: center; gap: 12px; flex-shrink: 0;">
+      <span style="width: 26px; height: 26px; border-radius: 7px; background: #9E2B55; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700;">裕</span>
+      <span style="font-size: 14px; font-weight: 600; letter-spacing: 0.02em; color: #7A4356;">中化裕民 · 業務 AI 整合介面</span>
+    </div>
+
+    <div style="flex-grow: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; padding: 22px 0 26px;">
+
+      <section style="display: flex; flex-direction: column;">
+        <div style="height: 52px; background: #9E2B55; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 19px; font-weight: 700; letter-spacing: 0.04em; clip-path: polygon(0 0, 100% 0, 100% 100%, 88% 76%, 12% 76%, 0 100%); padding-bottom: 12px;">第一線業務</div>
+        <div style="flex-grow: 1; background: #F5E4E9; border: 1px solid #E0B9C7; border-top: none; border-radius: 0 0 22px 22px; padding: 18px 20px 20px; display: flex; flex-direction: column; gap: 14px;">
+
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <span style="font-size: 13px; font-weight: 700; color: #9E2B55; letter-spacing: 0.06em;">過去</span>
+            <div style="display: flex; gap: 8px;"><span style="color: #C08599; flex-shrink: 0;">•</span><p style="margin: 0; font-size: 12.5px; line-height: 1.72;">回公司才補打拜訪紀錄,寫下來的是半天後的回憶。</p></div>
+            <div style="display: flex; gap: 8px;"><span style="color: #C08599; flex-shrink: 0;">•</span><p style="margin: 0; font-size: 12.5px; line-height: 1.72;">準備一次拜訪,要在 SAP、CRM、OA 之間反覆切換取數。</p></div>
+            <div style="display: flex; gap: 8px;"><span style="color: #C08599; flex-shrink: 0;">•</span><p style="margin: 0; font-size: 12.5px; line-height: 1.72;">現場聽到的競品條件與客戶抱怨,回報單上沒有欄位可以填。</p></div>
+          </div>
+
+          <div style="height: 1px; background: #E0B9C7;"></div>
+
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <span style="font-size: 13px; font-weight: 700; color: #9E2B55; letter-spacing: 0.06em;">未來</span>
+            <div style="display: flex; gap: 8px;"><span style="color: #9E2B55; flex-shrink: 0;">•</span><p style="margin: 0; font-size: 12.5px; line-height: 1.72;">走出店門口述一分鐘,AI 抽成欄位,確認後一次回寫三套系統。</p></div>
+            <div style="display: flex; gap: 8px;"><span style="color: #9E2B55; flex-shrink: 0;">•</span><p style="margin: 0; font-size: 12.5px; line-height: 1.72;">出門前打開一份帶理由的清單,誰該先拜訪與為什麼都寫在上面。</p></div>
+            <div style="display: flex; gap: 8px;"><span style="color: #9E2B55; flex-shrink: 0;">•</span><p style="margin: 0; font-size: 12.5px; line-height: 1.72;">不知道怎麼談,問一句就查得到公司內部已驗證的談法。</p></div>
+          </div>
+
+
+          <div style="margin-top: auto; background: #FFFFFF; border: 1px solid #E0B9C7; border-radius: 12px; padding: 12px 14px;"><p style="margin: 0; font-size: 12.5px; font-weight: 700; line-height: 1.6; color: #9E2B55;">省下的行政時間,換回面對客戶的時間</p></div>
+        </div>
+      </section>
+
+      <section style="display: flex; flex-direction: column;">
+        <div style="height: 52px; background: #9E2B55; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 19px; font-weight: 700; letter-spacing: 0.04em; clip-path: polygon(0 0, 100% 0, 100% 100%, 88% 76%, 12% 76%, 0 100%); padding-bottom: 12px;">區處主管</div>
+        <div style="flex-grow: 1; background: #F5E4E9; border: 1px solid #E0B9C7; border-top: none; border-radius: 0 0 22px 22px; padding: 18px 20px 20px; display: flex; flex-direction: column; gap: 14px;">
+
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <span style="font-size: 13px; font-weight: 700; color: #9E2B55; letter-spacing: 0.06em;">過去</span>
+            <div style="display: flex; gap: 8px;"><span style="color: #C08599; flex-shrink: 0;">•</span><p style="margin: 0; font-size: 12.5px; line-height: 1.72;">只看得到成交數字這類落後指標,發現問題時通常已經掉單。</p></div>
+            <div style="display: flex; gap: 8px;"><span style="color: #C08599; flex-shrink: 0;">•</span><p style="margin: 0; font-size: 12.5px; line-height: 1.72;">團隊的判斷經驗散在各人身上,無法複製,也無法檢驗對錯。</p></div>
+            <div style="display: flex; gap: 8px;"><span style="color: #C08599; flex-shrink: 0;">•</span><p style="margin: 0; font-size: 12.5px; line-height: 1.72;">王牌業務離職,交接交得出客戶名單,判斷與談法交不出來。</p></div>
+          </div>
+
+          <div style="height: 1px; background: #E0B9C7;"></div>
+
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <span style="font-size: 13px; font-weight: 700; color: #9E2B55; letter-spacing: 0.06em;">未來</span>
+            <div style="display: flex; gap: 8px;"><span style="color: #9E2B55; flex-shrink: 0;">•</span><p style="margin: 0; font-size: 12.5px; line-height: 1.72;">競品訊號在業務聽見的當週就進系統,風險提前一整季浮現。</p></div>
+            <div style="display: flex; gap: 8px;"><span style="color: #9E2B55; flex-shrink: 0;">•</span><p style="margin: 0; font-size: 12.5px; line-height: 1.72;">自己的判斷規則用講的注入系統,審核後全區處都查得到。</p></div>
+            <div style="display: flex; gap: 8px;"><span style="color: #9E2B55; flex-shrink: 0;">•</span><p style="margin: 0; font-size: 12.5px; line-height: 1.72;">每條方法都帶採用次數與成效,無效的方法被數據自動下架。</p></div>
+          </div>
+
+
+          <div style="margin-top: auto; background: #FFFFFF; border: 1px solid #E0B9C7; border-radius: 12px; padding: 12px 14px;"><p style="margin: 0; font-size: 12.5px; font-weight: 700; line-height: 1.6; color: #9E2B55;">從看數字下滑,變成看行為改變</p></div>
+        </div>
+      </section>
+
+      <section style="display: flex; flex-direction: column;">
+        <div style="height: 52px; background: #9E2B55; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 19px; font-weight: 700; letter-spacing: 0.04em; clip-path: polygon(0 0, 100% 0, 100% 100%, 88% 76%, 12% 76%, 0 100%); padding-bottom: 12px;">新進業務</div>
+        <div style="flex-grow: 1; background: #F5E4E9; border: 1px solid #E0B9C7; border-top: none; border-radius: 0 0 22px 22px; padding: 18px 20px 20px; display: flex; flex-direction: column; gap: 14px;">
+
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <span style="font-size: 13px; font-weight: 700; color: #9E2B55; letter-spacing: 0.06em;">過去</span>
+            <div style="display: flex; gap: 8px;"><span style="color: #C08599; flex-shrink: 0;">•</span><p style="margin: 0; font-size: 12.5px; line-height: 1.72;">第一年靠跟車與試錯,養成期取決於帶他的人是誰。</p></div>
+            <div style="display: flex; gap: 8px;"><span style="color: #C08599; flex-shrink: 0;">•</span><p style="margin: 0; font-size: 12.5px; line-height: 1.72;">不知道該找誰問,問到的答案因人而異,也無從驗證。</p></div>
+            <div style="display: flex; gap: 8px;"><span style="color: #C08599; flex-shrink: 0;">•</span><p style="margin: 0; font-size: 12.5px; line-height: 1.72;">接手客戶只拿到名單,這家店的往來脈絡要自己重新摸索。</p></div>
+          </div>
+
+          <div style="height: 1px; background: #E0B9C7;"></div>
+
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <span style="font-size: 13px; font-weight: 700; color: #9E2B55; letter-spacing: 0.06em;">未來</span>
+            <div style="display: flex; gap: 8px;"><span style="color: #9E2B55; flex-shrink: 0;">•</span><p style="margin: 0; font-size: 12.5px; line-height: 1.72;">第一天就繼承全公司累積的方法,附出處與成效,可以判斷該信誰。</p></div>
+            <div style="display: flex; gap: 8px;"><span style="color: #9E2B55; flex-shrink: 0;">•</span><p style="margin: 0; font-size: 12.5px; line-height: 1.72;">進門前有客戶檔案與談判卡,知道這家店在意什麼、談過什麼。</p></div>
+            <div style="display: flex; gap: 8px;"><span style="color: #9E2B55; flex-shrink: 0;">•</span><p style="margin: 0; font-size: 12.5px; line-height: 1.72;">客戶條目由系統從歷次紀錄自動改寫,讀一頁抵過翻三年紀錄。</p></div>
+          </div>
+
+
+          <div style="margin-top: auto; background: #FFFFFF; border: 1px solid #E0B9C7; border-radius: 12px; padding: 12px 14px;"><p style="margin: 0; font-size: 12.5px; font-weight: 700; line-height: 1.6; color: #9E2B55;">養成期由系統累積決定,不再由運氣決定</p></div>
+        </div>
+      </section>
+
+    </div>
+
+  </div>
+
+  <div style="width: 214px; flex-shrink: 0; position: relative;">
+
+    <div style="position: absolute; top: 0; left: 46px; width: 96px; height: 268px; background: #9E2B55;"></div>
+    <div style="position: absolute; top: 26px; left: 46px; width: 96px; height: 228px; display: flex; align-items: center; justify-content: center;">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:8px;"><span style="display:block;font-size:42px;font-weight:700;color:#FFFFFF;line-height:1;">預</span><span style="display:block;font-size:42px;font-weight:700;color:#FFFFFF;line-height:1;">期</span><span style="display:block;font-size:42px;font-weight:700;color:#FFFFFF;line-height:1;">效</span><span style="display:block;font-size:42px;font-weight:700;color:#FFFFFF;line-height:1;">益</span></div>
+    </div>
+    <svg width="26" height="16" viewBox="0 0 26 16" style="position: absolute; top: 268px; left: 81px;"><polygon points="0,0 26,0 13,16" fill="#9E2B55"/></svg>
+
+    <svg viewBox="0 0 160 392" width="160" height="392" style="position: absolute; top: 306px; left: 14px;">
+      <polygon points="80,6 152,96 116,96 116,386 44,386 44,96 8,96" fill="#FFFFFF" stroke="#9E2B55" stroke-width="2.6" stroke-linejoin="round"/>
+    </svg>
+    <div style="position: absolute; top: 430px; left: 52px; width: 84px; display: flex; justify-content: center; gap: 14px;">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:5px;"><span style="display:block;font-size:17px;font-weight:700;color:#9E2B55;line-height:1;">留</span><span style="display:block;font-size:17px;font-weight:700;color:#9E2B55;line-height:1;">下</span><span style="display:block;font-size:17px;font-weight:700;color:#9E2B55;line-height:1;">的</span><span style="display:block;font-size:17px;font-weight:700;color:#9E2B55;line-height:1;">是</span><span style="display:block;font-size:17px;font-weight:700;color:#9E2B55;line-height:1;">判</span><span style="display:block;font-size:17px;font-weight:700;color:#9E2B55;line-height:1;">斷</span></div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:5px;"><span style="display:block;font-size:17px;font-weight:500;color:#8A5567;line-height:1;">省</span><span style="display:block;font-size:17px;font-weight:500;color:#8A5567;line-height:1;">下</span><span style="display:block;font-size:17px;font-weight:500;color:#8A5567;line-height:1;">的</span><span style="display:block;font-size:17px;font-weight:500;color:#8A5567;line-height:1;">是</span><span style="display:block;font-size:17px;font-weight:500;color:#8A5567;line-height:1;">工</span><span style="display:block;font-size:17px;font-weight:500;color:#8A5567;line-height:1;">時</span></div>
+    </div>
+
+  </div>
+
+  <div style="position: absolute; left: 0; right: 0; bottom: 0; height: 44px; background: #9E2B55;"></div>
+
+</div>
+
+</div>
+</div>
+</figure>
+
+<figure class="board" id="b-appendix">
+<figcaption>簡報 E · 其他運營構想及附錄</figcaption>
+<div class="fit" data-w="1280" data-h="760">
+<div class="bscreen" style="font-family:'IBM Plex Sans','Noto Sans TC',system-ui,sans-serif">
+<div style="width: 1280px; height: 760px; background: #FFFFFF; color: #2A1B22; position: relative; overflow: hidden; font-family: 'IBM Plex Sans', 'Noto Sans TC', system-ui, sans-serif;">
+
+  <div style="position: absolute; top: 0; left: 0; width: 126px; height: 126px; border-radius: 0 0 126px 0; overflow: hidden; background: repeating-linear-gradient(#9E2B55 0 9px, #FFFFFF 9px 17px);"></div>
+
+  <svg width="176" height="88" viewBox="0 0 176 88" style="position: absolute; top: 22px; right: 30px;">
+    <g fill="#E0B9C7">
+      <circle cx="8" cy="8" r="4"/><circle cx="28" cy="8" r="4"/><circle cx="48" cy="8" r="4"/><circle cx="68" cy="8" r="4"/><circle cx="88" cy="8" r="4"/><circle cx="108" cy="8" r="4"/><circle cx="128" cy="8" r="4"/><circle cx="148" cy="8" r="4"/><circle cx="168" cy="8" r="4"/>
+      <circle cx="8" cy="28" r="4"/><circle cx="28" cy="28" r="4"/><circle cx="48" cy="28" r="4"/><circle cx="68" cy="28" r="4"/><circle cx="88" cy="28" r="4"/><circle cx="108" cy="28" r="4"/><circle cx="128" cy="28" r="4"/><circle cx="148" cy="28" r="4"/><circle cx="168" cy="28" r="4"/>
+      <circle cx="8" cy="48" r="4"/><circle cx="28" cy="48" r="4"/><circle cx="48" cy="48" r="4"/><circle cx="68" cy="48" r="4"/><circle cx="88" cy="48" r="4"/><circle cx="108" cy="48" r="4"/><circle cx="128" cy="48" r="4"/><circle cx="148" cy="48" r="4"/><circle cx="168" cy="48" r="4"/>
+      <circle cx="8" cy="68" r="4"/><circle cx="28" cy="68" r="4"/><circle cx="48" cy="68" r="4"/><circle cx="68" cy="68" r="4"/><circle cx="88" cy="68" r="4"/><circle cx="108" cy="68" r="4"/><circle cx="128" cy="68" r="4"/><circle cx="148" cy="68" r="4"/><circle cx="168" cy="68" r="4"/>
+    </g>
+  </svg>
+
+  <div style="position: absolute; left: 0; right: 0; bottom: 0; height: 52px; background: #9E2B55;"></div>
+
+  <div style="position: absolute; inset: 0; display: grid; grid-template-columns: minmax(0, 1fr) 470px; gap: 34px; padding: 104px 42px 82px 58px;">
+
+    <div style="display: flex; flex-direction: column; min-width: 0;">
+
+      <div style="display: flex; align-items: center; gap: 11px; margin-bottom: 14px;">
+        <span style="width: 26px; height: 26px; border-radius: 7px; background: #9E2B55; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700;">裕</span>
+        <span style="font-size: 13.5px; font-weight: 600; color: #7A4356;">中化裕民 · 業務 AI 整合介面</span>
+      </div>
+
+      <h2 style="margin: 0 0 26px; font-size: 44px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.2;">其他運營構想及附錄</h2>
+
+      <div style="display: flex; flex-direction: column; gap: 17px;">
+
+        <div style="display: flex; gap: 11px;">
+          <span style="width: 7px; height: 7px; border-radius: 999px; background: #9E2B55; flex-shrink: 0; margin-top: 9px;"></span>
+          <p style="margin: 0; font-size: 14.5px; line-height: 1.75;"><b style="color: #9E2B55;">通路服務化:</b>把整合出來的通路數據反向提供給獨立藥局,包含進貨結構、區域同儕比較與近效期提醒,裕民從供貨方變成經營夥伴。</p>
+        </div>
+
+        <div style="display: flex; gap: 11px;">
+          <span style="width: 7px; height: 7px; border-radius: 999px; background: #9E2B55; flex-shrink: 0; margin-top: 9px;"></span>
+          <p style="margin: 0; font-size: 14.5px; line-height: 1.75;"><b style="color: #9E2B55;">雙軌打法:</b>對連鎖打數據仗,用迴轉率、檔期成效與毛利結構談判;對獨立藥局打服務仗,用選品建議與庫存健康度綁定關係。</p>
+        </div>
+
+        <div style="display: flex; gap: 11px;">
+          <span style="width: 7px; height: 7px; border-radius: 999px; background: #9E2B55; flex-shrink: 0; margin-top: 9px;"></span>
+          <p style="margin: 0; font-size: 14.5px; line-height: 1.75;"><b style="color: #9E2B55;">誘因設計:</b>方法被採用會回饋到提出者身上,採用次數與成效公開可查,讓資深業務願意把談法交進系統。</p>
+        </div>
+
+        <div style="display: flex; gap: 11px;">
+          <span style="width: 7px; height: 7px; border-radius: 999px; background: #9E2B55; flex-shrink: 0; margin-top: 9px;"></span>
+          <p style="margin: 0; font-size: 14.5px; line-height: 1.75;"><b style="color: #9E2B55;">情境模擬:</b>新人與知識庫驅動的 AI 資深業務對練,拜訪前先跑一次沙盤推演,把試錯成本從真實客戶身上移開。</p>
+        </div>
+
+        <div style="display: flex; gap: 11px;">
+          <span style="width: 7px; height: 7px; border-radius: 999px; background: #9E2B55; flex-shrink: 0; margin-top: 9px;"></span>
+          <p style="margin: 0; font-size: 14.5px; line-height: 1.75;"><b style="color: #9E2B55;">擴散路徑:</b>單一區處試點,再複製到同型態區處,最後全公司推行,每一階段的驗收指標事先定義。</p>
+        </div>
+
+      </div>
+
+    </div>
+
+    <div style="border: 2.5px solid #9E2B55; border-radius: 28px; padding: 30px 30px 26px; display: flex; flex-direction: column; gap: 16px;">
+
+      <div style="display: flex; gap: 11px;">
+        <span style="width: 7px; height: 7px; border-radius: 999px; background: #9E2B55; flex-shrink: 0; margin-top: 8px;"></span>
+        <p style="margin: 0; font-size: 13.5px; line-height: 1.75;">本簡報所有介面與圖表皆為設計稿,情境資料為模擬,未串接公司實際系統。</p>
+      </div>
+
+      <div style="display: flex; gap: 11px;">
+        <span style="width: 7px; height: 7px; border-radius: 999px; background: #9E2B55; flex-shrink: 0; margin-top: 8px;"></span>
+        <p style="margin: 0; font-size: 13.5px; line-height: 1.75;">分鐘數與效益為設計目標,實際降幅由試點區處量測後回填,提案階段先確定算法與驗收方式。</p>
+      </div>
+
+      <div style="display: flex; gap: 11px;">
+        <span style="width: 7px; height: 7px; border-radius: 999px; background: #9E2B55; flex-shrink: 0; margin-top: 8px;"></span>
+        <p style="margin: 0; font-size: 13.5px; line-height: 1.75;">完整模組設計、技術框架、演進路徑與答辯準備見<b style="color: #9E2B55; border-bottom: 1.5px solid #9E2B55;">附錄</b>。</p>
+      </div>
+
+
+      <div style="display: flex; gap: 11px;">
+        <span style="width: 7px; height: 7px; border-radius: 999px; background: #9E2B55; flex-shrink: 0; margin-top: 8px;"></span>
+        <p style="margin: 0; font-size: 13.5px; line-height: 1.75;">既有 SAP、CRM、OA 維持原樣運作,本方案不做資料搬遷,新增的外部服務只有語音辨識與語言模型。</p>
+      </div>
+      <div style="margin-top: auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px;">
+
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 9px;">
+          <div style="width: 100%; aspect-ratio: 1 / 1; border: 2px dashed #C08599; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: #B58599; font-size: 11.5px;">QR</div>
+          <span style="font-size: 12.5px; font-weight: 600; text-align: center; line-height: 1.5;">可點擊原型<br><span style="font-weight: 400; color: #7A4356;">展示網站</span></span>
+        </div>
+
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 9px;">
+          <div style="width: 100%; aspect-ratio: 1 / 1; border: 2px dashed #C08599; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: #B58599; font-size: 11.5px;">QR</div>
+          <span style="font-size: 12.5px; font-weight: 600; text-align: center; line-height: 1.5;">操作示範<br><span style="font-weight: 400; color: #7A4356;">展示影片</span></span>
+        </div>
+
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 9px;">
+          <div style="width: 100%; aspect-ratio: 1 / 1; border: 2px dashed #C08599; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: #B58599; font-size: 11.5px;">QR</div>
+          <span style="font-size: 12.5px; font-weight: 600; text-align: center; line-height: 1.5;">完整提案<br><span style="font-weight: 400; color: #7A4356;">附錄文件</span></span>
+        </div>
+
+      </div>
+
+    </div>
+
+  </div>
+
+</div>
+
+</div>
+</div>
+</figure>
   </div>
 </div>
 
@@ -1931,6 +2366,62 @@
   }
   document.getElementById('tab-proto').addEventListener('click', function(){ tab('proto'); });
   document.getElementById('tab-boards').addEventListener('click', function(){ tab('boards'); });
+
+  /* ---------- 圖表放大檢視 ---------- */
+  var lb = document.getElementById('lb');
+  var lbwrap = document.getElementById('lbwrap');
+  var lbScale = 1, lbNat = [0, 0], lbNode = null;
+
+  function lbApply(){
+    if(!lbNode) return;
+    lbNode.style.transformOrigin = 'top left';
+    lbNode.style.width = lbNat[0] + 'px';
+    lbNode.style.height = lbNat[1] + 'px';
+    lbNode.style.transform = 'scale(' + lbScale + ')';
+    lbNode.style.marginRight = (lbNat[0] * lbScale - lbNat[0]) + 'px';
+    lbNode.style.marginBottom = (lbNat[1] * lbScale - lbNat[1]) + 'px';
+    document.getElementById('lbpct').textContent = Math.round(lbScale * 100) + '%';
+  }
+  function lbFit(){
+    lbScale = Math.max(0.2, Math.min(2, (lbwrap.clientWidth - 28) / lbNat[0]));
+    lbApply();
+  }
+  function lbOpen(fig){
+    var fit = fig.querySelector('.fit');
+    lbNat = [parseFloat(fit.dataset.w), parseFloat(fit.dataset.h)];
+    lbNode = fit.firstElementChild.cloneNode(true);
+    lbNode.style.boxShadow = 'none';
+    lbwrap.innerHTML = '';
+    lbwrap.appendChild(lbNode);
+    document.getElementById('lbtitle').textContent =
+      fig.querySelector('figcaption').firstChild.textContent.trim();
+    lb.classList.add('on');
+    lbwrap.scrollTop = 0; lbwrap.scrollLeft = 0;
+    lbFit();
+  }
+  function lbClose(){ lb.classList.remove('on'); lbwrap.innerHTML = ''; lbNode = null; }
+
+  document.getElementById('lbin').addEventListener('click', function(){
+    lbScale = Math.min(2, lbScale + 0.2); lbApply();
+  });
+  document.getElementById('lbout').addEventListener('click', function(){
+    lbScale = Math.max(0.2, lbScale - 0.2); lbApply();
+  });
+  document.getElementById('lbfit').addEventListener('click', lbFit);
+  document.getElementById('lbclose').addEventListener('click', lbClose);
+  document.addEventListener('keydown', function(e){ if(e.key === 'Escape') lbClose(); });
+
+  var figs = document.querySelectorAll('#v-boards .board');
+  for(var bf=0; bf<figs.length; bf++){
+    (function(fig){
+      fig.querySelector('.fit').addEventListener('click', function(){ lbOpen(fig); });
+      var cap = fig.querySelector('figcaption');
+      var hint = document.createElement('span');
+      hint.className = 'zoomhint';
+      hint.textContent = '點圖放大';
+      cap.appendChild(hint);
+    })(figs[bf]);
+  }
 
   function fitBoards(){
     var ws = document.querySelectorAll('#v-boards .fit');
