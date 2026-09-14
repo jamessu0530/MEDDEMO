@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "visit_fields",
+  "title": "拜訪紀錄五欄位",
+  "description": "口述中沒提到的欄位一律為 null，不得推測填入。規則見 docs/visit-fields.md。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["competitor", "complaint", "intent", "commitment", "follow_up_date"],
+  "properties": {
+    "competitor": {
+      "description": "本次提到的競品與對方的動作",
+      "type": ["array", "null"],
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "detail"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "detail": { "type": ["string", "null"], "description": "對方開的條件或做的事，沒講為 null" }
+        }
+      }
+    },
+    "complaint": {
+      "description": "客戶對我方產品、配送、價格或服務的不滿",
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+    "intent": {
+      "description": "客戶想進的品項",
+      "type": ["array", "null"],
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["product_text", "sku", "qty", "unit"],
+        "properties": {
+          "product_text": { "type": "string", "minLength": 1, "description": "口述原本的講法" },
+          "sku": { "type": ["string", "null"], "description": "對不到唯一品項時為 null" },
+          "qty": { "type": ["integer", "null"], "minimum": 1 },
+          "unit": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "commitment": {
+      "description": "這次談定、有期限的一件事",
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["by", "text", "due"],
+      "properties": {
+        "by": { "enum": ["us", "customer"], "description": "us=我方答應客戶，customer=客戶答應我方" },
+        "text": { "type": "string", "minLength": 1 },
+        "due": { "type": ["string", "null"], "format": "date" }
+      }
+    },
+    "follow_up_date": {
+      "description": "業務說要再去追的日期",
+      "type": ["string", "null"],
+      "format": "date"
+    }
+  }
+}

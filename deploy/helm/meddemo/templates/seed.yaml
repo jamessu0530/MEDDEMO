@@ -1,0 +1,29 @@
+# 灌假資料的範本。suspend 讓它永遠不會照排程自己跑；部署流程需要重灌時，
+# 用 kubectl create job --from=cronjob/seed 建一次性的 Job，跑的一定是這次部署的新版映像。
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: seed
+  labels:
+    {{- include "meddemo.labels" . | nindent 4 }}
+spec:
+  suspend: true
+  schedule: "0 0 1 1 *"
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      # 跑完一小時後自動刪掉，Job 不會越積越多
+      ttlSecondsAfterFinished: 3600
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: seed
+              image: {{ include "meddemo.apiImage" . | quote }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command: ["python", "/srv/data/seed/seed.py"]
+              env:
+                {{- include "meddemo.databaseEnv" . | nindent 16 }}
+              # 灌資料時一併把內部文件建索引；有 embedding 設定才會算向量
+              envFrom:
+                {{- include "meddemo.aiEnvFrom" . | nindent 16 }}

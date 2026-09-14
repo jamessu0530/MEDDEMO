@@ -1,0 +1,6 @@
+apiVersion: v2
+name: meddemo
+description: 中化裕民業務 AI 助理（api、worker、web、Postgres、Redis）在 K3s 上的部署
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

@@ -1,0 +1,103 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource/ibm-plex-sans/400.css";
+@import "@fontsource/ibm-plex-sans/500.css";
+@import "@fontsource/ibm-plex-sans/600.css";
+
+/* 只用淺色：dark: 樣式只在加上 .dark 時才生效，而我們不加 */
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+    /* 中文不另外下載字型，直接用手機內建的黑體，打開 App 不必多等字型檔 */
+    --font-sans: 'IBM Plex Sans', 'PingFang TC', 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
+    --font-heading: var(--font-sans);
+    --color-sidebar-ring: var(--sidebar-ring);
+    --color-sidebar-border: var(--sidebar-border);
+    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+    --color-sidebar-accent: var(--sidebar-accent);
+    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    --color-sidebar-primary: var(--sidebar-primary);
+    --color-sidebar-foreground: var(--sidebar-foreground);
+    --color-sidebar: var(--sidebar);
+    --color-chart-5: var(--chart-5);
+    --color-chart-4: var(--chart-4);
+    --color-chart-3: var(--chart-3);
+    --color-chart-2: var(--chart-2);
+    --color-chart-1: var(--chart-1);
+    --color-ring: var(--ring);
+    --color-input: var(--input);
+    --color-border: var(--border);
+    --color-destructive: var(--destructive);
+    --color-success: var(--success);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-accent: var(--accent);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-muted: var(--muted);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-secondary: var(--secondary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-primary: var(--primary);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-popover: var(--popover);
+    --color-card-foreground: var(--card-foreground);
+    --color-card: var(--card);
+    --color-foreground: var(--foreground);
+    --color-background: var(--background);
+    --radius-sm: calc(var(--radius) * 0.6);
+    --radius-md: calc(var(--radius) * 0.8);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) * 1.4);
+    --radius-2xl: calc(var(--radius) * 1.8);
+    --radius-3xl: calc(var(--radius) * 2.2);
+    --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/* 配色取自提案原型（index.html） */
+:root {
+    --background: #F6F5F9;
+    --foreground: #1A1626;
+    --card: #FFFFFF;
+    --card-foreground: #1A1626;
+    --popover: #FFFFFF;
+    --popover-foreground: #1A1626;
+    --primary: #9B51E0;
+    --primary-foreground: #FFFFFF;
+    --secondary: #F1EEF6;
+    --secondary-foreground: #4A4655;
+    --muted: #EDEAF3;
+    --muted-foreground: #6E6A78;
+    --accent: #E2CDF7;
+    --accent-foreground: #1A1626;
+    --destructive: #B04226;
+    --success: #2F6B3A;
+    --border: #E6E2EC;
+    --input: #E0DBE9;
+    --ring: #A96FE6;
+    --chart-1: #9B51E0;
+    --chart-2: #A96FE6;
+    --chart-3: #E2CDF7;
+    --chart-4: #9E2B55;
+    --chart-5: #2F6B3A;
+    --radius: 0.75rem;
+    --sidebar: #FFFFFF;
+    --sidebar-foreground: #1A1626;
+    --sidebar-primary: #9B51E0;
+    --sidebar-primary-foreground: #FFFFFF;
+    --sidebar-accent: #F1EEF6;
+    --sidebar-accent-foreground: #1A1626;
+    --sidebar-border: #E6E2EC;
+    --sidebar-ring: #A96FE6;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}

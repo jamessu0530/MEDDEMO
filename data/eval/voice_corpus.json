@@ -1,0 +1,115 @@
+{
+  "說明": "第二週的十句測試語料。text 是要照著唸的內容，錄音放 data/eval/audio/<id>.m4a（或 .wav／.webm）。expected 是標準答案：competitor 比名稱、intent 比品項與數量、complaint 與 commitment 比關鍵字、日期要完全相同，null 代表這句沒提到、系統必須留白。拜訪日都設在 2026-10-20（星期二），相對日期照這天換算。",
+  "items": [
+    {
+      "id": "01",
+      "text": "今天去康泰忠孝店，御松田有來談，開買十送一。店長抱怨補貨延遲三天。他想先進魚油二十盒。我答應這週五前回報檔期。下週三再過去看看。",
+      "expected": {
+        "competitor": ["御松田"],
+        "complaint": "補貨延遲",
+        "intent": [["HS-FO30", 20]],
+        "commitment": {"by": "us", "due": "2026-10-23", "keyword": "檔期"},
+        "follow_up_date": "2026-10-28"
+      }
+    },
+    {
+      "id": "02",
+      "text": "杏林診所的醫師說 Amlodipine 最近用量變多，想先進三十盒，Metformin 十瓶。沒有其他問題。",
+      "expected": {
+        "competitor": null,
+        "complaint": null,
+        "intent": [["RX-AML5", 30], ["RX-MET500", 10]],
+        "commitment": null,
+        "follow_up_date": null
+      }
+    },
+    {
+      "id": "03",
+      "text": "德安藥局老闆抱怨上次到貨有兩盒外盒破損。康普樂的業務也有來，說通路獎勵給比較多。我說月底前幫他處理退貨。",
+      "expected": {
+        "competitor": ["康普樂"],
+        "complaint": "破損",
+        "intent": null,
+        "commitment": {"by": "us", "due": "2026-10-31", "keyword": "退貨"},
+        "follow_up_date": null
+      }
+    },
+    {
+      "id": "04",
+      "text": "例行拜訪，店長說一切正常，這次沒有特別要進的貨。",
+      "expected": {
+        "competitor": null,
+        "complaint": null,
+        "intent": null,
+        "commitment": null,
+        "follow_up_date": null
+      }
+    },
+    {
+      "id": "05",
+      "text": "福安板橋店店長說櫃檯旁邊的陳列位要重新談。他說下週一前會回覆進貨數量。",
+      "expected": {
+        "competitor": null,
+        "complaint": null,
+        "intent": null,
+        "commitment": {"by": "customer", "due": "2026-10-26", "keyword": "進貨數量"},
+        "follow_up_date": null
+      }
+    },
+    {
+      "id": "06",
+      "text": "惠生左營店想進葡萄糖胺十二瓶跟益生菌二十盒。瑞得生技有來推他們的益生菌。十一月三號再來追。",
+      "expected": {
+        "competitor": ["瑞得生技"],
+        "complaint": null,
+        "intent": [["HS-GL60", 12], ["HS-PB30", 20]],
+        "commitment": null,
+        "follow_up_date": "2026-11-03"
+      }
+    },
+    {
+      "id": "07",
+      "text": "安和內科的護理師抱怨我們的報價比別家高，想先看學名藥比價表。我答應明天送過去。",
+      "expected": {
+        "competitor": null,
+        "complaint": "報價",
+        "intent": null,
+        "commitment": {"by": "us", "due": "2026-10-21", "keyword": "比價表"},
+        "follow_up_date": null
+      }
+    },
+    {
+      "id": "08",
+      "text": "仁和公益店的魚油最近賣得比較慢，架上位置有調整過。店長想先進鈣片十五盒。",
+      "expected": {
+        "competitor": null,
+        "complaint": null,
+        "intent": [["HS-CA60", 15]],
+        "commitment": null,
+        "follow_up_date": null
+      }
+    },
+    {
+      "id": "09",
+      "text": "佑生藥局老闆說近效期的退貨流程太慢了，要我們改善。他想進人工淚液八瓶。下禮拜五再過去確認。",
+      "expected": {
+        "competitor": null,
+        "complaint": "退貨流程",
+        "intent": [["OT-EY15", 8]],
+        "commitment": null,
+        "follow_up_date": "2026-10-30"
+      }
+    },
+    {
+      "id": "10",
+      "text": "百齡藥妝東門店說宏洲藥品開了檔期要跟我們搶陳列位，店長答應這個月底前給我們一層陳列位。",
+      "expected": {
+        "competitor": ["宏洲藥品"],
+        "complaint": null,
+        "intent": null,
+        "commitment": {"by": "customer", "due": "2026-10-31", "keyword": "陳列位"},
+        "follow_up_date": null
+      }
+    }
+  ]
+}

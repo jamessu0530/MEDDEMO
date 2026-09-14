@@ -1,0 +1,28 @@
+# 背景工作：錄音轉文字、整理欄位、問答（全部排在 visits 佇列）。跟 API 用同一個映像，只是改跑 RQ worker。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  labels:
+    {{- include "meddemo.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+    spec:
+      containers:
+        - name: worker
+          image: {{ include "meddemo.apiImage" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["rq", "worker", "visits", "--url", "redis://redis:6379/0"]
+          env:
+            {{- include "meddemo.databaseEnv" . | nindent 12 }}
+            - name: REDIS_URL
+              value: redis://redis:6379/0
+          envFrom:
+            {{- include "meddemo.aiEnvFrom" . | nindent 12 }}

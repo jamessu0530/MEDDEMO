@@ -1,0 +1,25 @@
+# 部署流程用 --set image.tag=<commit SHA> 指定這次的版本，每一版都對得回原始碼
+image:
+  api: ghcr.io/jamessu0530/meddemo-api
+  web: ghcr.io/jamessu0530/meddemo-web
+  tag: latest
+  # GHCR 是私有的，映像由部署流程用短期 token 先拉進 K3s；這裡不能設 Always，否則 pod 會自己去映像庫拉而失敗
+  pullPolicy: IfNotPresent
+
+# 對外網址：Cloudflare（橘雲）→ K3s 內建的 Traefik → web（Nginx）
+ingress:
+  host: meddemo.jamessu2016.com
+
+db:
+  image: pgvector/pgvector:0.8.0-pg16
+  storage: 5Gi
+
+redis:
+  image: redis:8.10.1-alpine
+
+# Secret 由部署流程從 GitHub Secrets 建立，不放進 chart（跟 CARE 的 care-backend-secret 一樣）
+secrets:
+  # POSTGRES_PASSWORD
+  database: meddemo-secrets
+  # 語音辨識、AI 模型、embedding、語音問答的設定與金鑰；還沒建時照樣啟動，流程改走手動輸入
+  ai: meddemo-ai

@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.env
+.DS_Store
+# 測試語料的真人錄音屬於個資（NFR-8），不進 git
+data/eval/audio/

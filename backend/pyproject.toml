@@ -1,0 +1,41 @@
+[project]
+name = "meddemo-backend"
+version = "0.1.0"
+description = "中化裕民業務 AI 助理系統後端"
+requires-python = ">=3.12"
+dependencies = [
+    "certifi>=2026.7.22",
+    "fastapi>=0.141.1",
+    "google-genai>=2.23.0",
+    "httpx>=0.28.1",
+    "jsonschema>=4.26.0",
+    "pgvector>=0.5.0",
+    "psycopg[binary]>=3.2",
+    "pydantic-settings>=2.15.0",
+    "python-multipart>=0.0.32",
+    "redis>=8.1.0",
+    "rq>=2.12.0",
+    "sqlalchemy>=2.0",
+    "uvicorn[standard]>=0.52.4",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=1.4.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# data/seed 不是套件，加進搜尋路徑，測試才 import 得到假資料產生器。
+# "." 是 backend 本身：macOS 上 .venv 會被標成隱藏，Python 就略過可編輯安裝的 .pth，直接加路徑最保險
+pythonpath = [".", "../data/seed"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"

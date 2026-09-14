@@ -1,0 +1,226 @@
+# 每次 push 與 PR 都跑測試；推到 main 才建映像檔，並由 VM 上的 self-hosted runner 用 Helm 部署到 K3s
+# （chart 在 deploy/helm/meddemo，runner 用 deploy/setup-runner.sh 安裝）。跟 CARE 同一種做法。
+# 需要的 repo secrets：POSTGRES_PASSWORD
+#   選填：ASR_API_KEY、LLM_API_KEY、EMBEDDING_API_KEY、VOICE_API_KEY
+# 需要的 repo variables：SITE_URL
+#   選填：ASR_PROVIDER、ASR_MODEL、LLM_PROVIDER、LLM_MODEL、EMBEDDING_PROVIDER、EMBEDDING_MODEL、VOICE_MODEL
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      reseed:
+        description: 重灌假資料（會清掉 VM 上資料庫的全部內容）
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}/meddemo
+
+jobs:
+  test-backend:
+    runs-on: ubuntu-latest
+    services:
+      db:
+        image: pgvector/pgvector:0.8.0-pg16
+        env:
+          POSTGRES_DB: meddemo
+          POSTGRES_USER: meddemo
+          POSTGRES_PASSWORD: meddemo
+        # 對到 backend/app/config.py 的預設位址，測試不必另外設 DATABASE_URL、REDIS_URL
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U meddemo -d meddemo"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+      redis:
+        image: redis:8.10.1-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.11.16"
+      - run: uv sync --project backend --locked
+      - run: uv run --project backend pytest backend/tests -q
+
+  test-frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      # build 會先跑 tsc 做型別檢查
+      - run: npm run build
+
+  lint-chart:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          # 跟 VM 上的 helm 同一版
+          version: v3.22.0
+      - run: helm lint deploy/helm/meddemo
+      # 實際渲染一次，模板寫錯在這裡就會失敗，不必等到部署
+      - run: helm template meddemo deploy/helm/meddemo --namespace meddemo --set image.tag=ci > /dev/null
+
+  build:
+    needs: [test-backend, test-frontend, lint-chart]
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - name: api
+            context: .
+            file: backend/Dockerfile
+          - name: web
+            context: frontend
+            file: frontend/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@v3
+      # 映像檔在這裡建好再讓 VM 拉，VM 上不 build，build 快取才不會塞滿 VM 的磁碟
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}-${{ matrix.name }}:${{ github.sha }}
+            ${{ env.IMAGE_PREFIX }}-${{ matrix.name }}:latest
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+
+  deploy:
+    needs: build
+    # 只在推 main 或手動觸發時部署；PR 只跑上面的測試，碰不到 VM
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    # care-vm 上 MEDDEMO 專用的 runner（跟 CARE 的 runner 分開）
+    runs-on: [self-hosted, Linux, meddemo]
+    environment: production
+    # 同一時間只跑一個部署，後到的排隊，不會把進行中的部署砍掉
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: read
+    env:
+      # runner 帳號在 k3s 群組，讀得到 0640 root:k3s 的 kubeconfig；kubectl 與 helm 都用它
+      KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      KC: kubectl -n meddemo
+    steps:
+      - uses: actions/checkout@v4
+
+      # 跟 CARE 一樣先看磁碟：90% 是 kubelet 開始驅逐 pod 的門檻（nodefs.available<10%），
+      # 這台同時跑 CARE，到了就不部署，免得兩邊一起被趕下線
+      - name: 部署前檢查磁碟
+        run: |
+          used=$(df -P / | awk 'NR==2 { gsub(/%/, "", $5); print $5 }')
+          echo "磁碟使用率：${used}%"
+          if [ "$used" -ge 90 ]; then
+            echo "::error::磁碟使用率 ${used}% 已到 kubelet 驅逐門檻，中止部署"
+            exit 1
+          fi
+
+      # GHCR 是私有的：用這次工作的短期 token 把映像拉進 K3s，VM 上不存放長期的映像庫密碼。
+      # 映像拉下來就留在 VM 上，之後 pod 重啟不必再連映像庫
+      - name: 預先拉映像
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for name in api web; do
+            sudo k3s crictl pull --creds "$GITHUB_ACTOR:$GHCR_TOKEN" "$IMAGE_PREFIX-$name:$GITHUB_SHA"
+          done
+
+      - name: 更新密鑰並用 Helm 部署
+        env:
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          ASR_PROVIDER: ${{ vars.ASR_PROVIDER }}
+          ASR_MODEL: ${{ vars.ASR_MODEL }}
+          ASR_API_KEY: ${{ secrets.ASR_API_KEY }}
+          LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
+          LLM_MODEL: ${{ vars.LLM_MODEL }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          EMBEDDING_PROVIDER: ${{ vars.EMBEDDING_PROVIDER }}
+          EMBEDDING_MODEL: ${{ vars.EMBEDDING_MODEL }}
+          EMBEDDING_API_KEY: ${{ secrets.EMBEDDING_API_KEY }}
+          VOICE_MODEL: ${{ vars.VOICE_MODEL }}
+          VOICE_API_KEY: ${{ secrets.VOICE_API_KEY }}
+        run: |
+          # Secret 不放進 chart（跟 CARE 的 care-backend-secret 一樣），要比 chart 先建好，pod 一啟動就讀得到
+          kubectl create namespace meddemo --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create secret generic meddemo-secrets --namespace meddemo \
+            --from-literal=POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          # 語音辨識、AI 模型、embedding、語音問答：沒設定的值是空字串，程式會當作沒設定，改走手動輸入
+          kubectl create secret generic meddemo-ai --namespace meddemo \
+            --from-literal=ASR_PROVIDER="$ASR_PROVIDER" --from-literal=ASR_MODEL="$ASR_MODEL" \
+            --from-literal=ASR_API_KEY="$ASR_API_KEY" --from-literal=LLM_PROVIDER="$LLM_PROVIDER" \
+            --from-literal=LLM_MODEL="$LLM_MODEL" --from-literal=LLM_API_KEY="$LLM_API_KEY" \
+            --from-literal=EMBEDDING_PROVIDER="$EMBEDDING_PROVIDER" --from-literal=EMBEDDING_MODEL="$EMBEDDING_MODEL" \
+            --from-literal=EMBEDDING_API_KEY="$EMBEDDING_API_KEY" \
+            --from-literal=VOICE_MODEL="$VOICE_MODEL" --from-literal=VOICE_API_KEY="$VOICE_API_KEY" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          # --wait：所有 pod 就緒才算成功。上限放寬到 10 分鐘，因為第一次部署要從 Docker Hub 下載 Postgres 與 Redis 的映像
+          helm upgrade --install meddemo deploy/helm/meddemo --namespace meddemo \
+            --set image.tag="$GITHUB_SHA" --wait --timeout 10m
+          # 手動觸發多半是換了金鑰；Secret 改了 pod 不會自己重讀，要重啟才生效
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            $KC rollout restart deployment/api deployment/worker
+            $KC rollout status deployment/api --timeout=180s
+            $KC rollout status deployment/worker --timeout=180s
+          fi
+
+      # 資料表定義一改，VM 上的舊資料庫就對不上新程式，所以指紋不同時自動重灌。
+      # 目前全是假資料，清掉沒有損失；之後要保留資料就改用 Alembic。
+      - name: 灌假資料（第一次部署、資料表定義有改，或手動勾選重灌）
+        env:
+          RESEED: ${{ inputs.reseed }}
+        run: |
+          # 與 backend/app/db.py 的 schema_version() 算法相同
+          expected=$(cat backend/app/models.py backend/app/sql/semantic_layer.sql | sha256sum | cut -c1-12)
+          current=$($KC exec statefulset/db -- psql -U meddemo -d meddemo -tAc "SELECT value FROM app_setting WHERE key = 'schema_version'" 2>/dev/null || true)
+          echo "資料表指紋：程式 $expected，資料庫 ${current:-（無）}"
+          if [ "$expected" != "$current" ] || [ "$RESEED" = "true" ]; then
+            job="seed-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+            $KC create job "$job" --from=cronjob/seed
+            $KC wait --for=condition=complete "job/$job" --timeout=300s
+            $KC logs "job/$job"
+          fi
+
+      - name: 健康檢查
+        env:
+          SITE_URL: ${{ vars.SITE_URL }}
+        run: curl -fsS --retry 20 --retry-all-errors --retry-delay 3 "$SITE_URL/health"
+
+      # 舊版映像留著只會佔磁碟。要退版就重跑舊的那次 workflow，會重新建出同一版映像並拉進 VM；
+      # 不用 helm rollback，因為舊版映像已經清掉，GHCR 又是私有的，K3s 自己拉不到
+      - name: 清掉沒在用的映像
+        run: sudo k3s crictl rmi --prune

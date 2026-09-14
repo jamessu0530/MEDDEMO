@@ -1,0 +1,23 @@
+# 對外入口：手機 ─HTTPS→ Cloudflare（橘雲）─→ VM 的 443 ─→ K3s 內建的 Traefik ─→ web（Nginx）。
+# 跟 CARE 共用同一台 VM 的 Traefik：HTTPS 憑證用 kube-system 裡 TLSStore 的預設憑證
+# （Cloudflare Origin 憑證，涵蓋整個網域），這裡不必再設 tls。
+# CARE 的 Ingress 沒指定網域、什麼網域都收；這條指定了網域，比對規則比較長，Traefik 會優先用這條。
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: web
+  labels:
+    {{- include "meddemo.labels" . | nindent 4 }}
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web
+                port:
+                  number: 80
