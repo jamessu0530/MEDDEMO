@@ -3,7 +3,7 @@
 # 需要的 repo secrets：POSTGRES_PASSWORD
 #   選填：ASR_API_KEY、LLM_API_KEY、EMBEDDING_API_KEY、VOICE_API_KEY
 # 需要的 repo variables：SITE_URL
-#   選填：ASR_PROVIDER、ASR_MODEL、LLM_PROVIDER、LLM_MODEL、EMBEDDING_PROVIDER、EMBEDDING_MODEL、VOICE_MODEL
+# 用哪家服務、哪個模型這類參數不放 GitHub，寫在 deploy/helm/meddemo/values.yaml 的 config，改完推 main 就部署生效
 name: CI/CD
 
 on:
@@ -162,16 +162,9 @@ jobs:
       - name: 更新密鑰並用 Helm 部署
         env:
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-          ASR_PROVIDER: ${{ vars.ASR_PROVIDER }}
-          ASR_MODEL: ${{ vars.ASR_MODEL }}
           ASR_API_KEY: ${{ secrets.ASR_API_KEY }}
-          LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
-          LLM_MODEL: ${{ vars.LLM_MODEL }}
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
-          EMBEDDING_PROVIDER: ${{ vars.EMBEDDING_PROVIDER }}
-          EMBEDDING_MODEL: ${{ vars.EMBEDDING_MODEL }}
           EMBEDDING_API_KEY: ${{ secrets.EMBEDDING_API_KEY }}
-          VOICE_MODEL: ${{ vars.VOICE_MODEL }}
           VOICE_API_KEY: ${{ secrets.VOICE_API_KEY }}
         run: |
           # Secret 不放進 chart（跟 CARE 的 care-backend-secret 一樣），要比 chart 先建好，pod 一啟動就讀得到
@@ -179,14 +172,11 @@ jobs:
           kubectl create secret generic meddemo-secrets --namespace meddemo \
             --from-literal=POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
             --dry-run=client -o yaml | kubectl apply -f -
-          # 語音辨識、AI 模型、embedding、語音問答：沒設定的值是空字串，程式會當作沒設定，改走手動輸入
+          # 語音辨識、AI 模型、embedding、語音問答的金鑰：沒設定的是空字串，程式會當作沒設定，改走手動輸入。
+          # 用哪家服務、哪個模型不在這裡，在 chart 的 ConfigMap（values.yaml 的 config）
           kubectl create secret generic meddemo-ai --namespace meddemo \
-            --from-literal=ASR_PROVIDER="$ASR_PROVIDER" --from-literal=ASR_MODEL="$ASR_MODEL" \
-            --from-literal=ASR_API_KEY="$ASR_API_KEY" --from-literal=LLM_PROVIDER="$LLM_PROVIDER" \
-            --from-literal=LLM_MODEL="$LLM_MODEL" --from-literal=LLM_API_KEY="$LLM_API_KEY" \
-            --from-literal=EMBEDDING_PROVIDER="$EMBEDDING_PROVIDER" --from-literal=EMBEDDING_MODEL="$EMBEDDING_MODEL" \
-            --from-literal=EMBEDDING_API_KEY="$EMBEDDING_API_KEY" \
-            --from-literal=VOICE_MODEL="$VOICE_MODEL" --from-literal=VOICE_API_KEY="$VOICE_API_KEY" \
+            --from-literal=ASR_API_KEY="$ASR_API_KEY" --from-literal=LLM_API_KEY="$LLM_API_KEY" \
+            --from-literal=EMBEDDING_API_KEY="$EMBEDDING_API_KEY" --from-literal=VOICE_API_KEY="$VOICE_API_KEY" \
             --dry-run=client -o yaml | kubectl apply -f -
           # --wait：所有 pod 就緒才算成功。上限放寬到 10 分鐘，因為第一次部署要從 Docker Hub 下載 Postgres 與 Redis 的映像
           helm upgrade --install meddemo deploy/helm/meddemo --namespace meddemo \
