@@ -30,6 +30,7 @@
     --color-border: var(--border);
     --color-destructive: var(--destructive);
     --color-success: var(--success);
+    --color-warning: var(--warning);
     --color-accent-foreground: var(--accent-foreground);
     --color-accent: var(--accent);
     --color-muted-foreground: var(--muted-foreground);
@@ -71,6 +72,8 @@
     --accent-foreground: #1A1626;
     --destructive: #B04226;
     --success: #2F6B3A;
+    /* 原型的琥珀色：帳齡、待處理事項這類要注意但還不到出錯的提醒 */
+    --warning: #A97400;
     --border: #E6E2EC;
     --input: #E0DBE9;
     --ring: #A96FE6;

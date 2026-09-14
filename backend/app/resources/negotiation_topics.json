@@ -1,0 +1,10 @@
+{
+  "說明": "談判卡的「建議切入點」（FR-3.2）：客戶符合哪個情況，就用那組關鍵字到內部文件找最相關的一段，照順序最多列三段。改這個檔就能調整，不必改程式（NFR-10）；改了關鍵字要跑 tests/test_customer_profile.py，確認每組都找到想要的段落。signal 可用 competitor、interval_up、contract_ending、ar_overdue、chain。",
+  "topics": [
+    { "signal": "competitor", "reason": "近 90 天的拜訪提到競品", "keywords": ["陳列位被調降", "競品取代"] },
+    { "signal": "interval_up", "reason": "進貨間隔拉長", "keywords": ["檔期活動", "申請期限"] },
+    { "signal": "contract_ending", "reason": "合約 3 個月內到期", "keywords": ["續約", "費率"] },
+    { "signal": "ar_overdue", "reason": "有帳款超過 60 天沒收", "keywords": ["帳齡超過", "60 天"] },
+    { "signal": "chain", "reason": "連鎖通路的合約條件", "keywords": ["陳列位", "上架費"] }
+  ]
+}

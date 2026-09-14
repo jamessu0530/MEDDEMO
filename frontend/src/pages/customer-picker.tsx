@@ -5,6 +5,7 @@ import { Link } from "react-router"
 import { CUSTOMER_TYPE_LABEL, listCustomers, type Customer } from "@/api/customers"
 import { BottomNav } from "@/components/bottom-nav"
 import { Notice } from "@/components/notice"
+import { PendingUploads } from "@/components/pending-uploads"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { formatDate } from "@/lib/format"
@@ -12,7 +13,7 @@ import { formatDate } from "@/lib/format"
 type LoadState =
   | { status: "loading" }
   | { status: "error" }
-  | { status: "ready"; customers: Customer[] }
+  | { status: "ready"; customers: Customer[]; cached: boolean }
 
 export function CustomerPicker() {
   const [state, setState] = useState<LoadState>({ status: "loading" })
@@ -22,7 +23,7 @@ export function CustomerPicker() {
   useEffect(() => {
     const controller = new AbortController()
     listCustomers(controller.signal)
-      .then((customers) => setState({ status: "ready", customers }))
+      .then(({ customers, cached }) => setState({ status: "ready", customers, cached }))
       .catch(() => {
         if (!controller.signal.aborted) setState({ status: "error" })
       })
@@ -59,6 +60,10 @@ export function CustomerPicker() {
       </header>
 
       <main className="flex-1 px-4 pt-3 pb-20">
+        <PendingUploads />
+        {state.status === "ready" && state.cached && (
+          <p className="mb-2 text-xs text-muted-foreground">沒有網路，顯示上次載入的客戶清單。錄音會先存在手機，恢復連線自動送出。</p>
+        )}
         {state.status === "loading" && (
           <p className="py-10 text-center text-sm text-muted-foreground">載入客戶中…</p>
         )}
@@ -88,7 +93,7 @@ function CustomerRow({ customer }: { customer: Customer }) {
   return (
     <li>
       <Link
-        to={`/customers/${customer.id}/record`}
+        to={`/customers/${customer.id}`}
         className="flex items-center gap-2 rounded-xl border bg-card py-3 pr-2 pl-4 active:bg-muted"
       >
         <div className="min-w-0 flex-1">

@@ -44,16 +44,18 @@ class Transcriber(Protocol):
     def transcribe(self, audio: bytes, mime_type: str, hotwords: list[str]) -> Transcript: ...
 
 
+def hotword_terms() -> list[str]:
+    """熱詞表檔案裡的通路術語與競品名稱。"""
+    lines = (line.strip() for line in HOTWORDS_FILE.read_text(encoding="utf-8").splitlines())
+    return [line for line in lines if line and not line.startswith("#")]
+
+
 def load_hotwords(session: Session) -> list[str]:
     """熱詞 = 品項名稱與口語別名（資料庫）＋通路術語與競品（熱詞表檔案），去掉重複。"""
     words: list[str] = []
     for name, aliases in session.execute(select(Product.name, Product.aliases)):
         words += [name, *aliases]
-    for line in HOTWORDS_FILE.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if line and not line.startswith("#"):
-            words.append(line)
-    return list(dict.fromkeys(words))
+    return list(dict.fromkeys(words + hotword_terms()))
 
 
 def gemini_audio_mime(mime_type: str) -> str:

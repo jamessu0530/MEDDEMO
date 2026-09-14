@@ -1,10 +1,13 @@
-import { lazy, Suspense } from "react"
+import { lazy, Suspense, useEffect } from "react"
 import { Loader2 } from "lucide-react"
 import { BrowserRouter, Route, Routes, useNavigate } from "react-router"
 
 import { Notice } from "@/components/notice"
+import { uploadQueue } from "@/lib/offline-queue"
 import { AskPage } from "@/pages/ask"
+import { CustomerPage } from "@/pages/customer"
 import { CustomerPicker } from "@/pages/customer-picker"
+import { NegotiationPage } from "@/pages/negotiation"
 import { RecordVisit } from "@/pages/record-visit"
 import { VisitPage } from "@/pages/visit"
 
@@ -29,6 +32,9 @@ function NotFound() {
 }
 
 export default function App() {
+  // 手機裡還沒送出的錄音：一打開 App 就開始自動重送，不管停在哪一頁（FR-4.3）
+  useEffect(() => uploadQueue.start(), [])
+
   return (
     <BrowserRouter>
       {/* 以手機為主：在寬螢幕上置中，維持手機的寬度 */}
@@ -44,6 +50,8 @@ export default function App() {
               </Suspense>
             }
           />
+          <Route path="/customers/:customerId" element={<CustomerPage />} />
+          <Route path="/customers/:customerId/negotiation" element={<NegotiationPage />} />
           <Route path="/customers/:customerId/record" element={<RecordVisit />} />
           <Route path="/visits/:visitId" element={<VisitPage />} />
           <Route path="*" element={<NotFound />} />

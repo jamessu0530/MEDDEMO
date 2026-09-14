@@ -6,7 +6,7 @@ from fastapi import Depends, FastAPI
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.api import asks, customers, mock_systems, products, visits, voice
+from app.api import asks, customers, mock_systems, products, transcription, visits, voice
 from app.db import get_session
 
 app = FastAPI(title="中化裕民業務 AI 助理")
@@ -16,6 +16,7 @@ app.include_router(products.router)
 app.include_router(visits.router)
 app.include_router(mock_systems.router)
 app.include_router(voice.router)
+app.include_router(transcription.router)
 
 
 @app.get("/health")

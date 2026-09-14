@@ -119,27 +119,33 @@ class VoiceSession:
     tool_kinds: dict[str, str]
 
 
-def create_session(words: list[str]) -> VoiceSession:
-    config = settings()
-    model = config.voice_model or DEFAULT_VOICE_MODEL
-    live = live_config(words)
+def mint_token(api_key: str, model: str, live: types.LiveConnectConfig) -> tuple[str, dt.datetime]:
+    """發一把只能開一段 Live 對話的臨時金鑰，回傳金鑰與失效時間。語音問答和錄音時的即時轉錄共用。"""
     now = dt.datetime.now(dt.UTC)
     # 用戶端要先存成變數：genai.Client 被回收時會關掉連線，串成一行寫的話請求還沒送出連線就被關了
-    client = gemini_client(config.voice_api_key)
+    client = gemini_client(api_key)
     token = client.auth_tokens.create(
         config=types.CreateAuthTokenConfig(
             uses=1,
             expire_time=now + TOKEN_LIFETIME,
             new_session_expire_time=now + NEW_SESSION_WINDOW,
-            # 沒給 lock_additional_fields＝整份設定鎖死，手機端送來的系統指示和工具一律不採用
+            # 沒給 lock_additional_fields＝整份設定鎖死，手機端送來的設定一律不採用
             live_connect_constraints=types.LiveConnectConstraints(model=model, config=live),
         )
     )
+    return token.name, now + TOKEN_LIFETIME
+
+
+def create_session(words: list[str]) -> VoiceSession:
+    config = settings()
+    model = config.voice_model or DEFAULT_VOICE_MODEL
+    live = live_config(words)
+    token, expires_at = mint_token(config.voice_api_key, model, live)
     return VoiceSession(
-        token=token.name,
+        token=token,
         model=model,
         api_version=API_VERSION,
-        expires_at=now + TOKEN_LIFETIME,
+        expires_at=expires_at,
         # 手機連線時也帶同一份設定（鎖死的欄位以金鑰裡的為準）；SDK 的欄位名稱是 camelCase
         config=live.model_dump(mode="json", by_alias=True, exclude_none=True),
         tool_kinds={tool.name: tool.ask_kind for tool in TOOLS},

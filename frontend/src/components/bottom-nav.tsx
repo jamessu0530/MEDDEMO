@@ -1,6 +1,7 @@
 import { AudioLines, MessageCircleQuestion, Users } from "lucide-react"
 import { NavLink } from "react-router"
 
+import { useUploadQueue } from "@/lib/offline-queue"
 import { cn } from "@/lib/utils"
 
 const TABS = [
@@ -11,6 +12,9 @@ const TABS = [
 
 /** 底部分頁列：只放在最上層的頁面，進到錄音、確認這些流程裡就不顯示，免得誤觸離開 */
 export function BottomNav() {
+  const { items } = useUploadQueue()
+  // FR-4.3：手機裡還有沒送出的錄音，拜訪分頁上顯示筆數
+  const pending = items.filter((item) => item.state === "pending").length
   return (
     <nav className="fixed inset-x-0 bottom-0 z-20 mx-auto flex max-w-md border-t bg-card pb-[env(safe-area-inset-bottom)]">
       {TABS.map(({ to, label, icon: Icon }) => (
@@ -25,7 +29,17 @@ export function BottomNav() {
             )
           }
         >
-          <Icon className="size-5" />
+          <span className="relative">
+            <Icon className="size-5" />
+            {to === "/" && pending > 0 && (
+              <span
+                aria-label={`待送出 ${pending} 筆`}
+                className="absolute -top-1.5 -right-2.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-white"
+              >
+                {pending}
+              </span>
+            )}
+          </span>
           {label}
         </NavLink>
       ))}

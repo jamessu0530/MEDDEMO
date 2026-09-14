@@ -16,10 +16,95 @@ export const CUSTOMER_TYPE_LABEL: Record<Customer["type"], string> = {
   clinic: "診所",
 }
 
-export function listCustomers(signal?: AbortSignal) {
-  return request<Customer[]>("/api/customers", { signal })
+// 沒訊號的地方也要能選客戶開始錄音（FR-4.3）：每次載入成功就把清單記在手機裡，連不上時拿出來用
+const CUSTOMER_CACHE_KEY = "meddemo:customers"
+
+function readCachedCustomers(): Customer[] | null {
+  try {
+    const raw = localStorage.getItem(CUSTOMER_CACHE_KEY)
+    return raw ? (JSON.parse(raw) as Customer[]) : null
+  } catch {
+    return null // 瀏覽器不讓存（例如部分無痕模式）就當作沒有
+  }
+}
+
+/** 客戶清單；連不上伺服器時改用上次載入的清單（cached 為 true） */
+export async function listCustomers(signal?: AbortSignal) {
+  try {
+    const customers = await request<Customer[]>("/api/customers", { signal })
+    try {
+      localStorage.setItem(CUSTOMER_CACHE_KEY, JSON.stringify(customers))
+    } catch {
+      // 存不進去就算了，下次沒網路時只是看不到清單
+    }
+    return { customers, cached: false }
+  } catch (error) {
+    const cached = signal?.aborted ? null : readCachedCustomers()
+    if (cached) return { customers: cached, cached: true }
+    throw error
+  }
+}
+
+export function cachedCustomer(id: string) {
+  return readCachedCustomers()?.find((customer) => customer.id === id)
 }
 
 export function getCustomer(id: string, signal?: AbortSignal) {
   return request<Customer>(`/api/customers/${encodeURIComponent(id)}`, { signal })
+}
+
+export type ProfileStats = {
+  amount_last_90d: number
+  amount_prev_90d: number
+  avg_order_amount_last_90d: number | null
+  avg_order_amount_before: number | null
+  interval_last_90d: number | null
+  interval_before: number | null
+  interval_alert: boolean
+  ar_outstanding: number
+  ar_max_age_days: number | null
+  last_order_date: string | null
+  last_visit_date: string | null
+}
+
+// 客戶檔案（FR-2）：交易概況、待處理事項、競品紀錄
+export type CustomerProfile = {
+  customer: Customer
+  today: string
+  highlights: string[]
+  stats: ProfileStats
+  intervals: { month: string; gap_days: number | null }[]
+  open_quotes: { visit_id: string; date: string; items: string; amount: number }[]
+  commitments: {
+    visit_id: string
+    visit_date: string
+    by: "us" | "customer"
+    text: string
+    due: string | null
+    overdue: boolean
+  }[]
+  complaints: { visit_id: string; visit_date: string; text: string }[]
+  competitors: { name: string; mentions: number; last_date: string; detail: string | null }[]
+}
+
+// 談判卡（FR-3）：只有連鎖客戶有
+export type NegotiationCard = {
+  customer: Customer
+  turnover: { sku: string; name: string; orders_per_month: number; region_orders_per_month: number | null }[]
+  margin: {
+    listing_fee_rate: number
+    channel_reward_rate: number
+    net_margin_rate: number
+    region_net_margin_rate: number | null
+    summary: string
+  } | null
+  tips: { reason: string; doc_title: string; section: string; content: string; source_name: string }[]
+}
+
+export function getCustomerProfile(id: string, signal?: AbortSignal) {
+  return request<CustomerProfile>(`/api/customers/${encodeURIComponent(id)}/profile`, { signal })
+}
+
+export function getNegotiationCard(id: string, signal?: AbortSignal) {
+  return request<NegotiationCard>(`/api/customers/${encodeURIComponent(id)}/negotiation`, { signal })
 }
