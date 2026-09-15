@@ -17,9 +17,25 @@ db:
 redis:
   image: redis:8.10.1-alpine
 
-# Secret 由部署流程從 GitHub Secrets 建立，不放進 chart（跟 CARE 的 care-backend-secret 一樣）
+# 程式參數（用哪家服務、哪個模型）：改這裡、commit、推 main 就會部署生效，跟 CARE-infra 的 values.yaml 一樣。
+# 這裡寫什麼鍵，ConfigMap 就產生同名的環境變數，新增參數不必改模板。留空＝用程式裡的預設值。
+# 金鑰不放這裡，放 GitHub Secrets（見下面的 secrets）。
+config:
+  # 語音辨識。留空＝不辨識，錄音改走手動輸入逐字稿
+  ASR_PROVIDER: gemini
+  ASR_MODEL: ""
+  # AI 模型：抽欄位、數字查詢、知識查詢共用；語音問答查資料也靠它
+  LLM_PROVIDER: gemini
+  LLM_MODEL: ""
+  # 語意檢索。換模型之後文件段落要重算向量：手動執行部署並勾選「重灌假資料」
+  EMBEDDING_PROVIDER: gemini
+  EMBEDDING_MODEL: ""
+  # 語音問答的 Live 模型。9/14 改用 3.1，沒先用語音實測驗證（為什麼要注意見 README 的語音問答段）；留空就回到程式預設的 2.5
+  VOICE_MODEL: gemini-3.1-flash-live-preview
+
+# 金鑰：Secret 由部署流程從 GitHub Secrets 建立，不放進 chart（跟 CARE 的 care-backend-secret 一樣）
 secrets:
   # POSTGRES_PASSWORD
   database: meddemo-secrets
-  # 語音辨識、AI 模型、embedding、語音問答的設定與金鑰；還沒建時照樣啟動，流程改走手動輸入
+  # ASR_API_KEY、LLM_API_KEY、EMBEDDING_API_KEY、VOICE_API_KEY；還沒建時照樣啟動，沒有金鑰的功能改走手動輸入
   ai: meddemo-ai

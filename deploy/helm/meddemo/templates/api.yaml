@@ -25,6 +25,8 @@ spec:
     metadata:
       labels:
         app: api
+      annotations:
+        {{- include "meddemo.configChecksum" . | nindent 8 }}
     spec:
       containers:
         - name: api

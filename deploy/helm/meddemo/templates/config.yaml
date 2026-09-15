@@ -1,0 +1,12 @@
+# 程式參數，內容就是 values.yaml 的 config；金鑰在 Secret（secrets.ai），不放這裡
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: meddemo-config
+  labels:
+    {{- include "meddemo.labels" . | nindent 4 }}
+data:
+  {{- /* 不用 default：它把 false 也當成空值換掉（CARE 的 FAMILY_RBAC_ENFORCED 踩過）。只有沒填值（null）才給空字串 */}}
+  {{- range $key, $value := .Values.config }}
+  {{ $key }}: {{ if kindIs "invalid" $value }}""{{ else }}{{ $value | toString | quote }}{{ end }}
+  {{- end }}

@@ -26,7 +26,7 @@ cd frontend && npm install && npm run dev                                       
 
 ## 金鑰與供應商
 
-本機：把 `backend/.env.example` 複製成 `backend/.env` 再填值，這個檔案不會進 git。正式環境：填在 GitHub 的 Secrets 與 Variables（見下方部署的表格）。
+本機：把 `backend/.env.example` 複製成 `backend/.env` 再填值，這個檔案不會進 git。正式環境：金鑰填在 GitHub Secrets（見下方部署的表格）；用哪家服務、哪個模型寫在 [deploy/helm/meddemo/values.yaml](deploy/helm/meddemo/values.yaml) 的 `config`，改完推 main 就會部署生效。
 
 四項外部服務目前都接 Gemini，各自設定。金鑰到 [Google AI Studio](https://aistudio.google.com/apikey) 申請；AI 模型選 Gemini 時，其他三項沒填自己的金鑰，就沿用 `LLM_API_KEY` 那把，所以通常只要填一把。
 
@@ -113,7 +113,8 @@ uv run --project backend python backend/scripts/eval_ask.py
 - 預設模型是 `gemini-2.5-flash-native-audio-preview-12-2025`，查資料時一定等結果回來才開口（同步函式呼叫），而且規定模型先呼叫工具、呼叫前不說話。9/14 實測過兩種會出事的做法：
   - 「邊查邊聊」：查詢結果還沒回來，模型就自己先講答案。
   - 讓模型先說「我查一下」：常常說完就直接編答案，沒有真的去查。
-- `gemini-3.1-flash-live-preview` 反應比較快，但實測會編答案、逐字稿是簡體字，所以不當預設。兩個都是預覽版，要換就改 `VOICE_MODEL`。
+- `gemini-3.1-flash-live-preview` 反應比較快，但實測會編答案、逐字稿是簡體字，所以不當預設。兩個都是預覽版，要換就改 `VOICE_MODEL`（正式環境在 `values.yaml` 的 `config`）。
+- 9/14 起正式環境改用 3.1，還沒用語音實測驗證。上線後要注意：AI 講了數字或規定，畫面上卻沒有出現查詢卡片，就是它沒查就答。要改回 2.5，把 `config.VOICE_MODEL` 留空再推 main。
 - AI 說話時暫停收音（半雙工）：手機外放時，模型才不會聽到自己的聲音、把自己打斷。要插話就按「打斷」。
 - 查資料時循環播放提示音，查完就停；這段時間也暫停收音，免得提示音被麥克風收進去。音效的來源與授權見 `frontend/public/sounds/README.md`。
 - 畫面上業務說的那一句，是 Gemini 另外做的語音轉文字，常有同音錯字，所以標了「語音辨識，僅供參考」。AI 查資料用的是它自己聽懂的問題，寫在查詢卡片上。
@@ -175,14 +176,18 @@ MEDDEMO 跟 CARE 共用 GCP 上的 care-vm：K3s、Helm、Traefik、HTTPS 憑證
 | --- | --- | --- |
 | `POSTGRES_PASSWORD` | secret | 隨機字串，例如 `openssl rand -hex 24` 產生的。第一次部署後就不要再改：Postgres 只在第一次建資料庫時設定密碼。 |
 | `SITE_URL` | variable | `https://你的網址`，部署完會打它的 `/health` 確認網站正常 |
-| `ASR_PROVIDER`、`ASR_MODEL` | variable | 選填：語音辨識。供應商填 `gemini`，模型留空就用 `gemini-3.8-flash` |
 | `ASR_API_KEY` | secret | 選填：語音辨識用的 Gemini 金鑰，沒填就沿用 `LLM_API_KEY` |
-| `LLM_PROVIDER`、`LLM_MODEL` | variable | 選填：AI 模型（抽欄位與問答共用）。供應商填 `gemini`，模型留空就用 `gemini-3.8-flash` |
 | `LLM_API_KEY` | secret | 選填：Gemini 的金鑰，到 Google AI Studio 申請 |
-| `EMBEDDING_PROVIDER`、`EMBEDDING_MODEL` | variable | 選填：語意檢索。供應商填 `gemini`，模型留空就用 `gemini-embedding-001`。設定後要手動執行一次並勾選「重灌假資料」，文件段落才會有向量 |
 | `EMBEDDING_API_KEY` | secret | 選填：embedding 用的 Gemini 金鑰，沒填就沿用 `LLM_API_KEY` |
-| `VOICE_MODEL` | variable | 選填：語音問答的 Live 模型，留空就用 `gemini-2.5-flash-native-audio-preview-12-2025` |
 | `VOICE_API_KEY` | secret | 選填：語音問答用的 Gemini 金鑰，沒填就沿用 `LLM_API_KEY` |
+
+### 改參數（用哪家服務、哪個模型）
+
+不放 GitHub，寫在 [deploy/helm/meddemo/values.yaml](deploy/helm/meddemo/values.yaml) 的 `config`，跟 CARE-infra 的做法一樣：改檔、commit、推 main，部署時 pod 就會換上新值。
+
+- `config` 底下寫什麼鍵，就產生同名的環境變數，新增參數不必改模板。留空就用程式裡的預設值（見上方「金鑰與供應商」的表格）。
+- 換 embedding 模型之後，要手動執行一次部署並勾選「重灌假資料」，文件段落才會重算向量。
+- 金鑰不要寫進 `config`：這個 repo 是公開的。
 
 ## 目錄
 
