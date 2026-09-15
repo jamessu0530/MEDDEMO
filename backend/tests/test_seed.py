@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+from collections import Counter
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -32,16 +33,28 @@ def test_generation_is_deterministic():
 
 
 def test_scale_matches_plan(db):
-    assert rows(db, "SELECT count(*) FROM customer")[0][0] == 80
+    assert rows(db, "SELECT count(*) FROM customer")[0][0] == 250
     assert rows(db, "SELECT count(*) FROM product")[0][0] == 40
-    assert rows(db, "SELECT count(*) FROM visit")[0][0] == 150
     by_type = dict(rows(db, "SELECT type, count(*) FROM customer GROUP BY type"))
-    assert by_type == {"chain": 24, "independent": 36, "clinic": 20}
+    assert by_type == {"chain": 76, "independent": 112, "clinic": 62}
     first, last, months = rows(db, """
         SELECT min(date), max(date), count(DISTINCT date_trunc('month', date)) FROM sales_transaction
     """)[0]
     assert first >= AS_OF - timedelta(days=365) and last < AS_OF
     assert months >= 12
+
+
+def test_each_rep_visits_three_to_five_customers_every_weekday(db):
+    # 一位業務負責 50 家，一天跑 3～5 家、只跑平日；記錄的這一年裡每個平日都有出門
+    reps = ["U01", "U02", "U03", "U04", "U05"]
+    assert dict(rows(db, "SELECT owner_user_id, count(*) FROM customer GROUP BY 1")) == dict.fromkeys(reps, 50)
+    per_day = rows(db, """
+        SELECT user_id, (visited_at AT TIME ZONE 'Asia/Taipei')::date, count(*) FROM visit GROUP BY 1, 2
+    """)
+    assert all(3 <= n <= 5 and day.weekday() < 5 for _, day, n in per_day)
+    first = AS_OF - timedelta(days=generate.HISTORY_DAYS - 1)
+    weekdays = sum((first + timedelta(days=i)).weekday() < 5 for i in range(generate.HISTORY_DAYS - 1))
+    assert Counter(rep for rep, _, _ in per_day) == dict.fromkeys(reps, weekdays)
 
 
 def test_app_today_is_pinned_to_as_of(db):
@@ -53,9 +66,11 @@ def test_seed_records_schema_version_for_the_deploy_check(db):
 
 
 def test_schema_version_matches_the_deploy_workflow_algorithm():
-    # CI 在 runner 上用 cat models.py semantic_layer.sql | sha256sum 算指紋，兩邊要算出同一個值
-    app_dir = ROOT / "backend" / "app"
-    joined = (app_dir / "models.py").read_bytes() + (app_dir / "sql" / "semantic_layer.sql").read_bytes()
+    # CI 在 runner 上用 cat 把這四個檔案接起來再 sha256sum 算指紋，兩邊要算出同一個值
+    files = ["backend/app/models.py", "backend/app/sql/semantic_layer.sql", "data/seed/generate.py", "data/seed/catalog.py"]
+    workflow = (ROOT / ".github" / "workflows" / "ci-cd.yml").read_text(encoding="utf-8")
+    assert f"cat {' '.join(files)} | sha256sum" in workflow
+    joined = b"".join((ROOT / f).read_bytes() for f in files)
     assert schema_version() == hashlib.sha256(joined).hexdigest()[:12]
 
 
@@ -80,11 +95,12 @@ def test_semantic_reader_sees_views_but_not_tables(db):
 
 def test_new_visit_draft_gets_defaults_from_database(engine):
     with Session(engine) as session:
+        last = session.scalar(text("SELECT max(id) FROM visit"))
         visit = models.Visit(customer_id="C001", user_id="U01", visited_at=datetime.now(generate.TAIPEI))
         session.add(visit)
         session.flush()
-        # 序號接在假資料的 150 筆之後；前面的測試建過拜訪的話號碼會再往後，所以只比格式與大小
-        assert len(visit.id) == 6 and visit.id.startswith("V") and visit.id > "V00150"
+        # 序號要接在假資料最後一筆之後才不會撞號，編號格式也跟假資料一樣
+        assert len(visit.id) == 6 and visit.id.startswith("V") and visit.id > last
         assert visit.status == "draft" and visit.transcript == ""
         session.rollback()
 
@@ -99,7 +115,10 @@ def test_exactly_the_five_designed_customers_have_longer_intervals_at_flat_order
     assert found == set(generate.SCENARIO_CUSTOMERS)
 
 
-def test_north_supplement_decline_is_concentrated_in_three_chains_led_by_fish_oil(db):
+def test_north_supplement_decline_is_led_by_fish_oil_in_the_three_chains(db):
+    # 北區保健品近 90 天比前 90 天少，縮最多的品項是魚油，魚油縮最多的就是刻意設計的三家；
+    # 按保健品掉的金額排，前兩名也是其中兩家，數字題 D01 才答得出來。忠孝店前後兩段剛好都進
+    # 三次貨、總金額只掉兩萬，排不進前面，所以三家一起比的是魚油
     window = """
         SELECT c.name, t.sku,
                sum(t.amount) FILTER (WHERE t.date > app_today() - 90) AS recent,
@@ -110,9 +129,16 @@ def test_north_supplement_decline_is_concentrated_in_three_chains_led_by_fish_oi
         WHERE c.region = '北區' AND p.category = '保健品'
         GROUP BY c.name, t.sku
     """
+    recent, prior = rows(db, f"SELECT sum(recent), sum(prior) FROM ({window}) w")[0]
+    assert recent < prior
+    assert rows(db, f"SELECT sku FROM ({window}) w GROUP BY sku ORDER BY sum(prior) - sum(recent) DESC LIMIT 1")[0][0] == "HS-FO30"
+    top2 = {r[0] for r in rows(db, f"""
+        SELECT name FROM ({window}) w GROUP BY name ORDER BY sum(prior) - sum(recent) DESC NULLS LAST LIMIT 2
+    """)}
+    assert top2 < generate.NORTH_DECLINE
     top3 = {r[0] for r in rows(db, f"""
-        SELECT name FROM ({window}) w GROUP BY name
-        ORDER BY sum(prior) - sum(recent) DESC LIMIT 3
+        SELECT name FROM ({window}) w WHERE sku = 'HS-FO30'
+        ORDER BY coalesce(prior, 0) - coalesce(recent, 0) DESC LIMIT 3
     """)}
     assert top3 == generate.NORTH_DECLINE
     worst_sku = rows(db, f"""

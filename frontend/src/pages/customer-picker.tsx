@@ -33,7 +33,7 @@ export function CustomerPicker() {
     return () => controller.abort()
   }, [attempt])
 
-  // 客戶不到一百家，一次載入後在手機上篩選，打字時不必每個字都等網路
+  // 客戶 250 家，整份清單壓縮後約 4 KB，一次載入後在手機上篩選，打字時不必每個字都等網路
   const keyword = query.trim()
   const visible = useMemo(
     () => (state.status === "ready" ? state.customers.filter((c) => c.name.includes(keyword)) : []),

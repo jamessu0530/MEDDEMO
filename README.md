@@ -89,7 +89,7 @@ curl -X PUT localhost:8000/api/mock-systems/oa -H 'Content-Type: application/jso
 首頁點客戶會先進客戶檔案（FR-2），連鎖客戶多一張談判卡（FR-3）。內容只來自資料庫的數字和內部文件的原文，不讓 AI 生成。
 
 - **進門前三分鐘**：照數字套規則寫出的重點，最多四句。會提的狀況包括進貨間隔拉長、逾期承諾、近期提到的競品、客訴、帳齡超過 60 天、合約 3 個月內到期。
-  - 進貨間隔比之前拉長兩成以上才提醒：目前 80 家客戶裡九成的變化在 7% 以內，刻意設計的五家拉長 41%～63%。
+  - 進貨間隔比之前拉長兩成以上才提醒：目前 250 家客戶裡，刻意設計的五家以外九成的變化在 8% 以內、最多 13%，那五家拉長 41%～63%。
   - 帳齡 60 天、續約前 3 個月，這兩個數字照內部文件。
 - **交易概況**：近 3 月進貨、進貨間隔（之前 → 現在）、帳齡，加上近六個月每月的進貨間隔長條圖。
 - **待處理事項**：未結案的報價草稿、近 90 天的客訴、近 90 天內到期或已過期的承諾。系統沒有結案紀錄，所以只列近期的。
@@ -217,8 +217,11 @@ uv run --project backend python backend/scripts/eval_voice.py
 ## 假資料
 
 - 系統的「今天」固定在 2026-10-28（決賽日），存在 `app_setting.as_of_date`，SQL 裡用 `app_today()` 取。評測題庫的答案才不會隨真實日期漂移。灌資料時可用 `--as-of` 改。
-- 規模：80 家客戶（連鎖 24、獨立藥局 36、診所 20）、40 個品項、12 個月交易、150 筆拜訪紀錄。
-- 刻意設計的案例：五家「進貨間隔拉長、單次進貨金額持平」的客戶，名單在 `data/seed/generate.py` 的 `SCENARIO_CUSTOMERS`。其中北區三家連鎖的保健品下滑，縮最多的是魚油；三家裡有兩家近期的拜訪紀錄提到競品御松田。
+- 規模：250 家客戶（連鎖 76、獨立藥局 112、診所 62），5 位業務各負責 50 家；40 個品項、12 個月交易。
+- 拜訪紀錄 5,223 筆：照「一位業務一天跑 3～5 家」排，只排平日，一年裡每個平日都有出門。每天先去「距離上次拜訪的天數 × 等級權重」最大的幾家，A 級約 12 天去一次、B 級約 17 天、C 級約 32 天。
+- 大部分拜訪是例行拜訪。提到競品、客訴、下單意向、承諾、約再訪的機率照拜訪次數調低，每家客戶一年裡出現這些內容的次數跟原本一年只有 1.9 次拜訪時一樣。
+- 原本 80 家的交易與帳款跟之前一模一樣；補的 170 家和拜訪各用另一條亂數產生。補的連鎖分店每次進貨量是原本分店的一半，免得它們剛好少進一次貨的波動，蓋過下面「北區保健品下滑」這個設計好的案例。
+- 刻意設計的案例：五家「進貨間隔拉長、單次進貨金額持平」的客戶，名單在 `data/seed/generate.py` 的 `SCENARIO_CUSTOMERS`。其中北區三家連鎖的保健品下滑，縮最多的是魚油；三家裡有兩家近期的拜訪紀錄提到競品御松田。這五家除了寫死的最近一次拜訪，其他都是例行拜訪。
 - 數字查詢只能讀四個語意層 View：`v_monthly_sales`、`v_customer_summary`、`v_visit_signal`、`v_margin_breakdown`。唯讀角色是 `semantic_reader`。
 
 ## 部署到雲端 VM（K3s）
@@ -240,6 +243,7 @@ uv run --project backend python backend/scripts/eval_voice.py
 
 - 第一次部署
 - `models.py` 或 `semantic_layer.sql` 有改動
+- 假資料的產生程式 `data/seed/generate.py` 或 `data/seed/catalog.py` 有改動（評測題庫的答案照新資料寫，VM 上的資料要跟著換）
 
 chart 裡另有一個每天台北時間 03:00 跑的 CronJob `retention`，清掉到期的錄音與逐字稿（見上方「個資與保存期限」）。
 
@@ -289,7 +293,7 @@ backend/app/jobs/                   排程工作：每天清掉到期的錄音�
 backend/app/gemini.py               Gemini 用戶端（embedding、語音辨識、語音問答共用）
 backend/app/tasks.py                Redis 連線、RQ 佇列、處理進度
 backend/app/models.py               資料表（SQLAlchemy 2.0 ORM）
-backend/app/db.py                   連線、重建 schema、資料表指紋
+backend/app/db.py                   連線、重建 schema、資料表與假資料的指紋
 backend/app/sql/semantic_layer.sql  app_today() 與四個語意層 View，建完表後執行
 backend/app/schemas                 五欄位 JSON Schema
 backend/app/resources/hotwords.txt  語音辨識熱詞表（通路術語與競品；品項從資料庫讀）

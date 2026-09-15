@@ -31,9 +31,9 @@
       "id": "D05",
       "question": "帳齡拖最久的是哪一家、拖了幾天？我們最近一次去拜訪是什麼時候？",
       "multi_round": true,
-      "names": ["信義店"],
+      "names": ["樹林店"],
       "min_names": 1,
-      "numbers": [76]
+      "numbers": [102]
     },
     {
       "id": "D06",
@@ -43,7 +43,7 @@
     {
       "id": "D07",
       "question": "北區有幾家連鎖藥局客戶？",
-      "numbers": [10]
+      "numbers": [32]
     },
     {
       "id": "D08",
@@ -53,12 +53,12 @@
     {
       "id": "D09",
       "question": "最近 90 天有幾次拜訪提到御松田？",
-      "numbers": [3]
+      "numbers": [4]
     },
     {
       "id": "D10",
       "question": "南區 9 月的保健品營收是多少？",
-      "numbers": [997226]
+      "numbers": [2814546]
     }
   ]
 }

@@ -25,11 +25,13 @@ class PersonalTranscriber:
 
 @pytest.fixture
 def client(engine):
+    with engine.connect() as conn:
+        last = conn.execute(text("SELECT max(id) FROM visit")).scalar_one()
     yield TestClient(app)
     with engine.begin() as conn:
         for table in ("writeback_log", "crm_visit_record", "sap_quotation_draft", "oa_expense_form"):
-            conn.execute(text(f"DELETE FROM {table} WHERE visit_id > 'V00150'"))
-        conn.execute(text("DELETE FROM visit WHERE id > 'V00150'"))
+            conn.execute(text(f"DELETE FROM {table} WHERE visit_id > :last"), {"last": last})
+        conn.execute(text("DELETE FROM visit WHERE id > :last"), {"last": last})
     redis().flushdb()
 
 
@@ -98,7 +100,7 @@ def test_expired_audio_transcripts_and_abandoned_drafts_are_deleted(client, prov
     kept_id = make_draft(client, providers)
     with Session(engine) as session:
         # 「現在」取假資料最早一筆逐字稿還沒到期的那天，測試結果不會隨真實日期改變
-        oldest = session.scalar(select(func.min(Visit.confirmed_at)).where(Visit.id <= "V00150"))
+        oldest = session.scalar(select(func.min(Visit.confirmed_at)))
         now = oldest + TRANSCRIPT_RETENTION - dt.timedelta(days=1)
         session.get(Visit, confirmed_id).confirmed_at = now - AUDIO_RETENTION - dt.timedelta(days=1)
         session.get(Visit, abandoned_id).created_at = now - AUDIO_RETENTION - dt.timedelta(days=1)

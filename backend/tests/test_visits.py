@@ -56,12 +56,14 @@ def not_configured():
 
 @pytest.fixture
 def client(engine):
+    with engine.connect() as conn:
+        last = conn.execute(text("SELECT max(id) FROM visit")).scalar_one()
     yield TestClient(app)
-    # 清掉這個測試建的拜訪，其他測試看到的仍是原本那 150 筆假資料
+    # 清掉這個測試建的拜訪（編號都排在測試開始前的最後一筆之後），其他測試看到的仍是原本的假資料
     with engine.begin() as conn:
         for table in ("writeback_log", "crm_visit_record", "sap_quotation_draft", "oa_expense_form"):
-            conn.execute(text(f"DELETE FROM {table} WHERE visit_id > 'V00150'"))
-        conn.execute(text("DELETE FROM visit WHERE id > 'V00150'"))
+            conn.execute(text(f"DELETE FROM {table} WHERE visit_id > :last"), {"last": last})
+        conn.execute(text("DELETE FROM visit WHERE id > :last"), {"last": last})
     redis().flushdb()
 
 

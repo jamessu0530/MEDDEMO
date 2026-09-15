@@ -13,6 +13,8 @@ from app.models import Base
 
 MODELS = Path(__file__).parent / "models.py"
 SEMANTIC_LAYER = Path(__file__).parent / "sql" / "semantic_layer.sql"
+# 假資料的產生程式；映像檔裡放在 /srv/data/seed，跟 /srv/backend 同一層（見 backend/Dockerfile）
+SEED_DIR = Path(__file__).resolve().parents[2] / "data" / "seed"
 
 
 def database_url() -> str:
@@ -40,12 +42,13 @@ def get_session() -> Iterator[Session]:
 
 
 def schema_version() -> str:
-    """資料表與語意層定義的指紋。部署時跟資料庫裡記下的比對，不一樣就代表要重建。
+    """資料表、語意層與假資料產生程式的指紋。部署時跟資料庫裡記下的比對，不一樣就代表要重建。
 
-    部署流程在 runner 上用 sha256sum 算同一個值（兩個檔案接起來取前 12 碼），改算法要一起改。
+    假資料的產生程式也算進來：測試與評測題庫的答案都照它的產出寫，程式改了 VM 上的資料就要跟著換。
+    部署流程在 runner 上用 sha256sum 算同一個值（四個檔案依序接起來取前 12 碼），改算法要一起改。
     """
     digest = hashlib.sha256()
-    for path in (MODELS, SEMANTIC_LAYER):
+    for path in (MODELS, SEMANTIC_LAYER, SEED_DIR / "generate.py", SEED_DIR / "catalog.py"):
         digest.update(path.read_bytes())
     return digest.hexdigest()[:12]
 

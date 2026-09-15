@@ -192,13 +192,14 @@ jobs:
           fi
 
       # 資料表定義一改，VM 上的舊資料庫就對不上新程式，所以指紋不同時自動重灌。
+      # 假資料的產生程式也算進指紋：題庫答案與測試照新資料寫，VM 上的資料要跟著換。
       # 目前全是假資料，清掉沒有損失；之後要保留資料就改用 Alembic。
-      - name: 灌假資料（第一次部署、資料表定義有改，或手動勾選重灌）
+      - name: 灌假資料（第一次部署、資料表定義或假資料有改，或手動勾選重灌）
         env:
           RESEED: ${{ inputs.reseed }}
         run: |
           # 與 backend/app/db.py 的 schema_version() 算法相同
-          expected=$(cat backend/app/models.py backend/app/sql/semantic_layer.sql | sha256sum | cut -c1-12)
+          expected=$(cat backend/app/models.py backend/app/sql/semantic_layer.sql data/seed/generate.py data/seed/catalog.py | sha256sum | cut -c1-12)
           current=$($KC exec statefulset/db -- psql -U meddemo -d meddemo -tAc "SELECT value FROM app_setting WHERE key = 'schema_version'" 2>/dev/null || true)
           echo "資料表指紋：程式 $expected，資料庫 ${current:-（無）}"
           if [ "$expected" != "$current" ] || [ "$RESEED" = "true" ]; then
