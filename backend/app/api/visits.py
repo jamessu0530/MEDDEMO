@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_session
 from app.models import WRITEBACK_TARGETS, Customer, FollowUpReminder, Visit, VisitAudio
-from app.services import writeback
+from app.services import privacy, writeback
 from app.services.extraction import empty_fields, missing_sap_details, unsourced_fields, validate_fields
 from app.services.reminders import create_reminder
 from app.tasks import get_progress, visit_queue
@@ -207,6 +207,8 @@ def confirm(session: SessionDep, visit_id: str):
     visit.fields_final = fields
     visit.status = "confirmed"
     visit.confirmed_at = dt.datetime.now(dt.UTC)
+    # NFR-8：送出之後的用途（AI 查詢、客戶檔案）都算後續利用，逐字稿先去識別；送出前業務要對著原文核對
+    privacy.deidentify_visit(session, visit)
     create_reminder(session, visit)
     session.commit()
 

@@ -136,12 +136,13 @@ SELECT v.id                   AS visit_id,
 FROM visit v
 JOIN customer c ON c.id = v.customer_id
 JOIN app_user u ON u.id = v.user_id
-WHERE v.status <> 'draft';
+-- 只收已確認的拜訪：處理中、轉文字失敗、待確認的紀錄還沒整理好，逐字稿也還沒去識別（NFR-8）
+WHERE v.status IN ('confirmed', 'synced');
 
 COMMENT ON VIEW v_visit_signal IS '已確認的拜訪紀錄，一次拜訪一列，五個欄位已攤平。';
 COMMENT ON COLUMN v_visit_signal.competitor_names IS '本次提到的競品，多家以頓號分隔；沒提到為 NULL';
 COMMENT ON COLUMN v_visit_signal.commitment_by IS 'us=我方答應客戶, customer=客戶答應我方';
-COMMENT ON COLUMN v_visit_signal.transcript IS '口述逐字稿原文';
+COMMENT ON COLUMN v_visit_signal.transcript IS '口述逐字稿，確認送出時已去識別（人名遮成 ○、電話等換成［電話］這類標記）；送出滿 6 個月後刪除，變成空字串';
 
 CREATE VIEW v_margin_breakdown AS
 SELECT date_trunc('month', t.date)::date AS month,

@@ -24,6 +24,9 @@ config:
   # 語音辨識。留空＝不辨識，錄音改走手動輸入逐字稿
   ASR_PROVIDER: gemini
   ASR_MODEL: ""
+  # CARE 的語音辨識服務（faster-whisper），跟 MEDDEMO 在同一個 K3s 叢集，沒有 NetworkPolicy 擋，跨 namespace 直接連得到。
+  # ASR_PROVIDER 是 gemini 時它當備援；改成 local 就換它當主要來源（字錯率比 Gemini 高，見 README「語音辨識」）
+  ASR_URL: http://local-asr.care-dev.svc.cluster.local:8200
   # AI 模型：抽欄位、數字查詢、知識查詢共用；語音問答查資料也靠它
   LLM_PROVIDER: gemini
   LLM_MODEL: ""

@@ -3,10 +3,13 @@ import { Loader2 } from "lucide-react"
 import { BrowserRouter, Route, Routes, useNavigate } from "react-router"
 
 import { Notice } from "@/components/notice"
+import { Onboarding } from "@/components/onboarding"
 import { uploadQueue } from "@/lib/offline-queue"
 import { AskPage } from "@/pages/ask"
 import { CustomerPage } from "@/pages/customer"
 import { CustomerPicker } from "@/pages/customer-picker"
+import { EscalationsPage } from "@/pages/escalations"
+import { ManagerPage } from "@/pages/manager"
 import { NegotiationPage } from "@/pages/negotiation"
 import { RecordVisit } from "@/pages/record-visit"
 import { VisitPage } from "@/pages/visit"
@@ -54,8 +57,12 @@ export default function App() {
           <Route path="/customers/:customerId/negotiation" element={<NegotiationPage />} />
           <Route path="/customers/:customerId/record" element={<RecordVisit />} />
           <Route path="/visits/:visitId" element={<VisitPage />} />
+          <Route path="/escalations" element={<EscalationsPage />} />
+          <Route path="/manager" element={<ManagerPage />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
+        {/* FR-11：第一次打開時說明三個主要操作 */}
+        <Onboarding />
       </div>
     </BrowserRouter>
   )

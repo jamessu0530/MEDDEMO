@@ -32,7 +32,7 @@ cd frontend && npm install && npm run dev                                       
 
 | 功能 | 要填的設定 | 模型留空時用 |
 | --- | --- | --- |
-| 語音辨識 | `ASR_PROVIDER=gemini`、`ASR_API_KEY` | `gemini-3.8-flash` |
+| 語音辨識 | `ASR_PROVIDER=gemini`、`ASR_API_KEY`；或 `local`（CARE 的服務，另填 `ASR_URL`），見下方「語音辨識」 | `gemini-3.8-flash` |
 | AI 模型（抽欄位、問答） | `LLM_PROVIDER=gemini`、`LLM_API_KEY` | `gemini-3.8-flash` |
 | 語意檢索 | `EMBEDDING_PROVIDER=gemini`、`EMBEDDING_API_KEY` | `gemini-embedding-001` |
 | 語音問答 | `VOICE_API_KEY`（沒填就沿用 `LLM_API_KEY`） | `gemini-2.5-flash-native-audio-preview-12-2025` |
@@ -62,6 +62,25 @@ cd frontend && npm install && npm run dev                                       
 ```bash
 curl -X PUT localhost:8000/api/mock-systems/oa -H 'Content-Type: application/json' -d '{"down": true}'
 ```
+
+## 語音辨識：Gemini 與 CARE 的服務
+
+錄音轉文字有兩個來源，`ASR_PROVIDER` 選主要的那個，另一個有設定就當備援；主要來源連不上、逾時或回錯誤時改用備援。
+
+- **Gemini**（`gemini-3.8-flash`）：提示裡附熱詞（這家客戶的名稱、品項與口語別名、競品、通路術語），照熱詞寫專有名詞。
+- **CARE 的語音辨識服務**：跟 CARE 共用 care-vm 上的 `local-asr`（faster-whisper small），不花錢；兩個專案的請求會排隊，CARE 部署時會重啟。網址是 `values.yaml` 的 `config.ASR_URL`，本機連不到。
+  - 服務沒有熱詞參數，輸出是簡體，專有名詞常錯成同音字。所以先轉台灣正體，再用拼音比對熱詞修同音字，規則寫在 `backend/app/services/asr_cleanup.py`。
+- 正式環境現在是 Gemini 為主、CARE 備援；`config.ASR_PROVIDER` 改成 `local` 就反過來。
+- 9/15 用 macOS 的台灣華語合成語音念術語句子，送 CARE 的服務實測（真人口音與環境噪音會更差）：
+
+| | 字錯率 |
+| --- | --- |
+| 只轉正體 | 20.7% |
+| 轉正體＋熱詞修同音字（沒看過的十句） | 7.4% |
+| 同上，但是調規則時看的那十句（偏樂觀） | 0.7% |
+| Gemini（9/14，一段 19 秒口述，參考用） | 2.7% |
+
+- 等待時間：66 秒的錄音等 21 秒；6～9 秒的短句每句也要 5～8 秒。逾時設 90 秒，理由寫在 `transcription.py`。
 
 ## 客戶檔案與談判卡
 
@@ -120,6 +139,58 @@ uv run --project backend python backend/scripts/eval_ask.py
 - 畫面上業務說的那一句，是 Gemini 另外做的語音轉文字，常有同音錯字，所以標了「語音辨識，僅供參考」。AI 查資料用的是它自己聽懂的問題，寫在查詢卡片上。
 - 一分鐘沒有對話會自動掛斷，免得麥克風一直開著、音訊一直計費。Gemini 單次連線大約 10 分鐘就會結束，畫面會提示重新開始。
 
+## 首次使用引導（FR-11）
+
+第一次打開 App 時蓋一層說明，一次一個，講三個主要操作：進門前先看客戶檔案、走出店門講一分鐘、想到就問。看過就記在手機裡（瀏覽器的 localStorage），之後從首頁右上的「使用說明」再打開。主管端不顯示。
+
+## 轉給主管與主管回覆（FR-8.4 延伸）
+
+- 問答查無依據時，業務按「轉給主管回答」。
+- **主管端**在 `/manager`（首頁右上「主管端」）：看待回覆的提問和系統當時的回覆，選自己是哪一位主管之後回覆。沒有登入（FR-12／13 不在這次範圍），誰都打得開這頁。
+- **業務收到提醒**：首頁每分鐘問一次有沒有新回覆，有的話鈴鐺上顯示則數，客戶清單上方也出現提醒。點進「轉給主管的提問」看回覆，看過就不再提醒；主管改了回覆會再提醒一次。
+- 提醒只在 App 開著時看得到。手機網頁要推播，得先裝成 App 並接推播服務，這次沒做。
+
+## 個資與保存期限（NFR-8）
+
+- **確認送出時把逐字稿去識別**：email、身分證字號、電話換成［email］［身分證字號］［電話］；系統裡業務與主管的姓名，以及「姓＋稱謂」（王藥師、陳小姐、林店長）遮成 ○。客戶名稱、品項、競品不遮。送出前業務看的是原文，才能核對。
+  - 送出之後的用途都只拿得到遮過的版本：AI 數字查詢讀的 `v_visit_signal`（這個 View 也只收已確認的拜訪）、拜訪紀錄頁。
+  - 認不出來的：只講名字（「小明說」）、客戶聯絡人的全名。
+- **保存期限**（James 9/14 定），每天台北時間 03:00 由 K8s CronJob `retention` 清理：
+
+| 資料 | 期限 | 理由 |
+| --- | --- | --- |
+| 錄音 | 確認送出後 60 天 | 涵蓋每月對帳的異議期：《發票與對帳》規定每月 5 日寄出上個月的對帳單、14 天內提異議、業務 5 個工作天內查明 |
+| 逐字稿 | 確認送出後 6 個月（184 天） | 系統最長只回頭看 6 個月；個資法第 11 條要求蒐集目的消失就刪除 |
+| 沒送出的紀錄 | 建立後 60 天整筆刪除 | 跟錄音同一個期限 |
+
+- 五個欄位寫進 CRM／SAP／OA 之後是那三套系統的紀錄，由它們保存，這裡不刪。
+- 期限與遮罩規則在 `backend/app/services/privacy.py`。清理時也會對已送出的逐字稿再跑一次遮罩，規則改了舊的也會跟著遮。本機手動清理：`cd backend && uv run python -m app.jobs.retention`。
+
+## 用量上限（第六週）
+
+沒有登入，網址給出去誰都能用，所以會呼叫 Gemini 的入口都限次數（`backend/app/usage.py`）。超過就回 429 並寫明原因；錄音碰到上限會先存在手機，過了時間自動送出。只算成功的請求，欄位驗證失敗這類不算。
+
+| 項目 | 入口 | 每個 IP 每小時 | 全系統每天 |
+| --- | --- | --- | --- |
+| 提問（打字與語音問答查資料都算） | `POST /api/asks` | 50 | 200 |
+| 語音問答 | `POST /api/voice/session` | 10 | 40 |
+| 錄音時的即時文字 | `POST /api/transcription/session` | 15 | 60 |
+| 錄音整理（語音辨識＋整理欄位） | `POST /api/visits/audio`、`…/transcript`、`…/reprocess` | 15 | 60 |
+
+- 全系統每天的量，是決賽當天估計用量的約兩倍（推估：排練、簡報，加上約 10 位評審試用，提問約 100 題、語音問答約 20 次、錄音約 30 段）。每個 IP 每小時是每天的四分之一：一個來源至少要四小時才用得完一天的量。
+- IP 用 Cloudflare 填的 `CF-Connecting-IP`。決賽現場大家連同一個 Wi-Fi 會共用一個 IP 的額度，簡報的手機建議用行動網路。
+- 四項每天都被用滿時，照 2026-09-14 官方價格推估最多約 US$35：
+
+| 項目 | 單次推估 | 每天上限用滿 |
+| --- | --- | --- |
+| 提問 | gemini-3.8-flash 每題 4～6 次呼叫，約 2 萬輸入、4 千輸出 token，約 US$0.03 | 約 US$6 |
+| 語音問答 | 原生語音每秒 25 個 token，輸入 US$3、輸出 US$12／百萬 token；一段最長 15 分鐘約 US$0.34 | 約 US$14 |
+| 錄音時的即時文字 | gemini-3.5-transcribe-live 每分鐘約 US$0.009；一段 15 分鐘約 US$0.14 | 約 US$8 |
+| 錄音整理 | 一分鐘的口述約 US$0.01；錄音檔上限 20MB（約 80 分鐘）時約 US$0.1 | 約 US$7 |
+
+- 語音問答照 `gemini-2.5-flash-native-audio` 的價格算；`gemini-3.1-flash-live-preview` 在官方價格頁只列了免費層。
+- Redis 連不上時放行：問答與錄音整理本來就要靠 Redis 排背景工作，Redis 停了也花不到錢。
+
 ## 測試語料評測（第二週出場條件）
 
 十句測試語料與標準答案在 [data/eval/voice_corpus.json](data/eval/voice_corpus.json)。照著唸的錄音放在 `data/eval/audio/01.m4a`〜`10.m4a`，這個資料夾不進 git（真人錄音屬於個資）。
@@ -157,6 +228,8 @@ uv run --project backend python backend/scripts/eval_voice.py
 - 第一次部署
 - `models.py` 或 `semantic_layer.sql` 有改動
 
+chart 裡另有一個每天台北時間 03:00 跑的 CronJob `retention`，清掉到期的錄音與逐字稿（見上方「個資與保存期限」）。
+
 其他時候要重灌，就到 Actions 手動執行「CI/CD」，並勾選「重灌假資料」。換了金鑰也是手動執行一次，API 和 worker 會重啟以讀到新的值。
 
 要退回舊版，就到 Actions 找之前成功的那次紀錄，按 Re-run all jobs，會重新建出同一版映像再部署。不用 `helm rollback`：部署完會清掉沒在用的映像，GHCR 又是私有的，VM 上的 K3s 自己拉不回舊版。
@@ -193,8 +266,10 @@ MEDDEMO 跟 CARE 共用 GCP 上的 care-vm：K3s、Helm、Traefik、HTTPS 憑證
 
 ```
 backend/app/main.py                 API 入口（FastAPI）
-backend/app/api/                    API 路由：客戶、品項、拜訪紀錄、問答、語音問答、模擬系統開關
-backend/app/services/               轉文字、抽欄位、背景處理、回寫三套系統、追蹤提醒、問答、語音問答設定
+backend/app/api/                    API 路由：客戶、品項、拜訪紀錄、問答、轉給主管、語音問答、模擬系統開關
+backend/app/services/               轉文字、抽欄位、背景處理、回寫三套系統、追蹤提醒、問答、語音問答設定、去識別與保存期限
+backend/app/usage.py                用量上限：會呼叫 Gemini 的入口限次數
+backend/app/jobs/                   排程工作：每天清掉到期的錄音與逐字稿
 backend/app/gemini.py               Gemini 用戶端（embedding、語音辨識、語音問答共用）
 backend/app/tasks.py                Redis 連線、RQ 佇列、處理進度
 backend/app/models.py               資料表（SQLAlchemy 2.0 ORM）

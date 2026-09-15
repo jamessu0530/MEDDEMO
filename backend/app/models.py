@@ -38,6 +38,8 @@ ASK_KINDS = ("data", "knowledge")
 # queued／running：排隊與處理中；answered：有答案；no_evidence：知識庫查無依據（FR-8.3）；
 # not_converged：查到上限還答不出來（FR-7.2）；failed：處理出錯，例如 AI 模型還沒設定
 ASK_STATUSES = ("queued", "running", "answered", "no_evidence", "not_converged", "failed")
+# open：等主管回覆；answered：主管回覆了（FR-8.4 延伸）
+ESCALATION_STATUSES = ("open", "answered")
 
 
 def one_of(column: str, values: tuple[str, ...], name: str) -> CheckConstraint:
@@ -336,12 +338,18 @@ class QueryTrace(Base):
 
 
 class Escalation(Base):
-    """查無依據時轉給主管回答的問題（FR-8.4）。"""
+    """查無依據時轉給主管回答的問題（FR-8.4）。主管在主管端回覆，業務的首頁會提醒有新回覆。"""
 
     __tablename__ = "escalation"
+    __table_args__ = (one_of("status", ESCALATION_STATUSES, "status"),)
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     ask_id: Mapped[str] = mapped_column(ForeignKey("ask_record.id", ondelete="CASCADE"), unique=True)
     question: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(server_default="open")
+    answer: Mapped[str | None] = mapped_column(Text)
+    answered_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
+    answered_at: Mapped[dt.datetime | None]
+    # 業務看過回覆的時間；還沒看過的回覆會在首頁提醒。主管改了回覆就清空，業務會再收到一次提醒
+    seen_at: Mapped[dt.datetime | None]
     created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())

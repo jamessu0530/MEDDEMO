@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.db import session_factory
 from app.models import Visit, VisitAudio
 from app.services.extraction import empty_fields, get_extractor, product_hints, validate_fields
-from app.services.transcription import get_transcriber, load_hotwords
+from app.services.transcription import get_transcriber, visit_hotwords
 from app.tasks import set_progress
 from app.timeutil import local_date
 
@@ -25,7 +25,8 @@ def process_audio(visit_id: str) -> None:
             return  # 業務已經放棄這份草稿
         set_progress(visit_id, "transcribing")
         try:
-            transcript = get_transcriber().transcribe(audio.content, audio.mime_type, load_hotwords(session))
+            hotwords = visit_hotwords(session, visit.customer_id)
+            transcript = get_transcriber().transcribe(audio.content, audio.mime_type, hotwords)
         except Exception as exc:
             log.warning("轉文字失敗 visit=%s：%s", visit_id, exc)
             visit.status = "failed"
