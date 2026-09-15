@@ -55,6 +55,32 @@ def score_data(item: dict, answer: str) -> list[str]:
     return misses
 
 
+def route_of(result) -> str:
+    """答案走的路：kb／web 是有回答，refuse 是查無依據，其他照狀態（例如 failed）。"""
+    if result.status == "answered":
+        return result.route
+    return "refuse" if result.status == "no_evidence" else result.status
+
+
+def score_oos(item: dict, result) -> bool:
+    """庫外題算不算對。
+
+    - 走對路線（上網或拒答）；有標 reason（medical／internal）的，還要是因為那個原因才不上網：
+      拒答的原因很多種，只看有沒有拒答，證明不了用藥題、公司內部題的判斷有沒有觸發。
+    - 有標 kb_ok 的：內部文件其實有相關規定（X05 的學名藥文件規定業務一律請客戶洽詢醫師或藥師），
+      引用那份文件、答案帶到指定字句的回答也算對（James 2026-09-15 決定）。系統每次判斷內部文件
+      夠不夠用的結果不一樣，同一題會在「拒答」和「引用規定回答」之間變動，兩種都沒給醫療建議。
+    """
+    got = route_of(result)
+    if got == item["expect"] and item.get("reason") in (None, result.reason):
+        return True
+    kb_ok = item.get("kb_ok")
+    if kb_ok and got == "kb":
+        cited = {s["source_name"] for s in result.sources}
+        return kb_ok["source"] in cited and all(k in (result.answer or "") for k in kb_ok["must_include"])
+    return False
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--only", choices=["data", "knowledge", "oos"])
@@ -116,13 +142,13 @@ def main() -> int:
                 start = time.monotonic()
                 result = answer_knowledge(session, llm, item["question"], Trace(), embed_query)
                 waits.append(time.monotonic() - start)
-                got = result.route if result.status == "answered" else "refuse" if result.status == "no_evidence" else result.status
-                # 題目有標 reason（medical／internal）的，還要是因為那個原因才不上網：拒答的原因很多種，
-                # 只看有沒有拒答，證明不了用藥題、公司內部題的判斷有沒有觸發
-                ok = got == item["expect"] and item.get("reason") in (None, result.reason)
+                got = route_of(result)
+                ok = score_oos(item, result)
                 correct += ok
                 shown = f"{got}（{result.reason}）" if result.reason else got
                 expected = f"{item['expect']}（{item['reason']}）" if item.get("reason") else item["expect"]
+                if item.get("kb_ok"):
+                    expected += f"或引用 {item['kb_ok']['source']} 回答"
                 print(f"{item['id']}  {waits[-1]:5.1f}s  預期 {expected}，實際 {shown}  {'對' if ok else '錯：' + (result.answer or result.error_message or '')[:40]}")
             summary.append(f"庫外題 {correct}/{len(items)} 走對路線（上網或拒答；有標原因的，原因也要對）")
 

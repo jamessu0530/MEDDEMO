@@ -43,4 +43,10 @@ def test_knowledge_questions_point_at_real_sections():
         content = sections[(item["source"], item["section"])]
         missing = [phrase for phrase in item["must_include"] if phrase not in content]
         assert missing == [], (item["id"], missing)
+    # kb_ok 指定的文件要真的有那些字句，評分才對得到真的規定（X05：學名藥文件請客戶洽詢醫師或藥師）
+    for item in data["out_of_scope"]:
+        if "kb_ok" in item:
+            text = "".join(content for (source, _), content in sections.items() if source == item["kb_ok"]["source"])
+            missing = [phrase for phrase in item["kb_ok"]["must_include"] if phrase not in text]
+            assert text and missing == [], (item["id"], missing)
     assert len({item["source"] for item in data["answerable"]}) >= 8
