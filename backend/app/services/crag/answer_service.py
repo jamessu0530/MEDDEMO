@@ -45,7 +45,7 @@ James 2026-09-15 再決定三處跟 CARE 不同：
   CARE 照樣回答、只是不附來源；引用編號也認全形［1］【1】與串列寫法 [1, 2]（見 `_CITATION_RE`、`_answer_from`）。
 - 用藥、劑量、療效這類醫療問題（改寫結果 `medical=True`）知識庫答不出來時不上網，回
   no_evidence（`FailCode.MEDICAL`），跟語音問答的規則 4 一致（見 `_web_or_no_hits`、`_kb_no_evidence`）。
-- 只有公司內部才有答案的問題（改寫結果 `internal=True`，例如公司的規定、價格、人事）
+- 只有公司內部才有答案的問題（改寫結果 `internal=True`，例如公司的規定、報價、人事、交易條件）
   知識庫答不出來時也不上網，回 no_evidence（`FailCode.INTERNAL`）。
 """
 

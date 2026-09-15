@@ -277,7 +277,7 @@ def test_a_company_internal_question_is_not_answered_from_the_web(engine, docs, 
     with Session(engine) as session:
         result = answer_knowledge(session, llm, IRRELEVANT_QUESTION, Trace())
     assert (result.status, result.reason) == ("no_evidence", "internal")
-    assert result.answer == "內部文件裡找不到這個問題的依據。公司內部的規定、價格、人事這類問題，網路上的資料代表不了公司，所以不上網查，可以轉給主管確認。"
+    assert result.answer == "內部文件裡找不到這個問題的依據。這是只有公司內部才有答案的問題（例如公司的規定、報價、人事、交易條件），網路上的資料代表不了公司，所以不上網查，可以轉給主管確認。"
     assert web_client.search_calls == []
 
 

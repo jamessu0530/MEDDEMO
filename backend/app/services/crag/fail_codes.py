@@ -11,4 +11,4 @@ class FailCode(StrEnum):
     TIMEOUT = "TIMEOUT"  # 整條流程超過總逾時
     NO_CITATION = "NO_CITATION"  # 知識庫答案沒有任何對得上的出處編號（FR-8.3：當作查無依據）
     MEDICAL = "MEDICAL"  # 用藥、劑量、療效這類醫療問題：知識庫答不出來時不上網
-    INTERNAL = "INTERNAL"  # 只有公司內部才有答案的問題（公司規定、價格、人事等）：知識庫答不出來時不上網
+    INTERNAL = "INTERNAL"  # 只有公司內部才有答案的問題（公司的規定、報價、人事、交易條件等）：知識庫答不出來時不上網

@@ -29,9 +29,9 @@ from app.services.crag.web_search import WebSearchService
 NO_EVIDENCE = "內部文件和網路上都找不到可以回答這個問題的依據。"
 # 刻意不上網的兩種題目：知識庫答不出來也不上網，不能說「網路上也找不到」，文案各自講明原因。
 # 用藥題的說法跟語音問答的規則 4 一致（app.services.voice：請業務詢問醫師或藥師），畫面不給轉主管；
-# 公司內部題（公司規定、價格、人事）只有主管答得了，照常可以轉主管。
+# 公司內部題（公司的規定、報價、人事、交易條件）只有主管答得了，照常可以轉主管。
 MEDICAL_NO_EVIDENCE = "內部文件裡找不到這個問題的依據。用藥、劑量、療效這類醫療問題不會上網查，請詢問醫師或藥師。"
-INTERNAL_NO_EVIDENCE = "內部文件裡找不到這個問題的依據。公司內部的規定、價格、人事這類問題，網路上的資料代表不了公司，所以不上網查，可以轉給主管確認。"
+INTERNAL_NO_EVIDENCE = "內部文件裡找不到這個問題的依據。這是只有公司內部才有答案的問題（例如公司的規定、報價、人事、交易條件），網路上的資料代表不了公司，所以不上網查，可以轉給主管確認。"
 # fail_code → (evidence 的 reason, 文案)。reason 存進 ask_record.evidence，畫面與轉主管 API 依此判斷
 NO_WEB = {
     FailCode.MEDICAL: ("medical", MEDICAL_NO_EVIDENCE),

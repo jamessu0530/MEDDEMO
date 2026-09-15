@@ -36,7 +36,8 @@ def test_document_follows_the_format_and_has_no_medical_content(path):
 def test_knowledge_questions_point_at_real_sections():
     data = json.loads(QUESTIONS.read_text(encoding="utf-8"))
     assert len(data["answerable"]) == 10
-    assert len(data["out_of_scope"]) == 10
+    # 庫外題 10 題＋3 題「提到藥品或價格、但該上網」的邊界題（X11～X13，確認用藥／公司內部的判斷不會誤擋）
+    assert len(data["out_of_scope"]) == 13
     sections = {(s.source_name, s.section): s.content for path in DOCS for s in parse_document(path)}
     for item in data["answerable"]:
         content = sections[(item["source"], item["section"])]
