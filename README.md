@@ -36,6 +36,8 @@ cd frontend && npm install && npm run dev                                       
 | AI 模型（抽欄位、問答） | `LLM_PROVIDER=gemini`、`LLM_API_KEY` | `gemini-3.8-flash` |
 | 語意檢索 | `EMBEDDING_PROVIDER=gemini`、`EMBEDDING_API_KEY` | `gemini-embedding-001` |
 | 語音問答 | `VOICE_API_KEY`（沒填就沿用 `LLM_API_KEY`） | `gemini-2.5-flash-native-audio-preview-12-2025` |
+| 網路搜尋 | `FIRECRAWL_API_KEY` | — |
+| 精排 | `COHERE_API_KEY` | `rerank-v4.0-pro` |
 
 沒設定也能用：錄音會停在「轉文字失敗」，業務可以手動輸入逐字稿；欄位會留白，讓業務手動填。整條「口述 → 確認 → 寫回三套系統」照樣走得完。沒設定 embedding 時，知識檢索只走關鍵字。
 
@@ -102,9 +104,18 @@ curl -X PUT localhost:8000/api/mock-systems/oa -H 'Content-Type: application/jso
 ## 問答：數字查詢與知識查詢（第四週）
 
 - **查數字**：把問題轉成 SQL，只能查四個語意層 View，並用唯讀角色執行。結果不夠回答，就自己決定下一條查詢，最多查三輪；查到上限還答不出來，就回報已經查到的部分和卡住的原因。
-- **查規定**：`data/documents/` 的內部文件，一個小節切成一段。關鍵字（中文兩字一組）和語意（pgvector）兩路檢索，用 RRF 融合排序。模型先評估找到的段落夠不夠回答：夠了才回答並附出處；不夠就改寫問法重查，最多兩次；還是不夠就回「查無依據」，業務可以轉給主管。
+- **查規定**：`data/documents/` 的內部文件，一個小節切成一段。整套照搬 CARE 的 CRAG 回答路徑（`backend/app/services/crag/`），跟 CARE 不同的有三點：網路搜尋不限網站（CARE 限定政府網域）、知識庫答案沒有對得上的出處就當查無依據、用藥這類醫療問題不上網（後兩點見下面）。
+  - 檢索：關鍵字（中文兩字一組的全文檢索）與語意（pgvector）兩路並行，各 5 秒逾時，一路失敗或逾時就只用另一路；分數依「向量 0.6、關鍵字 0.4」的凸組合合併，取前 40 段。
+  - 精排：送 Cohere（`rerank-v4.0-pro`）取前 5 段，同一份文件最多留 2 段；沒有 Cohere 金鑰就直接用合併分數排序。
+  - 評估這 5 段夠不夠回答的同時，並行先用它們生成答案、也先把問題改寫成知識庫問句與中英搜尋詞，省下前後等待的時間。
+  - 評估分三級：**夠**→用先生成好的答案；**不確定**→已經用掉超過 12 秒改寫預算就用第一輪結果，沒超過就用改寫後的問句重查一次、再評一次；**無關**，或重查後依舊不確定／無關→轉上網查；評估本身出錯就只留 Cohere 分數 0.3 以上的段落生成，一段都不留一樣轉上網。
+  - 上網用 Firecrawl：中文一路最多查 8 筆、英文一路（有改寫出英文關鍵字才查）最多 3 筆，交錯合併取前 3 份；搜尋摘要不到 20 字才抓整頁（每頁最多擷取 8,000 字）。網路答案開頭標「以下參考網路公開資料」，出處列網頁標題與網址，打不開的網址不列出。
+  - 答案要標出處編號、最多 450 字、最多列 3 個出處；模型判斷答不出來時要寫固定標記，系統只認標記為拒答，不再比對「不知道」之類的字眼。
+  - 知識庫的答案一個對得上的出處都沒有，就當作查無依據（CARE 照樣回答，只是不附出處）。知識庫答案的出處編號也認全形的［1］、【1】和一組括號列好幾個編號的 [1, 2]，畫面上統一改成 [1][2]；網路答案的編號照模型寫的原樣顯示。
+  - 用藥、劑量、療效這類醫療問題：有設 Firecrawl 時，知識庫答不出來也不上網查，回覆請業務詢問醫師或藥師。「不上網、請詢問醫師或藥師」這兩點跟語音問答一致；不同的是語音遇到醫療問題一律不查，打字問答則是內部文件答得出來就照答。是不是醫療問題，由改寫問句的那次模型呼叫一起判斷，不多一次呼叫（推估不會多等，還沒量過）。
+  - 整條流程 45 秒總逾時。沒有 Firecrawl 金鑰就不上網，知識庫答不出來直接回「查無依據」，業務可以轉給主管；網路搜尋本身出錯或整體逾時，畫面會顯示處理失敗、請業務稍後再問。
 - 兩條線都在背景跑（RQ），每一步都寫進 `query_trace`，畫面上可以展開查詢過程。
-- AI 模型用 Gemini：`LLM_PROVIDER=gemini`，模型預設 `gemini-3.8-flash`；遇到 429、5xx 這類暫時性錯誤會自動重試兩次。embedding 用 `gemini-embedding-001`，文件段落和提問分開算向量；沒設定時只走關鍵字檢索。
+- AI 模型用 Gemini：`LLM_PROVIDER=gemini`，模型預設 `gemini-3.8-flash`；遇到 429、5xx 這類暫時性錯誤會自動重試兩次。知識查詢裡評估、改寫問法用 thinking level `low`，生成答案用 `medium`。embedding 用 `gemini-embedding-001`，文件段落和提問分開算向量；沒設定時只走關鍵字檢索。
 - 改了 `data/documents/` 的文件，或是設定、更換了 embedding，要重建文件索引。下面這個指令只重建文件段落，不動其他資料：
 
 ```bash
@@ -189,6 +200,7 @@ uv run --project backend python backend/scripts/eval_ask.py
 | 錄音整理 | 一分鐘的口述約 US$0.01；錄音檔上限 20MB（約 80 分鐘）時約 US$0.1 | 約 US$7 |
 
 - 語音問答照 `gemini-2.5-flash-native-audio` 的價格算；`gemini-3.1-flash-live-preview` 在官方價格頁只列了免費層。
+- 知識查詢另外會用到 Cohere 精排（每題 1～2 次）和 Firecrawl 網路搜尋（要上網的題目每題 1～3 次）。200 題全部上網的最壞情況，一天約 400 次 Cohere、600 次 Firecrawl，額度看各自的方案。
 - Redis 連不上時放行：問答與錄音整理本來就要靠 Redis 排背景工作，Redis 停了也花不到錢。
 
 ## 測試語料評測（第二週出場條件）
@@ -253,6 +265,8 @@ MEDDEMO 跟 CARE 共用 GCP 上的 care-vm：K3s、Helm、Traefik、HTTPS 憑證
 | `LLM_API_KEY` | secret | 選填：Gemini 的金鑰，到 Google AI Studio 申請 |
 | `EMBEDDING_API_KEY` | secret | 選填：embedding 用的 Gemini 金鑰，沒填就沿用 `LLM_API_KEY` |
 | `VOICE_API_KEY` | secret | 選填：語音問答用的 Gemini 金鑰，沒填就沿用 `LLM_API_KEY` |
+| `FIRECRAWL_API_KEY` | secret | 選填：知識查詢上網搜尋 |
+| `COHERE_API_KEY` | secret | 選填：知識查詢精排 |
 
 ### 改參數（用哪家服務、哪個模型）
 
@@ -268,6 +282,7 @@ MEDDEMO 跟 CARE 共用 GCP 上的 care-vm：K3s、Helm、Traefik、HTTPS 憑證
 backend/app/main.py                 API 入口（FastAPI）
 backend/app/api/                    API 路由：客戶、品項、拜訪紀錄、問答、轉給主管、語音問答、模擬系統開關
 backend/app/services/               轉文字、抽欄位、背景處理、回寫三套系統、追蹤提醒、問答、語音問答設定、去識別與保存期限
+backend/app/services/crag/          知識查詢的 CRAG（照搬 CARE 的回答路徑）
 backend/app/usage.py                用量上限：會呼叫 Gemini 的入口限次數
 backend/app/jobs/                   排程工作：每天清掉到期的錄音與逐字稿
 backend/app/gemini.py               Gemini 用戶端（embedding、語音辨識、語音問答共用）

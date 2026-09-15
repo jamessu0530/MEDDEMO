@@ -10,6 +10,7 @@ const STEP_LABEL: Record<TraceItem["step"], string> = {
   sql: "查詢",
   search: "檢索",
   rewrite: "改寫問法",
+  web: "網路搜尋",
   answer: "整理答案",
   stop: "停止",
 }
@@ -40,15 +41,44 @@ export function AskAnswer({ ask, onChange }: { ask: Ask; onChange: (ask: Ask) =>
       {ask.evidence?.columns && ask.evidence.rows && <ResultTable columns={ask.evidence.columns} rows={ask.evidence.rows} />}
       {sources.length > 0 && (
         <div className="flex flex-col gap-1.5">
-          <p className="text-xs text-muted-foreground">出處</p>
-          {sources.map((source) => (
-            <details key={source.chunk_id} className="rounded-lg bg-muted px-3 py-2 text-xs">
-              <summary className="cursor-pointer font-medium">
-                {source.doc_title}｜{source.section}
-              </summary>
-              <p className="mt-1.5 leading-relaxed whitespace-pre-line text-muted-foreground">{source.content}</p>
-            </details>
-          ))}
+          <p className="text-xs text-muted-foreground">{ask.evidence?.route === "web" ? "網路出處" : "出處"}</p>
+          {sources.map((source, index) => {
+            const key = source.url ?? source.chunk_id ?? index
+            const label = source.index != null ? `[${source.index}] ` : ""
+            if (source.kind === "web") {
+              if (!source.url) {
+                return (
+                  <p key={key} className="rounded-lg bg-muted px-3 py-2 text-xs font-medium">
+                    {label}
+                    {source.doc_title}
+                  </p>
+                )
+              }
+              return (
+                <details key={key} className="rounded-lg bg-muted px-3 py-2 text-xs">
+                  <summary className="cursor-pointer font-medium">
+                    {label}
+                    {source.doc_title}
+                  </summary>
+                  <div className="mt-1.5 leading-relaxed text-muted-foreground">
+                    <a href={source.url} target="_blank" rel="noreferrer" className="underline break-all">
+                      {source.url}
+                    </a>
+                    <p className="mt-1 whitespace-pre-line">{source.content}</p>
+                  </div>
+                </details>
+              )
+            }
+            return (
+              <details key={key} className="rounded-lg bg-muted px-3 py-2 text-xs">
+                <summary className="cursor-pointer font-medium">
+                  {label}
+                  {source.doc_title}｜{source.section}
+                </summary>
+                <p className="mt-1.5 leading-relaxed whitespace-pre-line text-muted-foreground">{source.content}</p>
+              </details>
+            )
+          })}
         </div>
       )}
       {(ask.status === "no_evidence" || ask.status === "not_converged") && <Escalate ask={ask} onChange={onChange} />}
@@ -141,7 +171,8 @@ export function TracePanel({ trace, live }: { trace: TraceItem[]; live: boolean 
             <li key={index} className="rounded-lg bg-muted px-3 py-2 text-xs">
               <p className="font-medium">
                 第 {item.round} 輪 · {STEP_LABEL[item.step]}
-                {item.row_count !== null && `（${item.step === "sql" ? `${item.row_count} 列` : `${item.row_count} 段`}）`}
+                {item.row_count !== null &&
+                  `（${item.step === "sql" ? `${item.row_count} 列` : item.step === "web" ? `${item.row_count} 頁` : `${item.row_count} 段`}）`}
               </p>
               {item.search_query && <p className="mt-1 text-muted-foreground">檢索字句：{item.search_query}</p>}
               {item.sql && <pre className="mt-1 overflow-x-auto font-mono text-[11px] whitespace-pre-wrap text-muted-foreground">{item.sql.trim()}</pre>}

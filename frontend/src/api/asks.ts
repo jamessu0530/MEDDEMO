@@ -5,27 +5,32 @@ export type AskStatus = "queued" | "running" | "answered" | "no_evidence" | "not
 
 export type TraceItem = {
   round: number
-  step: "sql" | "search" | "rewrite" | "answer" | "stop"
+  step: "sql" | "search" | "rewrite" | "web" | "answer" | "stop"
   sql: string | null
   search_query: string | null
   row_count: number | null
   decision: string
 }
 
+// 知識題的出處：kind 是 kb 的是內部文件段落，web 的是網頁（有網址）
 export type Source = {
-  chunk_id: number
+  kind?: "kb" | "web"
+  index?: number
+  chunk_id?: number
   source_name: string
   doc_title: string
   section: string
   content: string
+  url?: string
 }
 
-// 數字題的依據是最後一次查詢的結果表；知識題的依據是引用的文件段落
+// 數字題的依據是最後一次查詢的結果表；知識題的依據是引用的文件段落（route 標示答案是從公司資料還是網路來的）
 export type AskEvidence = {
   sql?: string
   columns?: string[]
   rows?: unknown[][]
   blocked_reason?: string
+  route?: "kb" | "web"
   sources?: Source[]
 }
 

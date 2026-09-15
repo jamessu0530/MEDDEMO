@@ -37,6 +37,6 @@ class WebSearchClient(Protocol):
         include_domains: Sequence[str] | None = None,
     ) -> list[WebSearchHit]: ...
 
-    async def scrape(self, url: str) -> str: ...  # 保留，web_search_service.py 仍在用
+    async def scrape(self, url: str) -> str: ...  # 保留，web_search.py 仍在用
 
     async def scrape_page(self, url: str) -> ScrapedPage: ...

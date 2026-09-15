@@ -121,15 +121,19 @@ class HybridRetriever:
     """並行跑向量與文字檢索，再融合成單一排名。
 
     任一邊失敗或逾時（`leg_timeout_seconds`）只記錄並降級為另一邊的結果
-    （fail-open）。這讓本類別在
-    Atlas Search index 還沒建好時也能安全上線 —— 那時 `$search` 會報錯，
-    行為自動退化為原本的純向量檢索。
+    （fail-open）。CARE 原文的情境是 Atlas Search index 還沒建好時 `$search`
+    報錯、自動退化為純向量檢索；MEDDEMO 對應的是查詢 embedding 卡住被腿逾時
+    切掉、或向量查詢出錯，都只剩關鍵字腿的結果，不是整題失敗。沒有設定
+    embedding 時向量腿本來就直接回空（`VectorRetriever.invoke`），結果一樣。
 
-    融合方式由 `fusion_mode` 決定。CARE 預設維持 `rrf`（不打斷既有線上行為）；
-    MEDDEMO 沒有這個包袱，預設值改成 `fusion_mode=FUSION_MODE_CONVEX`、
-    `alpha=FUSION_ALPHA`、`limit=RETRIEVE_CANDIDATES`——照搬 CARE config：
-    RAG_FUSION_MODE=convex、RAG_FUSION_ALPHA=0.6、RAG_RETRIEVE_CANDIDATES=40。
-    要換回 RRF（或重新掃 alpha）前先看 `rank_fusion` 模組 docstring 的取捨說明。
+    融合方式由 `fusion_mode` 決定。CARE 的 `HybridRetriever` 建構子預設仍是
+    `rrf`，但 CARE config 的正式預設（`RAG_FUSION_MODE`）已是 convex：2026-09-12
+    golden set 掃描後改的，線上跑的是凸組合，只是建構子預設沒跟著改。MEDDEMO
+    沒有另一層設定，所以直接把建構子預設設成 CARE config 的正式值：
+    `fusion_mode=FUSION_MODE_CONVEX`、`alpha=FUSION_ALPHA`、
+    `limit=RETRIEVE_CANDIDATES`（RAG_FUSION_MODE=convex、RAG_FUSION_ALPHA=0.6、
+    RAG_RETRIEVE_CANDIDATES=40）。要換回 RRF（或重新掃 alpha）前先看
+    `rank_fusion` 模組 docstring 的取捨說明。
 
     兩種融合的分數尺度完全不同（RRF 約 1/60 量級、凸組合是 0~1），所以
     **任何以融合分數為基準的絕對門檻都會隨模式改變行為**。目前沒有這種

@@ -17,6 +17,8 @@
 - 拿掉 `stage_timer`（那是 CARE request-scoped 的分段計時基礎設施，MEDDEMO
   沒有對應的機制），改成單純的 `logger.info` 記錄命中筆數／scrape 次數／
   文件數，供之後量測延遲用。
+- 出處編號（`index`）用交給模型時的位置：判死的不列、其餘不重新連號。CARE 會
+  重新連號、跟答案內文的 [n] 對不上，見 `WebSearchService._build_sources`。
 """
 
 from __future__ import annotations
@@ -285,15 +287,23 @@ class WebSearchService:
 
         判死的整筆不顯示，不像知識庫路徑那樣退回「只顯示來源名」：網搜來源
         的顯示名稱就是網域，拿掉連結後對使用者驗證沒有價值。
+
+        `index` 是這份文件在交給模型的內容裡的位置（`_generate_answer` 從 1 編號，
+        答案內文的 [n] 指的就是它）；判死的直接不列，其餘**不重新編號**。這裡跟
+        CARE 不同：CARE 跳過判死的之後重新連號（`display_idx = len(source_lines) + 1`），
+        答案內文的 [n] 卻沒跟著改，[1] 判死時畫面上的「[1]」其實是內文的 [2]。知識庫
+        路徑是連內文一起重新編號（`RagAnswerService._append_sources`）；這裡不改內文，
+        編號就只能保持原樣。代價是編號可能不連續（例如只有 [2]、[3]），而內文若引用
+        了判死的那一份，那個 [n] 在畫面上找不到對應的出處。
         """
         sources: list[dict[str, Any]] = []
         seen: set[str] = set()
-        for doc in docs:
+        for position, doc in enumerate(docs, start=1):
             if len(sources) >= CITE_TOP_K:
                 break
             url = str(doc.metadata.get("url") or "").strip()
             if not url or url in seen or url in dead:
                 continue
             seen.add(url)
-            sources.append(web_source(doc, len(sources) + 1))
+            sources.append(web_source(doc, position))
         return sources

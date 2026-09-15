@@ -45,7 +45,8 @@ def run_ask(ask_id: str) -> None:
                 embedder = optional_embedder()
                 result = answer_knowledge(session, llm, record.question, on_step, embedder.embed_query if embedder else None)
                 record.status, record.answer = result.status, result.answer
-                record.evidence = {"sources": result.sources}
+                record.evidence = {"route": result.route, "sources": result.sources}
+                record.error_message = result.error_message
         except Exception as exc:
             log.warning("提問處理失敗 ask=%s：%s", ask_id, exc)
             session.rollback()
