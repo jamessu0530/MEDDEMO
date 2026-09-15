@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     asr_provider: str = ""
     asr_api_key: str = ""
     asr_model: str = ""
+    # CARE 在同一個 K3s 叢集裡的語音辨識服務（local-asr）。ASR_PROVIDER=local 時是主要來源；
+    # ASR_PROVIDER=gemini 時設了這個就當備援，Gemini 失敗時改用它
+    asr_url: str = ""
     llm_provider: str = ""
     llm_api_key: str = ""
     llm_model: str = ""

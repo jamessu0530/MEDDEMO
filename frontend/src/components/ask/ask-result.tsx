@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { ChevronDown, Loader2 } from "lucide-react"
+import { Link } from "react-router"
 
 import { escalateAsk, isFinished, type Ask, type TraceItem } from "@/api/asks"
 import { Button } from "@/components/ui/button"
@@ -59,7 +60,14 @@ export function AskAnswer({ ask, onChange }: { ask: Ask; onChange: (ask: Ask) =>
 function Escalate({ ask, onChange }: { ask: Ask; onChange: (ask: Ask) => void }) {
   const [busy, setBusy] = useState(false)
   if (ask.escalation_id) {
-    return <p className="text-xs text-muted-foreground">已轉給主管（單號 #{ask.escalation_id}），有回覆會通知你。</p>
+    return (
+      <p className="text-xs text-muted-foreground">
+        已轉給主管（單號 #{ask.escalation_id}），有回覆會通知你。
+        <Link to="/escalations" className="ml-1 font-medium text-primary">
+          看主管回覆
+        </Link>
+      </p>
+    )
   }
   return (
     <Button

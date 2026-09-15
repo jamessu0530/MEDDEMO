@@ -6,10 +6,13 @@ from fastapi import Depends, FastAPI
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.api import asks, customers, mock_systems, products, transcription, visits, voice
+from app import usage
+from app.api import asks, customers, escalations, mock_systems, products, transcription, visits, voice
 from app.db import get_session
 
 app = FastAPI(title="中化裕民業務 AI 助理")
+# 會呼叫 Gemini 的入口都有用量上限（第六週）：沒有登入，不設的話誰都能把額度用光
+app.middleware("http")(usage.limit_usage)
 app.include_router(asks.router)
 app.include_router(customers.router)
 app.include_router(products.router)
@@ -17,6 +20,7 @@ app.include_router(visits.router)
 app.include_router(mock_systems.router)
 app.include_router(voice.router)
 app.include_router(transcription.router)
+app.include_router(escalations.router)
 
 
 @app.get("/health")

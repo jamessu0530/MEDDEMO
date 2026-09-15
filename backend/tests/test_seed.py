@@ -83,7 +83,8 @@ def test_new_visit_draft_gets_defaults_from_database(engine):
         visit = models.Visit(customer_id="C001", user_id="U01", visited_at=datetime.now(generate.TAIPEI))
         session.add(visit)
         session.flush()
-        assert visit.id == "V00151"
+        # 序號接在假資料的 150 筆之後；前面的測試建過拜訪的話號碼會再往後，所以只比格式與大小
+        assert len(visit.id) == 6 and visit.id.startswith("V") and visit.id > "V00150"
         assert visit.status == "draft" and visit.transcript == ""
         session.rollback()
 

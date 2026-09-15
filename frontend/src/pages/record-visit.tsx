@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import { CloudOff, Loader2, Mic, X } from "lucide-react"
 import { useNavigate, useParams } from "react-router"
 
+import { ApiError } from "@/api/client"
 import { cachedCustomer, getCustomer } from "@/api/customers"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
@@ -22,7 +23,8 @@ type Phase =
   | { name: "idle" }
   | { name: "recording"; startedAt: number }
   | { name: "uploading" }
-  | { name: "saved"; offline: boolean } // 錄音存在手機，恢復連線自動送出（FR-4.3）
+  // 錄音存在手機，恢復連線或過了用量上限的時間自動送出（FR-4.3）；reason 是伺服器說明的原因
+  | { name: "saved"; offline: boolean; reason?: string }
   | { name: "error"; message: string; canResend: boolean }
 
 type LiveState = { status: "connecting" | "on" | "unavailable" | "offline"; confirmed: string; interim: string }
@@ -111,7 +113,9 @@ export function RecordVisit() {
     } catch (error) {
       const message = error instanceof Error ? error.message : "上傳失敗"
       if (isTemporary(error) && savedRef.current) {
-        setPhase({ name: "saved", offline: !navigator.onLine })
+        // 到了用量上限（429）也先存在手機，畫面上寫清楚原因，不要說成沒訊號
+        const reason = error instanceof ApiError && error.status === 429 ? message : undefined
+        setPhase({ name: "saved", offline: !navigator.onLine, reason })
         return
       }
       // 重送也不會成功的錯誤（例如檔案太大），不留在手機裡
@@ -302,7 +306,9 @@ export function RecordVisit() {
           </div>
         )}
 
-        {phase.name === "saved" && <SavedOnPhone offline={phase.offline} onContinue={() => navigate("/")} />}
+        {phase.name === "saved" && (
+          <SavedOnPhone offline={phase.offline} reason={phase.reason} onContinue={() => navigate("/")} />
+        )}
 
         {phase.name === "error" && (
           <div className="w-full">
@@ -346,7 +352,7 @@ export function RecordVisit() {
 }
 
 /** 原型「沒訊號 · 待送出」：錄音已存在手機，列出待送出的錄音，恢復連線自動送出 */
-function SavedOnPhone({ offline, onContinue }: { offline: boolean; onContinue: () => void }) {
+function SavedOnPhone({ offline, reason, onContinue }: { offline: boolean; reason?: string; onContinue: () => void }) {
   const { items } = useUploadQueue()
   const pending = items.filter((item) => item.state === "pending")
   return (
@@ -356,7 +362,9 @@ function SavedOnPhone({ offline, onContinue }: { offline: boolean; onContinue: (
       </div>
       <div className="space-y-1">
         <p className="text-xl font-semibold">錄音已存在手機</p>
-        <p className="text-sm text-muted-foreground">{offline ? "這個位置沒有訊號，紀錄不會遺失" : "現在連不上伺服器，紀錄不會遺失"}</p>
+        <p className="text-sm text-muted-foreground">
+          {reason ?? (offline ? "這個位置沒有訊號，紀錄不會遺失" : "現在連不上伺服器，紀錄不會遺失")}
+        </p>
       </div>
       <div className="w-full rounded-xl border bg-card px-4 text-left">
         {pending.map((item) => (
@@ -377,7 +385,7 @@ function SavedOnPhone({ offline, onContinue }: { offline: boolean; onContinue: (
         </div>
       </div>
       <p className="w-full rounded-xl border bg-card px-4 py-3 text-left text-sm text-muted-foreground">
-        回到有收訊的地方會自動送出，不需要再操作一次。
+        {reason ? "錄音先存在手機，過了上限的時間會自動送出，不需要再操作一次。" : "回到有收訊的地方會自動送出，不需要再操作一次。"}
       </p>
       <Button className="h-12 w-full text-base" onClick={onContinue}>
         繼續跑下一站

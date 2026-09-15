@@ -1,0 +1,28 @@
+# NFR-8：每天清一次到期的錄音、逐字稿與沒送出的紀錄（期限與理由見 backend/app/services/privacy.py）
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: retention
+  labels:
+    {{- include "meddemo.labels" . | nindent 4 }}
+spec:
+  # 台北時間每天 03:00（UTC 19:00），沒人在用的時候跑；排程寫 UTC，不依賴叢集有沒有時區資料
+  schedule: "0 19 * * *"
+  # 前一次還沒跑完就不重疊；錯過排程（例如 VM 重開機）一天內補跑
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 86400
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      # 跑完留一天查 log 再自動刪掉
+      ttlSecondsAfterFinished: 86400
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: retention
+              image: {{ include "meddemo.apiImage" . | quote }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command: ["python", "-m", "app.jobs.retention"]
+              env:
+                {{- include "meddemo.databaseEnv" . | nindent 16 }}
