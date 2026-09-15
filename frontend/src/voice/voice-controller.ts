@@ -84,8 +84,10 @@ function toolResult(ask: Ask): Record<string, unknown> {
     output: {
       status: STATUS_FOR_MODEL[ask.status],
       answer: ask.answer,
-      // 知識題的答案來自內部文件（kb）或網路公開資料（web）；web 的要讓業務聽得出不是公司規定
+      // 知識題的答案來自內部文件（kb）或網路公開資料（web）；web 的要讓業務聽得出不是公司規定。
+      // reason 是刻意不上網的原因：medical（用藥題，請業務問醫師或藥師、不提轉主管）、internal（只有公司內部才有答案）
       ...(evidence.route ? { route: evidence.route } : {}),
+      ...(evidence.reason ? { reason: evidence.reason } : {}),
       ...(evidence.blocked_reason ? { blocked_reason: evidence.blocked_reason } : {}),
       ...(evidence.columns && evidence.rows
         ? { table: { columns: evidence.columns, rows: evidence.rows.slice(0, TABLE_PREVIEW_ROWS) } }

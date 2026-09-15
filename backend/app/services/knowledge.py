@@ -24,11 +24,19 @@ from app.services.crag.web_search import WebSearchService
 
 # 只有真的上網查過、網路也答不出來時才用這句；沒上網（KB_EMPTY）、知識庫路徑本身判定拒答
 # （MODEL_REFUSE 且 route="kb"）或答案沒有對得上的出處（NO_CITATION）一律用 KB_NO_EVIDENCE，
-# 不能暗示查過網路（見 _went_to_web 與 answer_knowledge 的判斷）。
+# 不能暗示查過網路（見 _went_to_web 與 answer_knowledge 的判斷）。知識庫路徑拒答時若改寫判成用藥題／
+# 公司內部題，代碼已改成 MEDICAL／INTERNAL（answer_service._kb_no_evidence），改走下面的 NO_WEB。
 NO_EVIDENCE = "內部文件和網路上都找不到可以回答這個問題的依據。"
-# 用藥題（FailCode.MEDICAL）：知識庫答不出來、刻意不上網，不能說「網路上也找不到」。
-# 說法跟語音問答的規則 4 一致（app.services.voice：請業務詢問醫師或藥師）。
+# 刻意不上網的兩種題目：知識庫答不出來也不上網，不能說「網路上也找不到」，文案各自講明原因。
+# 用藥題的說法跟語音問答的規則 4 一致（app.services.voice：請業務詢問醫師或藥師），畫面不給轉主管；
+# 公司內部題（公司規定、價格、人事）只有主管答得了，照常可以轉主管。
 MEDICAL_NO_EVIDENCE = "內部文件裡找不到這個問題的依據。用藥、劑量、療效這類醫療問題不會上網查，請詢問醫師或藥師。"
+INTERNAL_NO_EVIDENCE = "內部文件裡找不到這個問題的依據。公司內部的規定、價格、人事這類問題，網路上的資料代表不了公司，所以不上網查，可以轉給主管確認。"
+# fail_code → (evidence 的 reason, 文案)。reason 存進 ask_record.evidence，畫面與轉主管 API 依此判斷
+NO_WEB = {
+    FailCode.MEDICAL: ("medical", MEDICAL_NO_EVIDENCE),
+    FailCode.INTERNAL: ("internal", INTERNAL_NO_EVIDENCE),
+}
 # 秒數跟 build_service 組出來的總逾時是同一個常數（build_service 沒改 RagAnswerService
 # 的預設值），不另外寫一次數字，改總逾時時這句跟著變。
 FAILED_MESSAGES = {
@@ -82,6 +90,7 @@ class KnowledgeAnswer:
     sources: list[dict[str, Any]] = field(default_factory=list)
     route: str | None = None  # kb / web
     error_message: str | None = None
+    reason: str | None = None  # 刻意不上網的原因：medical／internal（見 NO_WEB）
 
 
 def build_service(engine: Engine, llm: LLM, on_step: OnStep, embed_query: Callable[[str], list[float]] | None) -> RagAnswerService:
@@ -118,9 +127,9 @@ def answer_knowledge(session: Session, llm: LLM, question: str, on_step: OnStep,
     if outcome.status == "failed":
         return KnowledgeAnswer("failed", None, [], outcome.route, FAILED_MESSAGES.get(str(outcome.fail_code), "查詢失敗"))
     if outcome.status == "no_evidence":
-        if outcome.fail_code == FailCode.MEDICAL:
-            message = MEDICAL_NO_EVIDENCE
-        else:
-            message = NO_EVIDENCE if _went_to_web(outcome) else KB_NO_EVIDENCE
+        if outcome.fail_code in NO_WEB:
+            reason, message = NO_WEB[outcome.fail_code]
+            return KnowledgeAnswer("no_evidence", message, [], outcome.route, reason=reason)
+        message = NO_EVIDENCE if _went_to_web(outcome) else KB_NO_EVIDENCE
         return KnowledgeAnswer("no_evidence", message, [], outcome.route)
     return KnowledgeAnswer("answered", outcome.answer, outcome.sources, outcome.route)

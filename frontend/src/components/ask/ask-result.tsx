@@ -15,7 +15,7 @@ const STEP_LABEL: Record<TraceItem["step"], string> = {
   stop: "停止",
 }
 
-/** 一個提問的答案：進行中顯示查到第幾輪；查完顯示答案與依據（結果表或出處），查不到可以轉主管 */
+/** 一個提問的答案：進行中顯示查到第幾輪；查完顯示答案與依據（結果表或出處），查不到可以轉主管（用藥題除外） */
 export function AskAnswer({ ask, onChange }: { ask: Ask; onChange: (ask: Ask) => void }) {
   if (!isFinished(ask)) {
     const last = ask.trace.at(-1)
@@ -81,7 +81,10 @@ export function AskAnswer({ ask, onChange }: { ask: Ask; onChange: (ask: Ask) =>
           })}
         </div>
       )}
-      {(ask.status === "no_evidence" || ask.status === "not_converged") && <Escalate ask={ask} onChange={onChange} />}
+      {/* 用藥題請業務詢問醫師或藥師，不給轉主管（James 2026-09-15） */}
+      {(ask.status === "no_evidence" || ask.status === "not_converged") && ask.evidence?.reason !== "medical" && (
+        <Escalate ask={ask} onChange={onChange} />
+      )}
     </div>
   )
 }

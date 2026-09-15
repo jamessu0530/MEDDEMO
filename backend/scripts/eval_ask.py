@@ -117,10 +117,14 @@ def main() -> int:
                 result = answer_knowledge(session, llm, item["question"], Trace(), embed_query)
                 waits.append(time.monotonic() - start)
                 got = result.route if result.status == "answered" else "refuse" if result.status == "no_evidence" else result.status
-                ok = got == item["expect"]
+                # 題目有標 reason（medical／internal）的，還要是因為那個原因才不上網：拒答的原因很多種，
+                # 只看有沒有拒答，證明不了用藥題、公司內部題的判斷有沒有觸發
+                ok = got == item["expect"] and item.get("reason") in (None, result.reason)
                 correct += ok
-                print(f"{item['id']}  {waits[-1]:5.1f}s  預期 {item['expect']}，實際 {got}  {'對' if ok else '錯：' + (result.answer or result.error_message or '')[:40]}")
-            summary.append(f"庫外題 {correct}/{len(items)} 走對路線（上網或拒答）")
+                shown = f"{got}（{result.reason}）" if result.reason else got
+                expected = f"{item['expect']}（{item['reason']}）" if item.get("reason") else item["expect"]
+                print(f"{item['id']}  {waits[-1]:5.1f}s  預期 {expected}，實際 {shown}  {'對' if ok else '錯：' + (result.answer or result.error_message or '')[:40]}")
+            summary.append(f"庫外題 {correct}/{len(items)} 走對路線（上網或拒答；有標原因的，原因也要對）")
 
     print("\n" + "\n".join(summary))
     if waits:

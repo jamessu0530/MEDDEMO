@@ -4,10 +4,10 @@
 `app.llm.LLM.ajson`（拿掉 LangChain 與建構子的 `invoke_rewrite` 注入參數，
 MEDDEMO 的假造測試改用 `JsonLLM` 替身直接接 `LLM` 介面）。
 
-MEDDEMO 另外加了 `medical` 欄位（James 2026-09-15 決定）：同一次呼叫順便判斷是不是
-用藥、劑量、療效這類醫療問題，是的話知識庫答不出來時不上網（見
-`answer_service.RagAnswerService._web_or_no_hits`）。搭在改寫這次呼叫上，不多打一次
-模型；要上網時本來就要等改寫結果，推估使用者不會多等（prompt 多一條規則、輸出多一個欄位，
+MEDDEMO 另外加了 `medical`、`internal` 兩個欄位（James 2026-09-15 決定）：同一次呼叫順便判斷
+是不是用藥、劑量、療效這類醫療問題，以及是不是只有公司內部才有答案的問題；是的話知識庫答不
+出來時不上網（見 `answer_service.RagAnswerService._web_or_no_hits`）。搭在改寫這次呼叫上，不多打一次
+模型；要上網時本來就要等改寫結果，推估使用者不會多等（prompt 多兩條規則、輸出多兩個欄位，
 對改寫時間的影響還沒量過）。
 """
 
@@ -40,8 +40,9 @@ REWRITE_SCHEMA: dict[str, Any] = {
         "zh_terms": {"type": "string"},
         "en_terms": {"type": "string"},
         "medical": {"type": "boolean"},
+        "internal": {"type": "boolean"},
     },
-    "required": ["kb_query", "zh_terms", "en_terms", "medical"],
+    "required": ["kb_query", "zh_terms", "en_terms", "medical", "internal"],
 }
 
 _MAX_ZH_TERMS = 3
@@ -51,18 +52,20 @@ _ASCII_TOKEN = re.compile(r"^[A-Za-z0-9.\-]+$")
 
 @dataclass(frozen=True)
 class RewrittenQuery:
-    """一次改寫的四種用途。
+    """一次改寫的五種用途。
 
     - kb_query：CRAG 判 ambiguous 時重查知識庫的問句
     - zh_terms：網搜中文那一路的關鍵字；空字串＝沿用原句
     - en_terms：網搜英文那一路的關鍵字；空字串＝不搜英文
     - medical：是不是用藥、劑量、療效這類醫療問題（MEDDEMO 加的）；是的話不上網
+    - internal：是不是只有公司內部才有答案的問題（MEDDEMO 加的）；是的話不上網
     """
 
     kb_query: str
     zh_terms: str = ""
     en_terms: str = ""
     medical: bool = False
+    internal: bool = False
 
 
 class QueryRewriter(Protocol):
@@ -111,6 +114,8 @@ class LLMQueryRewriter:
         # 是 CARE 的醫療案例。
         # medical 的範圍照語音問答的規則 4（app.services.voice：用藥、劑量、療效這類醫療
         # 問題）；後半句是要避免把業務問題誤判成醫療問題——藥品通路的業務問題幾乎都會提到藥品。
+        # internal 的由來：9/15 付費實測 X02「今年的年終獎金怎麼算」上網後引了公務員年終規定，
+        # 網路資料代表不了公司；後半句列出公開資訊，是要避免把該上網的題目誤擋掉。
         prompt = (
             "把業務的問題改寫成搜尋用的查詢，不要回答問題。\n"
             "規則：\n"
@@ -124,7 +129,10 @@ class LLMQueryRewriter:
             "zh_terms：最多三個一般常用的繁體中文關鍵字，以空白分隔。\n"
             "en_terms：對應的英文一般關鍵字，最多三個，以空白分隔。\n"
             "medical：問題在問用藥、劑量、療效、副作用、藥物交互作用或禁忌這類醫療問題時填 true；"
-            "問價格、出貨、退貨、公司規定或市場這類業務問題時，即使提到藥品或保健品也填 false。\n\n"
+            "問價格、出貨、退貨、公司規定或市場這類業務問題時，即使提到藥品或保健品也填 false。\n"
+            "internal：問題問的是只有本公司內部才有答案的事時填 true，例如公司自己的規定與制度、"
+            "人事薪資與獎金、報價、價格與調價計畫、客戶或競品跟我們的交易條件；天氣、匯率、新聞、"
+            "法規、一般知識這類公開資訊填 false。\n\n"
             f"原始問題：{query}\n\n"
             "知識庫目前檢索到的片段（僅供理解問題，可能不相關）：\n"
             + ("\n".join(snippets) if snippets else "(無)")
@@ -137,8 +145,9 @@ class LLMQueryRewriter:
             zh_terms=normalize_zh_terms(str(raw.get("zh_terms") or "")),
             en_terms=normalize_en_terms(str(raw.get("en_terms") or "")),
             # 只認真正的布林 true（字串 "false" 經 bool() 會變成 True）。正式環境的 GeminiLLM 會先照
-            # schema 驗證（app.llm），medical 缺欄位或不是布林值時整次改寫失敗、網路路徑退回原句照常
-            # 上網；這裡防的是不驗證的 LLM 實作（例如測試替身）。取捨：medical 必填，它格式不對會連
-            # kb_query／zh_terms／en_terms 一起失去。
+            # schema 驗證（app.llm），medical／internal 缺欄位或不是布林值時整次改寫失敗、網路路徑退回
+            # 原句照常上網；這裡防的是不驗證的 LLM 實作（例如測試替身）。取捨：兩個欄位都必填，格式不對
+            # 會連 kb_query／zh_terms／en_terms 一起失去。
             medical=raw.get("medical") is True,
+            internal=raw.get("internal") is True,
         )

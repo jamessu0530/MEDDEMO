@@ -98,6 +98,9 @@ def escalate(session: SessionDep, ask_id: str):
     record = _load(session, ask_id)
     if record.status not in ("no_evidence", "not_converged"):
         raise HTTPException(409, "只有查不到答案的提問可以轉給主管")
+    if (record.evidence or {}).get("reason") == "medical":
+        # James 2026-09-15：用藥題請業務詢問醫師或藥師，不轉主管（畫面也不給按鈕）
+        raise HTTPException(409, "用藥、劑量、療效這類醫療問題請詢問醫師或藥師，不轉給主管")
     if session.scalar(select(Escalation.id).where(Escalation.ask_id == record.id)) is None:
         session.add(Escalation(ask_id=record.id, question=record.question))
         session.commit()

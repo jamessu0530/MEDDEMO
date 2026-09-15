@@ -130,7 +130,7 @@ async def test_rewriter_prompt_includes_question_and_snippets():
     assert "近效期商品的退貨規定" in prompt
 
 
-# --- MEDDEMO 加的 medical 欄位（James 2026-09-15 決定：用藥題不上網） ---
+# --- MEDDEMO 加的 medical、internal 欄位（James 2026-09-15 決定：用藥題、公司內部題不上網） ---
 
 
 @pytest.mark.asyncio
@@ -146,6 +146,21 @@ async def test_rewriter_passes_through_the_medical_flag():
 async def test_rewriter_treats_anything_but_boolean_true_as_not_medical(value):
     llm = JsonLLM({"kb_query": "q", "zh_terms": "", "en_terms": "", "medical": value})
     assert (await LLMQueryRewriter(llm).rewrite("折扣上限是多少？", [])).medical is False
+
+
+@pytest.mark.asyncio
+async def test_rewriter_passes_through_the_internal_flag():
+    llm = JsonLLM({"kb_query": "年終獎金 計算", "zh_terms": "年終獎金", "en_terms": "year-end bonus", "medical": False, "internal": True})
+    out = await LLMQueryRewriter(llm).rewrite("今年的年終獎金怎麼算？", [])
+    assert (out.internal, out.medical) == (True, False)
+    assert "internal" in llm.calls[0]["schema"]["required"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("value", [False, "true", None])
+async def test_rewriter_treats_anything_but_boolean_true_as_not_internal(value):
+    llm = JsonLLM({"kb_query": "q", "zh_terms": "", "en_terms": "", "medical": False, "internal": value})
+    assert (await LLMQueryRewriter(llm).rewrite("今年的年終獎金怎麼算？", [])).internal is False
 
 
 def test_zh_terms_drop_ascii_acronyms():

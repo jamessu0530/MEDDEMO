@@ -32,6 +32,8 @@ export type AskEvidence = {
   blocked_reason?: string
   route?: "kb" | "web"
   sources?: Source[]
+  // 知識題刻意不上網的原因：medical（用藥題，不給轉主管）、internal（只有公司內部才有答案）
+  reason?: "medical" | "internal" | null
 }
 
 export type Ask = {

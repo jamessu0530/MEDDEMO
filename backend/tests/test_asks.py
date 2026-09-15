@@ -87,8 +87,8 @@ def grade(value):
     return {"grade": value}
 
 
-def rewrite(kb_query, zh="", en="", medical=False):
-    return {"kb_query": kb_query, "zh_terms": zh, "en_terms": en, "medical": medical}
+def rewrite(kb_query, zh="", en="", medical=False, internal=False):
+    return {"kb_query": kb_query, "zh_terms": zh, "en_terms": en, "medical": medical, "internal": internal}
 
 
 def use_web(monkeypatch, web_client):
@@ -248,6 +248,7 @@ def test_a_medication_question_is_not_answered_from_the_web(engine, docs, monkey
         result = answer_knowledge(session, llm, "魚油吃太多會有什麼副作用？", Trace())
     assert result.status == "no_evidence"
     assert result.answer == "內部文件裡找不到這個問題的依據。用藥、劑量、療效這類醫療問題不會上網查，請詢問醫師或藥師。"
+    assert result.reason == "medical"
     assert web_client.search_calls == []
 
 
@@ -262,6 +263,22 @@ def test_a_medication_question_without_firecrawl_gets_the_plain_no_evidence_text
         result = answer_knowledge(session, llm, "魚油吃太多會有什麼副作用？", Trace())
     assert (result.status, result.route) == ("no_evidence", None)
     assert result.answer == "內部文件裡找不到可以回答這個問題的依據。"
+
+
+def test_a_company_internal_question_is_not_answered_from_the_web(engine, docs, monkeypatch):
+    """只有公司內部才有答案的問題不上網（James 2026-09-15 決定）：網路資料代表不了公司，可以轉主管。"""
+    web_client = FakeWebClient(search_hits={"年終獎金 計算": [hit("https://example.com/bonus", "年終獎金常見的計算方式說明" * 2)]})
+    use_web(monkeypatch, web_client)
+    llm = ScriptedLLM(
+        grade=[grade("incorrect")],
+        rewrite=[rewrite("年終獎金", zh="年終獎金 計算", internal=True)],
+        answer=["不該被用到的投機答案"],
+    )
+    with Session(engine) as session:
+        result = answer_knowledge(session, llm, IRRELEVANT_QUESTION, Trace())
+    assert (result.status, result.reason) == ("no_evidence", "internal")
+    assert result.answer == "內部文件裡找不到這個問題的依據。公司內部的規定、價格、人事這類問題，網路上的資料代表不了公司，所以不上網查，可以轉給主管確認。"
+    assert web_client.search_calls == []
 
 
 @pytest.fixture
@@ -314,6 +331,40 @@ def test_a_question_without_evidence_can_be_escalated_once(client, docs, monkeyp
     first = client.post(f"/api/asks/{ask_id}/escalate").json()["escalation_id"]
     again = client.post(f"/api/asks/{ask_id}/escalate").json()["escalation_id"]
     assert first is not None and first == again
+
+
+def test_a_medication_question_is_not_offered_to_the_manager(client, docs, monkeypatch):
+    """用藥題請業務問醫師或藥師（James 2026-09-15）：evidence 帶 reason，轉主管回 409。"""
+    use_web(monkeypatch, FakeWebClient())
+    llm = ScriptedLLM(grade=[grade("incorrect")], rewrite=[rewrite("魚油 副作用", medical=True)], answer=["不該被用到的投機答案"])
+    monkeypatch.setattr(asks_service, "get_llm", lambda: llm)
+    ask_id = client.post("/api/asks", json={"kind": "knowledge", "question": "魚油吃太多會有什麼副作用？"}).json()["id"]
+    run_jobs()
+    ask = client.get(f"/api/asks/{ask_id}").json()
+    assert (ask["status"], ask["evidence"]["reason"]) == ("no_evidence", "medical")
+    assert client.post(f"/api/asks/{ask_id}/escalate").status_code == 409
+
+
+def test_a_company_internal_question_can_still_go_to_the_manager(client, docs, monkeypatch):
+    use_web(monkeypatch, FakeWebClient())
+    llm = ScriptedLLM(grade=[grade("incorrect")], rewrite=[rewrite("年終獎金", internal=True)], answer=["不該被用到的投機答案"])
+    monkeypatch.setattr(asks_service, "get_llm", lambda: llm)
+    ask_id = client.post("/api/asks", json={"kind": "knowledge", "question": "年終怎麼算？"}).json()["id"]
+    run_jobs()
+    assert client.get(f"/api/asks/{ask_id}").json()["evidence"]["reason"] == "internal"
+    assert client.post(f"/api/asks/{ask_id}/escalate").status_code == 200
+
+
+def test_a_medication_question_the_documents_refuse_still_gets_the_medical_reason(engine, docs, monkeypatch):
+    """9/15 評測 X05：知識庫路徑自己拒答的用藥題，也要回用藥文案（畫面不給轉主管）。
+
+    問句借用檢索得到段落的近效期題，才走得到知識庫路徑；是不是用藥題由劇本裡的改寫結果決定。"""
+    use_web(monkeypatch, FakeWebClient())
+    llm = ScriptedLLM(grade=[grade("correct")], rewrite=[rewrite("近效期 退貨", medical=True)], answer=["[NO_ANSWER] 文件沒有提到。"])
+    with Session(engine) as session:
+        result = answer_knowledge(session, llm, "近效期的東西要多久前申請退貨？", Trace())
+    assert (result.status, result.route, result.reason) == ("no_evidence", "kb", "medical")
+    assert result.answer == "內部文件裡找不到這個問題的依據。用藥、劑量、療效這類醫療問題不會上網查，請詢問醫師或藥師。"
 
 
 class FailedService:

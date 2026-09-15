@@ -39,12 +39,14 @@
 - 沒有 i18n（`t("agent.sources_heading")`）：不附文字來源清單標題，`sources`
   直接以結構化資料回傳，「資料來源」這行由前端渲染。
 
-James 2026-09-15 再決定兩處跟 CARE 不同：
+James 2026-09-15 再決定三處跟 CARE 不同：
 
 - 知識庫答案沒有任何對得上的出處時回 no_evidence（`FailCode.NO_CITATION`，FR-8.3），
   CARE 照樣回答、只是不附來源；引用編號也認全形［1］【1】與串列寫法 [1, 2]（見 `_CITATION_RE`、`_answer_from`）。
 - 用藥、劑量、療效這類醫療問題（改寫結果 `medical=True`）知識庫答不出來時不上網，回
-  no_evidence（`FailCode.MEDICAL`），跟語音問答的規則 4 一致（見 `_web_or_no_hits`）。
+  no_evidence（`FailCode.MEDICAL`），跟語音問答的規則 4 一致（見 `_web_or_no_hits`、`_kb_no_evidence`）。
+- 只有公司內部才有答案的問題（改寫結果 `internal=True`，例如公司的規定、價格、人事）
+  知識庫答不出來時也不上網，回 no_evidence（`FailCode.INTERNAL`）。
 """
 
 from __future__ import annotations
@@ -142,8 +144,8 @@ DEFAULT_CRAG_REWRITE_BUDGET_SECONDS = 12.0
 DEFAULT_RAG_ANSWER_TIMEOUT_SECONDS = 45.0
 
 # 答不到依據時的文案：RagOutcome 在 no_evidence 時一律帶這句（不分有沒有上網）。
-# app.services.knowledge 另有兩句：「內部文件和網路上都找不到…」只在真的上網查過才改用
-# （見 knowledge._went_to_web），用藥題（FailCode.MEDICAL）改用 knowledge.MEDICAL_NO_EVIDENCE；
+# app.services.knowledge 另有幾句：「內部文件和網路上都找不到…」只在真的上網查過才改用
+# （見 knowledge._went_to_web），刻意不上網的用藥題、公司內部題各有一句（knowledge.NO_WEB）；
 # 幾句刻意不同，不要合併成同一個常數。
 NO_EVIDENCE = "內部文件裡找不到可以回答這個問題的依據。"
 
@@ -166,6 +168,27 @@ _GRADE_DECISION = {
     Grade.INCORRECT: "評估：無關",
 }
 
+# 刻意不上網的題目（James 2026-09-15 決定）與查詢過程的文案。判斷搭在改寫那次呼叫（rewriter 的
+# medical／internal 欄位），不多打模型。用藥題跟語音問答的規則 4 一致（app.services.voice）；公司內部題
+# 的由來是 9/15 付費實測 X02「今年的年終獎金怎麼算」上網後引了公務員年終規定——網路資料代表不了公司。
+_NO_WEB_DECISION = {
+    FailCode.MEDICAL: "用藥、劑量、療效這類醫療問題不上網查",
+    FailCode.INTERNAL: "只有公司內部才有答案，網路資料代表不了公司，不上網查",
+}
+
+
+def _no_web_code(rewritten: RewrittenQuery | None) -> FailCode | None:
+    """改寫判成不該上網的題目時回對應代碼。兩個都判到時以用藥題為準：業務該去問醫師或藥師，
+    不是轉主管。改寫失敗（None）回 None：照常上網，跟改寫失敗時退回原句搜尋一致。"""
+    if rewritten is None:
+        return None
+    if rewritten.medical:
+        return FailCode.MEDICAL
+    if rewritten.internal:
+        return FailCode.INTERNAL
+    return None
+
+
 # on_step 的簽名同 MEDDEMO 既有的 app.services.asks.run_ask 版本（不是新介面，這裡只是
 # 給 RagAnswerService 用同一個型別別名）
 OnStep = Callable[..., None]
@@ -177,7 +200,9 @@ class RagOutcome:
     MEDDEMO 的 `ask_record.status`、畫面顯示與 `evidence`。"""
 
     status: str  # "answered" / "no_evidence" / "failed"
-    route: str | None  # "kb" / "web" / None（KB_EMPTY、TIMEOUT 沒有明確路徑；MEDICAL 刻意不上網）
+    # "kb" / "web" / None（KB_EMPTY、TIMEOUT 沒有明確路徑；上網前擋下的 MEDICAL、INTERNAL 也是 None，
+    # 知識庫路徑拒答後改判成 MEDICAL、INTERNAL 的則是 "kb"，見 _kb_no_evidence）
+    route: str | None
     answer: str | None
     sources: list[dict[str, Any]]
     fail_code: FailCode | None
@@ -362,9 +387,7 @@ class RagAnswerService:
                 preview,
             )
             self.on_step(round_number, "stop", decision="模型判斷內部文件不足以回答問題核心，已標記拒答")
-            return RagOutcome(
-                status="no_evidence", route="kb", answer=NO_EVIDENCE, sources=[], fail_code=FailCode.MODEL_REFUSE
-            )
+            return self._kb_no_evidence(FailCode.MODEL_REFUSE, rewrite)
 
         body, sources = self._append_sources(kb_answer, approved)
         if not sources:
@@ -375,9 +398,7 @@ class RagAnswerService:
             # 還是「標了但格式沒認出來」，引用常在句尾，截斷就看不到。
             logger.info("rag_fail code=%s answer=%s", FailCode.NO_CITATION, " ".join(kb_answer.split()))
             self.on_step(round_number, "stop", decision="答案沒有標出對得上的文件出處，視為查無依據")
-            return RagOutcome(
-                status="no_evidence", route="kb", answer=NO_EVIDENCE, sources=[], fail_code=FailCode.NO_CITATION
-            )
+            return self._kb_no_evidence(FailCode.NO_CITATION, rewrite)
         self.on_step(round_number, "answer", decision=f"根據 {len(sources)} 段文件回答")
         return RagOutcome(status="answered", route="kb", answer=body, sources=sources, fail_code=None)
 
@@ -420,13 +441,10 @@ class RagAnswerService:
             return RagOutcome(status="no_evidence", route=None, answer=NO_EVIDENCE, sources=[], fail_code=FailCode.KB_EMPTY)
 
         search_queries = await self._search_queries_for_web(question, rewrite)
-        if search_queries is not None and search_queries.medical:
-            # MEDDEMO 加的（James 2026-09-15 決定）：用藥、劑量、療效這類醫療問題不拿網路資料回答，
-            # 跟語音問答的規則 4 一致（app.services.voice）。判斷搭在改寫那次呼叫（rewriter 的
-            # medical 欄位），不多打模型；改寫失敗（None）就照常上網，跟改寫失敗時退回原句搜尋一致。
-            logger.info("crag_fail code=%s", FailCode.MEDICAL)
-            self.on_step(round_number, "stop", decision="用藥、劑量、療效這類醫療問題不上網查")
-            return RagOutcome(status="no_evidence", route=None, answer=NO_EVIDENCE, sources=[], fail_code=FailCode.MEDICAL)
+        # 用藥題、公司內部題不上網（見 _NO_WEB_DECISION、_no_web_code）
+        code = _no_web_code(search_queries)
+        if code is not None:
+            return self._no_web(round_number, code)
         search_query_used = (search_queries.zh_terms if search_queries else "") or question
 
         try:
@@ -464,6 +482,40 @@ class RagAnswerService:
         return RagOutcome(
             status="answered", route="web", answer=web_answer.answer, sources=web_answer.sources, fail_code=None
         )
+
+    def _no_web(self, round_number: int, fail_code: FailCode) -> RagOutcome:
+        """刻意不上網的題目：記下原因、回 no_evidence（route=None，沒有上網）。"""
+        logger.info("crag_fail code=%s", fail_code)
+        self.on_step(round_number, "stop", decision=_NO_WEB_DECISION[fail_code])
+        return RagOutcome(status="no_evidence", route=None, answer=NO_EVIDENCE, sources=[], fail_code=fail_code)
+
+    def _kb_no_evidence(
+        self, fail_code: FailCode, rewrite: "asyncio.Task[RewrittenQuery] | None"
+    ) -> RagOutcome:
+        """知識庫路徑自己答不出來（模型拒答、沒有有效出處）時的結果。
+
+        這條路不經過 `_web_or_no_hits`，原本不會看改寫判的用藥題／公司內部題：9/15 付費評測 X05
+        （Amlodipine 配葡萄柚汁）就在這裡拒答，回了一般的查無依據、畫面還給轉主管，跟 James「用藥題
+        請業務問醫師或藥師、不轉主管」的決定不一致。所以有設網搜時也看並行改寫的判斷，判到就用那個
+        原因回（文案、能不能轉主管跟著走）。
+
+        只讀已經跑完的改寫，不等它：改寫卡住時，原本幾秒就回的查無依據會被拖到 45 秒總逾時。改寫
+        通常比生成先跑完（CARE 量的：改寫 1.2-3.3 秒、生成 3.9-9.5 秒，MEDDEMO 沒量），走到這裡時
+        多半已有結果；還沒跑完或改寫失敗，就照原本的代碼回（一般查無依據、可以轉主管）。沒設網搜時
+        跟 `_web_or_no_hits` 一樣不看這兩個判斷。
+        """
+        code = None
+        if (
+            self.web_search is not None
+            and rewrite is not None
+            and rewrite.done()
+            and not rewrite.cancelled()
+            and rewrite.exception() is None
+        ):
+            code = _no_web_code(rewrite.result())
+        if code is not None:
+            logger.info("crag_fail code=%s kb_fail=%s", code, fail_code)
+        return RagOutcome(status="no_evidence", route="kb", answer=NO_EVIDENCE, sources=[], fail_code=code or fail_code)
 
     def _start_speculative_rewrite(
         self, question: str, docs: list[Document]

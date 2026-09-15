@@ -143,8 +143,8 @@ CARE 的 `source_name`／`url`／`original_title` 改成 MEDDEMO `Document` 的
 **對帳總計**：CARE 85 個 → 刪除 24 個、改名保留 8 個、原名保留 53 個、
 新增 14 個 → MEDDEMO 共 75 個（53 + 8 + 14）。
 
-**之後另加 13 個**（不在上面的對帳裡，James 2026-09-15 的決定：知識庫答案沒有對得上的
-出處就當查無依據、引用也認全形括號與串列寫法、用藥題不上網），見檔案最後一段。
+**之後另加 20 個**（不在上面的對帳裡，James 2026-09-15 的決定：知識庫答案沒有對得上的
+出處就當查無依據、引用也認全形括號與串列寫法、用藥題與公司內部題不上網），見檔案最後一段。
 """
 
 from __future__ import annotations
@@ -1516,7 +1516,7 @@ async def test_on_step_records_web_error_stop():
     assert step_names == ["search", "web", "stop"]
 
 
-# ── MEDDEMO 決定（James 2026-09-15）：沒有有效出處當查無依據、用藥題不上網 ──────
+# ── MEDDEMO 決定（James 2026-09-15）：沒有有效出處當查無依據、用藥題與公司內部題不上網 ──────
 
 
 def test_cited_indices_accepts_full_width_brackets_and_digits():
@@ -1647,3 +1647,84 @@ async def test_medical_question_after_a_rewrite_round_stops_in_round_two():
     assert outcome.fail_code == FailCode.MEDICAL
     web_search.answer.assert_not_awaited()
     assert (steps[-1]["round"], steps[-1]["step"]) == (2, "stop")
+
+
+def _internal_rewriter(kb_query, *, medical=False):
+    rewriter = MagicMock()
+    rewriter.rewrite = AsyncMock(
+        return_value=RewrittenQuery(kb_query=kb_query, zh_terms=kb_query, medical=medical, internal=True)
+    )
+    return rewriter
+
+
+async def test_company_internal_question_is_not_answered_from_the_web():
+    web_search = _unused_web_search()
+    svc, _llm, _ret, steps = _make_service(
+        docs=[_kb_doc()],
+        grader=_grader_returning(Grade.INCORRECT),
+        rewriter=_internal_rewriter("年終獎金 計算"),
+        web_search=web_search,
+        answer_content="不該出現",
+    )
+    outcome = await svc.answer("今年的年終獎金怎麼算？")
+    assert outcome == RagOutcome(status="no_evidence", route=None, answer=NO_EVIDENCE, sources=[], fail_code=FailCode.INTERNAL)
+    web_search.answer.assert_not_awaited()
+    assert (steps[-1]["step"], steps[-1]["decision"]) == ("stop", "只有公司內部才有答案，網路資料代表不了公司，不上網查")
+
+
+async def test_a_question_flagged_both_medical_and_internal_counts_as_medical():
+    """業務該去問醫師或藥師，不是轉主管：兩個都判到時以用藥題為準。"""
+    svc, _llm, _ret, _steps = _make_service(
+        docs=[], rewriter=_internal_rewriter("本公司魚油 每日用量", medical=True), web_search=_unused_web_search()
+    )
+    outcome = await svc.answer("我們的魚油一天可以吃幾顆？")
+    assert outcome.fail_code == FailCode.MEDICAL
+
+
+async def test_internal_flag_is_not_consulted_without_web_search():
+    rewriter = _internal_rewriter("年終獎金 計算")
+    svc, _llm, _ret, _steps = _make_service(docs=[], rewriter=rewriter, web_search=None)
+    outcome = await svc.answer("今年的年終獎金怎麼算？")
+    assert outcome.fail_code == FailCode.KB_EMPTY
+    rewriter.rewrite.assert_not_awaited()
+
+
+async def test_kb_refusal_of_a_medical_question_uses_the_medical_reason():
+    """9/15 評測 X05：知識庫路徑自己拒答時也要看改寫的判斷，用藥題才不會回一般的查無依據、給轉主管。"""
+    svc, _llm, _ret, _steps = _make_service(
+        docs=[_kb_doc()],
+        rewriter=_medical_rewriter("葡萄柚汁 交互作用"),
+        web_search=_unused_web_search(),
+        answer_content="[NO_ANSWER] 資料沒有提到。",
+    )
+    outcome = await svc.answer("Amlodipine 可以跟葡萄柚汁一起吃嗎？")
+    assert outcome == RagOutcome(status="no_evidence", route="kb", answer=NO_EVIDENCE, sources=[], fail_code=FailCode.MEDICAL)
+
+
+async def test_kb_answer_without_citation_for_an_internal_question_uses_the_internal_reason():
+    svc, _llm, _ret, _steps = _make_service(
+        docs=[_kb_doc()], rewriter=_internal_rewriter("年終獎金 計算"), web_search=_unused_web_search(),
+        answer_content="年終一般發一到兩個月。",
+    )
+    outcome = await svc.answer("今年的年終獎金怎麼算？")
+    assert (outcome.route, outcome.fail_code) == ("kb", FailCode.INTERNAL)
+
+
+async def test_kb_refusal_ignores_the_flags_without_web_search():
+    svc, _llm, _ret, _steps = _make_service(
+        docs=[_kb_doc()], rewriter=_medical_rewriter("魚油 副作用"), web_search=None,
+        answer_content="[NO_ANSWER] 資料沒有提到。",
+    )
+    outcome = await svc.answer("魚油吃太多會有什麼副作用？")
+    assert outcome.fail_code == FailCode.MODEL_REFUSE
+
+
+async def test_kb_refusal_keeps_its_own_code_when_the_rewrite_fails():
+    rewriter = MagicMock()
+    rewriter.rewrite = AsyncMock(side_effect=RuntimeError("gemini down"))
+    svc, _llm, _ret, _steps = _make_service(
+        docs=[_kb_doc()], rewriter=rewriter, web_search=_unused_web_search(),
+        answer_content="[NO_ANSWER] 資料沒有提到。",
+    )
+    outcome = await svc.answer("某個冷門問題")
+    assert outcome.fail_code == FailCode.MODEL_REFUSE

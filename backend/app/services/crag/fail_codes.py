@@ -1,4 +1,4 @@
-"""CRAG 失敗代碼（照搬 CARE rag/fail_messages.py 的 RagFailCode，最後兩個是 MEDDEMO 加的）。MEDDEMO 不回錯誤字串，代碼只用來決定狀態與寫進查詢過程。"""
+"""CRAG 失敗代碼（照搬 CARE rag/fail_messages.py 的 RagFailCode，最後三個是 MEDDEMO 加的）。MEDDEMO 不回錯誤字串，代碼只用來決定狀態與寫進查詢過程。"""
 
 from enum import StrEnum
 
@@ -11,3 +11,4 @@ class FailCode(StrEnum):
     TIMEOUT = "TIMEOUT"  # 整條流程超過總逾時
     NO_CITATION = "NO_CITATION"  # 知識庫答案沒有任何對得上的出處編號（FR-8.3：當作查無依據）
     MEDICAL = "MEDICAL"  # 用藥、劑量、療效這類醫療問題：知識庫答不出來時不上網
+    INTERNAL = "INTERNAL"  # 只有公司內部才有答案的問題（公司規定、價格、人事等）：知識庫答不出來時不上網
