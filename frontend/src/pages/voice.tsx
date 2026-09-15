@@ -26,7 +26,7 @@ export default function VoicePage() {
   return (
     <div className="flex min-h-svh flex-col">
       <header className="sticky top-0 z-10 border-b bg-background/95 px-4 pt-4 pb-3 backdrop-blur">
-        <p className="text-xs text-muted-foreground">答案只來自公司資料與內部文件</p>
+        <p className="text-xs text-muted-foreground">先查公司資料與內部文件，查不到才參考網路公開資料（會另外標示）</p>
         <h1 className="mt-0.5 text-lg font-semibold">語音問答</h1>
       </header>
 

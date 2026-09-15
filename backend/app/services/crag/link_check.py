@@ -25,11 +25,14 @@ timeout），DNS 仍解析得到 210.241.104.139；Wayback 對該站 /doctor/ �
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import logging
+import socket
 import ssl
 import time
 from collections import OrderedDict
 from collections.abc import Iterable
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -145,6 +148,52 @@ def _is_tls_failure(exc: BaseException) -> bool:
     return False
 
 
+# 不探測的主機名稱後綴：mDNS（.local）、雲端與叢集內部名稱（GCP 的
+# metadata.google.internal、Kubernetes 的 <服務>.<命名空間>.svc 與
+# .svc.cluster.local），以及 RFC 6761 規定解析到本機的 .localhost。
+# 這些名稱只在內網解析得到，不會是使用者從外面點得開的出處。
+_INTERNAL_HOST_SUFFIXES = (".localhost", ".local", ".internal", ".svc", ".cluster.local")
+
+
+def _is_internal_host(url: str) -> bool:
+    """這個網址的主機是不是內部位址；是的話不探測，當成判不出來。
+
+    為什麼需要（MEDDEMO 才有）：CARE 靠白名單只放行 gov.tw 這類公開網域；MEDDEMO
+    拿掉白名單後，要檢查的網址來自任意搜尋結果，而 worker 跑在 care-vm 的 K3s 叢集
+    裡。不擋的話，一個指向 169.254.169.254（雲端 metadata）或叢集內服務的網址，就會
+    讓連結檢查替它去敲內部網路。
+
+    只看網址字面的主機，不做 DNS 解析：解析要多一趟網路往返，而且這裡解析的結果跟
+    稍後 httpx 連線時的解析可能不同（DNS rebinding），解析了也擋不乾淨。IP 用
+    `ipaddress` 判斷，凡不是公開可路由的（`is_global` 為假：loopback、10/8、172.16/12、
+    192.168/16、169.254/16、fe80::/10，也包含 100.64/10 等）都不探測——引用出處本來
+    就該是公開網頁。`0xa9.0xfe.0xa9.0xfe`、`2852039166` 這類舊式數字寫法 `ipaddress`
+    不認，但 httpx 會把主機原樣交給 getaddrinfo，而 getaddrinfo 認得（本機 macOS 以
+    AI_NUMERICHOST 實測都解成 169.254.169.254），所以再用 `socket.inet_aton` 解析一次；
+    它只解析數字、不查 DNS。
+
+    還沒做的另一半：httpx 會跟著重導向走（`follow_redirects=True`），公開網址 30x
+    到內部位址時這裡擋不到，留待之後。
+    """
+    try:
+        host = (urlsplit(url).hostname or "").rstrip(".")
+    except ValueError:
+        # 剖析不出來的網址 httpx 也送不出去（會在 _probe 裡拋 InvalidURL），不必在這裡擋
+        return False
+    if not host:
+        return False
+    if host == "localhost" or host.endswith(_INTERNAL_HOST_SUFFIXES):
+        return True
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        try:
+            address = ipaddress.IPv4Address(socket.inet_aton(host))
+        except OSError:
+            return False  # 一般的主機名稱
+    return not address.is_global
+
+
 class LinkChecker:
     """判斷一組網址現在是否可存取，帶 TTL 快取。
 
@@ -188,8 +237,9 @@ class LinkChecker:
         """回傳 {url: 是否可存取}。
 
         只包含判得出結果的網址。**缺項代表「判不出來」而非「死了」**——
-        呼叫端必須把缺項當成可用。會缺項的情況有兩種：TLS 驗證不過
-        （見 `_is_tls_failure`），以及檢查器自己出錯（見 `_check_many`）。
+        呼叫端必須把缺項當成可用。會缺項的情況有三種：TLS 驗證不過
+        （見 `_is_tls_failure`）、內部位址不探測（見 `_is_internal_host`），
+        以及檢查器自己出錯（見 `_check_many`）。
         """
         unique: list[str] = []
         seen: set[str] = set()
@@ -206,6 +256,11 @@ class LinkChecker:
         result: dict[str, bool] = {}
         pending: list[str] = []
         for url in unique:
+            if _is_internal_host(url):
+                # 發出任何請求之前就擋：不探測、不進結果（照常顯示），也不寫快取——
+                # 判斷只看字串、成本可忽略，下一輪再擋一次就好。
+                logger.info("link_check_skipped_internal url=%s", url)
+                continue
             cached = self._cache_get(url, now)
             if cached is _MISS:
                 pending.append(url)

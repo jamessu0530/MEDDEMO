@@ -12,6 +12,9 @@ ca_bundle 的測試照搬 CARE `tests/unit/core/test_ca_bundle.py`（grep 找到
 `# --- ca_bundle ---` 分節；除了 import 路徑與 `_PINNED_DIR` 位置（改成
 `backend/app/resources/certs`，見 `app/services/crag/ca_bundle.py` 檔頭
 說明）不同之外，測試內容逐字保留。
+
+`# --- 內部網址不探測 ---` 那一節是 MEDDEMO 新增，CARE 沒有對應測試（CARE 有
+白名單，碰不到這種網址；見 `link_check._is_internal_host`）。
 """
 
 import asyncio
@@ -413,6 +416,67 @@ async def test_cancelled_url_is_not_cached_as_dead():
     await client.aclose()
 
     assert GONE not in checker._cache
+
+
+# --- 內部網址不探測（MEDDEMO 新增）---
+#
+# CARE 有白名單，只會檢查 gov.tw 這類公開網域；MEDDEMO 拿掉白名單後網址來自任意
+# 搜尋結果，而 worker 跑在叢集裡，不能讓連結檢查替別人去敲內部服務。
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://169.254.169.254/latest/meta-data/",
+        "http://10.43.0.10/",
+        "http://172.16.0.1/",
+        "http://172.31.255.255/",
+        "http://192.168.1.1/admin",
+        "http://127.0.0.1:8080/",
+        "http://[::1]/",
+        "http://[fe80::1]/",
+        "http://localhost/",
+        "http://app.localhost/",
+        "http://printer.local/",
+        "http://metadata.google.internal/computeMetadata/v1/",
+        "http://redis.default.svc/",
+        "http://api.default.svc.cluster.local/",
+        "http://169.254.169.254./x",
+        "http://0xa9.0xfe.0xa9.0xfe/",
+    ],
+)
+async def test_internal_hosts_are_never_probed(url):
+    """內部位址一律當成判不出來：不發請求、不進結果（照常顯示），也不寫快取。"""
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(str(request.url))
+        return httpx.Response(404)
+
+    checker = _checker(handler)
+
+    assert await checker.alive([url]) == {}
+    assert calls == []
+    assert url not in checker._cache
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://172.32.0.1/",
+        "https://8.8.8.8/",
+        "https://internal.example.com/",
+        "https://local.example.org/x",
+        "https://www.svc.example.com.tw/",
+    ],
+)
+async def test_public_hosts_that_only_look_internal_are_still_checked(url):
+    """172.16/12 之外的位址、名稱裡剛好有 internal／local／svc 字樣的公開網域，照常檢查。"""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404)
+
+    assert await _checker(handler).alive([url]) == {url: False}
 
 
 # --- ca_bundle：合併 CA bundle 的組成與降級 ---

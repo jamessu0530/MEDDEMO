@@ -6,13 +6,14 @@ import pytest
 from google.genai import types
 
 from app.llm import SUPPORTED_KEYS, GeminiLLM, LLMOutputError, api_schema, check_output
+from app.services.crag.grader import GRADE_SCHEMA
+from app.services.crag.rewriter import REWRITE_SCHEMA
 from app.services.data_agent import FINAL_SCHEMA, STEP_SCHEMA
 from app.services.extraction import output_schema
-from app.services.knowledge import ANSWER_SCHEMA, GRADE_SCHEMA, REWRITE_SCHEMA
 
-ALL_SCHEMAS = [output_schema(), STEP_SCHEMA, FINAL_SCHEMA, GRADE_SCHEMA, REWRITE_SCHEMA, ANSWER_SCHEMA]
+ALL_SCHEMAS = [output_schema(), STEP_SCHEMA, FINAL_SCHEMA, GRADE_SCHEMA, REWRITE_SCHEMA]
 
-# 回應處理測試自己定義 schema，不依賴 knowledge 的 REWRITE_SCHEMA（Task 10 會刪掉它，這裡不該跟著壞）
+# 回應處理測試自己定義 schema，不依賴 crag 的 REWRITE_SCHEMA，兩邊各自的欄位改動不該互相牽動
 QUERY_SCHEMA = {
     "type": "object",
     "additionalProperties": False,

@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from sqlalchemy import text  # noqa: E402
 
-from app.config import NotConfigured
+from app.config import NotConfigured, settings
 from app.db import session_factory
 from app.embeddings import optional_embedder
 from app.llm import get_llm
@@ -66,7 +66,9 @@ def main() -> int:
         return 1
     embedder = optional_embedder()
     embed_query = embedder.embed_query if embedder else None
-    print(f"語意檢索：{'有' if embedder else '沒有設定 embedding，只走關鍵字'}\n")
+    print(f"語意檢索：{'有' if embedder else '沒有設定 embedding，只走關鍵字'}")
+    print(f"網路搜尋：{'有' if settings().firecrawl_api_key else '沒有 Firecrawl 金鑰，不上網'}")
+    print(f"精排：{'Cohere' if settings().cohere_api_key else '融合分數'}\n")
 
     data_items = json.loads((EVAL_DIR / "data_questions.json").read_text(encoding="utf-8"))["items"]
     knowledge_file = EVAL_DIR / "knowledge_questions.json"
@@ -102,20 +104,23 @@ def main() -> int:
                 misses = [] if result.status == "answered" else [f"狀態 {result.status}"]
                 misses += [] if item["source"] in cited else [f"沒引用 {item['source']}"]
                 misses += [f"缺「{k}」" for k in item["must_include"] if k not in (result.answer or "")]
+                misses += [] if result.route == "kb" else [f"走了 {result.route}"]
                 passed += not misses
                 print(f"{item['id']}  {waits[-1]:5.1f}s  {'對' if not misses else '錯：' + '；'.join(misses)}")
             summary.append(f"知識題 {passed}/{len(items)} 答對並引用正確出處")
 
         if only in (None, "oos"):
-            refused = 0
+            correct = 0
             items = knowledge.get("out_of_scope", [])
             for item in items:
                 start = time.monotonic()
                 result = answer_knowledge(session, llm, item["question"], Trace(), embed_query)
                 waits.append(time.monotonic() - start)
-                refused += result.status == "no_evidence"
-                print(f"{item['id']}  {waits[-1]:5.1f}s  {'正確拒答' if result.status == 'no_evidence' else '沒拒答：' + (result.answer or '')[:40]}")
-            summary.append(f"庫外題 {refused}/{len(items)} 正確拒答（出場條件：全部）")
+                got = result.route if result.status == "answered" else "refuse" if result.status == "no_evidence" else result.status
+                ok = got == item["expect"]
+                correct += ok
+                print(f"{item['id']}  {waits[-1]:5.1f}s  預期 {item['expect']}，實際 {got}  {'對' if ok else '錯：' + (result.answer or result.error_message or '')[:40]}")
+            summary.append(f"庫外題 {correct}/{len(items)} 走對路線（上網或拒答）")
 
     print("\n" + "\n".join(summary))
     if waits:

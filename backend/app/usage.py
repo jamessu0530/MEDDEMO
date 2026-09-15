@@ -39,6 +39,8 @@ class Limit:
 # 全系統每天的量，是決賽當天估計用量的約兩倍（推估：排練、簡報，加上約 10 位評審試用，
 # 提問約 100 題、語音問答約 20 次、錄音約 30 段）。四項每天都被用滿，照 2026-09-14 的官方價格
 # 推估 Gemini 最多約 US$35，大部分來自語音問答（一段最長 15 分鐘）；逐項算法寫在 README「用量上限」。
+# 知識查詢另外用到 Cohere 精排（每題 1～2 次）與 Firecrawl 網搜（要上網的題目每題 1～3 次）：
+# 200 題全部上網的最壞情況，一天約 400 次 Cohere、600 次 Firecrawl 搜尋，各自的額度看方案。
 LIMITS: dict[str, Limit] = {
     "ask": Limit("提問", per_client_hour=50, per_day=200),
     "voice": Limit("語音問答", per_client_hour=10, per_day=40),

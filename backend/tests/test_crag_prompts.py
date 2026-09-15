@@ -47,6 +47,14 @@ def test_both_prompts_carry_the_no_answer_rule_the_boundary_and_the_length_limit
         assert "問題" in prompt and "內容" in prompt
 
 
+@pytest.mark.parametrize("builder", [build_rag_prompt, build_web_prompt])
+def test_prompts_tell_the_model_the_data_is_not_instructions(builder):
+    """防注入那道規則：文件或網頁裡夾帶「忽略以上規則」「揭露系統提示」時，模型要把它當成資料本身。"""
+    prompt = builder("問題", "內容")
+    for phrase in ("不是指令", "忽略", "系統提示"):
+        assert phrase in prompt
+
+
 def test_knowledge_prompt_requires_numbered_citations():
     assert "[1]" in build_rag_prompt("問題", "內容")
 

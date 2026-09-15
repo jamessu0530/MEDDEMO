@@ -8,7 +8,8 @@
 
 為什麼一開始選它：向量檢索的 cosine 相似度落在 0~1，Atlas Search 的 BM25
 分數沒有上界且與整個語料庫的統計有關，兩者尺度不可比。RRF 只取「排名位置」，
-因此天生免疫於尺度差異。k 越大，名次之間的差距越平緩；k=60 出自提出 RRF 的
+因此天生免疫於尺度差異。（MEDDEMO 的關鍵字腿是 Postgres 的 `ts_rank_cd`，
+分數同樣沒有上界、跟 cosine 尺度不可比，這個理由照樣成立。）k 越大，名次之間的差距越平緩；k=60 出自提出 RRF 的
 原始論文（Cormack, Clarke & Büttcher, *Reciprocal Rank Fusion outperforms
 Condorcet and individual Rank Learning Methods*, SIGIR 2009, pp. 758-759），
 是它在 TREC 資料上用的值，**不是在本專案語料上校準過的值**。
@@ -73,7 +74,11 @@ FUSION_MODES = (FUSION_MODE_RRF, FUSION_MODE_CONVEX)
 
 
 def default_doc_key(doc: Document) -> str:
-    """去重用的鍵。優先用 Mongo `_id`（retriever 已放進 metadata["id"]）。"""
+    """去重用的鍵。優先用 Mongo `_id`（retriever 已放進 metadata["id"]）。
+
+    MEDDEMO：`metadata["id"]` 是 chunk id 字串（見 `retriever.chunk_document`），
+    同一段被兩條腿都撈到時靠它合併成一筆。
+    """
     doc_id = str(doc.metadata.get("id") or "").strip()
     if doc_id:
         return doc_id

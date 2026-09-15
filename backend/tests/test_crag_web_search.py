@@ -8,10 +8,11 @@ query 分流命中結果，簽名見 crag_fakes.py）。
 計數對帳：CARE 30 個測試 = 10 個刪掉（見下）＋ 1 個併入必要測試、不留獨立
 測試（`test_rewritten_queries_search_zh_and_en_legs`）＋ 19 個保留（改名／
 調整斷言對象，含 1 個改名的 `test_en_leg_searches_only_cite_top_k_results`）。
-本檔 23 個測試 = 上述 19 個保留 ＋ 2 個任務說明列的必要測試（brief 逐字給的
+本檔 24 個測試 = 上述 19 個保留 ＋ 2 個任務說明列的必要測試（brief 逐字給的
 `test_chinese_leg_...`／`test_english_leg_...`，取代原本靠 `site:gov.tw`／
-`en_search_domains` 驗證中英兩路的舊測試）＋ 2 個 MEDDEMO 新增（`web_source()`
-與 `docs_found` 欄位，CARE 沒有對應功能）。
+`en_search_domains` 驗證中英兩路的舊測試）＋ 3 個 MEDDEMO 新增（`web_source()`
+與 `docs_found` 欄位 CARE 沒有對應功能；判死後出處編號不重新連號，行為與 CARE
+不同）。
 
 刪掉的測試與原因（白名單、site: 篩選、知識回報、i18n 整組移除，MEDDEMO
 不做「網路答案收進知識庫」——那是下一個案子；共 10 個）：
@@ -92,6 +93,9 @@ query 分流命中結果，簽名見 crag_fakes.py）。
   退回網址、`section`／`source_name` 是網域、`content` 截斷前 300 字。
 - `test_docs_found_reflects_fetched_doc_count_on_success`：`WebAnswer.
   docs_found` 欄位（CARE 沒有這個欄位，是任務說明新增的）。
+- `test_source_index_stays_the_number_the_answer_cites_when_an_earlier_source_is_dead`：
+  判死的出處不列、其餘不重新連號（CARE 會重新連號，答案內文的 [n] 卻沒跟著改，
+  見 `WebSearchService._build_sources`）。
 """
 
 from __future__ import annotations
@@ -402,7 +406,29 @@ async def test_empty_model_output_is_treated_as_refusal():
     assert result.answer is None
 
 
-# --- MEDDEMO 新增：web_source() 與 docs_found 欄位 ---
+# --- MEDDEMO 新增：web_source()、docs_found 欄位、判死後的出處編號 ---
+
+
+@pytest.mark.asyncio
+async def test_source_index_stays_the_number_the_answer_cites_when_an_earlier_source_is_dead():
+    """出處編號是交給模型時的位置：[1] 判死不列，其餘不重新連號，畫面上的 [2] 才會是內文的 [2]。"""
+    dead = "https://dead.example.com/x"
+    client = FakeWebClient(
+        search_hits={
+            "近效期退貨": [
+                hit(dead, "已下架頁面的說明文字，長度足夠不必抓全文", title="已下架"),
+                hit("https://example.com/a", "近效期退貨規定說明文字，長度足夠不必抓全文", title="退貨規範"),
+                hit("https://example.org/b", "折扣審核規定說明文字，長度足夠不必抓全文", title="折扣規範"),
+            ]
+        }
+    )
+    service = WebSearchService(TextLLM("請依規定辦理 [2][3]。"), client, link_checker=FakeLinkChecker(dead=[dead]))
+    result = await service.answer("近效期退貨")
+    assert [(s["index"], s["url"]) for s in result.sources] == [
+        (2, "https://example.com/a"),
+        (3, "https://example.org/b"),
+    ]
+    assert result.answer.endswith("請依規定辦理 [2][3]。")  # 內文的編號不動
 
 
 def test_web_source_fields():

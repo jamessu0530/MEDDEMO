@@ -130,6 +130,24 @@ async def test_rewriter_prompt_includes_question_and_snippets():
     assert "近效期商品的退貨規定" in prompt
 
 
+# --- MEDDEMO 加的 medical 欄位（James 2026-09-15 決定：用藥題不上網） ---
+
+
+@pytest.mark.asyncio
+async def test_rewriter_passes_through_the_medical_flag():
+    llm = JsonLLM({"kb_query": "魚油 副作用", "zh_terms": "魚油 副作用", "en_terms": "fish oil side effects", "medical": True})
+    out = await LLMQueryRewriter(llm).rewrite("魚油吃太多會有什麼副作用？", [])
+    assert out.medical is True
+    assert "medical" in llm.calls[0]["schema"]["required"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("value", [False, "true", None])
+async def test_rewriter_treats_anything_but_boolean_true_as_not_medical(value):
+    llm = JsonLLM({"kb_query": "q", "zh_terms": "", "en_terms": "", "medical": value})
+    assert (await LLMQueryRewriter(llm).rewrite("折扣上限是多少？", [])).medical is False
+
+
 def test_zh_terms_drop_ascii_acronyms():
     """縮寫留給英文那一路：中文關鍵字裡的純英數字詞會被拿掉（理由見 rewriter.normalize_zh_terms）。"""
     assert normalize_zh_terms("退貨規定 SAP") == "退貨規定"
