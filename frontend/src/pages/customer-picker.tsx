@@ -8,9 +8,11 @@ import { Notice } from "@/components/notice"
 import { PendingUploads } from "@/components/pending-uploads"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
+import { useAuth } from "@/lib/auth"
 import { formatDate } from "@/lib/format"
 import { useUnseenReplies } from "@/lib/manager-replies"
 import { openGuide } from "@/lib/onboarding"
+import { customerScopeText } from "@/lib/scope"
 
 type LoadState =
   | { status: "loading" }
@@ -22,6 +24,7 @@ export function CustomerPicker() {
   const [attempt, setAttempt] = useState(0)
   const [query, setQuery] = useState("")
   const unseen = useUnseenReplies()
+  const user = useAuth()?.user
 
   useEffect(() => {
     const controller = new AbortController()
@@ -78,6 +81,10 @@ export function CustomerPicker() {
           </div>
         </div>
         <h1 className="text-lg font-semibold">選擇拜訪客戶</h1>
+        {/* 清單只有登入者看得到的客戶，講清楚範圍，找不到某一家時才知道為什麼 */}
+        {user && state.status === "ready" && (
+          <p className="mt-0.5 text-xs text-muted-foreground">{customerScopeText(user, state.customers.length)}</p>
+        )}
         <div className="relative mt-3">
           <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input

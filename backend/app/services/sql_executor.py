@@ -13,6 +13,8 @@ from typing import Any
 
 from sqlalchemy import Engine, text
 
+from app.services.scope import Scope
+
 ALLOWED_VIEWS = ("v_monthly_sales", "v_customer_summary", "v_visit_signal", "v_margin_breakdown")
 # 給模型看的結果最多 50 列：數字題的答案通常是彙總，列數多到這裡代表查詢不夠聚焦，應該再改寫
 MAX_ROWS = 50
@@ -39,15 +41,31 @@ def _plain(value: Any) -> Any:
     return value
 
 
-def run_readonly(engine: Engine, sql: str) -> QueryResult:
+# 模型寫的 SQL 不准碰這兩個函式：資料權限靠交易裡的設定（app.scope_owner／app.scope_region）過濾，
+# SELECT set_config(...) 就能在同一個交易裡把範圍清掉，看到別人的客戶。
+# 這只是讓錯誤訊息好懂；真正的保證是 semantic_layer.sql 收回了唯讀角色呼叫 set_config 的權限
+# （文字檢查擋不住 U&"..." 這類跳脫寫法）
+SETTING_FUNCTIONS = re.compile(r"(?i)\b(set_config|current_setting)\b")
+
+
+def run_readonly(engine: Engine, sql: str, scope: Scope | None = None) -> QueryResult:
+    """scope 沒給就不過濾（評測用）；API 進來的查詢一律要給。"""
     statement = sql.strip().rstrip(";").strip()
     if ";" in statement:
         raise QueryRejected("一次只能執行一條查詢")
     if not re.match(r"(?is)^(select|with)\b", statement):
         raise QueryRejected("只能執行 SELECT 查詢")
+    if SETTING_FUNCTIONS.search(statement):
+        raise QueryRejected("查詢裡不能改資料庫設定")
+    scope = scope or Scope.everything()
     with engine.connect() as conn:
         with conn.begin() as transaction:
             conn.exec_driver_sql("SET TRANSACTION READ ONLY")
+            # 範圍在切成唯讀角色之前設好；第三個參數 true 代表只在這個交易有效，交易結束就還原
+            conn.execute(
+                text("SELECT set_config('app.scope_owner', :owner, true), set_config('app.scope_region', :region, true)"),
+                {"owner": scope.owner_id or "", "region": scope.region or ""},
+            )
             conn.exec_driver_sql("SET LOCAL ROLE semantic_reader")
             conn.exec_driver_sql(f"SET LOCAL statement_timeout = '{STATEMENT_TIMEOUT}'")
             # no_parameters：模型寫的 LIKE '%…%' 不能被當成參數符號

@@ -24,10 +24,10 @@ class PersonalTranscriber:
 
 
 @pytest.fixture
-def client(engine):
+def client(engine, sign_in):
     with engine.connect() as conn:
         last = conn.execute(text("SELECT max(id) FROM visit")).scalar_one()
-    yield TestClient(app)
+    yield sign_in(TestClient(app), "U01")
     with engine.begin() as conn:
         for table in ("writeback_log", "crm_visit_record", "sap_quotation_draft", "oa_expense_form"):
             conn.execute(text(f"DELETE FROM {table} WHERE visit_id > :last"), {"last": last})

@@ -1,9 +1,11 @@
 import { useState } from "react"
-import { ChevronDown, Loader2 } from "lucide-react"
+import { CalendarPlus, Check, ChevronDown, Loader2 } from "lucide-react"
 import { Link } from "react-router"
 
 import { escalateAsk, isFinished, type Ask, type TraceItem } from "@/api/asks"
 import { Button } from "@/components/ui/button"
+import { useAuth } from "@/lib/auth"
+import { pinCustomers, readFeedback } from "@/lib/route-feedback"
 import { cn } from "@/lib/utils"
 
 const STEP_LABEL: Record<TraceItem["step"], string> = {
@@ -39,6 +41,7 @@ export function AskAnswer({ ask, onChange }: { ask: Ask; onChange: (ask: Ask) =>
         <p className="rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">卡住的原因：{ask.evidence.blocked_reason}</p>
       )}
       {ask.evidence?.columns && ask.evidence.rows && <ResultTable columns={ask.evidence.columns} rows={ask.evidence.rows} />}
+      {ask.customers.length > 0 && <PinToRoute customers={ask.customers} />}
       {sources.length > 0 && (
         <div className="flex flex-col gap-1.5">
           <p className="text-xs text-muted-foreground">{ask.evidence?.route === "web" ? "網路出處" : "出處"}</p>
@@ -85,6 +88,48 @@ export function AskAnswer({ ask, onChange }: { ask: Ask; onChange: (ask: Ask) =>
       {(ask.status === "no_evidence" || ask.status === "not_converged") && ask.evidence?.reason !== "medical" && (
         <Escalate ask={ask} onChange={onChange} />
       )}
+    </div>
+  )
+}
+
+/**
+ * 原型的「排入拜訪」：答案提到的客戶排進今天的路線。系統只有今日路線、沒有排日期的拜訪計畫，按鈕照實說「今天」。
+ * 只有業務看得到：主管沒有路線。調整跟「插入下一站」一樣只存在這支手機，下次打開今日路線時送出重排。
+ */
+function PinToRoute({ customers }: { customers: Ask["customers"] }) {
+  const user = useAuth()?.user
+  // 之前已經排過（例如同一個問題問第二次）就直接顯示已排入
+  const [pinned, setPinned] = useState(() =>
+    user ? customers.every((customer) => readFeedback(user.id).pinned.includes(customer.id)) : false
+  )
+  if (!user || user.role !== "sales") return null
+
+  if (pinned) {
+    return (
+      <div className="flex flex-col items-start rounded-lg bg-primary/10 px-3 pt-2.5 text-sm text-primary">
+        <span className="flex items-center gap-1.5">
+          <Check className="size-4 shrink-0" />
+          已排入，今日路線會排在最前面
+        </span>
+        <Link to="/" className="flex min-h-11 items-center font-medium underline underline-offset-4">
+          去今日路線
+        </Link>
+      </div>
+    )
+  }
+  return (
+    <div className="flex flex-col gap-1.5">
+      <p className="text-xs text-muted-foreground">答案提到的客戶：{customers.map((customer) => customer.name).join("、")}</p>
+      <Button
+        className="h-11"
+        onClick={() => {
+          pinCustomers(user.id, customers.map((customer) => customer.id))
+          setPinned(true)
+        }}
+      >
+        <CalendarPlus className="size-4" />
+        排入今天的路線（{customers.length} 家）
+      </Button>
     </div>
   )
 }

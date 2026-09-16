@@ -10,6 +10,7 @@ from google.genai import errors
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.api.auth import CurrentUser
 from app.config import NotConfigured, settings
 from app.db import get_session
 from app.services import voice
@@ -29,8 +30,11 @@ class VoiceSessionOut(BaseModel):
 
 
 @router.post("/session", response_model=VoiceSessionOut)
-def start_session(session: SessionDep):
-    """開一段語音問答。每次發一把新的臨時金鑰，只能開一段對話；正式的金鑰不會離開伺服器。"""
+def start_session(session: SessionDep, user: CurrentUser):
+    """開一段語音問答。每次發一把新的臨時金鑰，只能開一段對話；正式的金鑰不會離開伺服器。
+
+    要登入：臨時金鑰會花錢；語音裡查資料走問答 API，也要知道是誰才能照權限過濾。
+    """
     # 模型要查資料時走的是問答的反覆查詢與 CRAG；AI 模型沒設定，連上了也什麼都答不了
     if not settings().llm_provider:
         raise HTTPException(503, "語音問答還不能用：AI 模型還沒設定")

@@ -14,6 +14,7 @@ from sqlalchemy import Engine
 from sqlalchemy.exc import DBAPIError
 
 from app.llm import LLM
+from app.services.scope import Scope
 from app.services.sql_executor import QueryRejected, QueryResult, describe_views, run_readonly
 
 MAX_ROUNDS = 3  # SDD 流程設計：round < 上限 3
@@ -113,7 +114,10 @@ def _evidence(rounds: list[Round]) -> dict[str, Any]:
     return {}
 
 
-def answer_data(engine: Engine, llm: LLM, question: str, today: dt.date, on_step: OnStep) -> DataAnswer:
+def answer_data(
+    engine: Engine, llm: LLM, question: str, today: dt.date, on_step: OnStep, scope: Scope | None = None
+) -> DataAnswer:
+    """scope：只查得到這個範圍的客戶（見 services/scope.py）。沒給就不過濾，只有評測這樣用。"""
     system = SYSTEM.format(views=describe_views(engine))
     rounds: list[Round] = []
     for number in range(1, MAX_ROUNDS + 1):
@@ -124,7 +128,7 @@ def answer_data(engine: Engine, llm: LLM, question: str, today: dt.date, on_step
 
         rnd = Round(sql=step.get("sql") or "", reason=step["reason"])
         try:
-            rnd.result = run_readonly(engine, rnd.sql)
+            rnd.result = run_readonly(engine, rnd.sql, scope)
         except QueryRejected as exc:
             rnd.error = str(exc)
         except DBAPIError as exc:

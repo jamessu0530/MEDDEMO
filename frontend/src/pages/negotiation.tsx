@@ -6,14 +6,21 @@ import { getNegotiationCard, type NegotiationCard } from "@/api/customers"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
+import { useAuth } from "@/lib/auth"
+import { customerNotFoundText } from "@/lib/scope"
 import { cn } from "@/lib/utils"
 
-type LoadState = { status: "loading" } | { status: "error"; message: string } | { status: "ready"; card: NegotiationCard }
+type LoadState =
+  | { status: "loading" }
+  // missing：後端回 404（沒有這家，或不是登入者看得到的客戶），回客戶檔案也一樣看不到
+  | { status: "error"; message: string; missing: boolean }
+  | { status: "ready"; card: NegotiationCard }
 
 /** 談判卡（原型 S-04，FR-3）：連鎖客戶才有。對照數據來自交易資料，切入點是內部文件的原文段落 */
 export function NegotiationPage() {
   const { customerId = "" } = useParams()
   const navigate = useNavigate()
+  const user = useAuth()?.user
   const [state, setState] = useState<LoadState>({ status: "loading" })
   const [attempt, setAttempt] = useState(0)
   const profilePath = `/customers/${customerId}`
@@ -24,9 +31,10 @@ export function NegotiationPage() {
       .then((card) => setState({ status: "ready", card }))
       .catch((error) => {
         if (controller.signal.aborted) return
+        const missing = error instanceof ApiError && error.status === 404
         const message =
-          error instanceof ApiError && (error.status === 404 || error.status === 409) ? error.message : "連不上伺服器，談判卡沒有載入。"
-        setState({ status: "error", message })
+          error instanceof ApiError && error.status === 409 ? error.message : "連不上伺服器，談判卡沒有載入。"
+        setState({ status: "error", message, missing })
       })
     return () => controller.abort()
   }, [customerId, attempt])
@@ -36,7 +44,10 @@ export function NegotiationPage() {
       <PageHeader title="談判卡" subtitle={state.status === "ready" ? state.card.customer.name : undefined} backTo={profilePath} />
       <main className="flex flex-1 flex-col gap-4 px-4 pt-4 pb-28">
         {state.status === "loading" && <p className="py-10 text-center text-sm text-muted-foreground">整理談判資料中…</p>}
-        {state.status === "error" && (
+        {state.status === "error" && state.missing && (
+          <Notice text={customerNotFoundText(user)} action={{ label: "回客戶清單", onClick: () => navigate("/customers") }} />
+        )}
+        {state.status === "error" && !state.missing && (
           <Notice
             text={state.message}
             action={{

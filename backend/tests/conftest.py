@@ -109,20 +109,31 @@ def docs(engine, tmp_path):
         return dict(session.execute(text("SELECT section, id FROM document_chunk")).all())
 
 
+def token_for(engine, user_id: str) -> str:
+    """直接簽一張 token，不走登入 API：登入會把版號加一，同一個帳號之前發的 token 就失效了。"""
+    from app.models import AppUser
+    from app.services import auth as auth_service
+
+    with Session(engine) as session:
+        return auth_service.create_token(session.get(AppUser, user_id))
+
+
 @pytest.fixture
 def auth(engine):
-    """拿某個帳號的 Authorization 標頭。假資料給每個帳號的密碼都是 DEMO_PASSWORD 的預設值。"""
-    from fastapi.testclient import TestClient
-
-    from app.main import app
+    """拿某個帳號的 Authorization 標頭。"""
 
     def headers(user_id: str = "U01") -> dict[str, str]:
-        with TestClient(app) as client:
-            response = client.post(
-                "/api/auth/login",
-                json={"email": f"{user_id.lower()}@meddemo.tw", "password": settings().demo_password},
-            )
-        assert response.status_code == 200, response.text
-        return {"Authorization": f"Bearer {response.json()['token']}"}
+        return {"Authorization": f"Bearer {token_for(engine, user_id)}"}
 
     return headers
+
+
+@pytest.fixture
+def sign_in(engine):
+    """讓一個 TestClient 之後的請求都帶某個帳號的登入。單一請求要換人時，另外傳 headers 會蓋過去。"""
+
+    def apply(client, user_id: str = "U01"):
+        client.headers["Authorization"] = f"Bearer {token_for(engine, user_id)}"
+        return client
+
+    return apply

@@ -1,4 +1,5 @@
-import { request } from "@/api/client"
+import { jsonBody, request } from "@/api/client"
+import { readUser } from "@/lib/auth"
 
 export type Customer = {
   id: string
@@ -16,24 +17,29 @@ export const CUSTOMER_TYPE_LABEL: Record<Customer["type"], string> = {
   clinic: "診所",
 }
 
-// 沒訊號的地方也要能選客戶開始錄音（FR-4.3）：每次載入成功就把清單記在手機裡，連不上時拿出來用
+// 沒訊號的地方也要能選客戶開始錄音（FR-4.3）：每次載入成功就把清單記在手機裡，連不上時拿出來用。
+// 每個人看得到的客戶不一樣，key 帶登入的使用者 id，同一支手機換人登入不會看到上一個人的客戶
 const CUSTOMER_CACHE_KEY = "meddemo:customers"
+
+function cacheKey() {
+  return `${CUSTOMER_CACHE_KEY}:${readUser()?.id ?? "anonymous"}`
+}
 
 function readCachedCustomers(): Customer[] | null {
   try {
-    const raw = localStorage.getItem(CUSTOMER_CACHE_KEY)
+    const raw = localStorage.getItem(cacheKey())
     return raw ? (JSON.parse(raw) as Customer[]) : null
   } catch {
     return null // 瀏覽器不讓存（例如部分無痕模式）就當作沒有
   }
 }
 
-/** 客戶清單；連不上伺服器時改用上次載入的清單（cached 為 true） */
+/** 登入者看得到的客戶清單（後端依登入身分篩過）；連不上伺服器時改用上次載入的清單（cached 為 true） */
 export async function listCustomers(signal?: AbortSignal) {
   try {
     const customers = await request<Customer[]>("/api/customers", { signal })
     try {
-      localStorage.setItem(CUSTOMER_CACHE_KEY, JSON.stringify(customers))
+      localStorage.setItem(cacheKey(), JSON.stringify(customers))
     } catch {
       // 存不進去就算了，下次沒網路時只是看不到清單
     }
@@ -74,7 +80,8 @@ export type CustomerProfile = {
   highlights: string[]
   stats: ProfileStats
   intervals: { month: string; gap_days: number | null }[]
-  open_quotes: { visit_id: string; date: string; items: string; amount: number }[]
+  // 在客戶檔案直接開的報價沒有拜訪，visit_id 是 null
+  open_quotes: { quote_no: string; visit_id: string | null; date: string; items: string; amount: number }[]
   commitments: {
     visit_id: string
     visit_date: string
@@ -107,4 +114,31 @@ export function getCustomerProfile(id: string, signal?: AbortSignal) {
 
 export function getNegotiationCard(id: string, signal?: AbortSignal) {
   return request<NegotiationCard>(`/api/customers/${encodeURIComponent(id)}/negotiation`, { signal })
+}
+
+// 開報價（原型客戶檔案的「開報價」）：這家近半年常進的品項，unit_price 已經是給這家客戶的供貨價
+export type QuoteItem = {
+  sku: string
+  name: string
+  spec: string
+  unit: string
+  unit_price: number
+  usual_qty: number
+}
+
+export type Quote = {
+  quote_no: string
+  customer_id: string
+  items: { sku: string; name: string; qty: number; unit_price: number; amount: number }[]
+  amount: number
+  created_at: string
+}
+
+export function getQuoteItems(id: string, signal?: AbortSignal) {
+  return request<QuoteItem[]>(`/api/customers/${encodeURIComponent(id)}/quote-items`, { signal })
+}
+
+/** 開 SAP 報價草稿；數量 0 的品項不要送（後端對沒有品項或數量 ≤ 0 回 422） */
+export function createQuote(id: string, items: { sku: string; qty: number }[]) {
+  return request<Quote>(`/api/customers/${encodeURIComponent(id)}/quotes`, jsonBody("POST", { items }))
 }

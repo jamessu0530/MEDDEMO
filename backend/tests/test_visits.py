@@ -55,10 +55,10 @@ def not_configured():
 
 
 @pytest.fixture
-def client(engine):
+def client(engine, sign_in):
     with engine.connect() as conn:
         last = conn.execute(text("SELECT max(id) FROM visit")).scalar_one()
-    yield TestClient(app)
+    yield sign_in(TestClient(app), "U01")
     # 清掉這個測試建的拜訪（編號都排在測試開始前的最後一筆之後），其他測試看到的仍是原本的假資料
     with engine.begin() as conn:
         for table in ("writeback_log", "crm_visit_record", "sap_quotation_draft", "oa_expense_form"):
@@ -227,3 +227,40 @@ def test_a_draft_can_be_discarded_but_a_confirmed_visit_cannot(client, providers
     client.post(f"/api/visits/{confirmed_id}/confirm")
     assert client.delete(f"/api/visits/{confirmed_id}").status_code == 409
     assert client.post(f"/api/visits/{confirmed_id}/confirm").status_code == 409
+
+
+def test_a_competitor_or_complaint_notifies_the_region_manager(client, providers, auth):
+    visit_id = make_draft(client, providers)
+    visit = client.post(f"/api/visits/{visit_id}/confirm").json()
+    notice = visit["risk_notice"]
+    assert notice["manager_name"] == "陳建宏"  # 忠孝店在北區
+    assert notice["reason"] == "提到競品御松田；客訴：補貨延遲三天"
+    assert notice["max"] == 5 and notice["score"] == len(notice["items"])
+    # 忠孝店是刻意設計的「進貨間隔拉長」案例，這次又提到競品與客訴
+    assert {"進貨間隔拉長", "近 90 天提到競品", "近 90 天有客訴"} <= set(notice["items"])
+
+    notices = client.get("/api/manager/notices", headers=auth("M01")).json()
+    mine = next(n for n in notices if n["visit_id"] == visit_id)
+    assert mine["rep_name"] == "林昱辰" and mine["customer_name"] == "康泰連鎖藥局 · 忠孝店" and mine["seen_at"] is None
+    # 中區主管看不到北區的通報；業務打不開主管端
+    assert all(n["visit_id"] != visit_id for n in client.get("/api/manager/notices", headers=auth("M02")).json())
+    assert client.get("/api/manager/notices").status_code == 403
+
+    unseen = client.get("/api/manager/notices/unseen", headers=auth("M01")).json()["count"]
+    assert client.post(f"/api/manager/notices/{mine['id']}/seen", headers=auth("M01")).json()["seen_at"] is not None
+    assert client.get("/api/manager/notices/unseen", headers=auth("M01")).json()["count"] == unseen - 1
+    assert client.post(f"/api/manager/notices/{mine['id']}/seen", headers=auth("M02")).status_code == 404
+
+
+def test_a_routine_visit_does_not_notify_anyone(client, providers):
+    fields = {**FIELDS, "competitor": None, "complaint": None}
+    sources = {k: v for k, v in SOURCES.items() if k not in ("competitor", "complaint")}
+    visit_id = make_draft(client, providers, FakeExtractor(fields, sources))
+    assert client.post(f"/api/visits/{visit_id}/confirm").json()["risk_notice"] is None
+
+
+def test_a_competitor_never_mentioned_before_is_marked_first(client, providers):
+    fields = {**FIELDS, "competitor": [{"name": "御松田", "detail": "條件比我們好"}, {"name": "新和生技", "detail": "剛來拜訪"}]}
+    visit_id = make_draft(client, providers, FakeExtractor(fields))
+    # 御松田在忠孝店上次拜訪（10/19）就提過了，只有新和生技是第一次
+    assert client.get(f"/api/visits/{visit_id}").json()["first_competitors"] == ["新和生技"]

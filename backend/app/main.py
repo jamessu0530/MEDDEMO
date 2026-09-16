@@ -8,7 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app import usage
-from app.api import asks, auth, customers, escalations, mock_systems, products, route, transcription, visits, voice
+from app.api import asks, auth, customers, escalations, manager, mock_systems, products, route, transcription, visits, voice
 from app.config import settings
 from app.db import get_session
 
@@ -28,6 +28,7 @@ app.include_router(voice.router)
 app.include_router(transcription.router)
 app.include_router(escalations.router)
 app.include_router(route.router)
+app.include_router(manager.router)
 
 
 @app.get("/health")

@@ -98,7 +98,8 @@ def _write_sap(session: Session, visit: Visit) -> None:
             raise ValueError(f"意向第 {line_no} 項缺少品項或數量")
         session.execute(
             insert(SapQuotationDraft).values(
-                visit_id=visit.id, line_no=line_no, customer_id=visit.customer_id, sku=item["sku"], qty=item["qty"],
+                quote_no=visit.id, visit_id=visit.id, line_no=line_no, customer_id=visit.customer_id,
+                sku=item["sku"], qty=item["qty"], created_by=visit.user_id,
                 # 報價以標準供貨價為基準（連鎖 9 折、獨立藥局 95 折、診所原價），與歷史報價一致
                 unit_price=supply_price(prices[item["sku"]], customer_type),
             ).on_conflict_do_nothing(index_elements=["visit_id", "line_no"])

@@ -11,8 +11,8 @@ from app.services import live_transcription, voice
 
 
 @pytest.fixture
-def client(engine):
-    return TestClient(app)
+def client(engine, sign_in):
+    return sign_in(TestClient(app), "U01")
 
 
 def field(obj, camel):

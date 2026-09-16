@@ -1,7 +1,7 @@
 import { ApiError, jsonBody, request } from "@/api/client"
 
 // 每一站為什麼被排進來。後端 today_route.SIGNAL_LABEL 有同一組，改了要一起改
-export type RouteSignal = "commitment" | "ar" | "interval" | "order" | "contract" | "visit" | "routine"
+export type RouteSignal = "commitment" | "ar" | "interval" | "order" | "contract" | "visit" | "opportunity" | "routine"
 
 export const SIGNAL_LABEL: Record<RouteSignal, string> = {
   commitment: "承諾逾期",
@@ -10,6 +10,8 @@ export const SIGNAL_LABEL: Record<RouteSignal, string> = {
   order: "很久沒進貨",
   contract: "合約快到期",
   visit: "很久沒去",
+  // 唯一一個不是警示的理由：上次想進的貨報價還沒結、進貨金額變大，去了有機會多做生意
+  opportunity: "商機",
   routine: "例行",
 }
 

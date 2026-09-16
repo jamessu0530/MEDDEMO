@@ -10,9 +10,12 @@ from google.genai import errors
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.api.auth import CurrentUser
 from app.config import NotConfigured
 from app.db import get_session
+from app.models import Customer
 from app.services import live_transcription
+from app.services.scope import Scope
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/transcription", tags=["transcription"])
@@ -32,10 +35,16 @@ class TranscriptionSessionOut(BaseModel):
 
 
 @router.post("/session", response_model=TranscriptionSessionOut)
-def start_session(session: SessionDep, body: TranscriptionSessionIn):
-    """開始錄音時呼叫。拿不到金鑰時錄音照常進行，只是畫面上沒有即時文字。"""
+def start_session(session: SessionDep, body: TranscriptionSessionIn, user: CurrentUser):
+    """開始錄音時呼叫。拿不到金鑰時錄音照常進行，只是畫面上沒有即時文字。
+
+    要登入：每次都發一把 Gemini 臨時金鑰，會花錢。熱詞只帶登入者看得到的客戶名稱。
+    """
+    customer_id = body.customer_id
+    if customer_id and not Scope.for_user(user).allows(session.get(Customer, customer_id) or Customer()):
+        customer_id = None
     try:
-        live = live_transcription.create_session(live_transcription.vocabulary(session, body.customer_id))
+        live = live_transcription.create_session(live_transcription.vocabulary(session, customer_id))
     except NotConfigured as exc:
         raise HTTPException(503, f"即時轉錄還不能用：{exc}") from exc
     except errors.APIError as exc:

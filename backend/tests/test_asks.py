@@ -282,8 +282,8 @@ def test_a_company_internal_question_is_not_answered_from_the_web(engine, docs, 
 
 
 @pytest.fixture
-def client(engine):
-    yield TestClient(app)
+def client(engine, sign_in):
+    yield sign_in(TestClient(app), "U01")
     with engine.begin() as conn:
         conn.execute(text("DELETE FROM ask_record"))
     redis().flushdb()
