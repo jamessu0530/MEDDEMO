@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { MessageCircleQuestion, Mic, Store } from "lucide-react"
+import { CalendarDays, MessageCircleQuestion, Mic } from "lucide-react"
 import { useLocation } from "react-router"
 
 import { Button } from "@/components/ui/button"
@@ -9,9 +9,9 @@ import { cn } from "@/lib/utils"
 // FR-11 的三個主要操作，照業務跑一站的順序：進門前、走出店門、想到就問
 const STEPS = [
   {
-    icon: Store,
-    title: "進門前，先看客戶檔案",
-    body: "首頁點客戶，最上面是「進門前三分鐘」：進貨間隔、帳齡、答應過的事和競品。連鎖客戶另有談判卡，帶著數字談。",
+    icon: CalendarDays,
+    title: "打開就是今日路線",
+    body: "首頁照時間排好今天跑哪幾家，每一站都寫了為什麼排這家。點一站進客戶檔案，最上面是「進門前三分鐘」：進貨間隔、帳齡、答應過的事和競品，連鎖客戶另有談判卡。最上面「需立即處理」那張卡排錯了，按暫緩或誤判，下次就少排。",
   },
   {
     icon: Mic,

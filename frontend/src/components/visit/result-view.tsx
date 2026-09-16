@@ -2,9 +2,11 @@ import { useState } from "react"
 import { CheckCircle2, CircleAlert, RotateCw } from "lucide-react"
 import { useNavigate } from "react-router"
 
+import { remainingStops } from "@/api/route"
 import { retryWriteback, type Visit, type WritebackItem, type WritebackTarget } from "@/api/visits"
 import { Button } from "@/components/ui/button"
 import { formatDate } from "@/lib/format"
+import { readRep } from "@/lib/rep"
 import { cn } from "@/lib/utils"
 
 const TARGETS: { target: WritebackTarget; label: string; content: string }[] = [
@@ -28,6 +30,8 @@ export function ResultView({ visit, onChange }: { visit: Visit; onChange: (visit
   const results = new Map(visit.writeback.map((item) => [item.target, item]))
   const written = visit.writeback.filter((item) => item.status === "success" || item.status === "skipped").length
   const complete = visit.status === "synced"
+  const rep = readRep()
+  const remaining = rep ? remainingStops(rep.id, visit.customer_id) : null
 
   async function retry(target: WritebackTarget) {
     setRetrying(target)
@@ -96,7 +100,11 @@ export function ResultView({ visit, onChange }: { visit: Visit; onChange: (visit
         </p>
       )}
       {error && <p className="text-sm text-destructive">{error}</p>}
+      {/* 回寫完後回今日路線接著跑下一站；還有幾站用手機裡記著的那份路線算，算不出來就只寫「回今日路線」 */}
       <Button className="h-12 text-base" onClick={() => navigate("/")}>
+        回今日路線{remaining !== null && remaining > 0 ? ` · 還有 ${remaining} 站` : ""}
+      </Button>
+      <Button variant="outline" className="h-12 text-base" onClick={() => navigate("/customers")}>
         回客戶清單
       </Button>
     </div>

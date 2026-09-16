@@ -1,0 +1,57 @@
+{
+  "mean": {
+    "interval_change": 0.0029535575689105743,
+    "visit_gap": 1.0031672836354353,
+    "order_gap": 0.5346301894811958,
+    "ar_age_days": 23.903752872095993,
+    "contract_soon": 0.0013814427140952544,
+    "grade_weight": 2.2047485320398263
+  },
+  "sd": {
+    "interval_change": 0.05301115341788669,
+    "visit_gap": 0.12591467080786056,
+    "order_gap": 0.3061516518996921,
+    "ar_age_days": 20.41870069252927,
+    "contract_soon": 0.0172495227754995,
+    "grade_weight": 0.6649225141202797
+  },
+  "weights": {
+    "interval_change": 0.11906476973273121,
+    "visit_gap": 0.11561864890885504,
+    "order_gap": 0.47755329280212144,
+    "ar_age_days": 0.3949539006459848,
+    "contract_soon": 0.045951022056895184,
+    "grade_weight": 0.008994307824005593
+  },
+  "bias": -2.317470678328772,
+  "features": [
+    "interval_change",
+    "visit_gap",
+    "order_gap",
+    "ar_age_days",
+    "contract_soon",
+    "grade_weight"
+  ],
+  "metrics": {
+    "trained_rows": 3917,
+    "test_rows": 1306,
+    "test_positive_rate": 0.13552833078101073,
+    "auc": 0.7196759294010499,
+    "rule_auc": 0.5338032256934541,
+    "quintile_hit_rates": [
+      0.2988505747126437,
+      0.17624521072796934,
+      0.08045977011494253,
+      0.0842911877394636,
+      0.038314176245210725
+    ],
+    "train_period": [
+      "2025-10-29",
+      "2026-07-28"
+    ],
+    "test_period": [
+      "2026-07-28",
+      "2026-10-27"
+    ]
+  }
+}

@@ -8,6 +8,7 @@
 """
 
 import random
+from math import exp
 from datetime import date, datetime, time, timedelta, timezone
 
 import catalog
@@ -93,6 +94,29 @@ CONTENT_RATES = {
     "commitment": 0.4 / RATE_SCALE,
     "follow_up": 0.35 / RATE_SCALE,
 }
+
+# 拜訪內容的機率跟客戶當下的狀態有關，不是每家每次都一樣。沒有這層關聯，拜訪紀錄裡就沒有
+# 「哪些狀態的客戶值得先去」這個訊號，排序模型（backend/app/services/route_model.py）學不到東西。
+#
+# 係數的單位是「標準差」：把每個狀態值先換算成離平均幾個標準差，再乘上係數、取指數當倍率。
+# 用標準差而不是原始值，是因為原始值的尺度差太多（間隔變化是比例、帳齡是天數），
+# 而且假資料很規律，多數客戶的狀態都貼著平均，用原始值乘出來幾乎沒有差別（實測 AUC 0.51）。
+CONTENT_SIGNALS = {
+    # 進貨間隔拉長：補貨次數被分走，通常是陳列位被競品換掉的前兆，所以比較容易聊到競品
+    "competitor": {"interval_change": 1.5},
+    # 帳款拖著沒處理、上次拜訪隔太久：沒人去收的問題會累積下來
+    "complaint": {"ar_age_days": 0.7, "visit_gap": 0.3},
+    # 距上次進貨超過這家客戶平常的間隔：去了比較容易補到單
+    "intent": {"order_gap": 1.3},
+    # 帳款拖越久越要談付款，合約剩越少天越要談續約，兩種都會留下承諾
+    "commitment": {"ar_age_days": 0.8, "contract_soon": 0.8},
+    # 合約快到期的客戶比較會約下次再談
+    "follow_up": {"contract_soon": 0.5},
+}
+# 「多久沒去」的係數壓得比其他低，是因為它本來就是排拜訪的依據。全靠它的話，排序模型學到的
+# 只是現行規則已經知道的事；真正多出來的資訊在進貨、帳款與合約上。
+# 指數前先把加總夾在這個範圍：不夾的話少數極端客戶會吃掉大部分的內容
+CONTENT_SIGNAL_CLIP = 2.5
 
 # 五家主角客戶的最近一次拜訪寫死內容：(幾天前, 內容)。承諾與追蹤日為拜訪後第幾天。
 SCRIPTED_VISITS = {
@@ -253,22 +277,77 @@ def build_receivables(rng, customer, lines, as_of, late):
     return rows
 
 
-def random_content(rng, basket):
+# 各等級大約幾天拜訪一次（排程排出來的結果，見 VISIT_WEIGHT 的註解）。判斷「這家是不是拖太久沒去」用的基準
+VISIT_GAP_BY_GRADE = {"A": 12, "B": 17, "C": 32}
+# 合約剩多久算「開始要談續約」。內部文件寫的是 3 個月，這裡用兩倍當斜坡的起點，分數才是連續的
+CONTRACT_HORIZON_DAYS = 180
+
+
+def trade_history(customers, transactions, receivables):
+    """把交易與帳款整理成「每家客戶一份」，算狀態時才不必每次重掃全表。"""
+    order_dates, invoices = {}, {}
+    for c in customers:
+        order_dates[c["id"]], invoices[c["id"]] = set(), []
+    for line in transactions:
+        order_dates[line["customer_id"]].add(line["date"])
+    for row in receivables:
+        invoices[row["customer_id"]].append((row["invoice_date"], row["paid_date"]))
+    return {cid: sorted(dates) for cid, dates in order_dates.items()}, invoices
+
+
+def customer_features(customer, day, last_visit, order_dates, invoices):
+    """出門前就知道的客戶狀態，五個連續值。
+
+    定義跟後端排序模型（backend/app/services/route_model.py）用的同一組，改了要兩邊一起改，
+    否則模型訓練時看到的資料跟上線時算出來的不一樣。
+    """
+    before = [d for d in order_dates if d < day]
+    recent = [d for d in before if d > day - timedelta(days=90)]
+    older = [d for d in before if day - timedelta(days=180) < d <= day - timedelta(days=90)]
+
+    def avg_gap(dates):
+        return (dates[-1] - dates[0]).days / (len(dates) - 1) if len(dates) > 1 else None
+
+    gap_now, gap_before = avg_gap(recent), avg_gap(older)
+    typical_gap = gap_before or gap_now or 30
+    ar_age = max(
+        ((day - invoice_date).days for invoice_date, paid_date in invoices
+         if invoice_date <= day and (paid_date is None or paid_date > day)),
+        default=0,
+    )
+    contract_left = (customer["contract_end_date"] - day).days if customer["contract_end_date"] else None
+    return {
+        # 近 90 天的平均進貨間隔比之前拉長幾成（負的代表變密）
+        "interval_change": gap_now / gap_before - 1 if gap_now and gap_before else 0.0,
+        # 距上次拜訪幾天，除以這個等級平常的間隔
+        "visit_gap": (day - last_visit).days / VISIT_GAP_BY_GRADE[customer["grade"]],
+        # 距上次進貨幾天，除以這家平常的進貨間隔
+        "order_gap": ((day - before[-1]).days if before else typical_gap) / typical_gap,
+        # 帳齡最久的未收款發票拖了幾天
+        "ar_age_days": float(ar_age),
+        # 合約快到期的程度：剩半年以上（或沒有合約）是 0，到期當天是 1。
+        # 不直接用「剩幾天」是因為多數客戶都是「還很久」，少數快到期的會變成極端值，
+        # 標準化之後只剩這幾家有分數，排序全被合約綁架（實測過）
+        "contract_soon": max(0.0, 1 - contract_left / CONTRACT_HORIZON_DAYS) if contract_left is not None else 0.0,
+    }
+
+
+def random_content(rng, basket, rates=CONTENT_RATES):
     content = {}
-    if rng.random() < CONTENT_RATES["competitor"]:
+    if rng.random() < rates["competitor"]:
         name = rng.choices(catalog.COMPETITORS, weights=[1, 3, 3, 3])[0]
         content["competitor"] = [(name, rng.choice(catalog.COMPETITOR_DETAILS))]
-    if rng.random() < CONTENT_RATES["complaint"]:
+    if rng.random() < rates["complaint"]:
         content["complaint"] = rng.choice(catalog.COMPLAINTS)
-    if rng.random() < CONTENT_RATES["intent"]:
+    if rng.random() < rates["intent"]:
         skus = rng.sample(sorted(basket), rng.choice([1, 1, 2]))
         content["intent"] = [(s, max(1, round(basket[s] * rng.uniform(0.5, 1.0)))) for s in skus]
-    if rng.random() < CONTENT_RATES["commitment"]:
+    if rng.random() < rates["commitment"]:
         if rng.random() < 0.7:
             content["commitment"] = ("us", rng.choice(catalog.OUR_COMMITMENTS), rng.randint(3, 14))
         else:
             content["commitment"] = ("customer", rng.choice(catalog.CUSTOMER_COMMITMENTS), rng.randint(3, 14))
-    if rng.random() < CONTENT_RATES["follow_up"]:
+    if rng.random() < rates["follow_up"]:
         content["follow_up"] = rng.randint(7, 21)
     return content
 
@@ -360,14 +439,50 @@ def schedule_visits(rng, customers, as_of):
     return planned
 
 
-def build_visits(rng, customers, baskets, products, as_of):
+def plan_content_rates(planned, customers, transactions, receivables):
+    """每次拜訪各種內容的機率：照客戶當下的狀態算倍率，再整體縮回原本的平均機率。
+
+    縮回去這一步是為了讓每種內容一年出現幾次跟以前一樣，客戶檔案的「待處理事項」才不會變多變少；
+    倍率只決定這些內容落在哪些客戶身上。
+    """
+    order_dates, invoices = trade_history(customers, transactions, receivables)
+    by_id = {c["id"]: c for c in customers}
+    last_visit = {}
+    rows = []
+    for c, visited_at, _ in planned:
+        day = visited_at.date()
+        # 第一次出現的客戶沒有上一次可比，就當作剛好照正常間隔來
+        previous = last_visit.get(c["id"], day - timedelta(days=VISIT_GAP_BY_GRADE[c["grade"]]))
+        rows.append(customer_features(by_id[c["id"]], day, previous, order_dates[c["id"]], invoices[c["id"]]))
+        last_visit[c["id"]] = day
+
+    names = list(rows[0])
+    mean = {k: sum(r[k] for r in rows) / len(rows) for k in names}
+    sd = {k: (sum((r[k] - mean[k]) ** 2 for r in rows) / len(rows)) ** 0.5 or 1.0 for k in names}
+    multipliers = []
+    for r in rows:
+        z = {k: (r[k] - mean[k]) / sd[k] for k in names}
+        multipliers.append({
+            key: exp(max(-CONTENT_SIGNAL_CLIP, min(CONTENT_SIGNAL_CLIP, sum(coef * z[name] for name, coef in weights.items()))))
+            for key, weights in CONTENT_SIGNALS.items()
+        })
+    scale = {
+        key: CONTENT_RATES[key] / (sum(m[key] for m in multipliers) / len(multipliers))
+        for key in CONTENT_RATES
+    }
+    return [{key: m[key] * scale[key] for key in CONTENT_RATES} for m in multipliers]
+
+
+def build_visits(rng, customers, baskets, products, as_of, transactions, receivables):
     tables = {name: [] for name in ("visit", "crm_visit_record", "sap_quotation_draft", "oa_expense_form", "writeback_log")}
-    for n, (c, visited_at, content) in enumerate(schedule_visits(rng, customers, as_of), start=1):
+    planned = schedule_visits(rng, customers, as_of)
+    rates = plan_content_rates(planned, customers, transactions, receivables)
+    for n, ((c, visited_at, content), rate) in enumerate(zip(planned, rates), start=1):
         visit_id = f"V{n:05d}"
         d = visited_at.date()
         if content is None:
             # 主角客戶其他的拜訪都是例行拜訪：提醒只來自寫死的那次，客戶檔案與題庫的答案才不會被亂數改掉
-            content = {} if c["name"] in SCENARIO_CUSTOMERS else random_content(rng, baskets[c["id"]])
+            content = {} if c["name"] in SCENARIO_CUSTOMERS else random_content(rng, baskets[c["id"]], rate)
         transcript, fields, sources = render_visit(rng, c, d, content, products)
         confirmed_at = visited_at + timedelta(minutes=10)
         tables["visit"].append({
@@ -443,5 +558,5 @@ def generate(as_of: date, seed: int = SEED) -> dict[str, list[dict]]:
         "sales_transaction": transactions,
         "receivable": receivables,
         # 拜訪用第三條亂數：改排程或內容機率，不會動到客戶與交易
-        **build_visits(random.Random(seed + 2), customers, baskets, products, as_of),
+        **build_visits(random.Random(seed + 2), customers, baskets, products, as_of, transactions, receivables),
     }
