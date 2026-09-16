@@ -6,9 +6,13 @@ export type AuthUser = {
   name: string
   role: "sales" | "manager"
   region: string
-  email: string
+  // 第三方登入自動開的帳號沒有 Email 與密碼
+  email: string | null
+  has_password?: boolean
   // 綁定的第三方登入方式；這支手機存的舊身分可能還沒有這個欄位，/api/auth/me 回來就會補上
   linked?: LinkedAccount[]
+  // 第三方登入自動開的帳號自己沒有客戶，看的是這位示範業務的路線與客戶
+  acting_as?: { id: string; name: string } | null
 }
 
 export type LinkedAccount = {

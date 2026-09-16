@@ -1,12 +1,17 @@
-"""登入相關 API（FR-12）。沒有註冊：帳號是公司給的，灌假資料時建好。"""
+"""登入相關 API（FR-12）。
+
+兩種帳號：公司給的八個（灌假資料時建好，用 Email 密碼登入），以及用 Google／GitHub／Facebook
+第一次登入時自動開的業務帳號。沒有 Email 註冊。
+"""
 
 import datetime as dt
+import secrets
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -26,13 +31,22 @@ class LinkedIdentity(BaseModel):
     linked_at: dt.datetime
 
 
+class ActingAs(BaseModel):
+    id: str
+    name: str
+
+
 class UserPublic(BaseModel):
     id: str
     name: str
     role: str
     region: str
-    email: str
+    email: str | None
+    # 第三方登入開的帳號沒有密碼：畫面上不給改密碼
+    has_password: bool
     linked: list[LinkedIdentity] = Field(default_factory=list)
+    # 第三方登入開的帳號自己沒有客戶，看的是這位示範業務的資料；畫面上要講清楚
+    acting_as: ActingAs | None = None
 
 
 class LoginRequest(BaseModel):
@@ -55,9 +69,12 @@ def _public(session: Session, user: AppUser) -> UserPublic:
     identities = session.scalars(
         select(UserIdentity).where(UserIdentity.user_id == user.id).order_by(UserIdentity.provider)
     )
+    acting = session.get(AppUser, user.acts_as_user_id) if user.acts_as_user_id else None
     return UserPublic(
         id=user.id, name=user.name, role=user.role, region=user.region, email=user.email,
+        has_password=bool(user.password_hash),
         linked=[LinkedIdentity(provider=i.provider, email=i.email, linked_at=i.created_at) for i in identities],
+        acting_as=ActingAs(id=acting.id, name=acting.name) if acting else None,
     )
 
 
@@ -116,15 +133,18 @@ def change_password(session: SessionDep, user: CurrentUser, body: ChangePassword
     try:
         token = auth.change_password(session, user, body.current_password, body.new_password)
     except auth.AuthError as exc:
-        raise _unauthorized(str(exc)) from None
+        # 不能回 401：人是登入著的，只是密碼打錯。前端看到 401 會當作登入過期把人登出
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from None
     session.commit()
     return AuthResponse(token=token, user=_public(session, user))
 
 
-# ── 第三方登入（綁定制）────────────────────────────────────────────
+# ── 第三方登入 ────────────────────────────────────────────────────
 #
-# 帳號是公司給的，第三方登入不會自動開新帳號（flutterproject4 會，那是遊戲；這裡照抄的話，
-# 全世界有 Google 帳號的人都能登入變成業務）。要先用 Email 登入、到帳號設定綁定，之後才能用它登入。
+# 任何人都能用 Google／GitHub／Facebook 登入：第一次登入自動開一個業務帳號（9/16 James 決定，
+# 決賽評審用自己的帳號就能試）。自動開的帳號一律是業務，不會是主管；自己沒有客戶，
+# 看的是示範業務（auth.EXTERNAL_ACCOUNT_ACTS_AS）的路線與客戶。
+# 公司給的 Email 帳號也能到帳號設定綁第三方，之後用它登入就回到那個帳號。
 
 Provider = Literal["google", "github", "facebook"]
 
@@ -138,7 +158,9 @@ class OAuthCredential(BaseModel):
     access_token: str | None = None  # Facebook：Facebook Login 給的 access token
 
 
-def _verify(provider: Provider, body: OAuthCredential) -> oauth.ExternalIdentity:
+def _verify(provider: Provider, body: OAuthCredential, rejected_status: int = 401) -> oauth.ExternalIdentity:
+    """rejected_status：登入時憑證不對是 401；已經登入、在綁定時憑證不對要回 400，
+    不然前端會把 401 當成登入過期，把人登出。"""
     missing = HTTPException(status_code=422, detail=f"缺少 {oauth.PROVIDER_LABEL[provider]} 登入的憑證")
     try:
         if provider == "google":
@@ -155,13 +177,35 @@ def _verify(provider: Provider, body: OAuthCredential) -> oauth.ExternalIdentity
     except oauth.NotConfigured as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from None
     except oauth.OAuthError as exc:
-        raise _unauthorized(str(exc)) from None
+        raise HTTPException(status_code=rejected_status, detail=str(exc)) from None
 
 
 @router.get("/providers")
 def providers() -> dict[str, dict[str, str] | None]:
     """登入頁要顯示哪些第三方按鈕。沒設定的是 null。"""
     return oauth.configured()
+
+
+def _create_external_account(session: Session, identity: oauth.ExternalIdentity) -> AppUser:
+    """第一次用第三方登入：開一個業務帳號並綁上這個第三方身分。"""
+    demo = session.get(AppUser, auth.EXTERNAL_ACCOUNT_ACTS_AS)
+    label = oauth.PROVIDER_LABEL[identity.provider]
+    name = identity.name or (identity.email.split("@")[0] if identity.email else f"{label} 使用者")
+    user = AppUser(
+        # 工號格式跟公司帳號（U01、M01）分開，一眼看得出是自己開的
+        id=f"X{secrets.token_hex(4).upper()}",
+        name=name[:40],
+        role="sales",
+        region=demo.region if demo else "",
+        email=None,
+        password_hash=None,
+        acts_as_user_id=demo.id if demo else None,
+    )
+    session.add(user)
+    session.flush()
+    session.add(UserIdentity(user_id=user.id, provider=identity.provider, subject=identity.subject, email=identity.email))
+    session.flush()
+    return user
 
 
 @router.post("/oauth/{provider}/login", response_model=AuthResponse)
@@ -171,9 +215,9 @@ def oauth_login(session: SessionDep, provider: Provider, body: OAuthCredential):
         select(UserIdentity).where(UserIdentity.provider == provider, UserIdentity.subject == identity.subject)
     )
     if bound is None:
-        label = oauth.PROVIDER_LABEL[provider]
-        raise _unauthorized(f"這個 {label} 帳號還沒綁定，請先用 Email 登入，到「帳號設定」綁定")
-    user = session.get(AppUser, bound.user_id)
+        user = _create_external_account(session, identity)
+    else:
+        user = session.get(AppUser, bound.user_id)
     token = auth.start_session(session, user)
     session.commit()
     return AuthResponse(token=token, user=_public(session, user))
@@ -181,7 +225,7 @@ def oauth_login(session: SessionDep, provider: Provider, body: OAuthCredential):
 
 @router.post("/oauth/{provider}/link", response_model=UserPublic)
 def oauth_link(session: SessionDep, user: CurrentUser, provider: Provider, body: OAuthCredential):
-    identity = _verify(provider, body)
+    identity = _verify(provider, body, rejected_status=status.HTTP_400_BAD_REQUEST)
     label = oauth.PROVIDER_LABEL[provider]
     existing = session.scalar(
         select(UserIdentity).where(UserIdentity.provider == provider, UserIdentity.subject == identity.subject)
@@ -213,6 +257,16 @@ def oauth_unlink(session: SessionDep, user: CurrentUser, provider: Provider):
         select(UserIdentity).where(UserIdentity.user_id == user.id, UserIdentity.provider == provider)
     )
     if mine is not None:
+        others = session.scalar(
+            select(func.count()).select_from(UserIdentity).where(
+                UserIdentity.user_id == user.id, UserIdentity.provider != provider
+            )
+        )
+        # 沒有密碼、也沒有別的第三方可以登入：解除了就永遠進不來
+        if not user.password_hash and not others:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail="這是這個帳號唯一的登入方式，解除綁定之後就登入不了"
+            )
         session.delete(mine)
         session.commit()
     return _public(session, user)

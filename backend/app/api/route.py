@@ -78,7 +78,8 @@ def get_today_route(session: SessionDep, body: RouteRequest, user: CurrentUser):
         signal_weights=dict(body.feedback.signal_weights),
     ) if body.feedback else today_route.Feedback()
     try:
-        result = today_route.build(session, user.id, feedback)
+        # 第三方登入開的帳號自己沒有客戶，看示範業務的路線
+        result = today_route.build(session, user.acts_as_user_id or user.id, feedback)
     except LookupError:
         raise HTTPException(status_code=403, detail="主管沒有自己的拜訪路線") from None
     return TodayRoute(

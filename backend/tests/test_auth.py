@@ -23,7 +23,8 @@ def login(client, user_id="U01", password=None):
 def test_login_returns_a_token_and_who_you_are(client):
     body = login(client).json()
     assert body["user"] == {
-        "id": "U01", "name": "林昱辰", "role": "sales", "region": "北區", "email": "u01@meddemo.tw", "linked": [],
+        "id": "U01", "name": "林昱辰", "role": "sales", "region": "北區", "email": "u01@meddemo.tw",
+        "has_password": True, "linked": [], "acting_as": None,
     }
     me = client.get("/api/auth/me", headers={"Authorization": f"Bearer {body['token']}"})
     assert me.json() == body["user"]
@@ -66,11 +67,14 @@ def test_changing_the_password(client):
     headers = {"Authorization": f"Bearer {login(client, 'U05').json()['token']}"}
     new_password = "new-password-1234"
     try:
-        assert client.post(
+        wrong = client.post(
             "/api/auth/change-password",
             json={"current_password": "not-the-password", "new_password": new_password},
             headers=headers,
-        ).json()["detail"] == auth.WRONG_CURRENT_PASSWORD
+        )
+        # 400 不是 401：人還是登入著，前端看到 401 會把人登出
+        assert wrong.status_code == 400 and wrong.json()["detail"] == auth.WRONG_CURRENT_PASSWORD
+        assert client.get("/api/auth/me", headers=headers).status_code == 200
         # 太短的新密碼擋在欄位驗證
         assert client.post(
             "/api/auth/change-password",

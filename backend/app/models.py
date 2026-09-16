@@ -81,8 +81,12 @@ class AppUser(Base):
     name: Mapped[str]
     role: Mapped[str]
     region: Mapped[str]
-    email: Mapped[str] = mapped_column(unique=True)
-    password_hash: Mapped[str]
+    # 公司給的帳號用 Email 登入；第三方登入自動開的帳號沒有 Email 與密碼（信箱記在 user_identity）。
+    # 可以是 NULL 而不是塞假信箱：同一個人用 Google 和 GitHub 各開一次，兩邊信箱一樣會撞到唯一限制
+    email: Mapped[str | None] = mapped_column(unique=True)
+    password_hash: Mapped[str | None]
+    # 第三方登入自動開的帳號自己沒有客戶，看的是這位示範業務的路線與客戶
+    acts_as_user_id: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
     # 每次登入加一，並寫進 JWT。每個請求比對兩邊，對不上就是這個帳號已經在別的裝置登入，
     # 舊 token 直接失效。這樣不必另外維護一張作廢清單
     session_version: Mapped[int] = mapped_column(server_default="1")

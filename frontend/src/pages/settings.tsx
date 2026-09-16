@@ -262,11 +262,22 @@ export function SettingsPage() {
           <p className="mt-1 text-sm text-muted-foreground">
             {user.region} · {ROLE_LABEL[user.role]}
           </p>
-          <p className="mt-0.5 text-sm break-all text-muted-foreground">{user.email}</p>
+          {user.email && <p className="mt-0.5 text-sm break-all text-muted-foreground">{user.email}</p>}
+          {user.acting_as && (
+            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+              這是用第三方登入開的帳號，自己名下沒有客戶，今日路線與客戶看的是示範業務{user.acting_as.name}的資料。
+            </p>
+          )}
         </section>
 
         {providers && <LinkedAccounts user={user} providers={providers} />}
 
+        {user.has_password === false ? (
+          <section className="flex flex-col gap-1">
+            <h2 className="text-sm font-semibold">密碼</h2>
+            <p className="text-sm leading-relaxed text-muted-foreground">這個帳號用第三方登入，沒有密碼。</p>
+          </section>
+        ) : (
         <section className="flex flex-col gap-3">
           <h2 className="text-sm font-semibold">改密碼</h2>
           <form className="flex flex-col gap-4" onSubmit={submit}>
@@ -324,6 +335,7 @@ export function SettingsPage() {
             </Button>
           </form>
         </section>
+        )}
 
         <Button variant="outline" className="h-12 w-full gap-2 text-base" onClick={() => void signOutSession()}>
           <LogOut className="size-5" />
