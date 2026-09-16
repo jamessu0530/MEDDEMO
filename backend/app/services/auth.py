@@ -4,7 +4,8 @@
 token 裡除了帳號還帶 sessionVersion，每次登入把資料庫的版號加一，每個請求比對兩邊。
 版號對不上就是這個帳號已經在別的裝置登入，舊 token 立刻失效，不必另外維護一張作廢清單。
 
-沒有註冊：帳號是公司給的（灌假資料時建好八個），業務不能自己開。
+公司給的八個帳號在灌假資料時建好，用 Email 登入；另外任何人都能用 Google／GitHub／Facebook 登入，
+第一次登入自動開一個業務帳號（見 api/auth.py 的 oauth_login）。
 """
 
 from __future__ import annotations
@@ -29,6 +30,11 @@ SESSION_SUPERSEDED = "帳號已在其他裝置登入，請重新登入"
 EMAIL_NOT_FOUND = "找不到這個 Email，請確認是不是公司給的帳號"
 WRONG_PASSWORD = "密碼錯誤，請再試一次"
 WRONG_CURRENT_PASSWORD = "目前的密碼不對"
+NO_PASSWORD = "這個帳號是用第三方登入開的，沒有密碼可以改"
+
+# 第三方登入自動開的帳號看誰的客戶與路線。新帳號自己名下沒有客戶，今日路線會是空的；
+# 決賽評審用自己的 Google 登入，要能馬上試完整流程（9/16 James 決定）
+EXTERNAL_ACCOUNT_ACTS_AS = "U01"
 
 # 沒設定 JWT_SECRET 時，這支程式自己產生一把；重開之後大家要重新登入。
 # 不給寫死的預設值：預設值一旦進了公開的 repo，等於誰都能自己簽一張通行證
@@ -47,7 +53,9 @@ def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
 
-def verify_password(plain: str, hashed: str) -> bool:
+def verify_password(plain: str, hashed: str | None) -> bool:
+    if not hashed:  # 第三方登入開的帳號沒有密碼
+        return False
     try:
         return bcrypt.checkpw(plain.encode(), hashed.encode())
     except ValueError:  # 資料庫裡不是 bcrypt 格式（例如還沒設密碼）
@@ -117,6 +125,8 @@ def logout(session: Session, user: AppUser) -> None:
 
 def change_password(session: Session, user: AppUser, current: str, new: str) -> str:
     """改完回傳新的 token：版號加一會讓自己手上這張也失效，要換一張。"""
+    if not user.password_hash:
+        raise AuthError(NO_PASSWORD)
     if not verify_password(current, user.password_hash):
         raise AuthError(WRONG_CURRENT_PASSWORD)
     user.password_hash = hash_password(new)

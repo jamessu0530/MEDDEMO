@@ -1,4 +1,4 @@
-"""第三方登入（綁定制）：沒綁不能登入、綁了才能、一個第三方帳號只能綁一個人。
+"""第三方登入：第一次登入自動開業務帳號、Email 帳號也能綁、一個第三方帳號只屬於一個人。
 
 真的去打 Google／GitHub／Facebook 要有各家的 App 設定，測試裡把「驗證憑證」換成假的，
 只測我們自己的規則；各家驗證函式另外測「沒設定」與「憑證是假的」這兩種會擋下來的情況。
@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.main import app
-from app.models import UserIdentity
+from app.models import AppUser, UserIdentity
 from app.services import oauth
 
 
@@ -19,6 +19,8 @@ from app.services import oauth
 def client(engine):
     with Session(engine) as session:
         session.execute(delete(UserIdentity))
+        # 前一個測試自動開的帳號也清掉
+        session.execute(delete(AppUser).where(AppUser.id.like("X%")))
         session.commit()
     return TestClient(app)
 
@@ -30,7 +32,7 @@ def fake_google(monkeypatch):
     def verify(credential):
         if credential == "bad":
             raise oauth.OAuthError("Google 登入驗證失敗，請再試一次")
-        return oauth.ExternalIdentity("google", credential, f"{credential}@gmail.com")
+        return oauth.ExternalIdentity("google", credential, f"{credential}@gmail.com", f"評審 {credential}")
 
     monkeypatch.setattr(oauth, "verify_google", verify)
 
@@ -50,10 +52,36 @@ def test_providers_hides_what_is_not_configured(client, env):
     assert "secret" not in str(body).lower()
 
 
-def test_an_unlinked_account_cannot_sign_in(client, fake_google):
-    response = google_login(client, "g-stranger")
-    assert response.status_code == 401
-    assert "還沒綁定" in response.json()["detail"]
+def test_first_sign_in_opens_a_sales_account_that_sees_the_demo_rep(client, fake_google):
+    first = google_login(client, "g-judge")
+    assert first.status_code == 200
+    user = first.json()["user"]
+    assert user["id"].startswith("X") and user["name"] == "評審 g-judge"
+    # 一律是業務，不會自動變主管；沒有密碼；看的是示範業務的資料
+    assert user["role"] == "sales"
+    assert user["has_password"] is False and user["email"] is None
+    assert user["acting_as"] == {"id": "U01", "name": "林昱辰"}
+    assert [(i["provider"], i["email"]) for i in user["linked"]] == [("google", "g-judge@gmail.com")]
+
+    # 第二次登入回到同一個帳號，不會再開一個
+    again = google_login(client, "g-judge")
+    assert again.json()["user"]["id"] == user["id"]
+
+    headers = {"Authorization": f"Bearer {again.json()['token']}"}
+    route = client.post("/api/route/today", json={}, headers=headers).json()
+    assert route["rep"]["id"] == "U01" and len(route["stops"]) == 5
+    assert client.post("/api/escalations/1/reply", json={"answer": "x"}, headers=headers).status_code == 403
+
+
+def test_an_external_account_cannot_lock_itself_out(client, fake_google):
+    token = google_login(client, "g-lonely").json()["token"]
+    headers = {"Authorization": f"Bearer {token}"}
+    blocked = client.delete("/api/auth/oauth/google", headers=headers)
+    assert blocked.status_code == 409 and "唯一的登入方式" in blocked.json()["detail"]
+    no_password = client.post(
+        "/api/auth/change-password", json={"current_password": "x", "new_password": "whatever-123"}, headers=headers
+    )
+    assert no_password.status_code == 400 and "沒有密碼" in no_password.json()["detail"]
 
 
 def test_link_then_sign_in(client, auth, fake_google):
@@ -78,16 +106,18 @@ def test_one_external_account_belongs_to_one_person(client, auth, fake_google):
     assert second.status_code == 409 and "解除綁定" in second.json()["detail"]
 
 
-def test_unlinking_stops_that_sign_in(client, auth, fake_google):
+def test_an_email_account_can_unlink(client, auth, fake_google):
     headers = auth("U03")
     client.post("/api/auth/oauth/google/link", json={"credential": "g-huang"}, headers=headers)
     assert client.delete("/api/auth/oauth/google", headers=headers).json()["linked"] == []
-    assert google_login(client, "g-huang").status_code == 401
+    # 解除之後同一個 Google 再來登入，就是當作新人自動開帳號，不會回到黃怡君的帳號
+    assert google_login(client, "g-huang").json()["user"]["id"] != "U03"
 
 
 def test_linking_requires_being_signed_in_and_a_valid_credential(client, auth, fake_google):
     assert client.post("/api/auth/oauth/google/link", json={"credential": "g-x"}).status_code == 401
-    assert client.post("/api/auth/oauth/google/link", json={"credential": "bad"}, headers=auth()).status_code == 401
+    # 已經登入時憑證不對是 400 不是 401：401 會讓前端以為登入過期把人登出
+    assert client.post("/api/auth/oauth/google/link", json={"credential": "bad"}, headers=auth()).status_code == 400
     assert client.post("/api/auth/oauth/google/link", json={}, headers=auth()).status_code == 422
     assert client.post("/api/auth/oauth/twitter/login", json={"credential": "x"}).status_code == 422
 

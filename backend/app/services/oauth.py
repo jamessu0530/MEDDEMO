@@ -40,6 +40,8 @@ class ExternalIdentity:
     provider: str
     subject: str
     email: str | None
+    # 自動開帳號時當作名字；沒給就用信箱前綴或「Google 使用者」
+    name: str | None = None
 
 
 def configured() -> dict[str, dict[str, str] | None]:
@@ -66,7 +68,7 @@ def verify_google(credential: str) -> ExternalIdentity:
         raise OAuthError("Google 帳號資料不完整")
     # 沒驗證過的 Email 不顯示，免得設定頁上出現別人的信箱
     email = info.get("email") if info.get("email_verified") else None
-    return ExternalIdentity("google", subject, email)
+    return ExternalIdentity("google", subject, email, (info.get("name") or "").strip() or None)
 
 
 def verify_github(code: str, redirect_uri: str) -> ExternalIdentity:
@@ -106,7 +108,7 @@ def verify_github(code: str, redirect_uri: str) -> ExternalIdentity:
     subject = str(user.get("id") or "")
     if not subject:
         raise OAuthError("GitHub 帳號資料不完整")
-    return ExternalIdentity("github", subject, email)
+    return ExternalIdentity("github", subject, email, (user.get("name") or user.get("login") or "").strip() or None)
 
 
 def verify_facebook(access_token: str) -> ExternalIdentity:
@@ -126,11 +128,12 @@ def verify_facebook(access_token: str) -> ExternalIdentity:
             raise OAuthError("Facebook 登入驗證失敗，請再試一次")
         subject = str(data.get("user_id") or "")
         me = httpx.get(
-            f"{FACEBOOK_GRAPH}/me", params={"fields": "id,email", "access_token": token}, timeout=TIMEOUT_SECONDS
+            f"{FACEBOOK_GRAPH}/me", params={"fields": "id,name,email", "access_token": token}, timeout=TIMEOUT_SECONDS
         )
-        email = me.json().get("email") if me.status_code == 200 else None
+        profile = me.json() if me.status_code == 200 else {}
+        email, name = profile.get("email"), (profile.get("name") or "").strip() or None
     except httpx.HTTPError:
         raise OAuthError("連不上 Facebook，請稍後再試") from None
     if not subject:
         raise OAuthError("Facebook 帳號資料不完整")
-    return ExternalIdentity("facebook", subject, email)
+    return ExternalIdentity("facebook", subject, email, name)

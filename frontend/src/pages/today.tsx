@@ -101,6 +101,7 @@ export function TodayPage() {
           <Link to="/settings" className="flex h-11 min-w-0 items-center gap-1 text-xs text-muted-foreground">
             <span className="truncate">
               {user.region} · {user.name}
+              {user.acting_as && `（示範：${user.acting_as.name}的客戶）`}
             </span>
             <ChevronRight className="size-3.5 shrink-0" />
           </Link>

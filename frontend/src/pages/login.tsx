@@ -62,7 +62,7 @@ export function LoginPage() {
   }
 
   /**
-   * Google／Facebook 拿到憑證之後送去後端換登入。沒綁定過的第三方帳號後端回 401，
+   * Google／Facebook 拿到憑證之後送去後端換登入。第一次來的第三方帳號後端會自動開帳號；驗證失敗回 401，
    * 訊息會說明要先用 Email 登入再到帳號設定綁定，照原文顯示。GitHub 是整頁導走，結果在 callback 頁處理。
    */
   async function submitOAuth(credential: OAuthCredential) {
@@ -197,7 +197,7 @@ export function LoginPage() {
             </p>
           )}
           <p className="text-xs leading-relaxed text-muted-foreground">
-            第三方帳號要先用 Email 登入、到「帳號設定」綁定過，才能在這裡使用。
+            第一次用第三方帳號登入會自動開一個業務帳號，先看示範業務的客戶與路線。
           </p>
         </section>
       )}
