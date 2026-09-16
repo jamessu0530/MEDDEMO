@@ -12,6 +12,7 @@ import { EscalationsPage } from "@/pages/escalations"
 import { ManagerPage } from "@/pages/manager"
 import { NegotiationPage } from "@/pages/negotiation"
 import { RecordVisit } from "@/pages/record-visit"
+import { TodayPage } from "@/pages/today"
 import { VisitPage } from "@/pages/visit"
 
 // 語音問答連同 Gemini SDK 另外打包，打開這一頁才下載，其他頁面不必多等
@@ -29,7 +30,7 @@ function NotFound() {
   const navigate = useNavigate()
   return (
     <div className="p-4">
-      <Notice text="找不到這個頁面。" action={{ label: "回客戶清單", onClick: () => navigate("/") }} />
+      <Notice text="找不到這個頁面。" action={{ label: "回今日路線", onClick: () => navigate("/") }} />
     </div>
   )
 }
@@ -43,7 +44,9 @@ export default function App() {
       {/* 以手機為主：在寬螢幕上置中，維持手機的寬度 */}
       <div className="mx-auto min-h-svh max-w-md bg-background">
         <Routes>
-          <Route path="/" element={<CustomerPicker />} />
+          {/* 首頁是今日路線；客戶清單移到 /customers，要自己挑一家時從底部分頁進去 */}
+          <Route path="/" element={<TodayPage />} />
+          <Route path="/customers" element={<CustomerPicker />} />
           <Route path="/ask" element={<AskPage />} />
           <Route
             path="/voice"

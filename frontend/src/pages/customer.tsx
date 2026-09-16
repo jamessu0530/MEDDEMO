@@ -49,7 +49,7 @@ export function CustomerPage() {
             <Notice
               text="沒有網路，客戶檔案沒有載入。可以直接錄音，錄音會先存在手機。"
               action={{ label: "直接錄音", onClick: () => navigate(`/customers/${customerId}/record`) }}
-              secondary={{ label: "回客戶清單", onClick: () => navigate("/") }}
+              secondary={{ label: "回客戶清單", onClick: () => navigate("/customers") }}
             />
           )}
           {state.status === "error" && navigator.onLine && (
@@ -62,7 +62,7 @@ export function CustomerPage() {
                   setAttempt((n) => n + 1)
                 },
               }}
-              secondary={{ label: "回客戶清單", onClick: () => navigate("/") }}
+              secondary={{ label: "回客戶清單", onClick: () => navigate("/customers") }}
             />
           )}
         </main>
