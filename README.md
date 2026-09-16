@@ -96,6 +96,17 @@ Email 加密碼。帳號是公司給的，沒有註冊、也沒有忘記密碼�
 - 錯誤訊息要講得出下一步，不是只說「登入失敗」：找不到 Email 會提醒確認是不是公司給的帳號，密碼錯就說密碼錯。
 - 主管端 `/manager` 只有 `role = manager` 的帳號進得去，業務會被擋下（403）。
 
+### Google、GitHub、Facebook 登入（綁定制）
+
+- **不會自動開新帳號**：先用 Email 登入，到「帳號設定」把第三方帳號綁上來，之後才能用它登入。沒綁過的去登入會被擋下，並告訴他要先綁。flutterproject4 是第一次登入就自動開帳號——遊戲可以，公司系統照抄的話，全世界有 Google 帳號的人都能登入變成業務。
+- 用各家給的使用者編號認人，不用 Email（Email 可以改、也可能沒給）。一個第三方帳號只能綁一個人；一個人每家只綁一個。
+- 各家驗證：
+  - Google：Identity Services 給的 ID token，驗簽章、`aud` 是不是我們的 client id、有沒有過期。
+  - GitHub：授權碼流程，前端用 `state` 防 CSRF，後端用 secret 換 access token 再拿使用者編號。
+  - Facebook：用 `debug_token` 確認 access token 有效**而且是發給我們這個 App 的**。flutterproject4 只打 `/me`，別的 App 拿到的 token 也能冒用；它另外有一段「不驗簽章」的後備流程，這裡都不照抄。
+- 沒設定的那一家，登入頁與帳號設定就不出現它的按鈕（`GET /api/auth/providers`）。
+
+
 ## 今日路線（首頁）
 
 打開 App 先看今天要跑哪幾家、順序、以及每一家為什麼排進來。原型的第一個畫面。
@@ -313,6 +324,9 @@ MEDDEMO 跟 CARE 共用 GCP 上的 care-vm：K3s、Helm、Traefik、HTTPS 憑證
 | `POSTGRES_PASSWORD` | secret | 隨機字串，例如 `openssl rand -hex 24` 產生的。第一次部署後就不要再改：Postgres 只在第一次建資料庫時設定密碼。 |
 | `JWT_SECRET` | secret | 簽登入 token 用，例如 `openssl rand -hex 32`。沒設的話 API 每次重啟都換一把，所有人要重新登入。 |
 | `DEMO_PASSWORD` | secret | 八個帳號共用的登入密碼。沒設就是程式裡的預設值 `meddemo1234`，而這個 repo 是公開的，所以決賽前要設。改完要手動執行一次部署並勾選「重灌假資料」才會生效。 |
+| `GOOGLE_CLIENT_ID` | secret | 選填：Google 登入。Google Cloud Console 建「OAuth 用戶端 ID」（網頁應用程式），「已授權的 JavaScript 來源」填網站網址。 |
+| `GITHUB_CLIENT_ID`、`GITHUB_CLIENT_SECRET` | secret | 選填：GitHub 登入。GitHub Settings → Developer settings → OAuth Apps 建一個，Authorization callback URL 填 `https://網址/auth/github/callback`。 |
+| `FACEBOOK_APP_ID`、`FACEBOOK_APP_SECRET` | secret | 選填：Facebook 登入。Meta for Developers 建 App 並加上「Facebook 登入」，有效 OAuth 重新導向 URI 與 App 網域填網站網址。App 在開發模式時只有 App 的管理員與測試人員能登入。 |
 | `SITE_URL` | variable | `https://你的網址`，部署完會打它的 `/health` 確認網站正常 |
 | `ASR_API_KEY` | secret | 選填：語音辨識用的 Gemini 金鑰，沒填就沿用 `LLM_API_KEY` |
 | `LLM_API_KEY` | secret | 選填：Gemini 的金鑰，到 Google AI Studio 申請 |

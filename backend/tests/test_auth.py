@@ -23,7 +23,7 @@ def login(client, user_id="U01", password=None):
 def test_login_returns_a_token_and_who_you_are(client):
     body = login(client).json()
     assert body["user"] == {
-        "id": "U01", "name": "林昱辰", "role": "sales", "region": "北區", "email": "u01@meddemo.tw",
+        "id": "U01", "name": "林昱辰", "role": "sales", "region": "北區", "email": "u01@meddemo.tw", "linked": [],
     }
     me = client.get("/api/auth/me", headers={"Authorization": f"Bearer {body['token']}"})
     assert me.json() == body["user"]

@@ -11,6 +11,7 @@ import { AskPage } from "@/pages/ask"
 import { CustomerPage } from "@/pages/customer"
 import { CustomerPicker } from "@/pages/customer-picker"
 import { EscalationsPage } from "@/pages/escalations"
+import { GitHubCallbackPage } from "@/pages/github-callback"
 import { LoginPage } from "@/pages/login"
 import { ManagerPage } from "@/pages/manager"
 import { NegotiationPage } from "@/pages/negotiation"
@@ -40,7 +41,7 @@ function NotFound() {
 }
 
 /**
- * 沒登入就進不去（FR-12）：除了 /login，每一頁都要先有登入狀態，否則導去登入頁，
+ * 沒登入就進不去（FR-12）：除了 /login 與 GitHub 登入的 callback，每一頁都要先有登入狀態，否則導去登入頁，
  * 登入成功後再回到本來要看的那一頁。401（token 過期、在別的裝置登入）由 api/client.ts 清掉登入狀態，
  * 這裡看到沒登入就會自動把人送回登入頁。
  */
@@ -105,6 +106,8 @@ export default function App() {
       <div className="mx-auto min-h-svh max-w-md bg-background">
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          {/* GitHub 授權完導回來的頁面：登入流程也會走到，所以不能放在要登入的那一層裡 */}
+          <Route path="/auth/github/callback" element={<GitHubCallbackPage />} />
           <Route element={<RequireAuth />}>
             {/* 首頁是今日路線；客戶清單移到 /customers，要自己挑一家時從底部分頁進去 */}
             <Route path="/" element={<Home />} />

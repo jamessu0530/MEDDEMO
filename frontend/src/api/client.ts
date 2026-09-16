@@ -11,8 +11,8 @@ export class ApiError extends Error {
 
 type ErrorDetail = string | Array<string | { msg: string }> | undefined
 
-// 登入自己的 401 是 Email 或密碼不對，不是登入過期，不能把本機的登入狀態清掉
-const LOGIN_PATH = "/api/auth/login"
+// 登入自己的 401 是 Email 或密碼不對、第三方帳號還沒綁定，不是登入過期，不能把本機的登入狀態清掉
+const LOGIN_PATHS = /^\/api\/auth\/(login|oauth\/[a-z]+\/login)$/
 
 // 後端的錯誤訊息都是寫給業務看的中文，直接顯示；驗證錯誤是一串，接成一句
 function describe(detail: ErrorDetail, status: number) {
@@ -35,7 +35,7 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const body = await response.json().catch(() => null)
     const message = describe(body?.detail, response.status)
     // token 過期或被別的裝置頂掉：清掉登入狀態，App.tsx 看到沒登入就會導回登入頁，不必每一頁各寫一次
-    if (response.status === 401 && path !== LOGIN_PATH) signOut(message)
+    if (response.status === 401 && !LOGIN_PATHS.test(path)) signOut(message)
     throw new ApiError(message, response.status)
   }
   return response.status === 204 ? (undefined as T) : response.json()

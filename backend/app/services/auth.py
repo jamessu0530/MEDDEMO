@@ -71,11 +71,16 @@ def login(session: Session, email: str, password: str) -> tuple[AppUser, str]:
         raise AuthError(EMAIL_NOT_FOUND)
     if not verify_password(password, user.password_hash):
         raise AuthError(WRONG_PASSWORD)
+    return user, start_session(session, user)
+
+
+def start_session(session: Session, user: AppUser) -> str:
+    """版號加一（別的裝置上的登入隨之失效），發一張新 token。Email 與第三方登入共用。"""
     user.session_version += 1
     user.updated_at = func.now()
     session.flush()
     session.refresh(user)
-    return user, create_token(user)
+    return create_token(user)
 
 
 def user_from_token(session: Session, token: str) -> AppUser:

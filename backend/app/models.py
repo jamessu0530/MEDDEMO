@@ -89,6 +89,30 @@ class AppUser(Base):
     updated_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
 
 
+class UserIdentity(Base):
+    """綁到帳號上的第三方登入（Google、GitHub、Facebook）。
+
+    帳號是公司給的，第三方登入不會自動開新帳號：要先用 Email 登入、到帳號設定綁定，之後才能用它登入。
+    用各家給的使用者編號（subject）認人，不用 Email：Email 可以改，也可能沒給。
+    """
+
+    __tablename__ = "user_identity"
+    __table_args__ = (
+        one_of("provider", ("google", "github", "facebook"), "provider"),
+        UniqueConstraint("provider", "subject", name="uq_user_identity_subject"),
+        # 一個帳號每家只綁一個，避免同一人綁兩個 Google 之後搞不清楚哪個是哪個
+        UniqueConstraint("user_id", "provider", name="uq_user_identity_user_provider"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), index=True)
+    provider: Mapped[str]
+    subject: Mapped[str]
+    # 只拿來在帳號設定顯示「綁的是哪個帳號」，不拿來認人
+    email: Mapped[str | None]
+    created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+
+
 class Customer(Base):
     __tablename__ = "customer"
     __table_args__ = (

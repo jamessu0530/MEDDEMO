@@ -7,6 +7,14 @@ export type AuthUser = {
   role: "sales" | "manager"
   region: string
   email: string
+  // 綁定的第三方登入方式；這支手機存的舊身分可能還沒有這個欄位，/api/auth/me 回來就會補上
+  linked?: LinkedAccount[]
+}
+
+export type LinkedAccount = {
+  provider: "google" | "github" | "facebook"
+  email: string | null
+  linked_at: string
 }
 
 export type Session = { token: string; user: AuthUser }
