@@ -4,7 +4,7 @@ import { Link, useNavigate } from "react-router"
 
 import { signOutSession } from "@/api/auth"
 import { ApiError } from "@/api/client"
-import { getTodayRoute, SIGNAL_LABEL, type RouteStop, type TodayRoute } from "@/api/route"
+import { getTodayRoute, SIGNAL_LABEL, type RouteSignal, type RouteStop, type TodayRoute } from "@/api/route"
 import { BottomNav } from "@/components/bottom-nav"
 import { Notice } from "@/components/notice"
 import { Button } from "@/components/ui/button"
@@ -242,9 +242,6 @@ export function TodayPage() {
 function StopRow({ stop, index }: { stop: RouteStop; index: number }) {
   const done = stop.status === "done"
   const next = stop.status === "next"
-  const meta = done
-    ? `${stop.planned_time} 完成${stop.visit_id ? " · 已回寫" : ""}`
-    : `${stop.planned_time} · ${SIGNAL_LABEL[stop.signal]} · ${stop.reason}`
 
   return (
     <Link
@@ -268,7 +265,15 @@ function StopRow({ stop, index }: { stop: RouteStop; index: number }) {
         </span>
         <div className="min-w-0 flex-1">
           <p className={cn("truncate leading-snug font-medium", done && "line-through")}>{stop.customer_name}</p>
-          <p className="mt-0.5 truncate text-xs text-muted-foreground">{next ? `${stop.planned_time} · 下一站` : meta}</p>
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">
+            {done && `${stop.planned_time} 完成${stop.visit_id ? " · 已回寫" : ""}`}
+            {next && `${stop.planned_time} · 下一站`}
+            {!done && !next && (
+              <>
+                {stop.planned_time} · <SignalLabel signal={stop.signal} /> · {stop.reason}
+              </>
+            )}
+          </p>
         </div>
         <span
           className={cn(
@@ -283,7 +288,7 @@ function StopRow({ stop, index }: { stop: RouteStop; index: number }) {
       {next && (
         <>
           <p className="text-xs leading-relaxed text-foreground/80">
-            {SIGNAL_LABEL[stop.signal]} · {stop.reason}
+            <SignalLabel signal={stop.signal} /> · {stop.reason}
           </p>
           <span className="flex h-11 items-center justify-center rounded-lg bg-primary text-sm font-medium text-primary-foreground">
             開啟拜訪準備
@@ -292,4 +297,10 @@ function StopRow({ stop, index }: { stop: RouteStop; index: number }) {
       )}
     </Link>
   )
+}
+
+/** 排進來的理由；商機是好消息，用綠色標出來，跟承諾逾期、帳款這些警示分開 */
+function SignalLabel({ signal }: { signal: RouteSignal }) {
+  if (signal !== "opportunity") return <>{SIGNAL_LABEL[signal]}</>
+  return <span className="font-medium text-success">{SIGNAL_LABEL[signal]}</span>
 }

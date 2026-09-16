@@ -10,9 +10,12 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.api.auth import CurrentUser
 from app.db import get_session
-from app.models import WRITEBACK_TARGETS, Customer, FollowUpReminder, Visit, VisitAudio
+from app.models import AppUser, WRITEBACK_TARGETS, Customer, FollowUpReminder, Visit, VisitAudio, ManagerNotice
 from app.services import privacy, writeback
+from app.services import risk
+from app.services.scope import Scope
 from app.services.extraction import empty_fields, missing_sap_details, unsourced_fields, validate_fields
 from app.services.reminders import create_reminder
 from app.tasks import get_progress, visit_queue
@@ -38,6 +41,14 @@ class ReminderItem(BaseModel):
     note: str
 
 
+class RiskNotice(BaseModel):
+    score: int
+    max: int
+    items: list[str]
+    reason: str
+    manager_name: str
+
+
 class VisitDetail(BaseModel):
     id: str
     customer_id: str
@@ -52,6 +63,10 @@ class VisitDetail(BaseModel):
     unsourced: list[str]
     writeback: list[WritebackItem]
     reminder: ReminderItem | None
+    # 這次提到、以前沒提過的競品（原型抽欄位畫面的「首次」標籤）
+    first_competitors: list[str] = Field(default_factory=list)
+    # 確認送出時提到競品或客訴，就通報轄區主管；畫面上說明風險分與通報給誰
+    risk_notice: RiskNotice | None = None
 
 
 class TranscriptInput(BaseModel):
@@ -62,9 +77,10 @@ class FieldsInput(BaseModel):
     fields: dict[str, Any]
 
 
-def _load(session: Session, visit_id: str, *, lock: bool = False) -> Visit:
+def _load(session: Session, visit_id: str, user: AppUser, *, lock: bool = False) -> Visit:
     visit = session.get(Visit, visit_id, with_for_update=lock)
-    if visit is None:
+    # 看不到的客戶的拜訪跟不存在一樣回 404
+    if visit is None or not Scope.for_user(user).allows(session.get(Customer, visit.customer_id)):
         raise HTTPException(404, "找不到這筆拜訪紀錄")
     return visit
 
@@ -93,6 +109,18 @@ def _detail(session: Session, visit: Visit) -> VisitDetail:
             for e in writeback.latest_results(session, visit.id)
         ],
         reminder=ReminderItem(due_date=reminder.due_date, note=reminder.note) if reminder else None,
+        first_competitors=risk.first_competitors(session, visit, fields),
+        risk_notice=_risk_notice(session, visit),
+    )
+
+
+def _risk_notice(session: Session, visit: Visit) -> RiskNotice | None:
+    notice = session.scalar(select(ManagerNotice).where(ManagerNotice.visit_id == visit.id))
+    if notice is None:
+        return None
+    return RiskNotice(
+        score=notice.score, max=risk.RISK_MAX, items=notice.items, reason=notice.reason,
+        manager_name=session.get(AppUser, notice.manager_id).name,
     )
 
 
@@ -113,14 +141,17 @@ def upload_audio(
     response: Response,
     file: Annotated[UploadFile, File()],
     customer_id: Annotated[str, Form()],
+    user: CurrentUser,
     client_ref: Annotated[str | None, Form()] = None,
 ):
     """上傳口述錄音。轉文字和整理欄位在背景做，畫面輪詢 GET /api/visits/{id} 看進度。"""
     if client_ref and (existing := session.scalar(select(Visit).where(Visit.client_ref == client_ref))):
+        if not Scope.for_user(user).allows(session.get(Customer, existing.customer_id)):
+            raise HTTPException(404, "找不到這家客戶")
         response.status_code = 200  # 同一段錄音重送：不重建，也不再轉一次文字
         return _detail(session, existing)
     customer = session.get(Customer, customer_id)
-    if customer is None:
+    if customer is None or not Scope.for_user(user).allows(customer):
         raise HTTPException(404, "找不到這家客戶")
     content = file.file.read(MAX_AUDIO_BYTES + 1)
     if len(content) > MAX_AUDIO_BYTES:
@@ -150,14 +181,14 @@ def upload_audio(
 
 
 @router.get("/{visit_id}", response_model=VisitDetail)
-def get_visit(session: SessionDep, visit_id: str):
-    return _detail(session, _load(session, visit_id))
+def get_visit(session: SessionDep, visit_id: str, user: CurrentUser):
+    return _detail(session, _load(session, visit_id, user))
 
 
 @router.post("/{visit_id}/transcript", status_code=202, response_model=VisitDetail)
-def submit_transcript(session: SessionDep, visit_id: str, body: TranscriptInput):
+def submit_transcript(session: SessionDep, visit_id: str, body: TranscriptInput, user: CurrentUser):
     """轉文字失敗時手動輸入逐字稿，或修改逐字稿後重新整理欄位（會覆蓋目前的欄位）。"""
-    visit = _load(session, visit_id, lock=True)
+    visit = _load(session, visit_id, user, lock=True)
     if visit.status not in ("failed", "draft"):
         raise HTTPException(409, "這筆紀錄目前不能修改逐字稿")
     visit.transcript = body.text.strip()
@@ -169,10 +200,10 @@ def submit_transcript(session: SessionDep, visit_id: str, body: TranscriptInput)
 
 
 @router.post("/{visit_id}/reprocess", status_code=202, response_model=VisitDetail)
-def reprocess(session: SessionDep, visit_id: str):
+def reprocess(session: SessionDep, visit_id: str, user: CurrentUser):
     """用同一段錄音重新處理：轉文字失敗之後，或背景工作中斷（例如 Redis 重啟、排隊的工作不見）
     而一直停在處理中時。重複排入也無妨，兩次處理寫進去的結果相同。"""
-    visit = _load(session, visit_id, lock=True)
+    visit = _load(session, visit_id, user, lock=True)
     if visit.status not in ("failed", "processing") or session.get(VisitAudio, visit.id) is None:
         raise HTTPException(409, "只有轉文字失敗或處理中斷、而且有錄音的紀錄可以重試")
     visit.status = "processing"
@@ -183,9 +214,9 @@ def reprocess(session: SessionDep, visit_id: str):
 
 
 @router.put("/{visit_id}/fields", response_model=VisitDetail)
-def update_fields(session: SessionDep, visit_id: str, body: FieldsInput):
+def update_fields(session: SessionDep, visit_id: str, body: FieldsInput, user: CurrentUser):
     """逐格修改（FR-5.3）。原始抽取結果保留在 fields_raw，不會被覆蓋。"""
-    visit = _load(session, visit_id, lock=True)
+    visit = _load(session, visit_id, user, lock=True)
     if visit.status != "draft":
         raise HTTPException(409, "只有待確認的紀錄可以修改欄位")
     if errors := validate_fields(body.fields):
@@ -196,9 +227,9 @@ def update_fields(session: SessionDep, visit_id: str, body: FieldsInput):
 
 
 @router.post("/{visit_id}/confirm", response_model=VisitDetail)
-def confirm(session: SessionDep, visit_id: str):
+def confirm(session: SessionDep, visit_id: str, user: CurrentUser):
     """確認後寫回三套系統（FR-6），並依追蹤日或承諾期限建立提醒。"""
-    visit = _load(session, visit_id, lock=True)
+    visit = _load(session, visit_id, user, lock=True)
     if visit.status != "draft":
         raise HTTPException(409, "這筆紀錄不是待確認狀態")
     fields = visit.fields_final or empty_fields()
@@ -210,6 +241,9 @@ def confirm(session: SessionDep, visit_id: str):
     # NFR-8：送出之後的用途（AI 查詢、客戶檔案）都算後續利用，逐字稿先去識別；送出前業務要對著原文核對
     privacy.deidentify_visit(session, visit)
     create_reminder(session, visit)
+    session.flush()
+    # 風險分要把這次拜訪算進去，所以放在狀態改成已確認之後
+    risk.notify_manager(session, visit)
     session.commit()
 
     results = writeback.dispatch(visit.id)
@@ -220,11 +254,11 @@ def confirm(session: SessionDep, visit_id: str):
 
 
 @router.post("/{visit_id}/writeback/{target}/retry", response_model=VisitDetail)
-def retry_writeback(session: SessionDep, visit_id: str, target: str):
+def retry_writeback(session: SessionDep, visit_id: str, target: str, user: CurrentUser):
     """只重送失敗的那一套（FR-6.3），寫成功的不會被重寫。"""
     if target not in WRITEBACK_TARGETS:
         raise HTTPException(404, "沒有這個目標系統")
-    visit = _load(session, visit_id)
+    visit = _load(session, visit_id, user)
     latest = {e.target: e.status for e in writeback.latest_results(session, visit.id)}
     if visit.status != "confirmed" or latest.get(target) != "failed":
         raise HTTPException(409, "只能重送寫入失敗的項目")
@@ -237,9 +271,9 @@ def retry_writeback(session: SessionDep, visit_id: str, target: str):
 
 
 @router.delete("/{visit_id}", status_code=204)
-def discard(session: SessionDep, visit_id: str):
+def discard(session: SessionDep, visit_id: str, user: CurrentUser):
     """放棄這次的口述（FR-5.5 整段重錄），錄音一併刪除。已確認的紀錄不能刪。"""
-    visit = _load(session, visit_id, lock=True)
+    visit = _load(session, visit_id, user, lock=True)
     if visit.status not in ("processing", "failed", "draft"):
         raise HTTPException(409, "已確認的紀錄不能刪除")
     session.delete(visit)

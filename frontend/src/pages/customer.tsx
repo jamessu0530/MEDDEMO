@@ -1,16 +1,25 @@
 import { useEffect, useState } from "react"
-import { Handshake, Mic } from "lucide-react"
-import { useNavigate, useParams } from "react-router"
+import { FileText, Handshake, Mic } from "lucide-react"
+import { useLocation, useNavigate, useParams } from "react-router"
 
 import { ApiError } from "@/api/client"
 import { CUSTOMER_TYPE_LABEL, getCustomerProfile, type CustomerProfile, type ProfileStats } from "@/api/customers"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
-import { formatDate } from "@/lib/format"
+import { useAuth } from "@/lib/auth"
+import { formatDate, formatMoney } from "@/lib/format"
+import { customerNotFoundText } from "@/lib/scope"
 import { cn } from "@/lib/utils"
 
-type LoadState = { status: "loading" } | { status: "error"; message: string } | { status: "ready"; profile: CustomerProfile }
+type LoadState =
+  | { status: "loading" }
+  // missing：後端回 404（沒有這家，或不是登入者看得到的客戶）
+  | { status: "error"; missing: boolean }
+  | { status: "ready"; profile: CustomerProfile }
+
+// 別的頁面帶過來的：flash 是開報價送出後的提示（pages/quote.tsx）；backTo 是返回鍵要回哪裡（主管從風險通報點進來）
+export type CustomerLocationState = { flash?: string; backTo?: string }
 type Tone = "alert" | "warn" | undefined
 
 // 帳齡門檻照《付款條件與帳齡管理》：超過 60 天、90 天各有處理規定
@@ -23,6 +32,8 @@ const wan = (amount: number) => (amount / 10000).toFixed(1)
 export function CustomerPage() {
   const { customerId = "" } = useParams()
   const navigate = useNavigate()
+  const { flash, backTo = "/" } = (useLocation().state as CustomerLocationState | null) ?? {}
+  const user = useAuth()?.user
   const [state, setState] = useState<LoadState>({ status: "loading" })
   const [attempt, setAttempt] = useState(0)
 
@@ -32,8 +43,7 @@ export function CustomerPage() {
       .then((profile) => setState({ status: "ready", profile }))
       .catch((error) => {
         if (controller.signal.aborted) return
-        const missing = error instanceof ApiError && error.status === 404
-        setState({ status: "error", message: missing ? "找不到這家客戶。" : "連不上伺服器，客戶檔案沒有載入。" })
+        setState({ status: "error", missing: error instanceof ApiError && error.status === 404 })
       })
     return () => controller.abort()
   }, [customerId, attempt])
@@ -41,20 +51,24 @@ export function CustomerPage() {
   if (state.status !== "ready") {
     return (
       <div className="flex min-h-svh flex-col">
-        <PageHeader title="客戶檔案" backTo="/" />
+        <PageHeader title="客戶檔案" backTo={backTo} />
         <main className="flex-1 p-4">
           {state.status === "loading" && <p className="py-10 text-center text-sm text-muted-foreground">載入客戶檔案中…</p>}
+          {/* 404：沒有這家，或不是登入者看得到的客戶。重新載入也一樣，只給回客戶清單的路 */}
+          {state.status === "error" && state.missing && (
+            <Notice text={customerNotFoundText(user)} action={{ label: "回客戶清單", onClick: () => navigate("/customers") }} />
+          )}
           {/* 沒訊號時看不到客戶檔案，但照樣可以錄音：錄音先存在手機，恢復連線自動送出（FR-4.3） */}
-          {state.status === "error" && !navigator.onLine && (
+          {state.status === "error" && !state.missing && !navigator.onLine && (
             <Notice
               text="沒有網路，客戶檔案沒有載入。可以直接錄音，錄音會先存在手機。"
               action={{ label: "直接錄音", onClick: () => navigate(`/customers/${customerId}/record`) }}
               secondary={{ label: "回客戶清單", onClick: () => navigate("/customers") }}
             />
           )}
-          {state.status === "error" && navigator.onLine && (
+          {state.status === "error" && !state.missing && navigator.onLine && (
             <Notice
-              text={state.message}
+              text="連不上伺服器，客戶檔案沒有載入。"
               action={{
                 label: "重新載入",
                 onClick: () => {
@@ -77,9 +91,10 @@ export function CustomerPage() {
       <PageHeader
         title={customer.name}
         subtitle={`${CUSTOMER_TYPE_LABEL[customer.type]} · ${customer.grade} 級 · ${customer.region}`}
-        backTo="/"
+        backTo={backTo}
       />
       <main className="flex flex-1 flex-col gap-4 px-4 pt-4 pb-28">
+        {flash && <p className="rounded-xl bg-primary/10 px-3 py-2 text-sm text-primary">{flash}</p>}
         <section className="rounded-2xl border border-primary/20 bg-primary/10 p-4">
           <p className="text-xs font-semibold tracking-wide text-primary">進門前三分鐘</p>
           <ul className="mt-2 flex list-disc flex-col gap-1.5 pl-4 text-sm leading-relaxed">
@@ -119,6 +134,11 @@ export function CustomerPage() {
             談判卡
           </Button>
         )}
+        {/* 原型放在「語音記錄」旁邊：不必等拜訪口述，直接挑常進的品項開 SAP 報價草稿 */}
+        <Button variant="outline" className="h-12 flex-1 gap-1.5" onClick={() => navigate(`/customers/${customer.id}/quote`)}>
+          <FileText className="size-4" />
+          開報價
+        </Button>
         <Button className="h-12 flex-1 gap-1.5" onClick={() => navigate(`/customers/${customer.id}/record`)}>
           <Mic className="size-4" />
           語音記錄
@@ -196,11 +216,12 @@ function PendingItems({ profile }: { profile: CustomerProfile }) {
       title: `客訴：${item.text}`,
       meta: formatDate(item.visit_date),
     })),
+    // 直接開的報價沒有 visit_id，用報價單號分辨
     ...profile.open_quotes.map((item) => ({
-      key: `quote-${item.visit_id}`,
+      key: `quote-${item.quote_no}`,
       tone: undefined as Tone,
-      title: `報價草稿：${item.items}`,
-      meta: `NT$${Math.round(item.amount).toLocaleString("zh-TW")}`,
+      title: `報價草稿 ${item.quote_no}：${item.items}`,
+      meta: formatMoney(item.amount),
     })),
   ]
   return (

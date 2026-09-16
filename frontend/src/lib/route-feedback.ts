@@ -65,6 +65,19 @@ export function pinCustomer(userId: string, customerId: string, signal: RouteSig
   })
 }
 
+/**
+ * 問答答案裡提到的客戶排進今天的路線：只加進 pinned，不動 signal_weights——
+ * 業務不是對某一類提醒表態，只是想今天去這幾家。之前按過暫緩的一併取消，否則後端照樣不排。
+ */
+export function pinCustomers(userId: string, customerIds: string[]) {
+  const current = readFeedback(userId)
+  write(userId, {
+    ...current,
+    snoozed: current.snoozed.filter((item) => !customerIds.includes(item.customer_id)),
+    pinned: [...current.pinned, ...customerIds.filter((id) => !current.pinned.includes(id))],
+  })
+}
+
 /** 暫緩：三天內不再排這家；之前按過插入下一站就一併取消，免得兩個指示打架 */
 export function snoozeCustomer(userId: string, customerId: string, today: string) {
   const current = readFeedback(userId, today)

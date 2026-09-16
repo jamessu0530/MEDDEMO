@@ -3,6 +3,7 @@ import { ChevronDown, Pencil } from "lucide-react"
 import { useNavigate } from "react-router"
 
 import { confirmVisit, discardVisit, type FieldKey, type Visit } from "@/api/visits"
+import { CompetitorNames } from "@/components/visit/competitor-names"
 import { FieldEditor } from "@/components/visit/field-editor"
 import { FIELD_LABEL, FIELD_ORDER, summarize } from "@/components/visit/field-format"
 import { Button } from "@/components/ui/button"
@@ -58,7 +59,10 @@ export function ConfirmView({ visit, onChange }: ConfirmViewProps) {
             value={summarize(key, visit.fields)}
             unsourced={visit.unsourced.includes(key)}
             onEdit={() => setEditing(key)}
-          />
+          >
+            {/* 競品要在名稱旁邊標「首次」，不能只給一串文字 */}
+            {key === "competitor" && visit.fields.competitor?.length ? <CompetitorNames visit={visit} /> : null}
+          </FieldRow>
         ))}
       </ul>
 
@@ -93,14 +97,23 @@ export function ConfirmView({ visit, onChange }: ConfirmViewProps) {
   )
 }
 
-function FieldRow({ label, value, unsourced, onEdit }: { label: string; value: string | null; unsourced: boolean; onEdit: () => void }) {
+type FieldRowProps = {
+  label: string
+  value: string | null
+  unsourced: boolean
+  onEdit: () => void
+  // 有給就取代 value 的純文字顯示
+  children?: ReactNode
+}
+
+function FieldRow({ label, value, unsourced, onEdit, children }: FieldRowProps) {
   return (
     <li>
       <button type="button" onClick={onEdit} className="w-full rounded-xl border bg-card px-4 py-3 text-left active:bg-muted">
         <div className="flex items-start gap-3">
           <span className="w-9 shrink-0 pt-0.5 text-sm text-muted-foreground">{label}</span>
           <span className={cn("min-w-0 flex-1 text-sm", value ? "font-medium" : "text-muted-foreground")}>
-            {value ?? "沒提到"}
+            {children ?? value ?? "沒提到"}
           </span>
           <Pencil className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
         </div>

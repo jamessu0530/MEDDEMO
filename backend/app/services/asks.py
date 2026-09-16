@@ -11,8 +11,9 @@ from sqlalchemy import text
 from app.db import session_factory
 from app.embeddings import optional_embedder
 from app.llm import get_llm
-from app.models import AskRecord, QueryTrace
+from app.models import AppUser, AskRecord, QueryTrace
 from app.services.data_agent import answer_data
+from app.services.scope import Scope
 from app.services.knowledge import answer_knowledge
 
 log = logging.getLogger(__name__)
@@ -39,7 +40,8 @@ def run_ask(ask_id: str) -> None:
             llm = get_llm()
             if record.kind == "data":
                 today = session.scalar(text("SELECT app_today()"))
-                result = answer_data(session.get_bind(), llm, record.question, today, on_step)
+                asker = session.get(AppUser, record.user_id)
+                result = answer_data(session.get_bind(), llm, record.question, today, on_step, Scope.for_user(asker))
                 record.status, record.answer, record.evidence = result.status, result.answer, result.evidence
             else:
                 embedder = optional_embedder()

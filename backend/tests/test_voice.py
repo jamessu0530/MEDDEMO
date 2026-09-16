@@ -15,9 +15,9 @@ TOKEN = {"name": "auth_tokens/abc123", "uses": 1}
 
 
 @pytest.fixture
-def client(engine):
+def client(engine, sign_in):
     # 發金鑰時要從資料庫讀客戶與品項名稱，所以要先有灌好假資料的測試庫
-    return TestClient(app)
+    return sign_in(TestClient(app), "U01")
 
 
 @pytest.fixture

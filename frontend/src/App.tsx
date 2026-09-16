@@ -15,6 +15,7 @@ import { GitHubCallbackPage } from "@/pages/github-callback"
 import { LoginPage } from "@/pages/login"
 import { ManagerPage } from "@/pages/manager"
 import { NegotiationPage } from "@/pages/negotiation"
+import { QuotePage } from "@/pages/quote"
 import { RecordVisit } from "@/pages/record-visit"
 import { SettingsPage } from "@/pages/settings"
 import { TodayPage } from "@/pages/today"
@@ -123,6 +124,7 @@ export default function App() {
             />
             <Route path="/customers/:customerId" element={<CustomerPage />} />
             <Route path="/customers/:customerId/negotiation" element={<NegotiationPage />} />
+            <Route path="/customers/:customerId/quote" element={<QuotePage />} />
             <Route path="/customers/:customerId/record" element={<RecordVisit />} />
             <Route path="/visits/:visitId" element={<VisitPage />} />
             <Route path="/escalations" element={<EscalationsPage />} />

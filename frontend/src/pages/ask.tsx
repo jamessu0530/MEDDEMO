@@ -6,6 +6,8 @@ import { AskAnswer, TracePanel } from "@/components/ask/ask-result"
 import { BottomNav } from "@/components/bottom-nav"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { useAuth } from "@/lib/auth"
+import { askScopeText } from "@/lib/scope"
 import { cn } from "@/lib/utils"
 
 const MODES: { kind: AskKind; label: string; placeholder: string; examples: string[] }[] = [
@@ -25,6 +27,7 @@ const MODES: { kind: AskKind; label: string; placeholder: string; examples: stri
 
 /** 問答（原型 S-07）：數字題走反覆查詢，規定題走 CRAG，兩條線共用同一個畫面與查詢軌跡 */
 export function AskPage() {
+  const user = useAuth()?.user
   const [kind, setKind] = useState<AskKind>("data")
   const [question, setQuestion] = useState("")
   const [asks, setAsks] = useState<Ask[]>([])
@@ -99,7 +102,7 @@ export function AskPage() {
         </div>
       </header>
 
-      <main className="flex flex-1 flex-col gap-4 px-4 pt-4 pb-40">
+      <main className="flex flex-1 flex-col gap-4 px-4 pt-4 pb-44">
         {asks.length === 0 && (
           <div className="flex flex-col gap-2">
             <p className="text-sm text-muted-foreground">可以這樣問：</p>
@@ -126,20 +129,24 @@ export function AskPage() {
           event.preventDefault()
           void submit(question)
         }}
-        className="fixed inset-x-0 bottom-14 z-10 mx-auto flex max-w-md gap-2 border-t bg-background px-3 py-2"
+        className="fixed inset-x-0 bottom-14 z-10 mx-auto flex max-w-md flex-col gap-1.5 border-t bg-background px-3 py-2"
       >
-        <Input
-          value={question}
-          onChange={(event) => setQuestion(event.target.value)}
-          placeholder={mode.placeholder}
-          aria-label="輸入問題"
-          className="h-11 bg-card"
-        />
-        <Button type="submit" size="icon" className="size-11 shrink-0" disabled={sending || !question.trim()} aria-label="送出">
-          {sending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
-        </Button>
+        {error && <p className="px-1 text-sm text-destructive">{error}</p>}
+        {/* 數字查詢只查得到登入者看得到的客戶；規定題查的是公司文件，不分客戶，不必提 */}
+        {user && kind === "data" && <p className="px-1 text-[11px] text-muted-foreground">{askScopeText(user)}</p>}
+        <div className="flex gap-2">
+          <Input
+            value={question}
+            onChange={(event) => setQuestion(event.target.value)}
+            placeholder={mode.placeholder}
+            aria-label="輸入問題"
+            className="h-11 bg-card"
+          />
+          <Button type="submit" size="icon" className="size-11 shrink-0" disabled={sending || !question.trim()} aria-label="送出">
+            {sending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+          </Button>
+        </div>
       </form>
-      {error && <p className="fixed inset-x-0 bottom-28 mx-auto max-w-md px-4 text-sm text-destructive">{error}</p>}
       <BottomNav />
     </div>
   )

@@ -81,7 +81,8 @@ class MonthlyInterval:
 
 @dataclass
 class OpenQuote:
-    visit_id: str
+    quote_no: str
+    visit_id: str | None
     date: dt.date
     items: str
     amount: float
@@ -202,16 +203,21 @@ def _monthly_intervals(session: Session, customer_id: str, today: dt.date) -> li
 
 
 def _open_quotes(session: Session, customer_id: str) -> list[OpenQuote]:
+    """還沒結案的報價草稿。拜訪回寫開的與客戶檔案直接開的都算，同一個單號併成一張。"""
     rows = session.execute(
-        select(SapQuotationDraft.visit_id, SapQuotationDraft.qty, SapQuotationDraft.unit_price, Product.name, Visit.visited_at)
+        select(
+            SapQuotationDraft.quote_no, SapQuotationDraft.visit_id, SapQuotationDraft.qty, SapQuotationDraft.unit_price,
+            SapQuotationDraft.created_at, Product.name, Visit.visited_at,
+        )
         .join(Product, Product.sku == SapQuotationDraft.sku)
-        .join(Visit, Visit.id == SapQuotationDraft.visit_id)
+        .outerjoin(Visit, Visit.id == SapQuotationDraft.visit_id)
         .where(SapQuotationDraft.customer_id == customer_id, SapQuotationDraft.status == "draft")
-        .order_by(Visit.visited_at.desc(), SapQuotationDraft.line_no)
+        .order_by(func.coalesce(Visit.visited_at, SapQuotationDraft.created_at).desc(), SapQuotationDraft.line_no)
     ).all()
     quotes: dict[str, OpenQuote] = {}
     for row in rows:
-        quote = quotes.setdefault(row.visit_id, OpenQuote(row.visit_id, local_date(row.visited_at), "", 0.0))
+        day = local_date(row.visited_at or row.created_at)
+        quote = quotes.setdefault(row.quote_no, OpenQuote(row.quote_no, row.visit_id, day, "", 0.0))
         quote.items = "、".join(filter(None, [quote.items, f"{row.name} × {row.qty}"]))
         quote.amount += float(row.unit_price) * row.qty
     return list(quotes.values())

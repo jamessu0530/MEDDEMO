@@ -46,6 +46,8 @@ export type Ask = {
   error_message: string | null
   trace: TraceItem[]
   escalation_id: number | null
+  // 數字查詢的答案或查詢結果裡提到、而且是登入者負責的客戶，可以一鍵排進今日路線；知識查詢或沒有就是 []
+  customers: { id: string; name: string }[]
 }
 
 export const isFinished = (ask: Ask) => ask.status !== "queued" && ask.status !== "running"

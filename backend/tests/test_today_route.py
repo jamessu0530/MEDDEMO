@@ -129,3 +129,24 @@ def test_model_file_matches_the_features_in_code(client, auth):
     assert set(model["weights"]) == set(route_model.FEATURES) == set(model["mean"]) == set(model["sd"])
     # 訓練時記下的成績：模型要比現行規則好，否則不值得上線
     assert model["metrics"]["auc"] > model["metrics"]["rule_auc"]
+
+
+def test_growing_clinics_are_opportunities(engine):
+    from app.services import today_route as service
+
+    with Session(engine) as session:
+        found = service._opportunities(session, "U01", dt.date(2026, 10, 28))
+    # 杏林診所（C061）是刻意設計的「慢箋成長」：慢性處方每次多進五成
+    assert "單次進貨金額從" in found["C061"] and "學名藥比價表" in found["C061"]
+
+
+def test_every_rep_with_an_opportunity_gets_one_on_the_route(client, auth, engine):
+    from app.services import today_route as service
+
+    for rep_id in ("U01", "U02", "U03", "U04", "U05"):
+        stops = route(client, auth, rep_id)["stops"]
+        with Session(engine) as session:
+            has_any = bool(service._opportunities(session, rep_id, dt.date(2026, 10, 28)))
+        labelled = [s for s in stops if s["signal"] == "opportunity"]
+        assert bool(labelled) == has_any, rep_id
+        assert all(s["reason"] for s in labelled)

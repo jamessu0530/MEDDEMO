@@ -21,6 +21,15 @@ export type WritebackItem = {
   attempt: number
 }
 
+// 確認送出時這次提到競品或客訴，後端算這家的風險分並通報主管
+export type RiskNotice = {
+  score: number
+  max: number
+  items: string[]
+  reason: string
+  manager_name: string
+}
+
 export type Visit = {
   id: string
   customer_id: string
@@ -35,6 +44,10 @@ export type Visit = {
   unsourced: FieldKey[]
   writeback: WritebackItem[]
   reminder: { due_date: string; note: string } | null
+  // 這次提到、而這家客戶以前確認過的拜訪從沒提過的競品，畫面上標「首次」
+  first_competitors: string[]
+  // 只有確認送出、而且這次提到競品或客訴時才有
+  risk_notice: RiskNotice | null
 }
 
 export function uploadAudio(customerId: string, audio: Blob, filename: string, clientRef: string) {

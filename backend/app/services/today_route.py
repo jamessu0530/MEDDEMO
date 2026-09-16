@@ -12,10 +12,10 @@ from __future__ import annotations
 import datetime as dt
 from dataclasses import dataclass, field
 
-from sqlalchemy import select
+from sqlalchemy import case, func, select, text
 from sqlalchemy.orm import Session
 
-from app.models import AppUser, Customer, Visit
+from app.models import AppUser, Customer, Product, SalesTransaction, SapQuotationDraft, Visit
 from app.services import customer_profile, route_model
 from app.timeutil import TAIPEI, local_date
 
@@ -23,6 +23,14 @@ from app.timeutil import TAIPEI, local_date
 ROUTE_SIZE = 5
 # 承諾逾期最多硬排幾家。假資料沒有結案紀錄，逾期的承諾會累積，不設上限的話整條路線都是它
 MAX_OVERDUE_STOPS = 2
+# 商機最多硬排幾家。模型與承諾逾期排出來的全是壞消息，業務會錯過正在變好的客戶；
+# 只保留一站，不排擠模型排的其他客戶
+MAX_OPPORTUNITY_STOPS = 1
+# 單次進貨金額比之前多幾成算商機。跟「進貨間隔拉長兩成」同一個幅度；
+# 假資料裡刻意設計的三家診所多了 29～33%，其他客戶的變動最多 8%
+OPPORTUNITY_GROWTH_RATIO = customer_profile.INTERVAL_ALERT_RATIO
+# 成長最多的品類是這個時，提醒帶內部文件的比價表（data/documents/17-學名藥比價表.md）
+GENERIC_PRICE_CATEGORY = "慢性處方"
 # 第一站的出門時間與兩站之間的間隔，跟假資料排拜訪用的節奏一致（9:30 出門、平均 75 分鐘一站）
 FIRST_STOP = dt.time(9, 30)
 STOP_GAP_MINUTES = 70
@@ -34,6 +42,7 @@ PERSONAL_LIMIT = 5
 
 SIGNAL_LABEL = {
     "commitment": "承諾逾期",
+    "opportunity": "商機",
     "ar": "帳款逾期",
     "interval": "進貨間隔異常",
     "order": "很久沒進貨",
@@ -123,6 +132,80 @@ def _overdue_commitments(session: Session, user_id: str, today: dt.date) -> dict
     return overdue
 
 
+def _opportunities(session: Session, owner_id: str, today: dt.date) -> dict[str, str]:
+    """好消息：客戶 → 一句說明。兩種，都是資料裡看得出來、而且業務去了有事可做的：
+
+    - 有下單意向開了報價草稿，但之後這家還沒進過那個品項：報價還沒成交，值得去追
+    - 單次進貨金額比之前多兩成以上：客戶在長大，可以談更多品項
+    """
+    since = today - dt.timedelta(days=customer_profile.RECENT_DAYS)
+    found: dict[str, str] = {}
+
+    quotes = session.execute(
+        select(SapQuotationDraft.customer_id, SapQuotationDraft.sku, SapQuotationDraft.qty, Product.name,
+               func.coalesce(Visit.visited_at, SapQuotationDraft.created_at).label("quoted_at"))
+        .join(Customer, Customer.id == SapQuotationDraft.customer_id)
+        .join(Product, Product.sku == SapQuotationDraft.sku)
+        .outerjoin(Visit, Visit.id == SapQuotationDraft.visit_id)
+        .where(Customer.owner_user_id == owner_id, SapQuotationDraft.status == "draft")
+        .order_by(text("quoted_at DESC"))
+    ).all()
+    for q in quotes:
+        quoted_on = local_date(q.quoted_at)
+        if q.customer_id in found or quoted_on < since:
+            continue
+        converted = session.scalar(
+            select(func.count()).select_from(SalesTransaction).where(
+                SalesTransaction.customer_id == q.customer_id, SalesTransaction.sku == q.sku,
+                SalesTransaction.date >= quoted_on,
+            )
+        )
+        if not converted:
+            found[q.customer_id] = f"{quoted_on:%m/%d} 想進{q.name} × {q.qty}，報價草稿還沒成交"
+
+    growing = session.execute(
+        select(customer_profile.customer_summary.c.customer_id,
+               customer_profile.customer_summary.c.avg_order_amount_before,
+               customer_profile.customer_summary.c.avg_order_amount_last_90d)
+        .join(Customer, Customer.id == customer_profile.customer_summary.c.customer_id)
+        .where(
+            Customer.owner_user_id == owner_id,
+            customer_profile.customer_summary.c.avg_order_amount_last_90d
+            >= customer_profile.customer_summary.c.avg_order_amount_before * OPPORTUNITY_GROWTH_RATIO,
+        )
+    ).all()
+    for customer_id, before, now in growing:
+        if customer_id in found:
+            continue
+        sentence = f"單次進貨金額從 {float(before) / 10000:.1f} 萬增加到 {float(now) / 10000:.1f} 萬"
+        category = _fastest_growing_category(session, customer_id, today)
+        if category == GENERIC_PRICE_CATEGORY:
+            sentence += "，慢性處方為主，可以帶學名藥比價表"
+        elif category:
+            sentence += f"，以{category}為主"
+        found[customer_id] = sentence
+    return found
+
+
+def _fastest_growing_category(session: Session, customer_id: str, today: dt.date) -> str | None:
+    """近 90 天比之前 90 天，進貨金額多最多的品類。"""
+    recent_start = today - dt.timedelta(days=customer_profile.RECENT_DAYS)
+    earlier_start = recent_start - dt.timedelta(days=customer_profile.RECENT_DAYS)
+    rows = session.execute(
+        select(
+            Product.category,
+            func.sum(case((SalesTransaction.date > recent_start, SalesTransaction.amount), else_=0))
+            - func.sum(case((SalesTransaction.date <= recent_start, SalesTransaction.amount), else_=0)),
+        )
+        .join(Product, Product.sku == SalesTransaction.sku)
+        .where(SalesTransaction.customer_id == customer_id, SalesTransaction.date > earlier_start,
+               SalesTransaction.date <= today)
+        .group_by(Product.category)
+        .order_by(text("2 DESC"))
+    ).first()
+    return rows[0] if rows and rows[1] and rows[1] > 0 else None
+
+
 def _signal_and_reason(candidate: route_model.Candidate, today: dt.date) -> tuple[str, str]:
     """這家為什麼排進來，說一句話。
 
@@ -187,6 +270,7 @@ def build(session: Session, user_id: str, feedback: Feedback | None = None) -> T
     done = _done_visits(session, user_id, today)
     done_ids = {c.id for _, c in done}
     overdue = _overdue_commitments(session, user_id, today)
+    opportunities = _opportunities(session, user_id, today)
     model = route_model.load_model()
 
     pool = []
@@ -201,6 +285,10 @@ def build(session: Session, user_id: str, feedback: Feedback | None = None) -> T
         if snooze_until and snooze_until > today:
             continue
         signal, reason = _signal_and_reason(candidate, today)
+        opportunity = opportunities.get(candidate.customer_id)
+        # 商機的說明排在帳款與間隔這類壞消息後面：同一家兩種都有時，先講要處理的問題
+        if opportunity and signal not in ("ar", "interval"):
+            signal, reason = "opportunity", opportunity
         if unresolved:
             signal, reason = "commitment", f"答應的事 {due:%m/%d} 到期，已經過 {(today - due).days} 天"
         base = route_model.score(candidate.features, model) if model else route_model.rule_score(candidate)
@@ -211,6 +299,7 @@ def build(session: Session, user_id: str, feedback: Feedback | None = None) -> T
             # 按過「插入下一站」的排最前面，其次是逾期的承諾，再來才照分數。
             # 這類提醒被按過「誤判」就不再硬排：業務說這種提醒對他沒用，硬排等於不理他
             "rank": (candidate.customer_id in feedback.pinned, unresolved and weight >= 0),
+            "opportunity": opportunity,
         })
     pool.sort(key=lambda item: (item["rank"][0], item["rank"][1], item["score"]), reverse=True)
     # 逾期承諾超過上限的，排回分數的隊伍裡，不再硬插到前面
@@ -220,6 +309,15 @@ def build(session: Session, user_id: str, feedback: Feedback | None = None) -> T
         (dropped if forced and sum(1 for k in kept if k["rank"][1]) >= MAX_OVERDUE_STOPS else kept).append(item)
     pool = kept + sorted(dropped, key=lambda item: item["score"], reverse=True)
     picked = pool[: max(0, ROUTE_SIZE - len(done))]
+    # 路線裡沒有商機、而且有名額時，把分數最高的一家商機換進來（替掉分數最低、不是硬排的那一站）
+    picked_ids = {item["candidate"].customer_id for item in picked}
+    # 看的是畫面上有沒有標成商機：有商機、但因為同時帳款逾期而標成帳款的那一站不算
+    if picked and not any(item["signal"] == "opportunity" for item in picked):
+        best = next((item for item in pool if item["opportunity"] and item["candidate"].customer_id not in picked_ids), None)
+        replaceable = [i for i, item in enumerate(picked) if not item["rank"][0] and not item["rank"][1]]
+        if best and replaceable and MAX_OPPORTUNITY_STOPS:
+            best = {**best, "signal": "opportunity", "reason": best["opportunity"]}
+            picked[replaceable[-1]] = best
 
     stops = [
         Stop(

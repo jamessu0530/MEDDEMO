@@ -21,47 +21,52 @@ def client(engine, monkeypatch):
         conn.execute(text("DELETE FROM ask_record WHERE question LIKE '測試：%'"))
 
 
-def ask(client, ip, question="測試：這個月魚油賣了幾盒"):
-    return client.post("/api/asks", json={"kind": "data", "question": question}, headers={"CF-Connecting-IP": ip})
+def ask(client, auth, user_id, question="測試：這個月魚油賣了幾盒", ip="198.51.100.1"):
+    # 全部從同一個 IP 送：決賽現場大家連同一個 Wi-Fi，有登入就要按帳號分開算
+    headers = {**auth(user_id), "CF-Connecting-IP": ip}
+    return client.post("/api/asks", json={"kind": "data", "question": question}, headers=headers)
 
 
-def test_one_source_is_limited_per_hour_but_others_can_still_ask(client):
-    assert ask(client, "198.51.100.1").status_code == 202
-    assert ask(client, "198.51.100.1").status_code == 202
-    blocked = ask(client, "198.51.100.1")
+def test_one_account_is_limited_per_hour_but_others_on_the_same_wifi_can_still_ask(client, auth):
+    assert ask(client, auth, "U01").status_code == 202
+    assert ask(client, auth, "U01").status_code == 202
+    blocked = ask(client, auth, "U01")
     assert blocked.status_code == 429
     assert "這一小時" in blocked.json()["detail"]
     assert 0 < int(blocked.headers["Retry-After"]) <= 3600
-    assert ask(client, "198.51.100.2").status_code == 202
+    assert ask(client, auth, "U02").status_code == 202
 
 
-def test_the_whole_system_stops_at_the_daily_limit(client):
-    for ip in ("198.51.100.1", "198.51.100.2", "198.51.100.3"):
-        assert ask(client, ip).status_code == 202
-    blocked = ask(client, "198.51.100.4")
+def test_the_whole_system_stops_at_the_daily_limit(client, auth):
+    for user_id in ("U01", "U02", "U03"):
+        assert ask(client, auth, user_id).status_code == 202
+    blocked = ask(client, auth, "U04")
     assert blocked.status_code == 429
     assert "今天全系統" in blocked.json()["detail"]
 
 
-def test_rejected_requests_do_not_use_up_the_limit(client):
+def test_rejected_requests_do_not_use_up_the_limit(client, auth):
     for _ in range(5):
-        empty = client.post("/api/asks", json={"kind": "data", "question": ""}, headers={"CF-Connecting-IP": "198.51.100.9"})
+        empty = client.post("/api/asks", json={"kind": "data", "question": ""}, headers=auth("U01"))
         assert empty.status_code == 422
-    assert ask(client, "198.51.100.9").status_code == 202
-
-
-def test_reading_is_never_limited(client):
-    created = ask(client, "198.51.100.1").json()
+    # 沒登入被擋下的也不算
     for _ in range(5):
-        assert client.get(f"/api/asks/{created['id']}", headers={"CF-Connecting-IP": "198.51.100.1"}).status_code == 200
+        assert client.post("/api/asks", json={"kind": "data", "question": "測試：x"}).status_code == 401
+    assert ask(client, auth, "U01").status_code == 202
 
 
-def test_requests_still_go_through_when_redis_is_down(client, monkeypatch):
+def test_reading_is_never_limited(client, auth):
+    created = ask(client, auth, "U01").json()
+    for _ in range(5):
+        assert client.get(f"/api/asks/{created['id']}", headers=auth("U01")).status_code == 200
+
+
+def test_requests_still_go_through_when_redis_is_down(client, auth, monkeypatch):
     def down(*counters):
         raise RedisConnectionError("測試：Redis 停了")
 
     monkeypatch.setattr(usage, "_take", down)
-    assert ask(client, "198.51.100.1").status_code == 202
+    assert ask(client, auth, "U01").status_code == 202
 
 
 @pytest.mark.parametrize(

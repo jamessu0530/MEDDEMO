@@ -38,6 +38,12 @@ SLOWDOWN_FACTOR = 1.6
 SLOWDOWN_DAYS = 130
 # 北區三家在拉長期間魚油只進原本的一半，讓「魚油縮最多」成立
 NORTH_FISH_OIL_FACTOR = 0.5
+# 刻意設計的「慢箋成長」：三區各一家診所，慢性處方從同一個時間點開始每次多進五成（原型今日路線的
+# 「杏林診所 · 大安，商機，慢箋成長，帶學名藥比價表」）。這是今日路線「商機」提醒的驗證案例：
+# 其他客戶單次進貨金額的變動九成在 4% 以內、最多 8%，這三家要明顯超過兩成的提醒門檻
+GROWTH_CUSTOMERS = {"杏林診所 · 大安", "明倫家醫科診所 · 北屯", "光明家醫科診所 · 三民"}
+GROWTH_CATEGORY = "慢性處方"
+GROWTH_FACTOR = 1.5
 
 # (上架費率, 通路獎勵率)；康泰沿用原型談判卡上的 8% ＋ 5%
 CHAIN_FEES = {
@@ -236,6 +242,7 @@ def build_orders(rng, customer, basket, products, as_of):
     base = 21 if customer["id"] == "C001" else rng.randint(*INTERVAL_DAYS[type_])
     scenario = customer["name"] in SCENARIO_CUSTOMERS
     north = customer["name"] in NORTH_DECLINE
+    growing = customer["name"] in GROWTH_CUSTOMERS
     slowdown_start = as_of - timedelta(days=SLOWDOWN_DAYS)
     listing_rate, reward_rate = CHAIN_FEES.get(customer["chain_group"]) or OTHER_FEES[type_]
     factor = PRICE_FACTOR[type_]
@@ -250,6 +257,9 @@ def build_orders(rng, customer, basket, products, as_of):
             qty = max(1, round(base_qty * rng.uniform(0.85, 1.15)))
             if north and slowed and sku == "HS-FO30":
                 qty = max(1, round(qty * NORTH_FISH_OIL_FACTOR))
+            # 數量在亂數抽完之後才放大，不多抽亂數：其他客戶的交易一筆都不會變
+            if growing and d >= slowdown_start and p["category"] == GROWTH_CATEGORY:
+                qty = round(qty * GROWTH_FACTOR)
             amount = round(qty * p["unit_price"] * factor)
             lines.append({
                 "order_no": order_no, "customer_id": customer["id"], "date": d, "sku": sku,
@@ -503,7 +513,8 @@ def build_visits(rng, customers, baskets, products, as_of, transactions, receiva
         })
         for line_no, item in enumerate(fields["intent"] or [], start=1):
             tables["sap_quotation_draft"].append({
-                "visit_id": visit_id, "line_no": line_no, "customer_id": c["id"], "sku": item["sku"],
+                "quote_no": visit_id, "visit_id": visit_id, "line_no": line_no, "customer_id": c["id"], "sku": item["sku"],
+                "created_by": c["owner_user_id"],
                 "qty": item["qty"], "unit_price": round(products[item["sku"]]["unit_price"] * PRICE_FACTOR[c["type"]]),
                 "created_at": confirmed_at,
             })

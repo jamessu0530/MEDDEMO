@@ -267,11 +267,16 @@ class SapQuotationDraft(Base):
     __tablename__ = "sap_quotation_draft"
     __table_args__ = (
         UniqueConstraint("visit_id", "line_no"),
+        UniqueConstraint("quote_no", "line_no"),
         CheckConstraint("qty > 0", name="qty_positive"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
-    visit_id: Mapped[str] = mapped_column(ForeignKey("visit.id"))
+    # 同一張報價的品項共用一個單號。拜訪回寫開的用拜訪編號；在客戶檔案直接開的用 Q 開頭的單號
+    quote_no: Mapped[str] = mapped_column(index=True)
+    # 客戶檔案直接開的報價沒有拜訪（原型客戶檔案的「開報價」）
+    visit_id: Mapped[str | None] = mapped_column(ForeignKey("visit.id"))
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
     line_no: Mapped[int]
     customer_id: Mapped[str] = mapped_column(ForeignKey("customer.id"))
     sku: Mapped[str] = mapped_column(ForeignKey("product.sku"))
@@ -337,6 +342,24 @@ class DocumentChunk(Base):
     embedding: Mapped[Any | None] = mapped_column(Vector())
 
 
+class ManagerNotice(Base):
+    """拜訪提到競品或客訴時，通報轄區主管（原型回寫完成頁：「競品已加入風險分，主管同步收到通報」）。"""
+
+    __tablename__ = "manager_notice"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    visit_id: Mapped[str] = mapped_column(ForeignKey("visit.id", ondelete="CASCADE"), unique=True)
+    customer_id: Mapped[str] = mapped_column(ForeignKey("customer.id"))
+    rep_id: Mapped[str] = mapped_column(ForeignKey("app_user.id"))
+    manager_id: Mapped[str] = mapped_column(ForeignKey("app_user.id"), index=True)
+    reason: Mapped[str]
+    # 通報當下的風險分與項目；之後客戶狀況變了也不回頭改，主管看到的是當時的判斷
+    score: Mapped[int]
+    items: Mapped[list[str]] = mapped_column(JSONB)
+    created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+    seen_at: Mapped[dt.datetime | None]
+
+
 class AskRecord(Base):
     """一次提問（FR-7 數字查詢、FR-8 知識查詢）。每一步查了什麼記在 query_trace（NFR-2 可追溯）。"""
 
@@ -344,6 +367,8 @@ class AskRecord(Base):
     __table_args__ = (one_of("kind", ASK_KINDS, "kind"), one_of("status", ASK_STATUSES, "status"))
 
     id: Mapped[str] = mapped_column(primary_key=True)
+    # 誰問的：數字查詢照這個人的範圍過濾，提問與轉給主管也只有他自己看得到
+    user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), index=True)
     kind: Mapped[str]
     question: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(server_default="queued")

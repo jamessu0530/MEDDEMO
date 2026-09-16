@@ -20,3 +20,8 @@ export function formatElapsed(seconds: number) {
   const minutes = Math.floor(seconds / 60)
   return `${String(minutes).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`
 }
+
+/** 12240 → NT$12,240；報價、待處理事項的金額都到元，不留小數 */
+export function formatMoney(amount: number) {
+  return `NT$${Math.round(amount).toLocaleString("zh-TW")}`
+}
