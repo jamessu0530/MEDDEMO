@@ -1,8 +1,9 @@
-"""用量上限（第六週）：沒有登入，網址給出去誰都能用，所以會呼叫 Gemini 的入口都限次數，免得額度被用光。
+"""用量上限（第六週）：會呼叫 Gemini 的入口都限次數，免得額度被用光。
 
 兩層上限：
-- 每個來源（IP）每小時：擋單一裝置或程式一直送。取全系統每天的四分之一，
-  一個來源至少要四個小時才用得完一天的量，其他人還有時間用。
+- 每個來源每小時：擋單一裝置或程式一直送。有登入就按帳號算，沒有才按 IP
+  （決賽現場大家連同一個 Wi-Fi，按 IP 算等於全場共用一份額度）。
+  取全系統每天的四分之一，一個來源至少要四個小時才用得完一天的量，其他人還有時間用。
 - 全系統每天（台北時間午夜重算）：就算有人換很多 IP，一天最多也只花到這個量。
 
 計數放在 Redis，用固定的時間窗。請求進來先加一，超過上限就減回去並回 429；
@@ -22,6 +23,7 @@ from fastapi.responses import JSONResponse
 from redis.exceptions import RedisError
 from starlette.concurrency import run_in_threadpool
 
+from app.services import auth
 from app.tasks import redis
 
 log = logging.getLogger(__name__)
@@ -73,6 +75,18 @@ def bucket_for(method: str, path: str) -> str | None:
 
 
 def client_address(request: Request) -> str:
+    """算在誰頭上。有登入就按帳號，沒有才按 IP。
+
+    決賽現場大家連同一個 Wi-Fi，按 IP 算等於全場共用一份額度；按帳號算，每個人有自己的。
+    這裡只從 token 取出是誰、不查資料庫：token 是不是還有效由各個 API 自己擋，
+    這裡只需要一個穩定的識別。
+    """
+    header = request.headers.get("authorization") or ""
+    scheme, _, token = header.partition(" ")
+    if scheme.lower() == "bearer" and token:
+        subject = auth.subject_from_token(token.strip())
+        if subject:
+            return f"user:{subject}"
     # 正式環境一律經過 Cloudflare（GCP 防火牆只放 Cloudflare 的 IP 進來），CF-Connecting-IP 是它填的真實來源；
     # 本機開發與測試沒有這個標頭，就用連線的位址
     return request.headers.get("cf-connecting-ip") or (request.client.host if request.client else "unknown")

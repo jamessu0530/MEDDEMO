@@ -1,7 +1,4 @@
-import { jsonBody, request } from "@/api/client"
-
-// 這次專案不做登入，業務自己選身分（lib/rep.ts），路線就照這個 id 排
-export type Rep = { id: string; name: string; region: string }
+import { ApiError, jsonBody, request } from "@/api/client"
 
 // 每一站為什麼被排進來。後端 today_route.SIGNAL_LABEL 有同一組，改了要一起改
 export type RouteSignal = "commitment" | "ar" | "interval" | "order" | "contract" | "visit" | "routine"
@@ -55,7 +52,6 @@ export type RouteFeedback = {
 }
 
 // 跟客戶清單一樣（FR-4.3）：載入成功就記在手機裡，路上沒訊號時至少看得到上次那份
-const REPS_CACHE_KEY = "meddemo:reps"
 const ROUTE_CACHE_KEY = "meddemo:route"
 
 function readCache<T>(key: string): T | null {
@@ -75,33 +71,25 @@ function writeCache(key: string, value: unknown) {
   }
 }
 
-/** 業務名單（選身分用，不含主管）；連不上時改用上次載入的名單 */
-export async function listReps(signal?: AbortSignal) {
-  try {
-    const reps = await request<Rep[]>("/api/reps", { signal })
-    writeCache(REPS_CACHE_KEY, reps)
-    return reps
-  } catch (error) {
-    const cached = signal?.aborted ? null : readCache<Rep[]>(REPS_CACHE_KEY)
-    if (cached) return cached
-    throw error
-  }
-}
-
 function routeKey(userId: string) {
   return `${ROUTE_CACHE_KEY}:${userId}`
 }
 
-/** 今日路線；連不上伺服器時改用上次拿到的那份（cached 為 true，畫面上要標明） */
+/**
+ * 今日路線；連不上伺服器時改用上次拿到的那份（cached 為 true，畫面上要標明）。
+ * 是哪一位業務由後端看 token 認，不必送 user_id；這裡的 userId 只用來分開每個人在這支手機上的快取。
+ */
 export async function getTodayRoute(userId: string, feedback: RouteFeedback, signal?: AbortSignal) {
   try {
     const route = await request<TodayRoute>("/api/route/today", {
-      ...jsonBody("POST", { user_id: userId, feedback }),
+      ...jsonBody("POST", { feedback }),
       signal,
     })
     writeCache(routeKey(userId), route)
     return { route, cached: false }
   } catch (error) {
+    // 主管沒有自己的拜訪路線（403）：這不是連不上，不能拿舊的那份出來充數
+    if (error instanceof ApiError && error.status === 403) throw error
     const cached = signal?.aborted ? null : readCache<TodayRoute>(routeKey(userId))
     if (cached) return { route: cached, cached: true }
     throw error

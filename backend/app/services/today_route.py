@@ -85,11 +85,6 @@ class TodayRoute:
     stops: list[Stop]
 
 
-def reps(session: Session) -> list[AppUser]:
-    """可以選的身分：業務，不含主管。沒有登入，所以誰都能選任何一位。"""
-    return list(session.scalars(select(AppUser).where(AppUser.role == "sales").order_by(AppUser.id)))
-
-
 def _done_visits(session: Session, user_id: str, today: dt.date) -> list[tuple[Visit, Customer]]:
     """今天已經確認送出的拜訪，照時間排。"""
     rows = session.execute(

@@ -107,3 +107,22 @@ def docs(engine, tmp_path):
         index_documents(session, directory=tmp_path)
         session.commit()
         return dict(session.execute(text("SELECT section, id FROM document_chunk")).all())
+
+
+@pytest.fixture
+def auth(engine):
+    """拿某個帳號的 Authorization 標頭。假資料給每個帳號的密碼都是 DEMO_PASSWORD 的預設值。"""
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    def headers(user_id: str = "U01") -> dict[str, str]:
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/auth/login",
+                json={"email": f"{user_id.lower()}@meddemo.tw", "password": settings().demo_password},
+            )
+        assert response.status_code == 200, response.text
+        return {"Authorization": f"Bearer {response.json()['token']}"}
+
+    return headers

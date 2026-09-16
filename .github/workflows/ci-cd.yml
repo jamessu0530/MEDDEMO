@@ -1,6 +1,6 @@
 # 每次 push 與 PR 都跑測試；推到 main 才建映像檔，並由 VM 上的 self-hosted runner 用 Helm 部署到 K3s
 # （chart 在 deploy/helm/meddemo，runner 用 deploy/setup-runner.sh 安裝）。跟 CARE 同一種做法。
-# 需要的 repo secrets：POSTGRES_PASSWORD
+# 需要的 repo secrets：POSTGRES_PASSWORD、JWT_SECRET、DEMO_PASSWORD
 #   選填：ASR_API_KEY、LLM_API_KEY、EMBEDDING_API_KEY、VOICE_API_KEY、FIRECRAWL_API_KEY、COHERE_API_KEY
 # 需要的 repo variables：SITE_URL
 # 用哪家服務、哪個模型這類參數不放 GitHub，寫在 deploy/helm/meddemo/values.yaml 的 config，改完推 main 就部署生效
@@ -168,6 +168,8 @@ jobs:
           VOICE_API_KEY: ${{ secrets.VOICE_API_KEY }}
           FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}
           COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          DEMO_PASSWORD: ${{ secrets.DEMO_PASSWORD }}
         run: |
           # Secret 不放進 chart（跟 CARE 的 care-backend-secret 一樣），要比 chart 先建好，pod 一啟動就讀得到
           kubectl create namespace meddemo --dry-run=client -o yaml | kubectl apply -f -
@@ -180,6 +182,7 @@ jobs:
             --from-literal=ASR_API_KEY="$ASR_API_KEY" --from-literal=LLM_API_KEY="$LLM_API_KEY" \
             --from-literal=EMBEDDING_API_KEY="$EMBEDDING_API_KEY" --from-literal=VOICE_API_KEY="$VOICE_API_KEY" \
             --from-literal=FIRECRAWL_API_KEY="$FIRECRAWL_API_KEY" --from-literal=COHERE_API_KEY="$COHERE_API_KEY" \
+            --from-literal=JWT_SECRET="$JWT_SECRET" --from-literal=DEMO_PASSWORD="$DEMO_PASSWORD" \
             --dry-run=client -o yaml | kubectl apply -f -
           # --wait：所有 pod 就緒才算成功。上限放寬到 10 分鐘，因為第一次部署要從 Docker Hub 下載 Postgres 與 Redis 的映像
           helm upgrade --install meddemo deploy/helm/meddemo --namespace meddemo \

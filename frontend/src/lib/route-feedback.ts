@@ -2,7 +2,8 @@ import type { RouteFeedback, RouteSignal } from "@/api/route"
 
 /*
  * 業務對路線的調整（插入下一站、暫緩、誤判）只存在這支手機裡，不上伺服器：
- * 這次沒有登入，存伺服器的話多個評審用同一個業務身分試用會互相蓋掉彼此的調整。
+ * 後端沒有存這份回饋的地方，每次要路線時一起送出去重排。
+ * key 帶登入的使用者 id，同一支手機換人登入不會撈到上一個人的調整。
  */
 const KEY_PREFIX = "meddemo:route-feedback:"
 // 暫緩跳過三天：足夠跳過這一趟和隔天的路線，又不會整個週期看不到這家
@@ -10,8 +11,8 @@ const SNOOZE_DAYS = 3
 
 const EMPTY: RouteFeedback = { snoozed: [], pinned: [], signal_weights: {} }
 
-function storageKey(repId: string) {
-  return `${KEY_PREFIX}${repId}`
+function storageKey(userId: string) {
+  return `${KEY_PREFIX}${userId}`
 }
 
 /*
@@ -27,9 +28,9 @@ function addDays(isoDay: string, days: number) {
 }
 
 /** 這支手機記著的調整。today 有給就順手清掉過期的暫緩，不必等後端判斷 */
-export function readFeedback(repId: string, today?: string): RouteFeedback {
+export function readFeedback(userId: string, today?: string): RouteFeedback {
   try {
-    const raw = localStorage.getItem(storageKey(repId))
+    const raw = localStorage.getItem(storageKey(userId))
     if (!raw) return EMPTY
     const saved = JSON.parse(raw) as Partial<RouteFeedback>
     return {
@@ -42,9 +43,9 @@ export function readFeedback(repId: string, today?: string): RouteFeedback {
   }
 }
 
-function write(repId: string, feedback: RouteFeedback) {
+function write(userId: string, feedback: RouteFeedback) {
   try {
-    localStorage.setItem(storageKey(repId), JSON.stringify(feedback))
+    localStorage.setItem(storageKey(userId), JSON.stringify(feedback))
   } catch {
     // 存不進去，這次的調整只在重新排一次時生效，下次打開會回到原本的順序
   }
@@ -55,9 +56,9 @@ function adjust(weights: RouteFeedback["signal_weights"], signal: RouteSignal, d
 }
 
 /** 插入下一站：這家排到最前面，同一類訊號之後也排前面一點 */
-export function pinCustomer(repId: string, customerId: string, signal: RouteSignal) {
-  const current = readFeedback(repId)
-  write(repId, {
+export function pinCustomer(userId: string, customerId: string, signal: RouteSignal) {
+  const current = readFeedback(userId)
+  write(userId, {
     ...current,
     pinned: current.pinned.includes(customerId) ? current.pinned : [...current.pinned, customerId],
     signal_weights: adjust(current.signal_weights, signal, 1),
@@ -65,10 +66,10 @@ export function pinCustomer(repId: string, customerId: string, signal: RouteSign
 }
 
 /** 暫緩：三天內不再排這家；之前按過插入下一站就一併取消，免得兩個指示打架 */
-export function snoozeCustomer(repId: string, customerId: string, today: string) {
-  const current = readFeedback(repId, today)
+export function snoozeCustomer(userId: string, customerId: string, today: string) {
+  const current = readFeedback(userId, today)
   const until = addDays(today, SNOOZE_DAYS)
-  write(repId, {
+  write(userId, {
     ...current,
     snoozed: [...current.snoozed.filter((item) => item.customer_id !== customerId), { customer_id: customerId, until }],
     pinned: current.pinned.filter((id) => id !== customerId),
@@ -76,8 +77,8 @@ export function snoozeCustomer(repId: string, customerId: string, today: string)
 }
 
 /** 誤判：這類訊號之後少排一點，這家也先暫緩，免得明天又排在最前面 */
-export function markMisjudged(repId: string, customerId: string, signal: RouteSignal, today: string) {
-  snoozeCustomer(repId, customerId, today)
-  const current = readFeedback(repId, today)
-  write(repId, { ...current, signal_weights: adjust(current.signal_weights, signal, -1) })
+export function markMisjudged(userId: string, customerId: string, signal: RouteSignal, today: string) {
+  snoozeCustomer(userId, customerId, today)
+  const current = readFeedback(userId, today)
+  write(userId, { ...current, signal_weights: adjust(current.signal_weights, signal, -1) })
 }

@@ -84,11 +84,23 @@ curl -X PUT localhost:8000/api/mock-systems/oa -H 'Content-Type: application/jso
 
 - 等待時間：66 秒的錄音等 21 秒；6～9 秒的短句每句也要 5～8 秒。逾時設 90 秒，理由寫在 `transcription.py`。
 
+## 登入（FR-12）
+
+Email 加密碼。帳號是公司給的，沒有註冊、也沒有忘記密碼（要寄信，這次沒接）。
+
+- 八個帳號在灌假資料時建好：Email 是工號小寫加網域，例如業務林昱辰是 `u01@meddemo.tw`、主管陳建宏是 `m01@meddemo.tw`。密碼八個帳號都一樣，由 `DEMO_PASSWORD` 設定（本機預設 `meddemo1234`）。
+- 密碼用 bcrypt 存雜湊；登入發一張 JWT，預設 24 小時到期。
+- **同一個帳號只能在一台裝置登入**：token 裡除了帳號還帶 `sessionVersion`，每次登入把資料庫的版號加一，每個請求比對兩邊。版號對不上就回「帳號已在其他裝置登入，請重新登入」。這樣不必另外維護一張作廢清單。做法照著 flutterproject4（同一位作者的另一個專案）那套，只是資料庫從 MongoDB 換成 Postgres。
+- 改密碼會回一張新的 token（改完舊的就失效了），使用者不必重新登入。
+- **`JWT_SECRET` 沒設定時，程式每次啟動隨機產生一把**，重開之後所有人要重新登入，log 會警告。不給寫死的預設值：這個 repo 是公開的，預設值等於誰都能自己簽一張通行證。
+- 錯誤訊息要講得出下一步，不是只說「登入失敗」：找不到 Email 會提醒確認是不是公司給的帳號，密碼錯就說密碼錯。
+- 主管端 `/manager` 只有 `role = manager` 的帳號進得去，業務會被擋下（403）。
+
 ## 今日路線（首頁）
 
 打開 App 先看今天要跑哪幾家、順序、以及每一家為什麼排進來。原型的第一個畫面。
 
-- **選身分**：這次不做登入（FR-12／13），所以第一次打開時自己選是哪位業務，記在手機裡（localStorage），標頭的「換人」可以改。五位業務各管 50 家客戶。
+- **路線是誰的由登入決定**（以前是自己從名單選），五位業務各管 50 家客戶。主管沒有自己的客戶，開這一頁會說明沒有路線。
 - **排順序的是學出來的模型**，不是規則：
   - 訓練資料是資料庫裡的 5,223 筆拜訪紀錄。特徵六個，都是出門前就知道的事——進貨間隔的變化、距上次進貨多久、距上次拜訪多久、帳齡、合約還剩多久、客戶等級。標籤是那次拜訪有沒有留下競品、客訴、下單意向或承諾。
   - 模型是 logistic regression（純 Python 實作，不用額外套件），權重存在 `backend/app/resources/route_model.json`，跟程式一起進 git。
@@ -191,7 +203,7 @@ uv run --project backend python backend/scripts/eval_ask.py
 ## 轉給主管與主管回覆（FR-8.4 延伸）
 
 - 問答查無依據時，業務按「轉給主管回答」。
-- **主管端**在 `/manager`（首頁右上「主管端」）：看待回覆的提問和系統當時的回覆，選自己是哪一位主管之後回覆。沒有登入（FR-12／13 不在這次範圍），誰都打得開這頁。
+- **主管端**在 `/manager`（首頁右上「主管端」）：看待回覆的提問和系統當時的回覆。回覆者就是登入的主管，不必自己選；業務打不開這頁。
 - **業務收到提醒**：首頁每分鐘問一次有沒有新回覆，有的話鈴鐺上顯示則數，客戶清單上方也出現提醒。點進「轉給主管的提問」看回覆，看過就不再提醒；主管改了回覆會再提醒一次。
 - 提醒只在 App 開著時看得到。手機網頁要推播，得先裝成 App 並接推播服務，這次沒做。
 
@@ -213,9 +225,9 @@ uv run --project backend python backend/scripts/eval_ask.py
 
 ## 用量上限（第六週）
 
-沒有登入，網址給出去誰都能用，所以會呼叫 Gemini 的入口都限次數（`backend/app/usage.py`）。超過就回 429 並寫明原因；錄音碰到上限會先存在手機，過了時間自動送出。只算成功的請求，欄位驗證失敗這類不算。
+會呼叫 Gemini 的入口都限次數（`backend/app/usage.py`）。超過就回 429 並寫明原因；錄音碰到上限會先存在手機，過了時間自動送出。只算成功的請求，欄位驗證失敗這類不算。
 
-| 項目 | 入口 | 每個 IP 每小時 | 全系統每天 |
+| 項目 | 入口 | 每個帳號每小時 | 全系統每天 |
 | --- | --- | --- | --- |
 | 提問（打字與語音問答查資料都算） | `POST /api/asks` | 50 | 200 |
 | 語音問答 | `POST /api/voice/session` | 10 | 40 |
@@ -223,7 +235,7 @@ uv run --project backend python backend/scripts/eval_ask.py
 | 錄音整理（語音辨識＋整理欄位） | `POST /api/visits/audio`、`…/transcript`、`…/reprocess` | 15 | 60 |
 
 - 全系統每天的量，是決賽當天估計用量的約兩倍（推估：排練、簡報，加上約 10 位評審試用，提問約 100 題、語音問答約 20 次、錄音約 30 段）。每個 IP 每小時是每天的四分之一：一個來源至少要四小時才用得完一天的量。
-- IP 用 Cloudflare 填的 `CF-Connecting-IP`。決賽現場大家連同一個 Wi-Fi 會共用一個 IP 的額度，簡報的手機建議用行動網路。
+- **有登入就按帳號算**，沒登入的入口才按 IP（用 Cloudflare 填的 `CF-Connecting-IP`）。決賽現場大家連同一個 Wi-Fi，按 IP 算會全場共用一份額度，按帳號算每個人有自己的。
 - 四項每天都被用滿時，照 2026-09-14 官方價格推估最多約 US$35：
 
 | 項目 | 單次推估 | 每天上限用滿 |
@@ -299,6 +311,8 @@ MEDDEMO 跟 CARE 共用 GCP 上的 care-vm：K3s、Helm、Traefik、HTTPS 憑證
 | 名稱 | 類型 | 內容 |
 | --- | --- | --- |
 | `POSTGRES_PASSWORD` | secret | 隨機字串，例如 `openssl rand -hex 24` 產生的。第一次部署後就不要再改：Postgres 只在第一次建資料庫時設定密碼。 |
+| `JWT_SECRET` | secret | 簽登入 token 用，例如 `openssl rand -hex 32`。沒設的話 API 每次重啟都換一把，所有人要重新登入。 |
+| `DEMO_PASSWORD` | secret | 八個帳號共用的登入密碼。沒設就是程式裡的預設值 `meddemo1234`，而這個 repo 是公開的，所以決賽前要設。改完要手動執行一次部署並勾選「重灌假資料」才會生效。 |
 | `SITE_URL` | variable | `https://你的網址`，部署完會打它的 `/health` 確認網站正常 |
 | `ASR_API_KEY` | secret | 選填：語音辨識用的 Gemini 金鑰，沒填就沿用 `LLM_API_KEY` |
 | `LLM_API_KEY` | secret | 選填：Gemini 的金鑰，到 Google AI Studio 申請 |
@@ -325,6 +339,8 @@ backend/app/services/route_model.py  今日路線的排序模型：特徵、權�
 backend/app/services/today_route.py  今日路線：挑今天要去哪幾家、為什麼、三顆鈕的回饋
 backend/app/resources/route_model.json  訓練好的權重與成績
 backend/app/services/crag/          知識查詢的 CRAG（照搬 CARE 的回答路徑）
+backend/app/api/auth.py             登入、登出、改密碼；其他 API 認人的相依
+backend/app/services/auth.py        密碼雜湊、JWT、單一裝置登入
 backend/app/usage.py                用量上限：會呼叫 Gemini 的入口限次數
 backend/app/jobs/                   排程工作：每天清掉到期的錄音與逐字稿
 backend/app/gemini.py               Gemini 用戶端（embedding、語音辨識、語音問答共用）

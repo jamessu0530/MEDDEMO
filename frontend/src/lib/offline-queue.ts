@@ -56,9 +56,10 @@ async function run<T>(mode: IDBTransactionMode, action: (store: IDBObjectStore) 
   })
 }
 
-/** 斷線或伺服器暫時不能用：留著之後重送。其他錯誤（檔案太大、客戶不存在）重送也沒用 */
+/** 斷線、伺服器暫時不能用、登入過期：留著之後重送。其他錯誤（檔案太大、客戶不存在）重送也沒用 */
 export function isTemporary(error: unknown) {
-  if (error instanceof ApiError) return error.status >= 500 || error.status === 408 || error.status === 429
+  // 401 是 token 過期或被別的裝置頂掉：畫面會要求重新登入，登入後這筆還在，不能當成永久失敗把錄音丟掉
+  if (error instanceof ApiError) return error.status >= 500 || [401, 408, 429].includes(error.status)
   return true // fetch 自己丟出的 TypeError 就是連不上
 }
 
