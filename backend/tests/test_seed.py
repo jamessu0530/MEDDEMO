@@ -29,7 +29,12 @@ def rows(conn, sql, **params):
 
 
 def test_generation_is_deterministic():
-    assert generate.generate(AS_OF) == generate.generate(AS_OF)
+    first, second = generate.generate(AS_OF), generate.generate(AS_OF)
+    # 密碼雜湊每次的 salt 不同，本來就不會一樣；其餘每一筆都要相同
+    for data in (first, second):
+        for user in data["app_user"]:
+            user.pop("password_hash")
+    assert first == second
 
 
 def test_scale_matches_plan(db):

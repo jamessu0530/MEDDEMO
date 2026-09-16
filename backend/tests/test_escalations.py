@@ -33,7 +33,7 @@ def unseen(client):
     return client.get("/api/escalations/unseen").json()["count"]
 
 
-def test_a_manager_reply_reminds_the_rep_until_it_is_read(client, engine):
+def test_a_manager_reply_reminds_the_rep_until_it_is_read(client, engine, auth):
     escalation_id = escalate(client, engine)
     before = unseen(client)
     waiting = {item["id"]: item for item in client.get("/api/escalations", params={"status": "open"}).json()}
@@ -41,7 +41,9 @@ def test_a_manager_reply_reminds_the_rep_until_it_is_read(client, engine):
     assert waiting[escalation_id]["answer"] is None
 
     replied = client.post(
-        f"/api/escalations/{escalation_id}/reply", json={"manager_id": "M01", "answer": "  可以，走近效期換貨單。 "}
+        f"/api/escalations/{escalation_id}/reply",
+        json={"answer": "  可以，走近效期換貨單。 "},
+        headers=auth("M01"),
     ).json()
     assert replied["status"] == "answered"
     assert replied["answer"] == "可以，走近效期換貨單。"
@@ -53,16 +55,18 @@ def test_a_manager_reply_reminds_the_rep_until_it_is_read(client, engine):
     assert unseen(client) == before
 
     # 主管改了回覆，業務會再收到一次提醒
-    client.post(f"/api/escalations/{escalation_id}/reply", json={"manager_id": "M02", "answer": "要附批號照片。"})
+    client.post(f"/api/escalations/{escalation_id}/reply", json={"answer": "要附批號照片。"}, headers=auth("M02"))
     assert unseen(client) == before + 1
 
 
-def test_only_managers_can_reply_and_a_reply_cannot_be_blank(client, engine):
+def test_only_managers_can_reply_and_a_reply_cannot_be_blank(client, engine, auth):
     escalation_id = escalate(client, engine)
     reply = f"/api/escalations/{escalation_id}/reply"
-    assert client.post(reply, json={"manager_id": "U01", "answer": "可以"}).status_code == 422
-    assert client.post(reply, json={"manager_id": "M01", "answer": "   "}).status_code == 422
-    assert client.post("/api/escalations/999999/reply", json={"manager_id": "M01", "answer": "可以"}).status_code == 404
+    # 沒登入、業務登入都不能回覆
+    assert client.post(reply, json={"answer": "可以"}).status_code == 401
+    assert client.post(reply, json={"answer": "可以"}, headers=auth("U01")).status_code == 403
+    assert client.post(reply, json={"answer": "   "}, headers=auth("M01")).status_code == 422
+    assert client.post("/api/escalations/999999/reply", json={"answer": "可以"}, headers=auth("M01")).status_code == 404
 
 
 def test_a_question_without_a_reply_is_not_marked_as_seen(client, engine):
@@ -70,5 +74,3 @@ def test_a_question_without_a_reply_is_not_marked_as_seen(client, engine):
     assert client.post(f"/api/escalations/{escalation_id}/seen").json()["seen_at"] is None
 
 
-def test_the_reply_form_lists_every_manager(client):
-    assert [m["name"] for m in client.get("/api/escalations/managers").json()] == ["陳建宏", "張淑芬", "許文彬"]

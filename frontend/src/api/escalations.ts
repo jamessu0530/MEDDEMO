@@ -15,22 +15,17 @@ export type Escalation = {
   created_at: string
 }
 
-export type Manager = { id: string; name: string; region: string }
-
 export function listEscalations(status?: Escalation["status"], signal?: AbortSignal) {
   return request<Escalation[]>(`/api/escalations${status ? `?status=${status}` : ""}`, { signal })
-}
-
-export function listManagers(signal?: AbortSignal) {
-  return request<Manager[]>("/api/escalations/managers", { signal })
 }
 
 export function getUnseenCount(signal?: AbortSignal) {
   return request<{ count: number }>("/api/escalations/unseen", { signal })
 }
 
-export function replyEscalation(id: number, managerId: string, answer: string) {
-  return request<Escalation>(`/api/escalations/${id}/reply`, jsonBody("POST", { manager_id: managerId, answer }))
+/** 回覆的人是誰由後端看 token 認，不必送 manager_id */
+export function replyEscalation(id: number, answer: string) {
+  return request<Escalation>(`/api/escalations/${id}/reply`, jsonBody("POST", { answer }))
 }
 
 export function markSeen(id: number) {

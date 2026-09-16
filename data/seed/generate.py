@@ -12,7 +12,9 @@ from math import exp
 from datetime import date, datetime, time, timedelta, timezone
 
 import catalog
+from app.config import settings
 from app.pricing import SUPPLY_PRICE_FACTOR as PRICE_FACTOR  # 與 SAP 回寫共用同一份折數
+from app.services.auth import hash_password
 
 SEED = 20260914
 TAIPEI = timezone(timedelta(hours=8))
@@ -520,7 +522,13 @@ def build_visits(rng, customers, baskets, products, as_of, transactions, receiva
 
 def generate(as_of: date, seed: int = SEED) -> dict[str, list[dict]]:
     rng = random.Random(seed)
-    users = [{"id": i, "name": n, "role": r, "region": g} for i, n, r, g in catalog.USERS]
+    # 帳號是公司給的，沒有註冊功能。Email 用工號，密碼八個帳號都一樣，由 DEMO_PASSWORD 設定
+    password_hash = hash_password(settings().demo_password)
+    users = [
+        {"id": i, "name": n, "role": r, "region": g,
+         "email": f"{i.lower()}@meddemo.tw", "password_hash": password_hash, "session_version": 1}
+        for i, n, r, g in catalog.USERS
+    ]
     products = {
         sku: {"sku": sku, "name": name, "category": cat, "spec": spec, "unit": unit,
               "unit_price": price, "unit_cost": cost, "aliases": aliases}

@@ -81,6 +81,12 @@ class AppUser(Base):
     name: Mapped[str]
     role: Mapped[str]
     region: Mapped[str]
+    email: Mapped[str] = mapped_column(unique=True)
+    password_hash: Mapped[str]
+    # 每次登入加一，並寫進 JWT。每個請求比對兩邊，對不上就是這個帳號已經在別的裝置登入，
+    # 舊 token 直接失效。這樣不必另外維護一張作廢清單
+    session_version: Mapped[int] = mapped_column(server_default="1")
+    updated_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
 
 
 class Customer(Base):

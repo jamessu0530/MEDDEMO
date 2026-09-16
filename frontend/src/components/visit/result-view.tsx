@@ -5,8 +5,8 @@ import { useNavigate } from "react-router"
 import { remainingStops } from "@/api/route"
 import { retryWriteback, type Visit, type WritebackItem, type WritebackTarget } from "@/api/visits"
 import { Button } from "@/components/ui/button"
+import { readUser } from "@/lib/auth"
 import { formatDate } from "@/lib/format"
-import { readRep } from "@/lib/rep"
 import { cn } from "@/lib/utils"
 
 const TARGETS: { target: WritebackTarget; label: string; content: string }[] = [
@@ -30,8 +30,8 @@ export function ResultView({ visit, onChange }: { visit: Visit; onChange: (visit
   const results = new Map(visit.writeback.map((item) => [item.target, item]))
   const written = visit.writeback.filter((item) => item.status === "success" || item.status === "skipped").length
   const complete = visit.status === "synced"
-  const rep = readRep()
-  const remaining = rep ? remainingStops(rep.id, visit.customer_id) : null
+  const user = readUser()
+  const remaining = user ? remainingStops(user.id, visit.customer_id) : null
 
   async function retry(target: WritebackTarget) {
     setRetrying(target)

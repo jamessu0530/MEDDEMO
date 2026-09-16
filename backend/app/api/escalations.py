@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.api.auth import ManagerUser
 from app.db import get_session
 from app.models import AppUser, AskRecord, Escalation
 
@@ -34,14 +35,7 @@ class EscalationItem(BaseModel):
     created_at: dt.datetime
 
 
-class Manager(BaseModel):
-    id: str
-    name: str
-    region: str
-
-
 class ReplyInput(BaseModel):
-    manager_id: str
     # 主管的回覆多半是幾句做法說明；2000 字夠貼一段規定原文，也擋掉誤貼的整份文件
     answer: str = Field(min_length=1, max_length=2000)
 
@@ -89,13 +83,6 @@ def list_escalations(session: SessionDep, status: Literal["open", "answered"] | 
     return _items(session, *([Escalation.status == status] if status else []))
 
 
-@router.get("/managers", response_model=list[Manager])
-def list_managers(session: SessionDep):
-    """回覆表單上選「我是哪一位主管」用。"""
-    users = session.scalars(select(AppUser).where(AppUser.role == "manager").order_by(AppUser.id))
-    return [Manager(id=u.id, name=u.name, region=u.region) for u in users]
-
-
 @router.get("/unseen", response_model=Unseen)
 def unseen(session: SessionDep):
     """業務還沒看過的主管回覆有幾則。首頁定時問，有就提醒。"""
@@ -106,14 +93,14 @@ def unseen(session: SessionDep):
 
 
 @router.post("/{escalation_id}/reply", response_model=EscalationItem)
-def reply(session: SessionDep, escalation_id: int, body: ReplyInput):
-    """主管回覆。回覆後可以再改；改過之後業務會再收到一次提醒。"""
+def reply(session: SessionDep, escalation_id: int, body: ReplyInput, manager: ManagerUser):
+    """主管回覆。回覆後可以再改；改過之後業務會再收到一次提醒。
+
+    回覆者就是登入的主管（FR-12 之前是在畫面上自己選）。
+    """
     escalation = session.get(Escalation, escalation_id, with_for_update=True)
     if escalation is None:
         raise HTTPException(404, "找不到這個提問")
-    manager = session.get(AppUser, body.manager_id)
-    if manager is None or manager.role != "manager":
-        raise HTTPException(422, "只有主管可以回覆")
     answer = body.answer.strip()
     if not answer:
         raise HTTPException(422, "回覆不能是空白")

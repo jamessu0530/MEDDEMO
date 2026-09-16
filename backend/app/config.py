@@ -16,6 +16,13 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=ENV_FILE, extra="ignore")
 
     database_url: str = "postgresql+psycopg://meddemo:meddemo@127.0.0.1:5433/meddemo"
+    # 簽 JWT 用的密鑰。留空就每次啟動隨機產生一把（重開之後大家要重新登入），
+    # 絕不放預設值：寫死的預設值等於沒有密鑰，誰都能自己簽一張通行證
+    jwt_secret: str = ""
+    # 登入之後多久要重新登入。決賽當天只用幾個小時，一天綽綽有餘
+    jwt_expire_hours: int = 24
+    # 灌假資料時給每個帳號設的密碼。正式環境由 GitHub Secret 帶進來
+    demo_password: str = "meddemo1234"
     redis_url: str = "redis://127.0.0.1:6379/0"
 
     # 語音辨識與抽欄位的供應商。留空代表還沒設定：錄音會停在「轉文字失敗」讓業務手動輸入逐字稿，

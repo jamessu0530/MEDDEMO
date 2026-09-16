@@ -20,7 +20,8 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
   value: postgresql+psycopg://meddemo:$(POSTGRES_PASSWORD)@db:5432/meddemo
 {{- end }}
 
-{{/* 語音辨識、AI 模型、embedding、語音問答：金鑰從 Secret、參數從 ConfigMap（values.yaml 的 config）。
+{{/* 金鑰（語音辨識、AI 模型、embedding、語音問答、登入用的 JWT_SECRET 與 DEMO_PASSWORD）從 Secret，
+     參數從 ConfigMap（values.yaml 的 config）。
      envFrom 遇到同名的鍵以後面的為準，ConfigMap 放後面，參數就一律以 values.yaml 為準 */}}
 {{- define "meddemo.aiEnvFrom" -}}
 - secretRef:

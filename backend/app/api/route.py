@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app.api.auth import CurrentUser
 from app.db import get_session
 from app.services import today_route
 
@@ -35,7 +36,6 @@ class Feedback(BaseModel):
 
 
 class RouteRequest(BaseModel):
-    user_id: str
     feedback: Feedback | None = None
 
 
@@ -69,23 +69,18 @@ class TodayRoute(BaseModel):
     stops: list[Stop]
 
 
-@router.get("/reps", response_model=list[Rep])
-def list_reps(session: SessionDep):
-    """可以選的身分。這次沒有做登入（FR-12／13），所以誰都能選任何一位業務。"""
-    return [Rep(id=u.id, name=u.name, region=u.region) for u in today_route.reps(session)]
-
-
 @router.post("/route/today", response_model=TodayRoute)
-def get_today_route(session: SessionDep, body: RouteRequest):
+def get_today_route(session: SessionDep, body: RouteRequest, user: CurrentUser):
+    """今天要跑哪幾家。路線是誰的由 token 決定，不是前端說了算。"""
     feedback = today_route.Feedback(
         snoozed={s.customer_id: s.until for s in body.feedback.snoozed},
         pinned=list(body.feedback.pinned),
         signal_weights=dict(body.feedback.signal_weights),
     ) if body.feedback else today_route.Feedback()
     try:
-        result = today_route.build(session, body.user_id, feedback)
+        result = today_route.build(session, user.id, feedback)
     except LookupError:
-        raise HTTPException(status_code=404, detail="沒有這位業務") from None
+        raise HTTPException(status_code=403, detail="主管沒有自己的拜訪路線") from None
     return TodayRoute(
         date=result.date,
         rep=Rep(id=result.rep.id, name=result.rep.name, region=result.rep.region),

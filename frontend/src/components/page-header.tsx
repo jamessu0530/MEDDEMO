@@ -8,9 +8,11 @@ type PageHeaderProps = {
   backTo?: string
   // 取代返回鍵的左側按鈕，例如錄音中的「取消」
   leading?: ReactNode
+  // 標頭右側的按鈕，例如主管端的「帳號設定」
+  trailing?: ReactNode
 }
 
-export function PageHeader({ title, subtitle, backTo, leading }: PageHeaderProps) {
+export function PageHeader({ title, subtitle, backTo, leading, trailing }: PageHeaderProps) {
   return (
     <header className="sticky top-0 z-10 flex items-center gap-1 border-b bg-background/95 px-1 py-1.5 backdrop-blur">
       {leading ??
@@ -29,6 +31,7 @@ export function PageHeader({ title, subtitle, backTo, leading }: PageHeaderProps
         {subtitle && <p className="truncate text-xs text-muted-foreground">{subtitle}</p>}
         <h1 className="truncate text-base font-semibold">{title}</h1>
       </div>
+      {trailing}
     </header>
   )
 }

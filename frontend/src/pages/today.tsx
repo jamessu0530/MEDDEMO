@@ -1,19 +1,26 @@
 import { useEffect, useState } from "react"
-import { Bell, Check, CircleHelp, ListOrdered, Loader2, TriangleAlert } from "lucide-react"
+import { Bell, Check, ChevronRight, CircleHelp, ListOrdered, Loader2, TriangleAlert } from "lucide-react"
 import { Link, useNavigate } from "react-router"
 
-import { getTodayRoute, listReps, SIGNAL_LABEL, type Rep, type RouteStop, type TodayRoute } from "@/api/route"
+import { signOutSession } from "@/api/auth"
+import { ApiError } from "@/api/client"
+import { getTodayRoute, SIGNAL_LABEL, type RouteStop, type TodayRoute } from "@/api/route"
 import { BottomNav } from "@/components/bottom-nav"
 import { Notice } from "@/components/notice"
 import { Button } from "@/components/ui/button"
+import { useAuth } from "@/lib/auth"
 import { formatDate } from "@/lib/format"
 import { useUnseenReplies } from "@/lib/manager-replies"
 import { openGuide } from "@/lib/onboarding"
-import { setRep, useRep } from "@/lib/rep"
 import { markMisjudged, pinCustomer, readFeedback, snoozeCustomer } from "@/lib/route-feedback"
 import { cn } from "@/lib/utils"
 
-type LoadState = { status: "loading" } | { status: "error" } | { status: "ready"; route: TodayRoute; cached: boolean }
+type LoadState =
+  | { status: "loading" }
+  | { status: "error" }
+  // 後端說這個帳號不該有路線（主管）：直接顯示它那一句，不要說成連不上
+  | { status: "denied"; message: string }
+  | { status: "ready"; route: TodayRoute; cached: boolean }
 
 const STATUS_LABEL: Record<RouteStop["status"], string> = {
   done: "已完成",
@@ -28,8 +35,8 @@ const STATUS_LABEL: Record<RouteStop["status"], string> = {
  */
 export function TodayPage() {
   const navigate = useNavigate()
-  const rep = useRep()
-  const [picking, setPicking] = useState(false)
+  const user = useAuth()?.user
+  const userId = user?.id ?? null
   const [state, setState] = useState<LoadState>({ status: "loading" })
   const [attempt, setAttempt] = useState(0)
   const [busy, setBusy] = useState(false)
@@ -37,37 +44,22 @@ export function TodayPage() {
   const unseen = useUnseenReplies()
 
   useEffect(() => {
-    if (!rep) return
+    if (!userId) return
     const controller = new AbortController()
-    getTodayRoute(rep.id, readFeedback(rep.id), controller.signal)
+    getTodayRoute(userId, readFeedback(userId), controller.signal)
       .then(({ route, cached }) => setState({ status: "ready", route, cached }))
-      .catch(() => {
-        if (!controller.signal.aborted) setState({ status: "error" })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return
+        if (error instanceof ApiError && error.status === 403) setState({ status: "denied", message: error.message })
+        else setState({ status: "error" })
       })
       .finally(() => {
         if (!controller.signal.aborted) setBusy(false)
       })
     return () => controller.abort()
-  }, [rep, attempt])
+  }, [userId, attempt])
 
-  // 還沒選過身分，或是按了標頭的「換人」
-  if (!rep || picking) {
-    return (
-      <div className="flex min-h-svh flex-col">
-        <RepPicker
-          current={rep}
-          onPick={(next) => {
-            setRep(next)
-            setPicking(false)
-            setHint(null)
-            setState({ status: "loading" })
-          }}
-          onCancel={rep ? () => setPicking(false) : undefined}
-        />
-        <BottomNav />
-      </div>
-    )
-  }
+  if (!user) return null // 沒登入進不來（App.tsx 會導去登入頁），這行只是讓型別成立
 
   const route = state.status === "ready" ? state.route : null
   const urgent = route?.urgent ?? null
@@ -81,22 +73,22 @@ export function TodayPage() {
 
   // 三顆鈕：只改這支手機記著的回饋，然後重新跟後端要一次路線
   function pin() {
-    if (!rep || !urgent) return
-    pinCustomer(rep.id, urgent.customer_id, urgent.signal)
+    if (!user || !urgent) return
+    pinCustomer(user.id, urgent.customer_id, urgent.signal)
     setHint("已插到下一站，之後這類提醒會排前面一點。")
     reload()
   }
 
   function snooze() {
-    if (!rep || !urgent || !route) return
-    snoozeCustomer(rep.id, urgent.customer_id, route.date)
+    if (!user || !urgent || !route) return
+    snoozeCustomer(user.id, urgent.customer_id, route.date)
     setHint("先暫緩，三天內不會再排這家。")
     reload()
   }
 
   function misjudge() {
-    if (!rep || !urgent || !route) return
-    markMisjudged(rep.id, urgent.customer_id, urgent.signal, route.date)
+    if (!user || !urgent || !route) return
+    markMisjudged(user.id, urgent.customer_id, urgent.signal, route.date)
     setHint("知道了，這類提醒會少排一點。")
     reload()
   }
@@ -105,13 +97,14 @@ export function TodayPage() {
     <div className="flex min-h-svh flex-col">
       <header className="sticky top-0 z-10 border-b bg-background/95 px-4 pt-2 pb-3 backdrop-blur">
         <div className="-mr-2 flex items-center justify-between gap-2">
-          <p className="truncate text-xs text-muted-foreground">
-            {rep.region} · {rep.name}
-          </p>
+          {/* 點自己的名字進帳號設定：改密碼、登出 */}
+          <Link to="/settings" className="flex h-11 min-w-0 items-center gap-1 text-xs text-muted-foreground">
+            <span className="truncate">
+              {user.region} · {user.name}
+            </span>
+            <ChevronRight className="size-3.5 shrink-0" />
+          </Link>
           <div className="flex shrink-0 items-center">
-            <Link to="/manager" className="flex h-10 items-center px-2 text-xs text-muted-foreground">
-              主管端
-            </Link>
             <button
               type="button"
               aria-label="使用說明"
@@ -139,10 +132,10 @@ export function TodayPage() {
           <h1 className="truncate text-lg font-semibold">今日路線{route ? ` · ${formatDate(route.date)}` : ""}</h1>
           <button
             type="button"
-            onClick={() => setPicking(true)}
+            onClick={() => void signOutSession()}
             className="flex h-11 shrink-0 items-center rounded-lg px-2 text-xs text-muted-foreground hover:bg-muted"
           >
-            換人
+            登出
           </button>
         </div>
         {route && (
@@ -176,6 +169,13 @@ export function TodayPage() {
           </p>
         )}
         {state.status === "loading" && <p className="py-10 text-center text-sm text-muted-foreground">載入今日路線中…</p>}
+        {state.status === "denied" && (
+          <Notice
+            text={state.message}
+            action={{ label: "去主管端", onClick: () => navigate("/manager") }}
+            secondary={{ label: "去客戶清單", onClick: () => navigate("/customers") }}
+          />
+        )}
         {state.status === "error" && (
           <Notice
             text="連不上伺服器，今日路線沒有載入。"
@@ -290,68 +290,5 @@ function StopRow({ stop, index }: { stop: RouteStop; index: number }) {
         </>
       )}
     </Link>
-  )
-}
-
-/** 選身分：這次專案不做登入，業務自己選是誰，選完記在這支手機裡（lib/rep.ts） */
-function RepPicker({ current, onPick, onCancel }: { current: Rep | null; onPick: (rep: Rep) => void; onCancel?: () => void }) {
-  const [reps, setReps] = useState<Rep[] | null>(null)
-  const [failed, setFailed] = useState(false)
-  const [attempt, setAttempt] = useState(0)
-
-  useEffect(() => {
-    const controller = new AbortController()
-    listReps(controller.signal)
-      .then(setReps)
-      .catch(() => {
-        if (!controller.signal.aborted) setFailed(true)
-      })
-    return () => controller.abort()
-  }, [attempt])
-
-  return (
-    <main className="flex-1 px-4 pt-6 pb-20">
-      <h1 className="text-lg font-semibold">你是哪一位業務？</h1>
-      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-        這個版本沒有登入，選了之後記在這支手機裡，路線和回饋都照這個身分。之後可以在今日路線的標頭「換人」。
-      </p>
-      <div className="mt-4 flex flex-col gap-2">
-        {!reps && !failed && <p className="py-10 text-center text-sm text-muted-foreground">載入業務名單中…</p>}
-        {failed && (
-          <Notice
-            text="連不上伺服器，業務名單沒有載入。"
-            action={{
-              label: "重新載入",
-              onClick: () => {
-                setFailed(false)
-                setAttempt((n) => n + 1)
-              },
-            }}
-          />
-        )}
-        {reps?.map((rep) => (
-          <button
-            key={rep.id}
-            type="button"
-            onClick={() => onPick(rep)}
-            className={cn(
-              "flex min-h-14 items-center gap-3 rounded-xl border bg-card px-4 py-3 text-left active:bg-muted",
-              current?.id === rep.id && "border-primary/40"
-            )}
-          >
-            <div className="min-w-0 flex-1">
-              <p className="truncate font-medium">{rep.name}</p>
-              <p className="mt-0.5 truncate text-xs text-muted-foreground">{rep.region}</p>
-            </div>
-            {current?.id === rep.id && <span className="shrink-0 text-xs text-primary">目前</span>}
-          </button>
-        ))}
-      </div>
-      {onCancel && (
-        <Button variant="ghost" className="mt-4 h-11 w-full" onClick={onCancel}>
-          取消，維持原本的身分
-        </Button>
-      )}
-    </main>
   )
 }
