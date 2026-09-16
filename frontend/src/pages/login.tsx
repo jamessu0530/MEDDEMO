@@ -3,7 +3,7 @@ import { Eye, EyeOff, Loader2 } from "lucide-react"
 import { Navigate, useLocation, useNavigate } from "react-router"
 
 import { login, oauthLogin, type OAuthCredential } from "@/api/auth"
-import { FacebookButton, GitHubButton, GoogleButton } from "@/components/oauth-buttons"
+import { FacebookButton, GitHubButton, GoogleButton, NotReadyButton } from "@/components/oauth-buttons"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -20,6 +20,11 @@ function home(role: "sales" | "manager") {
  * 錯誤訊息直接顯示後端回的那一句（找不到這個 Email／密碼錯誤），不自己改寫，
  * 免得畫面上說的跟後端判斷的不一樣。
  */
+/** 伺服器還沒設定這一家時的說明 */
+function notReady(name: string) {
+  return `${name} 登入還沒開放，目前請先用 Email 登入。`
+}
+
 export function LoginPage() {
   const navigate = useNavigate()
   const location = useLocation()
@@ -79,7 +84,6 @@ export function LoginPage() {
     }
   }
 
-  const hasOAuth = Boolean(providers?.google || providers?.github || providers?.facebook)
 
   return (
     <div className="flex min-h-svh flex-col justify-center px-6 py-10">
@@ -147,8 +151,8 @@ export function LoginPage() {
         </Button>
       </form>
 
-      {/* 伺服器一家都沒設定（或還沒問到）就整區不出現，畫面跟只有 Email 登入時一樣 */}
-      {providers && hasOAuth && (
+      {/* 三家一律列出來；伺服器還沒設定的那家按下去說明還沒開放。還沒問到設定前先不畫，免得按鈕閃一下換樣子 */}
+      {providers && (
         <section aria-label="其他登入方式" className="mt-6 flex flex-col gap-3">
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
             <span className="h-px flex-1 bg-border" />
@@ -156,14 +160,22 @@ export function LoginPage() {
             <span className="h-px flex-1 bg-border" />
           </div>
 
-          {providers.google && (
+          {providers.google ? (
             <GoogleButton
               clientId={providers.google.client_id}
               text="signin_with"
               onCredential={(credential) => void submitOAuth({ provider: "google", body: { credential } })}
             />
+          ) : (
+            <NotReadyButton
+              provider="google"
+              label="使用 Google 帳戶登入"
+              variant="brand"
+              className="h-12 w-full gap-2 text-base"
+              onNotReady={() => setOauthError(notReady("Google"))}
+            />
           )}
-          {providers.github && (
+          {providers.github ? (
             <GitHubButton
               clientId={providers.github.client_id}
               mode="login"
@@ -172,8 +184,16 @@ export function LoginPage() {
               disabled={oauthBusy}
               onError={setOauthError}
             />
+          ) : (
+            <NotReadyButton
+              provider="github"
+              label="使用 GitHub 登入"
+              variant="brand"
+              className="h-12 w-full gap-2 text-base"
+              onNotReady={() => setOauthError(notReady("GitHub"))}
+            />
           )}
-          {providers.facebook && (
+          {providers.facebook ? (
             <FacebookButton
               appId={providers.facebook.app_id}
               label="使用 Facebook 登入"
@@ -182,6 +202,14 @@ export function LoginPage() {
               disabled={oauthBusy}
               onToken={(token) => void submitOAuth({ provider: "facebook", body: { access_token: token } })}
               onError={setOauthError}
+            />
+          ) : (
+            <NotReadyButton
+              provider="facebook"
+              label="使用 Facebook 登入"
+              variant="brand"
+              className="h-12 w-full gap-2 text-base"
+              onNotReady={() => setOauthError(notReady("Facebook"))}
             />
           )}
 

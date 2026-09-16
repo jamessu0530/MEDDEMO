@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react"
+import { useEffect, useState, type FormEvent, type ReactNode } from "react"
 import { Loader2, LogOut } from "lucide-react"
 import { useLocation, useNavigate } from "react-router"
 
@@ -10,7 +10,7 @@ import {
   type OAuthCredential,
   type OAuthProviders,
 } from "@/api/auth"
-import { FacebookButton, GitHubButton, GoogleButton } from "@/components/oauth-buttons"
+import { FacebookButton, GitHubButton, GoogleButton, NotReadyButton } from "@/components/oauth-buttons"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
 import {
@@ -33,8 +33,8 @@ const MIN_LENGTH = 8
 const PROVIDERS: OAuthProvider[] = ["google", "github", "facebook"]
 
 /**
- * 綁定的登入方式：帳號是公司給的，第三方帳號不會自動開帳號，要在這裡綁到自己身上，之後登入頁才能用。
- * 伺服器沒設定的那一家不列；一家都沒設定（或問不到）整區不出現。
+ * 綁定的登入方式：公司給的 Email 帳號可以在這裡綁第三方帳號，之後在登入頁用它登入就回到這個帳號。
+ * 三家一律列出來；伺服器還沒設定的那家按「綁定」說明還沒開放。
  */
 function LinkedAccounts({ user, providers }: { user: AuthUser; providers: OAuthProviders }) {
   const location = useLocation()
@@ -55,8 +55,6 @@ function LinkedAccounts({ user, providers }: { user: AuthUser; providers: OAuthP
     if ((location.state as { linked?: string } | null)?.linked) navigate(".", { replace: true, state: null })
   }, [location.state, navigate])
 
-  const configured = PROVIDERS.filter((provider) => providers[provider])
-  if (configured.length === 0) return null
 
   async function link(credential: OAuthCredential) {
     if (busy) return
@@ -105,7 +103,7 @@ function LinkedAccounts({ user, providers }: { user: AuthUser; providers: OAuthP
       </div>
 
       <ul className="divide-y rounded-2xl border bg-card">
-        {configured.map((provider) => {
+        {PROVIDERS.map((provider) => {
           const linked = user.linked?.find((account) => account.provider === provider)
           const label = PROVIDER_LABEL[provider]
           // 這支手機存的舊身分還沒有 linked 欄位：等 /api/auth/me 回來再給按鈕，免得把已綁定的顯示成未綁定
@@ -114,7 +112,7 @@ function LinkedAccounts({ user, providers }: { user: AuthUser; providers: OAuthP
           if (loading) status = "讀取中…"
           else if (linked) status = linked.email ?? "已綁定"
 
-          let action = null
+          let action: ReactNode
           if (loading) action = null
           else if (busy === provider) action = <Loader2 className="size-5 animate-spin text-muted-foreground" />
           else if (linked)
@@ -162,6 +160,16 @@ function LinkedAccounts({ user, providers }: { user: AuthUser; providers: OAuthP
                 disabled={busy !== null}
                 onToken={(token) => void link({ provider: "facebook", body: { access_token: token } })}
                 onError={showError}
+              />
+            )
+          else
+            action = (
+              <NotReadyButton
+                provider={provider}
+                label="綁定"
+                variant="outline"
+                className="h-11 px-4"
+                onNotReady={() => showError(`${label} 綁定還沒開放。`)}
               />
             )
 
