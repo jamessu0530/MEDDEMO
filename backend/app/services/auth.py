@@ -54,7 +54,8 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(plain: str, hashed: str | None) -> bool:
-    if not hashed:  # 第三方登入開的帳號沒有密碼
+    # 第三方登入開的帳號沒有密碼；空白密碼就算資料庫裡剛好也是空白的雜湊，也不准通過
+    if not hashed or not plain:
         return False
     try:
         return bcrypt.checkpw(plain.encode(), hashed.encode())

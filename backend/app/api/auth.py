@@ -52,7 +52,7 @@ class UserPublic(BaseModel):
 class LoginRequest(BaseModel):
     # 不用 EmailStr：那會多一個 email-validator 相依，而這裡只是拿去比對資料庫裡的帳號
     email: str
-    password: str
+    password: str = Field(min_length=1)
 
 
 class ChangePasswordRequest(BaseModel):

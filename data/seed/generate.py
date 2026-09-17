@@ -14,7 +14,7 @@ from datetime import date, datetime, time, timedelta, timezone
 import catalog
 from app.config import settings
 from app.pricing import SUPPLY_PRICE_FACTOR as PRICE_FACTOR  # 與 SAP 回寫共用同一份折數
-from app.services.auth import hash_password
+from app.services.auth import MIN_PASSWORD_LENGTH, hash_password
 
 SEED = 20260914
 TAIPEI = timezone(timedelta(hours=8))
@@ -534,7 +534,11 @@ def build_visits(rng, customers, baskets, products, as_of, transactions, receiva
 def generate(as_of: date, seed: int = SEED) -> dict[str, list[dict]]:
     rng = random.Random(seed)
     # 帳號是公司給的，沒有註冊功能。Email 用工號，密碼八個帳號都一樣，由 DEMO_PASSWORD 設定
-    password_hash = hash_password(settings().demo_password)
+    password = settings().demo_password
+    # 部署時灌資料失敗會讓整次部署失敗，比線上帳號默默變成弱密碼好發現
+    if len(password) < MIN_PASSWORD_LENGTH:
+        raise ValueError(f"DEMO_PASSWORD 至少要 {MIN_PASSWORD_LENGTH} 碼")
+    password_hash = hash_password(password)
     users = [
         {"id": i, "name": n, "role": r, "region": g,
          "email": f"{i.lower()}@meddemo.tw", "password_hash": password_hash, "session_version": 1}

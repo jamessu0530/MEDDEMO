@@ -113,3 +113,29 @@ def test_usage_limits_count_per_account_when_logged_in(client):
     assert usage.client_address(request) == "user:U01"
     anonymous = type("R", (), {"headers": {"cf-connecting-ip": "1.2.3.4"}, "client": None})()
     assert usage.client_address(anonymous) == "1.2.3.4"
+
+
+def test_an_empty_password_never_signs_in(client):
+    """9/16 線上出過事：DEMO_PASSWORD 沒設、部署傳進空字串，八個帳號被灌成空白密碼。"""
+    assert client.post("/api/auth/login", json={"email": "u01@meddemo.tw", "password": ""}).status_code == 422
+    assert auth.verify_password("", auth.hash_password("")) is False
+
+
+def test_a_blank_demo_password_setting_falls_back_to_the_default(env):
+    from app.config import DEFAULT_DEMO_PASSWORD
+
+    env(DEMO_PASSWORD="")
+    assert settings().demo_password == DEFAULT_DEMO_PASSWORD
+    env(DEMO_PASSWORD="   ")
+    assert settings().demo_password == DEFAULT_DEMO_PASSWORD
+
+
+def test_seeding_refuses_a_short_password(env):
+    import datetime as dt
+
+    import generate
+
+    env(DEMO_PASSWORD="short")
+    with pytest.raises(ValueError, match="至少要 8 碼"):
+        generate.generate(dt.date(2026, 10, 28))
+
