@@ -1,9 +1,10 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react"
 import { Loader2, LogOut } from "lucide-react"
-import { useLocation, useNavigate } from "react-router"
+import { Link, useLocation, useNavigate } from "react-router"
 
 import {
   changePassword,
+  deleteAccount,
   linkProvider,
   signOutSession,
   unlinkProvider,
@@ -305,6 +306,55 @@ function LinkedAccounts({ user, providers }: { user: AuthUser; providers: OAuthP
   )
 }
 
+/** 刪除帳號：只有自己開的帳號看得到（公司帳號是示範資料）。隱私權政策寫的刪除方式就是這顆 */
+function DeleteAccount() {
+  const [open, setOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function remove() {
+    setBusy(true)
+    setError(null)
+    try {
+      await deleteAccount()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "帳號沒有刪除成功，請再試一次")
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section className="flex flex-col gap-2">
+      <Button variant="ghost" className="h-11 w-full text-destructive hover:text-destructive" onClick={() => setOpen(true)}>
+        刪除帳號
+      </Button>
+      {error && (
+        <p role="alert" className="rounded-xl bg-destructive/10 px-3 py-2.5 text-sm leading-relaxed text-destructive">
+          {error}
+        </p>
+      )}
+      <Dialog open={open} onOpenChange={(next) => !busy && setOpen(next)}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>刪除帳號？</DialogTitle>
+            <DialogDescription>
+              會刪掉這個帳號、綁定的第三方登入、你問過的問題與轉給主管的提問，刪了不能復原。你開的報價草稿是客戶的交易紀錄，會留著，但不再記是誰開的。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" className="h-11" disabled={busy} onClick={() => setOpen(false)}>
+              取消
+            </Button>
+            <Button variant="destructive" className="h-11" disabled={busy} onClick={() => void remove()}>
+              {busy ? <Loader2 className="size-5 animate-spin" /> : "刪除帳號"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </section>
+  )
+}
+
 /** 帳號設定：看自己的身分、綁定第三方登入、改密碼、登出。業務從今日路線標頭的姓名進來，主管從主管端標頭進來 */
 export function SettingsPage() {
   const session = useAuth()
@@ -435,6 +485,14 @@ export function SettingsPage() {
           <LogOut className="size-5" />
           登出
         </Button>
+
+        {user.can_rename && <DeleteAccount />}
+
+        <p className="text-center text-xs text-muted-foreground">
+          <Link to="/privacy" className="inline-flex min-h-11 items-center underline underline-offset-2">
+            隱私權政策
+          </Link>
+        </p>
       </main>
     </div>
   )

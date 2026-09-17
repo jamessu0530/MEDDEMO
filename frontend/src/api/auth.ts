@@ -33,6 +33,12 @@ export function changePassword(currentPassword: string, newPassword: string) {
 }
 
 /** 登出：先讓後端作廢這組 token，再清掉這支手機存的登入狀態 */
+/** 刪除自己的帳號（只有自己開的帳號可以）。成功就清掉這支手機的登入 */
+export async function deleteAccount() {
+  await request<void>("/api/auth/me", { method: "DELETE" })
+  signOut("帳號已刪除。")
+}
+
 export async function signOutSession() {
   try {
     await request<void>("/api/auth/logout", { method: "POST" })

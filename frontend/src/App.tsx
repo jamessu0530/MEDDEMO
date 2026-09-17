@@ -13,6 +13,7 @@ import { CustomerPicker } from "@/pages/customer-picker"
 import { EscalationsPage } from "@/pages/escalations"
 import { GitHubCallbackPage } from "@/pages/github-callback"
 import { LoginPage } from "@/pages/login"
+import { PrivacyPage } from "@/pages/privacy"
 import { RegisterPage } from "@/pages/register"
 import { ManagerPage } from "@/pages/manager"
 import { NegotiationPage } from "@/pages/negotiation"
@@ -109,6 +110,8 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          {/* 隱私權政策不用登入就要看得到：Google 與 Facebook 審核時會直接打開這個網址 */}
+          <Route path="/privacy" element={<PrivacyPage />} />
           {/* GitHub 授權完導回來的頁面：登入流程也會走到，所以不能放在要登入的那一層裡 */}
           <Route path="/auth/github/callback" element={<GitHubCallbackPage />} />
           <Route element={<RequireAuth />}>

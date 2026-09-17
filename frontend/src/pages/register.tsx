@@ -149,6 +149,9 @@ export function RegisterPage() {
           登入
         </Link>
       </p>
+      <Link to="/privacy" className="mt-2 inline-flex min-h-11 items-center self-start text-xs text-muted-foreground underline underline-offset-2">
+        隱私權政策
+      </Link>
     </div>
   )
 }

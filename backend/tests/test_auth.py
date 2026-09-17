@@ -240,3 +240,34 @@ def test_registration_uses_the_same_name_rules(client):
     assert post("陳").status_code == 422
     assert "不當用字" in post("傻逼").json()["detail"]
 
+
+def test_a_self_created_account_can_delete_itself_with_its_data(client, engine):
+    from sqlalchemy import text as sql
+
+    created = client.post(
+        "/api/auth/register", json={"name": "要刪的人", "email": "delete@register.test", "password": "judge-pass-1"}
+    ).json()
+    headers = {"Authorization": f"Bearer {created['token']}"}
+    user_id = created["user"]["id"]
+    quote = client.post("/api/customers/C001/quotes", json={"items": [{"sku": "HS-FO30", "qty": 1}]}, headers=headers).json()
+    client.post("/api/asks", json={"kind": "knowledge", "question": "測試：刪帳號前問的"}, headers=headers)
+    try:
+        assert client.delete("/api/auth/me", headers=headers).status_code == 204
+        assert client.get("/api/auth/me", headers=headers).status_code == 401
+        assert client.post("/api/auth/login", json={"email": "delete@register.test", "password": "judge-pass-1"}).status_code == 401
+        with engine.connect() as conn:
+            assert conn.execute(sql("SELECT count(*) FROM app_user WHERE id = :u"), {"u": user_id}).scalar_one() == 0
+            assert conn.execute(sql("SELECT count(*) FROM ask_record WHERE user_id = :u"), {"u": user_id}).scalar_one() == 0
+            # 報價草稿是客戶的交易紀錄，留著，只清掉是誰開的
+            assert conn.execute(
+                sql("SELECT created_by FROM sap_quotation_draft WHERE quote_no = :q"), {"q": quote["quote_no"]}
+            ).scalar_one() is None
+    finally:
+        with engine.begin() as conn:
+            conn.execute(sql("DELETE FROM sap_quotation_draft WHERE quote_no = :q"), {"q": quote["quote_no"]})
+        _cleanup_registered(engine)
+
+
+def test_company_accounts_cannot_be_deleted(client, auth):
+    assert client.delete("/api/auth/me", headers=auth("U02")).status_code == 403
+

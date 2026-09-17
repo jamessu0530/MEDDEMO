@@ -13,12 +13,12 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import get_session
-from app.models import AppUser, UserIdentity
+from app.models import AppUser, SapQuotationDraft, UserIdentity
 from app.services import auth, oauth
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -203,6 +203,21 @@ def update_profile(session: SessionDep, user: CurrentUser, body: ProfileUpdate):
     session.commit()
     session.refresh(user)
     return _public(session, user)
+
+
+@router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
+def delete_account(session: SessionDep, user: CurrentUser):
+    """刪除自己的帳號（隱私權政策 /privacy 寫的刪除方式）。公司的八個帳號是示範資料，不能刪。
+
+    一起刪掉：帳號、綁定的第三方身分、自己的提問與轉給主管的提問（外鍵 ON DELETE CASCADE）。
+    自己開的報價草稿留在 SAP 模擬表，只把「誰開的」清掉：報價是交易紀錄，屬於客戶。
+    拜訪紀錄記在示範業務名下（自己開的帳號沒有自己的客戶），不受影響。
+    """
+    if not _is_self_service(user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="公司帳號不能自己刪除")
+    session.execute(update(SapQuotationDraft).where(SapQuotationDraft.created_by == user.id).values(created_by=None))
+    session.delete(user)
+    session.commit()
 
 
 @router.post("/change-password", response_model=AuthResponse)

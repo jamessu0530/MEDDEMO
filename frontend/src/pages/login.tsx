@@ -236,6 +236,9 @@ export function LoginPage() {
         </Link>
       </p>
       <p className="text-xs leading-relaxed text-muted-foreground">這個版本沒有寄信重設密碼：忘記密碼的話，公司帳號找主管重設，自己建立的帳號請重新建立一個。</p>
+      <Link to="/privacy" className="mt-2 inline-flex min-h-11 items-center self-start text-xs text-muted-foreground underline underline-offset-2">
+        隱私權政策
+      </Link>
     </div>
   )
 }
