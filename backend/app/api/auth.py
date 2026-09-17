@@ -49,12 +49,18 @@ class UserPublic(BaseModel):
     linked: list[LinkedIdentity] = Field(default_factory=list)
     # 第三方登入開的帳號自己沒有客戶，看的是這位示範業務的資料；畫面上要講清楚
     acting_as: ActingAs | None = None
+    # 自己開的帳號才能改名字；公司的八個帳號名字是公司資料，畫面上不給改
+    can_rename: bool = False
 
 
 class RegisterRequest(BaseModel):
-    name: str = Field(min_length=1, max_length=40)
+    name: str
     email: str
     password: str = Field(min_length=auth.MIN_PASSWORD_LENGTH)
+
+
+class ProfileUpdate(BaseModel):
+    name: str
 
 
 class LoginRequest(BaseModel):
@@ -83,7 +89,13 @@ def _public(session: Session, user: AppUser) -> UserPublic:
         has_password=bool(user.password_hash),
         linked=[LinkedIdentity(provider=i.provider, email=i.email, linked_at=i.created_at) for i in identities],
         acting_as=ActingAs(id=acting.id, name=acting.name) if acting else None,
+        can_rename=_is_self_service(user),
     )
+
+
+def _is_self_service(user: AppUser) -> bool:
+    """自己建立或第三方登入開的帳號（看示範業務的資料）。公司帳號沒有 acts_as_user_id。"""
+    return user.acts_as_user_id is not None
 
 
 def _unauthorized(message: str) -> HTTPException:
@@ -125,8 +137,10 @@ def register(session: SessionDep, body: RegisterRequest):
     email = auth.normalize_email(body.email)
     if not EMAIL_SHAPE.match(email):
         raise HTTPException(status_code=422, detail="Email 格式不對")
-    if not body.name.strip():
-        raise HTTPException(status_code=422, detail="名字不能是空白")
+    try:
+        name = auth.validate_name(body.name)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
     if session.scalar(select(AppUser.id).where(AppUser.email == email)):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="這個 Email 已經註冊過，請直接登入")
     # 同一個信箱之前用第三方登入開過帳號：提醒他用那個方式登入，不要再開一個
@@ -136,7 +150,7 @@ def register(session: SessionDep, body: RegisterRequest):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail=f"這個 Email 是用 {label} 登入開的帳號，請用 {label} 登入"
         )
-    user = _new_sales_account(session, body.name, email=email, password_hash=auth.hash_password(body.password))
+    user = _new_sales_account(session, name, email=email, password_hash=auth.hash_password(body.password))
     token = auth.start_session(session, user)
     try:
         session.commit()
@@ -173,6 +187,22 @@ def me(session: SessionDep, user: CurrentUser):
 def logout(session: SessionDep, user: CurrentUser):
     auth.logout(session, user)
     session.commit()
+
+
+@router.patch("/me/profile", response_model=UserPublic)
+def update_profile(session: SessionDep, user: CurrentUser, body: ProfileUpdate):
+    """改名字（照 flutterproject4 的 PATCH /me/profile）。"""
+    if not _is_self_service(user):
+        # 自己開的帳號看的都是林昱辰的客戶，公司帳號改了名字，所有人畫面上的示範業務都會跟著變
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="公司帳號的名字由公司設定，不能自己改")
+    try:
+        user.name = auth.validate_name(body.name)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    user.updated_at = func.now()
+    session.commit()
+    session.refresh(user)
+    return _public(session, user)
 
 
 @router.post("/change-password", response_model=AuthResponse)
@@ -255,6 +285,11 @@ def _create_external_account(session: Session, identity: oauth.ExternalIdentity)
     """第一次用第三方登入：開一個業務帳號並綁上這個第三方身分。"""
     label = oauth.PROVIDER_LABEL[identity.provider]
     name = identity.name or (identity.email.split("@")[0] if identity.email else f"{label} 使用者")
+    try:
+        name = auth.validate_name(name)
+    except ValueError:
+        # 第三方給的名字太短、太長或有不當用字：先用預設名字，使用者之後可以在帳號設定改
+        name = f"{label} 使用者"
     # 信箱記在 user_identity，不放 app_user.email：同一個人用 Google 和 GitHub 各開一次，信箱一樣會撞到唯一限制
     user = _new_sales_account(session, name, email=None, password_hash=None)
     session.add(UserIdentity(user_id=user.id, provider=identity.provider, subject=identity.subject, email=identity.email))

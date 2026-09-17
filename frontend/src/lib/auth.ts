@@ -13,6 +13,8 @@ export type AuthUser = {
   linked?: LinkedAccount[]
   // 第三方登入自動開的帳號自己沒有客戶，看的是這位示範業務的路線與客戶
   acting_as?: { id: string; name: string } | null
+  // 自己開的帳號才能改名字；公司帳號由公司設定
+  can_rename?: boolean
 }
 
 export type LinkedAccount = {

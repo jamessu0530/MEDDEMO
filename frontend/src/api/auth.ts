@@ -11,6 +11,11 @@ export function register(name: string, email: string, password: string) {
   return request<Session>("/api/auth/register", jsonBody("POST", { name, email, password }))
 }
 
+/** 改名字（2～32 字）。公司帳號回 403，名字不合規則回 422，訊息直接顯示 */
+export function updateProfile(name: string) {
+  return request<AuthUser>("/api/auth/me/profile", jsonBody("PATCH", { name }))
+}
+
 /** 這組 token 現在代表誰。過期或在別的裝置登入過會回 401（由 api/client.ts 統一處理） */
 export function fetchMe(signal?: AbortSignal) {
   return request<AuthUser>("/api/auth/me", { signal })

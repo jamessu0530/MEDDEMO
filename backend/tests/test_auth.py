@@ -24,7 +24,7 @@ def test_login_returns_a_token_and_who_you_are(client):
     body = login(client).json()
     assert body["user"] == {
         "id": "U01", "name": "林昱辰", "role": "sales", "region": "北區", "email": "u01@meddemo.tw",
-        "has_password": True, "linked": [], "acting_as": None,
+        "has_password": True, "linked": [], "acting_as": None, "can_rename": False,
     }
     me = client.get("/api/auth/me", headers={"Authorization": f"Bearer {body['token']}"})
     assert me.json() == body["user"]
@@ -164,7 +164,7 @@ def test_anyone_can_create_an_account_and_is_signed_in(client, engine):
 
         # 之後用同一組 Email 密碼登入得進去；同一個 Email 不能再建一次
         assert client.post("/api/auth/login", json={"email": "judge@register.test", "password": "judge-pass-1"}).status_code == 200
-        again = client.post("/api/auth/register", json={"name": "x", "email": "JUDGE@register.test", "password": "another-pass"})
+        again = client.post("/api/auth/register", json={"name": "重複", "email": "JUDGE@register.test", "password": "another-pass"})
         assert again.status_code == 409 and "直接登入" in again.json()["detail"]
     finally:
         _cleanup_registered(engine)
@@ -177,8 +177,8 @@ def test_company_emails_cannot_be_registered_again(client):
 
 def test_bad_registrations_are_rejected(client):
     post = lambda body: client.post("/api/auth/register", json=body).status_code
-    assert post({"name": "a", "email": "not-an-email", "password": "long-enough-1"}) == 422
-    assert post({"name": "a", "email": "a@register.test", "password": "short"}) == 422
+    assert post({"name": "陳評審", "email": "not-an-email", "password": "long-enough-1"}) == 422
+    assert post({"name": "陳評審", "email": "a@register.test", "password": "short"}) == 422
     assert post({"name": "   ", "email": "b@register.test", "password": "long-enough-1"}) == 422
     assert post({"name": "", "email": "c@register.test", "password": "long-enough-1"}) == 422
 
@@ -194,7 +194,7 @@ def test_an_email_used_by_a_third_party_account_points_to_that_provider(client, 
         session.add(UserIdentity(user_id="XGOOGLE1", provider="google", subject="g-sub-1", email="g@register.test"))
         session.commit()
     try:
-        register = client.post("/api/auth/register", json={"name": "G", "email": "g@register.test", "password": "long-enough-1"})
+        register = client.post("/api/auth/register", json={"name": "谷歌", "email": "g@register.test", "password": "long-enough-1"})
         assert register.status_code == 409 and "請用 Google 登入" in register.json()["detail"]
         login = client.post("/api/auth/login", json={"email": "g@register.test", "password": "whatever-1"})
         assert login.status_code == 401 and "請用 Google 登入" in login.json()["detail"]
@@ -202,4 +202,41 @@ def test_an_email_used_by_a_third_party_account_points_to_that_provider(client, 
         with OrmSession(engine) as session:
             session.delete(session.get(AppUser, "XGOOGLE1"))
             session.commit()
+
+
+def test_a_self_created_account_can_rename_itself(client, engine):
+    try:
+        created = client.post(
+            "/api/auth/register", json={"name": "陳評審", "email": "rename@register.test", "password": "judge-pass-1"}
+        ).json()
+        headers = {"Authorization": f"Bearer {created['token']}"}
+        assert created["user"]["can_rename"] is True
+
+        renamed = client.patch("/api/auth/me/profile", json={"name": "  Judge   Chen  "}, headers=headers)
+        assert renamed.status_code == 200
+        # 頭尾空白去掉、中間連續空白併成一個；英文姓名的空白要留著
+        assert renamed.json()["name"] == "Judge Chen"
+        assert client.get("/api/auth/me", headers=headers).json()["name"] == "Judge Chen"
+
+        for bad, message in (("陳", "2～32"), ("很" * 33, "2～32"), ("fuckname", "不當用字")):
+            rejected = client.patch("/api/auth/me/profile", json={"name": bad}, headers=headers)
+            assert rejected.status_code == 422 and message in rejected.json()["detail"]
+        # 名字不用唯一：業務同名很正常
+        assert client.patch("/api/auth/me/profile", json={"name": "林昱辰"}, headers=headers).status_code == 200
+    finally:
+        _cleanup_registered(engine)
+
+
+def test_company_accounts_cannot_rename(client, auth):
+    response = client.patch("/api/auth/me/profile", json={"name": "亂改的名字"}, headers=auth("U01"))
+    assert response.status_code == 403
+    assert client.get("/api/auth/me", headers=auth("U01")).json()["name"] == "林昱辰"
+
+
+def test_registration_uses_the_same_name_rules(client):
+    post = lambda name: client.post(
+        "/api/auth/register", json={"name": name, "email": "rules@register.test", "password": "long-enough-1"}
+    )
+    assert post("陳").status_code == 422
+    assert "不當用字" in post("傻逼").json()["detail"]
 

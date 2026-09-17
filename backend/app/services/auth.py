@@ -25,6 +25,12 @@ ALGORITHM = "HS256"
 # 密碼最短長度。NIST SP 800-63B 建議至少 8 碼，且不要強制混大小寫與符號
 MIN_PASSWORD_LENGTH = 8
 
+# 名字規則照 flutterproject4 的暱稱：2～32 字、擋不當用字（大小寫不分、子字串比對）。
+# 兩處不照抄：那邊是遊戲排行榜 ID，所以不能重複、不能有空白；這裡是業務的姓名，同名很正常，英文姓名要有空白
+NAME_MIN_LENGTH = 2
+NAME_MAX_LENGTH = 32
+BANNED_NAME_SUBSTRINGS = ("fuck", "shit", "bitch", "asshole", "操你", "幹你", "傻逼", "白痴", "婊子")
+
 TOKEN_EXPIRED = "登入已過期，請重新登入"
 SESSION_SUPERSEDED = "帳號已在其他裝置登入，請重新登入"
 EMAIL_NOT_FOUND = "找不到這個 Email，還沒有帳號的話請先建立帳號"
@@ -67,6 +73,16 @@ def create_token(user: AppUser) -> str:
     expire = dt.datetime.now(dt.UTC) + dt.timedelta(hours=settings().jwt_expire_hours)
     payload = {"sub": user.id, "sv": user.session_version, "exp": expire}
     return jwt.encode(payload, _secret(), algorithm=ALGORITHM)
+
+
+def validate_name(raw: str) -> str:
+    """回傳整理過的名字；不合規則丟 ValueError，訊息給使用者看。"""
+    name = " ".join(raw.split())  # 頭尾空白去掉，中間連續空白併成一個
+    if not NAME_MIN_LENGTH <= len(name) <= NAME_MAX_LENGTH:
+        raise ValueError(f"名字要 {NAME_MIN_LENGTH}～{NAME_MAX_LENGTH} 個字")
+    if any(word in name.casefold() for word in BANNED_NAME_SUBSTRINGS):
+        raise ValueError("名字含有不當用字，請換一個")
+    return name
 
 
 def normalize_email(email: str) -> str:

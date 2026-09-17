@@ -66,11 +66,12 @@ export function RegisterPage() {
             id="name"
             autoComplete="name"
             required
-            maxLength={40}
+            maxLength={32}
             value={name}
             onChange={(event) => setName(event.target.value)}
             className="h-12 px-3 text-base"
           />
+          <p className="text-xs text-muted-foreground">2～32 個字，之後可以在帳號設定改。</p>
         </div>
 
         <div className="flex flex-col gap-1.5">

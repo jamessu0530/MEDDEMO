@@ -7,6 +7,7 @@ import {
   linkProvider,
   signOutSession,
   unlinkProvider,
+  updateProfile,
   type OAuthCredential,
   type OAuthProviders,
 } from "@/api/auth"
@@ -31,6 +32,91 @@ const ROLE_LABEL = { sales: "業務", manager: "主管" } as const
 const MIN_LENGTH = 8
 
 const PROVIDERS: OAuthProvider[] = ["google", "github", "facebook"]
+// 跟後端 services/auth.py 的名字規則一致；這裡先擋，錯誤訊息不必等伺服器
+const NAME_MIN = 2
+const NAME_MAX = 32
+
+/** 名字：自己開的帳號可以改（照 flutterproject4 的改暱稱）；公司帳號只顯示 */
+function NameEditor({ user }: { user: AuthUser }) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(user.name)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
+
+  if (!editing)
+    return (
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-base font-medium break-all">{user.name}</p>
+          {saved && <p className="mt-0.5 text-xs text-primary">名字已更新</p>}
+        </div>
+        {user.can_rename && (
+          <Button
+            variant="outline"
+            className="h-11 shrink-0 px-4"
+            onClick={() => {
+              setDraft(user.name)
+              setError(null)
+              setSaved(false)
+              setEditing(true)
+            }}
+          >
+            修改名字
+          </Button>
+        )}
+      </div>
+    )
+
+  async function save(event: FormEvent) {
+    event.preventDefault()
+    const name = draft.trim().replace(/\s+/g, " ")
+    if (name.length < NAME_MIN || name.length > NAME_MAX) return setError(`名字要 ${NAME_MIN}～${NAME_MAX} 個字`)
+    if (name === user.name) return setEditing(false)
+    setBusy(true)
+    setError(null)
+    try {
+      refreshUser(await updateProfile(name))
+      setSaved(true)
+      setEditing(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "名字沒有改成功，請再試一次")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <form className="flex flex-col gap-2" onSubmit={save}>
+      <Label htmlFor="display-name">名字</Label>
+      <Input
+        id="display-name"
+        autoComplete="name"
+        autoFocus
+        maxLength={NAME_MAX}
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+        className="h-12 px-3 text-base"
+      />
+      <p className="text-xs text-muted-foreground">
+        {NAME_MIN}～{NAME_MAX} 個字。
+      </p>
+      {error && (
+        <p role="alert" className="rounded-xl bg-destructive/10 px-3 py-2.5 text-sm leading-relaxed text-destructive">
+          {error}
+        </p>
+      )}
+      <div className="flex gap-2">
+        <Button type="submit" className="h-11 flex-1" disabled={busy || !draft.trim()}>
+          {busy ? <Loader2 className="size-5 animate-spin" /> : "儲存"}
+        </Button>
+        <Button type="button" variant="outline" className="h-11 flex-1" disabled={busy} onClick={() => setEditing(false)}>
+          取消
+        </Button>
+      </div>
+    </form>
+  )
+}
 
 /**
  * 綁定的登入方式：公司給的 Email 帳號可以在這裡綁第三方帳號，之後在登入頁用它登入就回到這個帳號。
@@ -266,14 +352,14 @@ export function SettingsPage() {
       <PageHeader title="帳號設定" backTo={user.role === "manager" ? "/manager" : "/"} />
       <main className="flex flex-1 flex-col gap-5 px-4 pt-4 pb-10">
         <section className="rounded-2xl border bg-card p-4">
-          <p className="text-base font-medium">{user.name}</p>
+          <NameEditor user={user} />
           <p className="mt-1 text-sm text-muted-foreground">
             {user.region} · {ROLE_LABEL[user.role]}
           </p>
           {user.email && <p className="mt-0.5 text-sm break-all text-muted-foreground">{user.email}</p>}
           {user.acting_as && (
             <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-              這是用第三方登入開的帳號，自己名下沒有客戶，今日路線與客戶看的是示範業務{user.acting_as.name}的資料。
+              這是自己建立的帳號，名下沒有客戶，今日路線與客戶看的是示範業務{user.acting_as.name}的資料。
             </p>
           )}
         </section>
