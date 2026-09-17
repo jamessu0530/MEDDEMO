@@ -48,6 +48,9 @@ LIMITS: dict[str, Limit] = {
     "voice": Limit("語音問答", per_client_hour=10, per_day=40),
     "transcription": Limit("錄音時的即時文字", per_client_hour=15, per_day=60),
     "visit": Limit("錄音整理", per_client_hour=15, per_day=60),
+    # 建立帳號不花錢，但每個帳號有自己一份「每小時」額度，開很多帳號就等於繞過上限。
+    # 決賽現場約 10 位評審共用一個 Wi-Fi（同一個 IP），每小時 20 個是兩倍；每天 200 個擋腳本大量開
+    "register": Limit("建立帳號", per_client_hour=20, per_day=200),
 }
 
 # 會呼叫 Gemini 的入口。提問與錄音整理在背景工作裡呼叫，這裡擋的是把工作排進去的請求；
@@ -58,6 +61,7 @@ ROUTES: list[tuple[str, re.Pattern[str], str]] = [
     ("POST", re.compile(r"/api/transcription/session"), "transcription"),
     ("POST", re.compile(r"/api/visits/audio"), "visit"),
     ("POST", re.compile(r"/api/visits/[^/]+/(?:transcript|reprocess)"), "visit"),
+    ("POST", re.compile(r"/api/auth/register"), "register"),
 ]
 
 

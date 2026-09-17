@@ -6,6 +6,11 @@ export function login(email: string, password: string) {
   return request<Session>("/api/auth/login", jsonBody("POST", { email, password }))
 }
 
+/** 用 Email 建立帳號，建好直接登入。Email 已經註冊過回 409，訊息直接顯示 */
+export function register(name: string, email: string, password: string) {
+  return request<Session>("/api/auth/register", jsonBody("POST", { name, email, password }))
+}
+
 /** 這組 token 現在代表誰。過期或在別的裝置登入過會回 401（由 api/client.ts 統一處理） */
 export function fetchMe(signal?: AbortSignal) {
   return request<AuthUser>("/api/auth/me", { signal })

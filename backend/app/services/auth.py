@@ -27,7 +27,7 @@ MIN_PASSWORD_LENGTH = 8
 
 TOKEN_EXPIRED = "登入已過期，請重新登入"
 SESSION_SUPERSEDED = "帳號已在其他裝置登入，請重新登入"
-EMAIL_NOT_FOUND = "找不到這個 Email，請確認是不是公司給的帳號"
+EMAIL_NOT_FOUND = "找不到這個 Email，還沒有帳號的話請先建立帳號"
 WRONG_PASSWORD = "密碼錯誤，請再試一次"
 WRONG_CURRENT_PASSWORD = "目前的密碼不對"
 NO_PASSWORD = "這個帳號是用第三方登入開的，沒有密碼可以改"

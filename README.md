@@ -91,7 +91,7 @@ curl -X PUT localhost:8000/api/mock-systems/oa -H 'Content-Type: application/jso
 
 ## 登入（FR-12）
 
-公司給的帳號用 Email 加密碼；另外任何人都能用 Google／GitHub／Facebook 登入（見下一節）。沒有 Email 註冊、也沒有忘記密碼（要寄信，這次沒接）。
+三種帳號：公司給的八個（Email 加密碼）、**任何人都能在登入頁「建立帳號」用 Email 自己開**、用 Google／GitHub／Facebook 登入自動開（見下一節）。自己開的兩種一律是業務，看示範業務林昱辰的客戶。註冊照 flutterproject4：名字、Email、密碼（至少 8 碼），建好直接登入；Email 已註冊或是第三方登入開的帳號，會提示要用哪種方式登入。沒有忘記密碼（要寄信，這次沒接）。建立帳號按 IP 每小時 20 個、全系統每天 200 個（見用量上限）。
 
 - 八個帳號在灌假資料時建好：Email 是工號小寫加網域，例如業務林昱辰是 `u01@meddemo.tw`、主管陳建宏是 `m01@meddemo.tw`。密碼八個帳號都一樣，由 `DEMO_PASSWORD` 設定（本機預設 `meddemo1234`）。
 - 密碼用 bcrypt 存雜湊；登入發一張 JWT，預設 24 小時到期。
@@ -350,7 +350,7 @@ MEDDEMO 跟 CARE 共用 GCP 上的 care-vm：K3s、Helm、Traefik、HTTPS 憑證
 | --- | --- | --- |
 | `POSTGRES_PASSWORD` | secret | 隨機字串，例如 `openssl rand -hex 24` 產生的。第一次部署後就不要再改：Postgres 只在第一次建資料庫時設定密碼。 |
 | `JWT_SECRET` | secret | 簽登入 token 用，例如 `openssl rand -hex 32`。沒設的話 API 每次重啟都換一把，所有人要重新登入。 |
-| `DEMO_PASSWORD` | secret | 八個帳號共用的登入密碼。沒設就是程式裡的預設值 `meddemo1234`，而這個 repo 是公開的，所以決賽前要設。改完要手動執行一次部署並勾選「重灌假資料」才會生效。 |
+| `DEMO_PASSWORD` | secret | 八個公司帳號共用的登入密碼，至少 8 碼（太短灌資料會失敗）。沒設就是程式裡的預設值 `meddemo1234`，而這個 repo 是公開的，所以決賽前要設。改完要手動執行一次部署並勾選「重灌假資料」才會生效。 |
 | `GOOGLE_CLIENT_ID` | secret | 選填：Google 登入。Google Cloud Console 建「OAuth 用戶端 ID」（網頁應用程式），「已授權的 JavaScript 來源」填網站網址。 |
 | `GITHUB_CLIENT_ID`、`GITHUB_CLIENT_SECRET` | secret | 選填：GitHub 登入。GitHub Settings → Developer settings → OAuth Apps 建一個，Authorization callback URL 填 `https://網址/auth/github/callback`。 |
 | `FACEBOOK_APP_ID`、`FACEBOOK_APP_SECRET` | secret | 選填：Facebook 登入。Meta for Developers 建 App 並加上「Facebook 登入」，有效 OAuth 重新導向 URI 與 App 網域填網站網址。App 在開發模式時只有 App 的管理員與測試人員能登入。 |
