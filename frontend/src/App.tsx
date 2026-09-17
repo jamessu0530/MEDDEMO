@@ -13,6 +13,7 @@ import { CustomerPicker } from "@/pages/customer-picker"
 import { EscalationsPage } from "@/pages/escalations"
 import { GitHubCallbackPage } from "@/pages/github-callback"
 import { LoginPage } from "@/pages/login"
+import { RegisterPage } from "@/pages/register"
 import { ManagerPage } from "@/pages/manager"
 import { NegotiationPage } from "@/pages/negotiation"
 import { QuotePage } from "@/pages/quote"
@@ -107,6 +108,7 @@ export default function App() {
       <div className="mx-auto min-h-svh max-w-md bg-background">
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
           {/* GitHub 授權完導回來的頁面：登入流程也會走到，所以不能放在要登入的那一層裡 */}
           <Route path="/auth/github/callback" element={<GitHubCallbackPage />} />
           <Route element={<RequireAuth />}>

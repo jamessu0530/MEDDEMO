@@ -3,9 +3,11 @@
 from functools import cache
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
+DEFAULT_DEMO_PASSWORD = "meddemo1234"
 
 
 class NotConfigured(RuntimeError):
@@ -22,7 +24,7 @@ class Settings(BaseSettings):
     # 登入之後多久要重新登入。決賽當天只用幾個小時，一天綽綽有餘
     jwt_expire_hours: int = 24
     # 灌假資料時給每個帳號設的密碼。正式環境由 GitHub Secret 帶進來
-    demo_password: str = "meddemo1234"
+    demo_password: str = DEFAULT_DEMO_PASSWORD
     # 第三方登入。沒填的那家，登入頁與帳號設定就不出現它的按鈕。
     # client id / app id 其實會出現在網頁上、不算祕密，跟 secret 放一起是為了設定時一次在同一個地方填完
     google_client_id: str = ""
@@ -55,6 +57,13 @@ class Settings(BaseSettings):
     # 沒填 Cohere 就改用檢索的融合分數排序
     firecrawl_api_key: str = ""
     cohere_api_key: str = ""
+
+    @field_validator("demo_password")
+    @classmethod
+    def _blank_password_means_default(cls, value: str) -> str:
+        """GitHub Secret 沒設時，部署流程傳進來的是空字串而不是「沒有這個變數」，會蓋掉預設值。
+        9/16 就這樣把線上八個帳號的密碼灌成空白，密碼欄留空就登入得進去。"""
+        return value if value.strip() else DEFAULT_DEMO_PASSWORD
 
 
 @cache

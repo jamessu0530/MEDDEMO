@@ -1,10 +1,12 @@
 """登入相關 API（FR-12）。
 
-兩種帳號：公司給的八個（灌假資料時建好，用 Email 密碼登入），以及用 Google／GitHub／Facebook
-第一次登入時自動開的業務帳號。沒有 Email 註冊。
+三種帳號：公司給的八個（灌假資料時建好，用 Email 密碼登入）、自己用 Email 建立的，
+以及用 Google／GitHub／Facebook 第一次登入時自動開的。後兩種都是業務，看示範業務的客戶。
+註冊與錯誤訊息的寫法照 flutterproject4（同一位作者的專案）。
 """
 
 import datetime as dt
+import re
 import secrets
 from typing import Annotated, Literal
 
@@ -49,10 +51,16 @@ class UserPublic(BaseModel):
     acting_as: ActingAs | None = None
 
 
+class RegisterRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=40)
+    email: str
+    password: str = Field(min_length=auth.MIN_PASSWORD_LENGTH)
+
+
 class LoginRequest(BaseModel):
     # 不用 EmailStr：那會多一個 email-validator 相依，而這裡只是拿去比對資料庫裡的帳號
     email: str
-    password: str
+    password: str = Field(min_length=1)
 
 
 class ChangePasswordRequest(BaseModel):
@@ -107,11 +115,50 @@ def manager_only(user: CurrentUser) -> AppUser:
 ManagerUser = Annotated[AppUser, Depends(manager_only)]
 
 
+# 只檢查長得像 Email：真的收不收得到信要寄確認信才知道，這次沒有寄信服務
+EMAIL_SHAPE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+@router.post("/register", status_code=status.HTTP_201_CREATED, response_model=AuthResponse)
+def register(session: SessionDep, body: RegisterRequest):
+    """用 Email 建立帳號，建好直接登入。"""
+    email = auth.normalize_email(body.email)
+    if not EMAIL_SHAPE.match(email):
+        raise HTTPException(status_code=422, detail="Email 格式不對")
+    if not body.name.strip():
+        raise HTTPException(status_code=422, detail="名字不能是空白")
+    if session.scalar(select(AppUser.id).where(AppUser.email == email)):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="這個 Email 已經註冊過，請直接登入")
+    # 同一個信箱之前用第三方登入開過帳號：提醒他用那個方式登入，不要再開一個
+    external = session.scalar(select(UserIdentity.provider).where(UserIdentity.email == email))
+    if external:
+        label = oauth.PROVIDER_LABEL[external]
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=f"這個 Email 是用 {label} 登入開的帳號，請用 {label} 登入"
+        )
+    user = _new_sales_account(session, body.name, email=email, password_hash=auth.hash_password(body.password))
+    token = auth.start_session(session, user)
+    try:
+        session.commit()
+    except IntegrityError:  # 兩個人同時用同一個 Email 註冊
+        session.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="這個 Email 已經註冊過，請直接登入") from None
+    return AuthResponse(token=token, user=_public(session, user))
+
+
 @router.post("/login", response_model=AuthResponse)
 def login(session: SessionDep, body: LoginRequest):
     try:
         user, token = auth.login(session, body.email, body.password)
     except auth.AuthError as exc:
+        if str(exc) == auth.EMAIL_NOT_FOUND:
+            # 這個信箱是用第三方登入開的帳號：講清楚要用哪個方式登入，不要只說找不到
+            external = session.scalar(
+                select(UserIdentity.provider).where(UserIdentity.email == auth.normalize_email(body.email))
+            )
+            if external:
+                label = oauth.PROVIDER_LABEL[external]
+                raise _unauthorized(f"這個 Email 是用 {label} 登入開的帳號，請用 {label} 登入") from None
         raise _unauthorized(str(exc)) from None
     session.commit()
     return AuthResponse(token=token, user=_public(session, user))
@@ -186,23 +233,30 @@ def providers() -> dict[str, dict[str, str] | None]:
     return oauth.configured()
 
 
-def _create_external_account(session: Session, identity: oauth.ExternalIdentity) -> AppUser:
-    """第一次用第三方登入：開一個業務帳號並綁上這個第三方身分。"""
+def _new_sales_account(session: Session, name: str, email: str | None, password_hash: str | None) -> AppUser:
+    """自己建立的帳號與第三方登入自動開的帳號：一律是業務，不會是主管；自己名下沒有客戶，看示範業務的。"""
     demo = session.get(AppUser, auth.EXTERNAL_ACCOUNT_ACTS_AS)
-    label = oauth.PROVIDER_LABEL[identity.provider]
-    name = identity.name or (identity.email.split("@")[0] if identity.email else f"{label} 使用者")
     user = AppUser(
         # 工號格式跟公司帳號（U01、M01）分開，一眼看得出是自己開的
         id=f"X{secrets.token_hex(4).upper()}",
-        name=name[:40],
+        name=name.strip()[:40],
         role="sales",
         region=demo.region if demo else "",
-        email=None,
-        password_hash=None,
+        email=email,
+        password_hash=password_hash,
         acts_as_user_id=demo.id if demo else None,
     )
     session.add(user)
     session.flush()
+    return user
+
+
+def _create_external_account(session: Session, identity: oauth.ExternalIdentity) -> AppUser:
+    """第一次用第三方登入：開一個業務帳號並綁上這個第三方身分。"""
+    label = oauth.PROVIDER_LABEL[identity.provider]
+    name = identity.name or (identity.email.split("@")[0] if identity.email else f"{label} 使用者")
+    # 信箱記在 user_identity，不放 app_user.email：同一個人用 Google 和 GitHub 各開一次，信箱一樣會撞到唯一限制
+    user = _new_sales_account(session, name, email=None, password_hash=None)
     session.add(UserIdentity(user_id=user.id, provider=identity.provider, subject=identity.subject, email=identity.email))
     session.flush()
     return user

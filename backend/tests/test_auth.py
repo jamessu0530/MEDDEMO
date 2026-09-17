@@ -113,3 +113,93 @@ def test_usage_limits_count_per_account_when_logged_in(client):
     assert usage.client_address(request) == "user:U01"
     anonymous = type("R", (), {"headers": {"cf-connecting-ip": "1.2.3.4"}, "client": None})()
     assert usage.client_address(anonymous) == "1.2.3.4"
+
+
+def test_an_empty_password_never_signs_in(client):
+    """9/16 線上出過事：DEMO_PASSWORD 沒設、部署傳進空字串，八個帳號被灌成空白密碼。"""
+    assert client.post("/api/auth/login", json={"email": "u01@meddemo.tw", "password": ""}).status_code == 422
+    assert auth.verify_password("", auth.hash_password("")) is False
+
+
+def test_a_blank_demo_password_setting_falls_back_to_the_default(env):
+    from app.config import DEFAULT_DEMO_PASSWORD
+
+    env(DEMO_PASSWORD="")
+    assert settings().demo_password == DEFAULT_DEMO_PASSWORD
+    env(DEMO_PASSWORD="   ")
+    assert settings().demo_password == DEFAULT_DEMO_PASSWORD
+
+
+def test_seeding_refuses_a_short_password(env):
+    import datetime as dt
+
+    import generate
+
+    env(DEMO_PASSWORD="short")
+    with pytest.raises(ValueError, match="至少要 8 碼"):
+        generate.generate(dt.date(2026, 10, 28))
+
+
+def _cleanup_registered(engine):
+    from sqlalchemy import text as sql
+
+    with engine.begin() as conn:
+        conn.execute(sql("DELETE FROM app_user WHERE id LIKE 'X%' AND email LIKE '%@register.test'"))
+
+
+def test_anyone_can_create_an_account_and_is_signed_in(client, engine):
+    try:
+        created = client.post(
+            "/api/auth/register", json={"name": " 陳評審 ", "email": " Judge@Register.test ", "password": "judge-pass-1"}
+        )
+        assert created.status_code == 201
+        user = created.json()["user"]
+        assert user["id"].startswith("X") and user["name"] == "陳評審" and user["email"] == "judge@register.test"
+        # 自己建立的帳號一律是業務，看示範業務的客戶
+        assert user["role"] == "sales" and user["has_password"] is True
+        assert user["acting_as"] == {"id": "U01", "name": "林昱辰"}
+        headers = {"Authorization": f"Bearer {created.json()['token']}"}
+        assert client.get("/api/auth/me", headers=headers).status_code == 200
+        assert len(client.get("/api/customers", headers=headers).json()) == 50
+
+        # 之後用同一組 Email 密碼登入得進去；同一個 Email 不能再建一次
+        assert client.post("/api/auth/login", json={"email": "judge@register.test", "password": "judge-pass-1"}).status_code == 200
+        again = client.post("/api/auth/register", json={"name": "x", "email": "JUDGE@register.test", "password": "another-pass"})
+        assert again.status_code == 409 and "直接登入" in again.json()["detail"]
+    finally:
+        _cleanup_registered(engine)
+
+
+def test_company_emails_cannot_be_registered_again(client):
+    taken = client.post("/api/auth/register", json={"name": "冒名", "email": "u01@meddemo.tw", "password": "whatever-123"})
+    assert taken.status_code == 409
+
+
+def test_bad_registrations_are_rejected(client):
+    post = lambda body: client.post("/api/auth/register", json=body).status_code
+    assert post({"name": "a", "email": "not-an-email", "password": "long-enough-1"}) == 422
+    assert post({"name": "a", "email": "a@register.test", "password": "short"}) == 422
+    assert post({"name": "   ", "email": "b@register.test", "password": "long-enough-1"}) == 422
+    assert post({"name": "", "email": "c@register.test", "password": "long-enough-1"}) == 422
+
+
+def test_an_email_used_by_a_third_party_account_points_to_that_provider(client, engine):
+    from sqlalchemy.orm import Session as OrmSession
+
+    from app.models import AppUser, UserIdentity
+
+    with OrmSession(engine) as session:
+        session.add(AppUser(id="XGOOGLE1", name="G", role="sales", region="北區", email=None, password_hash=None, acts_as_user_id="U01"))
+        session.flush()
+        session.add(UserIdentity(user_id="XGOOGLE1", provider="google", subject="g-sub-1", email="g@register.test"))
+        session.commit()
+    try:
+        register = client.post("/api/auth/register", json={"name": "G", "email": "g@register.test", "password": "long-enough-1"})
+        assert register.status_code == 409 and "請用 Google 登入" in register.json()["detail"]
+        login = client.post("/api/auth/login", json={"email": "g@register.test", "password": "whatever-1"})
+        assert login.status_code == 401 and "請用 Google 登入" in login.json()["detail"]
+    finally:
+        with OrmSession(engine) as session:
+            session.delete(session.get(AppUser, "XGOOGLE1"))
+            session.commit()
+

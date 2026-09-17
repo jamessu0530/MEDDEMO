@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react"
 import { Eye, EyeOff, Loader2 } from "lucide-react"
-import { Navigate, useLocation, useNavigate } from "react-router"
+import { Link, Navigate, useLocation, useNavigate } from "react-router"
 
 import { login, oauthLogin, type OAuthCredential } from "@/api/auth"
 import { FacebookButton, GitHubButton, GoogleButton, NotReadyButton } from "@/components/oauth-buttons"
@@ -16,7 +16,7 @@ function home(role: "sales" | "manager") {
 }
 
 /**
- * 登入頁（FR-12）：公司給的 Email 加密碼。
+ * 登入頁（FR-12）：Email 加密碼，或第三方帳號。還沒有帳號的到 /register 建立。
  * 錯誤訊息直接顯示後端回的那一句（找不到這個 Email／密碼錯誤），不自己改寫，
  * 免得畫面上說的跟後端判斷的不一樣。
  */
@@ -84,13 +84,12 @@ export function LoginPage() {
     }
   }
 
-
   return (
     <div className="flex min-h-svh flex-col justify-center px-6 py-10">
       <header className="mb-8">
         <p className="text-xs text-muted-foreground">中化裕民</p>
         <h1 className="mt-1 text-2xl font-semibold">業務 AI 助理</h1>
-        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">請用公司給的 Email 登入。</p>
+        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">用 Email 或第三方帳號登入。</p>
       </header>
 
       {!error && !oauthError && signedOut && (
@@ -111,7 +110,7 @@ export function LoginPage() {
             required
             value={email}
             onChange={(event) => setEmail(event.target.value)}
-            placeholder="u01@meddemo.tw"
+            placeholder="name@example.com"
             className="h-12 px-3 text-base"
           />
         </div>
@@ -230,9 +229,13 @@ export function LoginPage() {
         </section>
       )}
 
-      <p className="mt-6 text-xs leading-relaxed text-muted-foreground">
-        忘記密碼或還沒有帳號，請找你的主管重設，這個版本不能自己申請。
+      <p className="mt-6 flex flex-wrap items-center gap-x-1 text-sm text-muted-foreground">
+        還沒有帳號？
+        <Link to="/register" state={location.state} className="inline-flex min-h-11 items-center font-medium text-primary">
+          建立帳號
+        </Link>
       </p>
+      <p className="text-xs leading-relaxed text-muted-foreground">這個版本沒有寄信重設密碼：忘記密碼的話，公司帳號找主管重設，自己建立的帳號請重新建立一個。</p>
     </div>
   )
 }
