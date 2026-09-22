@@ -52,6 +52,31 @@ def seed(url: str | None, as_of: date) -> dict[str, int]:
         ])
         for name, model in TABLES:
             session.execute(insert(model), data[name])
+        # 歷史出差單當已核准：請求者與區處主管兩關都過，申請匣才不會被幾千張舊單塞滿
+        session.execute(text("""
+            INSERT INTO oa_approval_step (form_id, step_no, role_label, user_id, title, status, acted_at)
+            SELECT o.id, 1, '請求者', o.applicant_id, '業務', 'done', o.created_at
+            FROM oa_expense_form o
+        """))
+        session.execute(text("""
+            INSERT INTO oa_approval_step (form_id, step_no, role_label, user_id, title, status, acted_at)
+            SELECT o.id, 2, '經辦人的主管', m.id, '區處主管', 'done', o.created_at
+            FROM oa_expense_form o
+            JOIN customer c ON c.id = o.customer_id
+            JOIN app_user m ON m.role = 'manager' AND m.region = c.region
+        """))
+        session.execute(text("""
+            INSERT INTO oa_activity (form_id, action, actor_id, detail, created_at)
+            SELECT o.id, 'submitted', o.applicant_id, '經辦人送出', o.created_at
+            FROM oa_expense_form o
+        """))
+        session.execute(text("""
+            INSERT INTO oa_activity (form_id, action, actor_id, detail, created_at)
+            SELECT o.id, 'approved', m.id, '簽核者', o.created_at
+            FROM oa_expense_form o
+            JOIN customer c ON c.id = o.customer_id
+            JOIN app_user m ON m.role = 'manager' AND m.region = c.region
+        """))
         # 假資料的拜訪編號是直接指定的，序號要接在後面，新拜訪才不會撞號
         session.execute(text("SELECT setval('visit_seq', :n)"), {"n": len(data["visit"])})
         # 內部文件建索引；有設定 embedding 服務才一併算向量，否則只建關鍵字索引

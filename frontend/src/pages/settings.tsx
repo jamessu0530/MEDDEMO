@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react"
-import { Loader2, LogOut } from "lucide-react"
+import { ChevronRight, Loader2, LogOut } from "lucide-react"
 import { Link, useLocation, useNavigate } from "react-router"
 
 import {
@@ -413,6 +413,14 @@ export function SettingsPage() {
             </p>
           )}
         </section>
+
+        <Link
+          to={user.role === "manager" ? "/manager?view=oa" : "/oa/forms"}
+          className="flex min-h-14 items-center justify-between rounded-2xl border bg-card px-4"
+        >
+          <span className="text-sm font-medium">{user.role === "manager" ? "OA 簽核匣" : "我的申請單"}</span>
+          <ChevronRight className="size-4 text-muted-foreground" />
+        </Link>
 
         {providers && <LinkedAccounts user={user} providers={providers} />}
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Bell, Check, ChevronRight, CircleHelp, ListOrdered, Loader2, TriangleAlert } from "lucide-react"
+import { Bell, Check, ChevronRight, CircleHelp, FileText, ListOrdered, Loader2, TriangleAlert } from "lucide-react"
 import { Link, useNavigate } from "react-router"
 
 import { signOutSession } from "@/api/auth"
@@ -114,6 +114,13 @@ export function TodayPage() {
             >
               <CircleHelp className="size-5" />
             </button>
+            <Link
+              to="/oa/forms"
+              aria-label="我的申請單"
+              className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
+            >
+              <FileText className="size-5" />
+            </Link>
             {/* FR-8.4：主管回覆了，首頁顯示還沒看的則數 */}
             <Link
               to="/escalations"

@@ -286,16 +286,76 @@ class SapQuotationDraft(Base):
     created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
 
 
+OA_FORM_STATUSES = ("draft", "pending", "returned", "rejected", "approved")
+OA_STEP_STATUSES = ("waiting", "pending", "done")
+OA_ACTIVITY_ACTIONS = ("submitted", "approved", "rejected", "returned", "commented")
+
+
 class OaExpenseForm(Base):
+    """模擬 OA 出差單。拜訪確認後自動開單，主管在申請匣簽核。"""
+
     __tablename__ = "oa_expense_form"
+    __table_args__ = (one_of("status", OA_FORM_STATUSES, "oa_status"),)
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
-    visit_id: Mapped[str] = mapped_column(ForeignKey("visit.id"), unique=True)
+    form_no: Mapped[str] = mapped_column(String(24), unique=True)
+    visit_id: Mapped[str] = mapped_column(ForeignKey("visit.id", ondelete="CASCADE"), unique=True)
     applicant_id: Mapped[str] = mapped_column(ForeignKey("app_user.id"))
     trip_date: Mapped[dt.date]
     customer_id: Mapped[str] = mapped_column(ForeignKey("customer.id"))
     purpose: Mapped[str]
-    status: Mapped[str] = mapped_column(server_default="submitted")
+    unit_name: Mapped[str]
+    status: Mapped[str] = mapped_column(server_default="pending")
+    created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+    submitted_at: Mapped[dt.datetime | None]
+
+
+class OaApprovalStep(Base):
+    __tablename__ = "oa_approval_step"
+    __table_args__ = (
+        one_of("status", OA_STEP_STATUSES, "oa_step_status"),
+        UniqueConstraint("form_id", "step_no"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    form_id: Mapped[int] = mapped_column(ForeignKey("oa_expense_form.id", ondelete="CASCADE"), index=True)
+    step_no: Mapped[int]
+    role_label: Mapped[str]
+    user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id"))
+    title: Mapped[str]
+    status: Mapped[str]
+    acted_at: Mapped[dt.datetime | None]
+
+
+class OaComment(Base):
+    __tablename__ = "oa_comment"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    form_id: Mapped[int] = mapped_column(ForeignKey("oa_expense_form.id", ondelete="CASCADE"), index=True)
+    author_id: Mapped[str] = mapped_column(ForeignKey("app_user.id"))
+    body: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+
+
+class OaAttachment(Base):
+    __tablename__ = "oa_attachment"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    form_id: Mapped[int] = mapped_column(ForeignKey("oa_expense_form.id", ondelete="CASCADE"), index=True)
+    filename: Mapped[str]
+    uploaded_by: Mapped[str] = mapped_column(ForeignKey("app_user.id"))
+    created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+
+
+class OaActivity(Base):
+    __tablename__ = "oa_activity"
+    __table_args__ = (one_of("action", OA_ACTIVITY_ACTIONS, "oa_activity_action"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    form_id: Mapped[int] = mapped_column(ForeignKey("oa_expense_form.id", ondelete="CASCADE"), index=True)
+    action: Mapped[str]
+    actor_id: Mapped[str] = mapped_column(ForeignKey("app_user.id"))
+    detail: Mapped[str]
     created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
 
 

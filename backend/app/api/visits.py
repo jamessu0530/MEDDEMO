@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.api.auth import CurrentUser
 from app.db import get_session
-from app.models import AppUser, WRITEBACK_TARGETS, Customer, FollowUpReminder, Visit, VisitAudio, ManagerNotice
+from app.models import AppUser, WRITEBACK_TARGETS, Customer, FollowUpReminder, OaExpenseForm, Visit, VisitAudio, ManagerNotice
 from app.services import privacy, writeback
 from app.services import risk
 from app.services.scope import Scope
@@ -67,6 +67,7 @@ class VisitDetail(BaseModel):
     first_competitors: list[str] = Field(default_factory=list)
     # 確認送出時提到競品或客訴，就通報轄區主管；畫面上說明風險分與通報給誰
     risk_notice: RiskNotice | None = None
+    oa_form_id: int | None = None
 
 
 class TranscriptInput(BaseModel):
@@ -111,6 +112,7 @@ def _detail(session: Session, visit: Visit) -> VisitDetail:
         reminder=ReminderItem(due_date=reminder.due_date, note=reminder.note) if reminder else None,
         first_competitors=risk.first_competitors(session, visit, fields),
         risk_notice=_risk_notice(session, visit),
+        oa_form_id=session.scalar(select(OaExpenseForm.id).where(OaExpenseForm.visit_id == visit.id)),
     )
 
 

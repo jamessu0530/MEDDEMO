@@ -17,7 +17,6 @@ from app.models import (
     WRITEBACK_TARGETS,
     CrmVisitRecord,
     Customer,
-    OaExpenseForm,
     Product,
     SapQuotationDraft,
     Visit,
@@ -107,12 +106,9 @@ def _write_sap(session: Session, visit: Visit) -> None:
 
 
 def _write_oa(session: Session, visit: Visit) -> None:
-    session.execute(
-        insert(OaExpenseForm).values(
-            visit_id=visit.id, applicant_id=visit.user_id, trip_date=local_date(visit.visited_at),
-            customer_id=visit.customer_id, purpose="客戶拜訪",
-        ).on_conflict_do_nothing(index_elements=["visit_id"])
-    )
+    from app.services.oa import create_trip_form
+
+    create_trip_form(session, visit)
 
 
 WRITERS = {"crm": _write_crm, "sap": _write_sap, "oa": _write_oa}

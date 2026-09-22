@@ -519,8 +519,10 @@ def build_visits(rng, customers, baskets, products, as_of, transactions, receiva
                 "created_at": confirmed_at,
             })
         tables["oa_expense_form"].append({
+            "form_no": f"OA{d:%Y%m}{n:05d}",
             "visit_id": visit_id, "applicant_id": c["owner_user_id"], "trip_date": d,
-            "customer_id": c["id"], "purpose": "客戶拜訪", "created_at": confirmed_at,
+            "customer_id": c["id"], "purpose": "客戶拜訪", "unit_name": c["region"],
+            "status": "approved", "created_at": confirmed_at, "submitted_at": confirmed_at,
         })
         for target in ("crm", "sap", "oa"):
             status = "skipped" if target == "sap" and not fields["intent"] else "success"

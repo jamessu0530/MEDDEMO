@@ -11,6 +11,8 @@ import { AskPage } from "@/pages/ask"
 import { CustomerPage } from "@/pages/customer"
 import { CustomerPicker } from "@/pages/customer-picker"
 import { EscalationsPage } from "@/pages/escalations"
+import { OaFormPage } from "@/pages/oa-form"
+import { OaFormsPage } from "@/pages/oa-forms"
 import { GitHubCallbackPage } from "@/pages/github-callback"
 import { LoginPage } from "@/pages/login"
 import { PrivacyPage } from "@/pages/privacy"
@@ -133,6 +135,8 @@ export default function App() {
             <Route path="/customers/:customerId/record" element={<RecordVisit />} />
             <Route path="/visits/:visitId" element={<VisitPage />} />
             <Route path="/escalations" element={<EscalationsPage />} />
+            <Route path="/oa/forms" element={<OaFormsPage />} />
+            <Route path="/oa/forms/:formId" element={<OaFormPage />} />
             <Route
               path="/manager"
               element={

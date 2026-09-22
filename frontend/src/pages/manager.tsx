@@ -4,17 +4,18 @@ import { Link, useNavigate, useSearchParams } from "react-router"
 
 import { listEscalations, replyEscalation, type Escalation } from "@/api/escalations"
 import { getUnseenNoticeCount, listNotices, markNoticeSeen, type ManagerNotice } from "@/api/notices"
+import { listOaInbox, type OaFormItem } from "@/api/oa"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { useAuth } from "@/lib/auth"
-import { formatDateTime } from "@/lib/format"
+import { formatDate, formatDateTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type { CustomerLocationState } from "@/pages/customer"
 
 // 主管端兩個分頁：業務轉來的提問、拜訪提到競品或客訴的風險通報。記在網址上，從客戶檔案回來還停在同一頁
-type View = "asks" | "notices"
+type View = "asks" | "notices" | "oa"
 type Tab = "open" | "answered"
 type LoadState = { status: "loading" } | { status: "error" } | { status: "ready"; items: Escalation[] }
 type NoticeState = { status: "loading" } | { status: "error" } | { status: "ready"; items: ManagerNotice[] }
@@ -24,8 +25,9 @@ const NOTICES_PATH = "/manager?view=notices"
 /** 主管端（FR-8.4 延伸）：回覆業務轉過來的提問，看自己轄區的風險通報 */
 export function ManagerPage() {
   const [params, setParams] = useSearchParams()
-  const view: View = params.get("view") === "notices" ? "notices" : "asks"
+  const view: View = params.get("view") === "notices" ? "notices" : params.get("view") === "oa" ? "oa" : "asks"
   const [unseenNotices, setUnseenNotices] = useState(0)
+  const [pendingOa, setPendingOa] = useState(0)
 
   // 分頁上的未讀數：打開主管端、切換分頁時各問一次；主管在這頁按「知道了」會直接減一，不必重問
   useEffect(() => {
@@ -35,18 +37,23 @@ export function ManagerPage() {
       .catch(() => {
         // 連不上就先不顯示數字，列表那邊會有自己的錯誤訊息
       })
+    listOaInbox(controller.signal)
+      .then((data) => setPendingOa(data.counts.pending ?? data.items.length))
+      .catch(() => {
+        // 連不上就先不顯示數字
+      })
     return () => controller.abort()
   }, [view])
 
   function switchView(next: View) {
     if (next === view) return
-    setParams(next === "notices" ? { view: "notices" } : {}, { replace: true })
+    setParams(next === "asks" ? {} : { view: next }, { replace: true })
   }
 
   return (
     <div className="flex min-h-svh flex-col">
       <PageHeader
-        title={view === "notices" ? "風險通報" : "待回覆的提問"}
+        title={view === "notices" ? "風險通報" : view === "oa" ? "OA 簽核" : "待回覆的提問"}
         subtitle="主管端"
         trailing={
           <Link
@@ -59,7 +66,7 @@ export function ManagerPage() {
         }
       />
       <div className="flex border-b bg-background px-4" role="tablist">
-        {(["asks", "notices"] as const).map((value) => (
+        {(["asks", "notices", "oa"] as const).map((value) => (
           <button
             key={value}
             type="button"
@@ -71,7 +78,7 @@ export function ManagerPage() {
               view === value ? "border-primary font-medium text-primary" : "border-transparent text-muted-foreground"
             )}
           >
-            {value === "asks" ? "提問" : "風險通報"}
+            {value === "asks" ? "提問" : value === "notices" ? "風險通報" : "簽核"}
             {value === "notices" && unseenNotices > 0 && (
               <span
                 aria-label={`未讀 ${unseenNotices} 則`}
@@ -80,14 +87,24 @@ export function ManagerPage() {
                 {unseenNotices}
               </span>
             )}
+            {value === "oa" && pendingOa > 0 && (
+              <span
+                aria-label={`待簽 ${pendingOa} 張`}
+                className="flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-white"
+              >
+                {pendingOa}
+              </span>
+            )}
           </button>
         ))}
       </div>
       <main className="flex flex-1 flex-col gap-3 px-4 pt-3 pb-10">
         {view === "asks" ? (
           <EscalationsPanel />
-        ) : (
+        ) : view === "notices" ? (
           <NoticesPanel onSeen={() => setUnseenNotices((count) => Math.max(0, count - 1))} />
+        ) : (
+          <OaInboxPanel />
         )}
       </main>
     </div>
@@ -342,5 +359,57 @@ function NoticeCard({ item, onSeen }: { item: ManagerNotice; onSeen: (item: Mana
         item.seen_at && <p className="mt-2 text-[11px] text-muted-foreground">{formatDateTime(item.seen_at)} 看過</p>
       )}
     </article>
+  )
+}
+
+function OaInboxPanel() {
+  const navigate = useNavigate()
+  const user = useAuth()?.user
+  const [state, setState] = useState<{ status: "loading" } | { status: "error" } | { status: "ready"; items: OaFormItem[] }>({
+    status: "loading",
+  })
+  const [attempt, setAttempt] = useState(0)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    listOaInbox(controller.signal)
+      .then((data) => setState({ status: "ready", items: data.items }))
+      .catch(() => {
+        if (!controller.signal.aborted) setState({ status: "error" })
+      })
+    return () => controller.abort()
+  }, [attempt])
+
+  return (
+    <>
+      {user && <p className="text-xs text-muted-foreground">{user.region}業務確認拜訪後開的出差單，會送到這裡簽核</p>}
+      {state.status === "loading" && <p className="py-10 text-center text-sm text-muted-foreground">載入中…</p>}
+      {state.status === "error" && (
+        <Notice
+          text="連不上伺服器，簽核匣沒有載入。"
+          action={{
+            label: "重新載入",
+            onClick: () => {
+              setState({ status: "loading" })
+              setAttempt((n) => n + 1)
+            },
+          }}
+          secondary={{ label: "回提問", onClick: () => navigate("/manager") }}
+        />
+      )}
+      {state.status === "ready" && state.items.length === 0 && (
+        <p className="py-10 text-center text-sm text-muted-foreground">目前沒有待簽核的出差單。</p>
+      )}
+      {state.status === "ready" &&
+        state.items.map((item) => (
+          <Link key={item.id} to={`/oa/forms/${item.id}`} className="rounded-2xl border bg-card p-4">
+            <p className="text-sm font-medium">{item.kind}</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {item.form_no} · {item.applicant_name} · {item.customer_name}
+            </p>
+            <p className="mt-1 text-[11px] text-muted-foreground">{formatDate(item.trip_date)} 拜訪</p>
+          </Link>
+        ))}
+    </>
   )
 }

@@ -48,6 +48,7 @@ export type Visit = {
   first_competitors: string[]
   // 只有確認送出、而且這次提到競品或客訴時才有
   risk_notice: RiskNotice | null
+  oa_form_id: number | null
 }
 
 export function uploadAudio(customerId: string, audio: Blob, filename: string, clientRef: string) {

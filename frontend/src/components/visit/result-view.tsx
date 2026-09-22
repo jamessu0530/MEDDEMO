@@ -111,6 +111,11 @@ export function ResultView({ visit, onChange }: { visit: Visit; onChange: (visit
       )}
       {error && <p className="text-sm text-destructive">{error}</p>}
       {/* 回寫完後回今日路線接著跑下一站；還有幾站用手機裡記著的那份路線算，算不出來就只寫「回今日路線」 */}
+      {visit.oa_form_id && (
+        <Button variant="outline" className="h-12 text-base" onClick={() => navigate(`/oa/forms/${visit.oa_form_id}`)}>
+          查看出差單
+        </Button>
+      )}
       <Button className="h-12 text-base" onClick={() => navigate("/")}>
         回今日路線{remaining !== null && remaining > 0 ? ` · 還有 ${remaining} 站` : ""}
       </Button>
