@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.api.asks import mentioned_customers
 from app.main import app
-from app.models import AppUser, AskRecord
+from app.models import AppUser, AskRecord, Visit
 from app.services.scope import Scope
 from app.services.sql_executor import QueryRejected, run_readonly
 
@@ -40,6 +40,37 @@ def test_recording_a_visit_for_someone_elses_customer_is_refused(client, auth):
         files={"file": ("visit.webm", b"fake-audio", "audio/webm")}, headers=auth("U01"),
     )
     assert response.status_code == 404
+
+
+def test_teammates_can_read_a_visit_but_only_the_owner_can_change_it(client, auth, engine):
+    with Session(engine) as session:
+        visit = session.scalars(
+            select(Visit).where(Visit.user_id == "U02", Visit.status.in_(("confirmed", "synced")))
+        ).first()
+        visit_id = visit.id
+
+    # U01 與 U02 同一個團隊（都在 M01 底下）
+    assert client.get(f"/api/visits/{visit_id}", headers=auth("U01")).status_code == 200
+    assert client.get(f"/api/visits/{visit_id}", headers=auth("M01")).status_code == 200
+    # U03 在中區，看不到
+    assert client.get(f"/api/visits/{visit_id}", headers=auth("U03")).status_code == 404
+    # 看得到不等於能改：同團隊的拜訪唯讀
+    assert client.delete(f"/api/visits/{visit_id}", headers=auth("U01")).status_code == 404
+
+
+def test_every_mutating_visit_endpoint_stays_with_the_owner_not_just_delete(client, auth, engine):
+    """六支寫入端點都要在 _load 加 write=True；只測 DELETE 會漏掉另外五支忘記加的情形。"""
+    with Session(engine) as session:
+        visit = session.scalars(
+            select(Visit).where(Visit.user_id == "U02", Visit.status.in_(("confirmed", "synced")))
+        ).first()
+        visit_id = visit.id
+
+    assert client.put(f"/api/visits/{visit_id}/fields", json={"fields": {}}, headers=auth("U01")).status_code == 404
+    assert client.post(f"/api/visits/{visit_id}/confirm", headers=auth("U01")).status_code == 404
+    assert client.post(f"/api/visits/{visit_id}/reprocess", headers=auth("U01")).status_code == 404
+    assert client.post(f"/api/visits/{visit_id}/transcript", json={"text": "x"}, headers=auth("U01")).status_code == 404
+    assert client.post(f"/api/visits/{visit_id}/writeback/crm/retry", headers=auth("U01")).status_code == 404
 
 
 def test_quoting_for_someone_elses_customer_is_refused(client, auth):

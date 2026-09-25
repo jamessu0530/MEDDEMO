@@ -15,7 +15,7 @@ from app.db import get_session
 from app.models import AppUser, WRITEBACK_TARGETS, Customer, FollowUpReminder, OaExpenseForm, Visit, VisitAudio, ManagerNotice
 from app.services import privacy, writeback
 from app.services import risk
-from app.services.scope import SELF, Scope, owner_path
+from app.services.scope import SELF, TEAM, Scope, owner_path
 from app.services.extraction import empty_fields, missing_sap_details, unsourced_fields, validate_fields
 from app.services.reminders import create_reminder
 from app.tasks import get_progress, visit_queue
@@ -78,12 +78,20 @@ class FieldsInput(BaseModel):
     fields: dict[str, Any]
 
 
-def _load(session: Session, visit_id: str, user: AppUser, *, lock: bool = False) -> Visit:
+def _load(session: Session, visit_id: str, user: AppUser, *, lock: bool = False, write: bool = False) -> Visit:
+    """看不到的拜訪跟不存在一樣回 404。
+
+    讀是團隊層級（同一個主管底下的業務互相看得到，主管看得到全部屬下的）；
+    改、確認、刪除只限這筆拜訪本人，別人的一律唯讀，同樣回 404 不回 403。
+    """
     visit = session.get(Visit, visit_id, with_for_update=lock)
-    # 看不到的客戶的拜訪跟不存在一樣回 404
-    if visit is None or not Scope.for_user(user).can_see(
-        SELF, owner_path(session, session.get(Customer, visit.customer_id))
-    ):
+    if visit is None:
+        raise HTTPException(404, "找不到這筆拜訪紀錄")
+    scope = Scope.for_user(user)
+    rep = session.get(AppUser, visit.user_id)
+    if not scope.can_see(TEAM, rep.org_path if rep else None):
+        raise HTTPException(404, "找不到這筆拜訪紀錄")
+    if write and not scope.can_see(SELF, rep.org_path if rep else None):
         raise HTTPException(404, "找不到這筆拜訪紀錄")
     return visit
 
@@ -192,7 +200,7 @@ def get_visit(session: SessionDep, visit_id: str, user: CurrentUser):
 @router.post("/{visit_id}/transcript", status_code=202, response_model=VisitDetail)
 def submit_transcript(session: SessionDep, visit_id: str, body: TranscriptInput, user: CurrentUser):
     """轉文字失敗時手動輸入逐字稿，或修改逐字稿後重新整理欄位（會覆蓋目前的欄位）。"""
-    visit = _load(session, visit_id, user, lock=True)
+    visit = _load(session, visit_id, user, lock=True, write=True)
     if visit.status not in ("failed", "draft"):
         raise HTTPException(409, "這筆紀錄目前不能修改逐字稿")
     visit.transcript = body.text.strip()
@@ -207,7 +215,7 @@ def submit_transcript(session: SessionDep, visit_id: str, body: TranscriptInput,
 def reprocess(session: SessionDep, visit_id: str, user: CurrentUser):
     """用同一段錄音重新處理：轉文字失敗之後，或背景工作中斷（例如 Redis 重啟、排隊的工作不見）
     而一直停在處理中時。重複排入也無妨，兩次處理寫進去的結果相同。"""
-    visit = _load(session, visit_id, user, lock=True)
+    visit = _load(session, visit_id, user, lock=True, write=True)
     if visit.status not in ("failed", "processing") or session.get(VisitAudio, visit.id) is None:
         raise HTTPException(409, "只有轉文字失敗或處理中斷、而且有錄音的紀錄可以重試")
     visit.status = "processing"
@@ -220,7 +228,7 @@ def reprocess(session: SessionDep, visit_id: str, user: CurrentUser):
 @router.put("/{visit_id}/fields", response_model=VisitDetail)
 def update_fields(session: SessionDep, visit_id: str, body: FieldsInput, user: CurrentUser):
     """逐格修改（FR-5.3）。原始抽取結果保留在 fields_raw，不會被覆蓋。"""
-    visit = _load(session, visit_id, user, lock=True)
+    visit = _load(session, visit_id, user, lock=True, write=True)
     if visit.status != "draft":
         raise HTTPException(409, "只有待確認的紀錄可以修改欄位")
     if errors := validate_fields(body.fields):
@@ -233,7 +241,7 @@ def update_fields(session: SessionDep, visit_id: str, body: FieldsInput, user: C
 @router.post("/{visit_id}/confirm", response_model=VisitDetail)
 def confirm(session: SessionDep, visit_id: str, user: CurrentUser):
     """確認後寫回三套系統（FR-6），並依追蹤日或承諾期限建立提醒。"""
-    visit = _load(session, visit_id, user, lock=True)
+    visit = _load(session, visit_id, user, lock=True, write=True)
     if visit.status != "draft":
         raise HTTPException(409, "這筆紀錄不是待確認狀態")
     fields = visit.fields_final or empty_fields()
@@ -262,7 +270,7 @@ def retry_writeback(session: SessionDep, visit_id: str, target: str, user: Curre
     """只重送失敗的那一套（FR-6.3），寫成功的不會被重寫。"""
     if target not in WRITEBACK_TARGETS:
         raise HTTPException(404, "沒有這個目標系統")
-    visit = _load(session, visit_id, user)
+    visit = _load(session, visit_id, user, write=True)
     latest = {e.target: e.status for e in writeback.latest_results(session, visit.id)}
     if visit.status != "confirmed" or latest.get(target) != "failed":
         raise HTTPException(409, "只能重送寫入失敗的項目")
@@ -277,7 +285,7 @@ def retry_writeback(session: SessionDep, visit_id: str, target: str, user: Curre
 @router.delete("/{visit_id}", status_code=204)
 def discard(session: SessionDep, visit_id: str, user: CurrentUser):
     """放棄這次的口述（FR-5.5 整段重錄），錄音一併刪除。已確認的紀錄不能刪。"""
-    visit = _load(session, visit_id, user, lock=True)
+    visit = _load(session, visit_id, user, lock=True, write=True)
     if visit.status not in ("processing", "failed", "draft"):
         raise HTTPException(409, "已確認的紀錄不能刪除")
     session.delete(visit)
