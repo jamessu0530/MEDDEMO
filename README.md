@@ -207,6 +207,8 @@ curl -X PUT localhost:8000/api/mock-systems/oa -H 'Content-Type: application/jso
 
 ## 問答：數字查詢與知識查詢（第四週）
 
+打字與語音問答在同一頁、同一條對話裡：語音會話開著時打字照樣送得出去，會進到同一個 Live 會話，由 AI 用講的回答，而不是另外開一次文字問答。
+
 - **查數字**：把問題轉成 SQL，只能查四個語意層 View，並用唯讀角色執行，而且**只查得到提問者看得到的客戶**（見「資料權限」）。答案提到自己負責的客戶時，下面列出來並給「排入今天的路線」（原型叫「排入拜訪」，但我們只有今天的路線），按了就排到最前面，最多五家（一天的量）。結果不夠回答，就自己決定下一條查詢，最多查三輪；查到上限還答不出來，就回報已經查到的部分和卡住的原因。
 - **查規定**：`data/documents/` 的內部文件，一個小節切成一段。整套照搬 CARE 的 CRAG 回答路徑（`backend/app/services/crag/`），跟 CARE 不同的有四點：網路搜尋不限網站（CARE 限定政府網域）、知識庫答案沒有對得上的出處就當查無依據、用藥這類醫療問題不上網、只有公司內部才有答案的問題也不上網（後三點見下面）。
   - 檢索：關鍵字（中文兩字一組的全文檢索）與語意（pgvector）兩路並行，各 5 秒逾時，一路失敗或逾時就只用另一路；分數依「向量 0.6、關鍵字 0.4」的凸組合合併，取前 40 段。
@@ -235,7 +237,7 @@ uv run --project backend python backend/scripts/eval_ask.py
 
 ## 語音問答（Gemini Live）
 
-底部分頁的「語音」：用講的問，AI 先查資料再用講的回答，查到的表格和出處同時列在畫面上。
+問答頁上的麥克風：用講的問，AI 先查資料再用講的回答，查到的表格和出處同時列在畫面上。打字與語音合併成一頁、一條對話後，會話開著時輸入框也還在——打字會送進同一個 Live 會話，模型保有上下文，一樣用講的回答。
 
 - 手機直接連 Gemini Live，聲音不經過我們的伺服器。後端的 `POST /api/voice/session` 每次發一把臨時金鑰，限制如下；正式的金鑰不會離開伺服器。
   - 只能開一段對話。
@@ -251,6 +253,7 @@ uv run --project backend python backend/scripts/eval_ask.py
 - `gemini-3.1-flash-live-preview` 反應比較快，但實測會編答案、逐字稿是簡體字，所以不當預設。兩個都是預覽版，要換就改 `VOICE_MODEL`（正式環境在 `values.yaml` 的 `config`）。
 - 9/14 起正式環境改用 3.1，還沒用語音實測驗證。上線後要注意：AI 講了數字或規定，畫面上卻沒有出現查詢卡片，就是它沒查就答。要改回 2.5，把 `config.VOICE_MODEL` 留空再推 main。
 - AI 說話時暫停收音（半雙工）：手機外放時，模型才不會聽到自己的聲音、把自己打斷。要插話就按「打斷」。
+- 靜音鈕只是不播出來：Live 的原生語音模型沒辦法只回文字，靜音時 AI 照樣講、照樣算音訊的費用，不是省錢開關。
 - 查資料時循環播放提示音，查完就停；這段時間也暫停收音，免得提示音被麥克風收進去。音效的來源與授權見 `frontend/public/sounds/README.md`。
 - 畫面上業務說的那一句，是 Gemini 另外做的語音轉文字，常有同音錯字，所以標了「語音辨識，僅供參考」。AI 查資料用的是它自己聽懂的問題，寫在查詢卡片上。
 - 一分鐘沒有對話會自動掛斷，免得麥克風一直開著、音訊一直計費。Gemini 單次連線大約 10 分鐘就會結束，畫面會提示重新開始。
@@ -422,6 +425,7 @@ backend/scripts/train_route_model.py 訓練今日路線的排序模型
 backend/tests                       測試
 frontend/                           React + Vite + Tailwind + shadcn/ui
 frontend/src/voice                  語音問答：收音與播放、Gemini Live 連線
+frontend/src/ask                    對話 store（打字與語音共用）、查詢輪詢
 frontend/nginx.conf                 Nginx：放打包好的網頁，/api 轉給 FastAPI
 data/seed                           假資料產生器
 data/documents                      內部文件（知識查詢的唯一依據，展示用虛構內容）

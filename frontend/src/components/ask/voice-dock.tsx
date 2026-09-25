@@ -1,22 +1,40 @@
 import { useEffect } from "react"
-import { AudioLines, Hand, Loader2, Mic, PhoneOff } from "lucide-react"
+import { AudioLines, Hand, Loader2, Mic, PhoneOff, VolumeX, Volume2 } from "lucide-react"
 
 import type { Conversation } from "@/ask/conversation"
 import { Button } from "@/components/ui/button"
 import { useVoiceSession } from "@/voice/use-voice-session"
 
+/** 交給頁面的介面：會話活著時打字也能送進同一個會話，並讓輸入框告訴閒置計時器「人還在」 */
+export type VoiceSession = { sendText: (text: string) => void; noteActivity: () => void }
+
 /**
  * 麥克風那一區。整包 src/voice（Gemini Live SDK 與音訊處理）只從這裡進來，
  * 而這個檔案是 lazy 載入的：只打字的人不會載到它。
  */
-export default function VoiceDock({ conversation, onClose }: { conversation: Conversation; onClose: () => void }) {
+export default function VoiceDock({
+  conversation,
+  onClose,
+  onSession,
+}: {
+  conversation: Conversation
+  onClose: () => void
+  onSession: (session: VoiceSession | null) => void
+}) {
   const voice = useVoiceSession(conversation)
+  const live = voice.status === "listening" || voice.status === "speaking"
 
   // 按麥克風就是表達了要講話，載完直接開始，不讓人再按一次
   useEffect(() => {
     void voice.start()
+    return () => onSession(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // 只有連上且能收發時才把介面交給頁面：connecting／idle 時打字不該真的送出去
+  useEffect(() => {
+    onSession(live ? { sendText: voice.sendText, noteActivity: voice.noteActivity } : null)
+  }, [live, onSession, voice.sendText, voice.noteActivity])
 
   if (voice.status === "idle") {
     // 會話結束或連線失敗：把 dock 收掉，notice 由頁面顯示
@@ -52,6 +70,16 @@ export default function VoiceDock({ conversation, onClose }: { conversation: Con
       <p className="flex-1 text-sm font-medium" aria-live="polite">
         {label}
       </p>
+      <Button
+        variant="outline"
+        size="icon"
+        className="size-11 shrink-0"
+        onClick={() => voice.setMuted(!voice.muted)}
+        aria-label={voice.muted ? "取消靜音" : "靜音"}
+        aria-pressed={voice.muted}
+      >
+        {voice.muted ? <VolumeX className="size-4" /> : <Volume2 className="size-4" />}
+      </Button>
       {speaking && (
         <Button variant="outline" className="h-11 gap-1.5" onClick={voice.interrupt}>
           <Hand className="size-4" />

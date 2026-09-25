@@ -16,5 +16,8 @@ export function useVoiceSession(conversation: Conversation) {
     start: controller.start,
     stop: controller.stop,
     interrupt: controller.interrupt,
+    sendText: controller.sendText,
+    noteActivity: controller.noteActivity,
+    setMuted: controller.setMuted,
   }
 }

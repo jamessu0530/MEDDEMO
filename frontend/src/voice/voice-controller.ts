@@ -35,6 +35,7 @@ export type VoiceView = {
   notice: string | null
   level: number
   pending: number
+  muted: boolean
 }
 
 type Connection = {
@@ -96,7 +97,7 @@ function describeStartError(error: unknown) {
 }
 
 export class VoiceController {
-  private view: VoiceView = { status: "idle", notice: null, level: 0, pending: 0 }
+  private view: VoiceView = { status: "idle", notice: null, level: 0, pending: 0, muted: false }
   private readonly listeners = new Set<() => void>()
   // 離開頁面時停止所有輪詢；對話結束但查詢還沒完成的，卡片照樣更新到查完
   private polls = new AbortController()
@@ -200,6 +201,27 @@ export class VoiceController {
     conn.player.stop()
   }
 
+  /** 打字送進同一個會話：模型保有上下文，會用講的回答 */
+  sendText = (text: string) => {
+    const conn = this.conn
+    const trimmed = text.trim().slice(0, MAX_QUESTION_LENGTH)
+    if (!conn?.session || !trimmed) return
+    conn.lastActivity = Date.now()
+    this.conversation.addUtterance("user", "typed", trimmed)
+    conn.session.sendClientContent({ turns: trimmed, turnComplete: true })
+  }
+
+  /** 業務正在輸入框裡打字。打字不產生音訊，閒置計時器要知道人還在，否則會打到一半被掛斷 */
+  noteActivity = () => {
+    if (this.conn) this.conn.lastActivity = Date.now()
+  }
+
+  /** 靜音只是不播出來：Live 原生語音模型照樣會產生音訊，也照樣計費 */
+  setMuted = (muted: boolean) => {
+    if (muted) this.conn?.player.stop()
+    this.update({ muted })
+  }
+
   /** 頁面掛上時呼叫。React 開發模式會先卸載再掛上一次，所以卸載時停掉的輪詢要能重新開始 */
   attach = () => {
     if (this.polls.signal.aborted) this.polls = new AbortController()
@@ -262,7 +284,8 @@ export class VoiceController {
       }
       for (const part of content.modelTurn?.parts ?? []) {
         const audio = part.inlineData
-        if (audio?.data && audio.mimeType?.startsWith("audio/pcm") && !conn.dropModelAudio) conn.player.play(audio.data)
+        if (audio?.data && audio.mimeType?.startsWith("audio/pcm") && !conn.dropModelAudio && !this.view.muted)
+          conn.player.play(audio.data)
       }
       if (content.inputTranscription?.text) this.appendText(conn, "user", content.inputTranscription.text)
       if (content.outputTranscription?.text) this.appendText(conn, "model", content.outputTranscription.text)

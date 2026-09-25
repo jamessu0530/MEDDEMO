@@ -6,6 +6,8 @@ import { createConversation } from "@/ask/conversation"
 import { runAsk } from "@/ask/run-ask"
 import { useConversation } from "@/ask/use-conversation"
 import { EntryView } from "@/components/ask/entry-view"
+// type-only：只拿型別，不會把 VoiceDock（跟著它的 src/voice）拉進主 chunk
+import type { VoiceSession } from "@/components/ask/voice-dock"
 import { BottomNav } from "@/components/bottom-nav"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -40,6 +42,7 @@ export function AskPage() {
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [voiceOn, setVoiceOn] = useState(false)
+  const [session, setSession] = useState<VoiceSession | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const polls = useRef(new AbortController())
   const mode = MODES.find((m) => m.kind === kind)!
@@ -61,8 +64,14 @@ export function AskPage() {
   async function submit(text: string) {
     const trimmed = text.trim()
     if (!trimmed || sending) return
-    setSending(true)
     setError(null)
+    // 語音會話開著就送進同一個會話，模型保有上下文並用講的回答；entry 由 controller 加
+    if (session) {
+      session.sendText(trimmed)
+      setQuestion("")
+      return
+    }
+    setSending(true)
     conversation.addUtterance("user", "typed", trimmed)
     const entryId = conversation.addToolRun(kind, trimmed)
     setQuestion("")
@@ -137,28 +146,32 @@ export function AskPage() {
               </Button>
             }
           >
-            <VoiceDock conversation={conversation} onClose={() => setVoiceOn(false)} />
+            <VoiceDock conversation={conversation} onClose={() => setVoiceOn(false)} onSession={setSession} />
           </Suspense>
         )}
-        {!voiceOn && (
-          <form
-            onSubmit={(event) => {
-              event.preventDefault()
-              void submit(question)
-            }}
-            className="flex flex-col gap-1.5"
-          >
-            {error && <p className="px-1 text-sm text-destructive">{error}</p>}
-            {/* 數字查詢只查得到登入者看得到的客戶；規定題查的是公司文件，不分客戶，不必提 */}
-            {user && kind === "data" && <p className="px-1 text-[11px] text-muted-foreground">{askScopeText(user)}</p>}
-            <div className="flex gap-2">
-              <Input
-                value={question}
-                onChange={(event) => setQuestion(event.target.value)}
-                placeholder={mode.placeholder}
-                aria-label="輸入問題"
-                className="h-11 bg-card"
-              />
+        {/* 輸入框永遠顯示：會話開著時打字也送進同一個會話，跟語音共用同一條對話 */}
+        <form
+          onSubmit={(event) => {
+            event.preventDefault()
+            void submit(question)
+          }}
+          className="flex flex-col gap-1.5"
+        >
+          {error && <p className="px-1 text-sm text-destructive">{error}</p>}
+          {/* 數字查詢只查得到登入者看得到的客戶；規定題查的是公司文件，不分客戶，不必提。會話中是模型自己選工具，這行文字對不上 */}
+          {user && kind === "data" && !voiceOn && <p className="px-1 text-[11px] text-muted-foreground">{askScopeText(user)}</p>}
+          <div className="flex gap-2">
+            <Input
+              value={question}
+              onChange={(event) => {
+                setQuestion(event.target.value)
+                session?.noteActivity()
+              }}
+              placeholder={session ? "也可以打字問，AI 會用講的回答" : mode.placeholder}
+              aria-label="輸入問題"
+              className="h-11 bg-card"
+            />
+            {!voiceOn && (
               <Button
                 type="button"
                 variant="outline"
@@ -169,12 +182,12 @@ export function AskPage() {
               >
                 <Mic className="size-4" />
               </Button>
-              <Button type="submit" size="icon" className="size-11 shrink-0" disabled={sending || !question.trim()} aria-label="送出">
-                {sending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
-              </Button>
-            </div>
-          </form>
-        )}
+            )}
+            <Button type="submit" size="icon" className="size-11 shrink-0" disabled={sending || !question.trim()} aria-label="送出">
+              {sending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+            </Button>
+          </div>
+        </form>
       </div>
       <BottomNav />
     </div>
