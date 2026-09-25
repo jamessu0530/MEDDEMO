@@ -71,8 +71,14 @@ def test_seed_records_schema_version_for_the_deploy_check(db):
 
 
 def test_schema_version_matches_the_deploy_workflow_algorithm():
-    # CI 在 runner 上用 cat 把這四個檔案接起來再 sha256sum 算指紋，兩邊要算出同一個值
-    files = ["backend/app/models.py", "backend/app/sql/semantic_layer.sql", "data/seed/generate.py", "data/seed/catalog.py"]
+    # CI 在 runner 上用 cat 把這幾個檔案接起來再 sha256sum 算指紋，檔案順序與清單兩邊要一模一樣
+    files = [
+        "backend/app/models.py",
+        "backend/app/sql/semantic_layer.sql",
+        "backend/app/services/org.py",
+        "data/seed/generate.py",
+        "data/seed/catalog.py",
+    ]
     workflow = (ROOT / ".github" / "workflows" / "ci-cd.yml").read_text(encoding="utf-8")
     assert f"cat {' '.join(files)} | sha256sum" in workflow
     joined = b"".join((ROOT / f).read_bytes() for f in files)

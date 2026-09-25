@@ -13,6 +13,8 @@ from app.models import Base
 
 MODELS = Path(__file__).parent / "models.py"
 SEMANTIC_LAYER = Path(__file__).parent / "sql" / "semantic_layer.sql"
+# 組織樹：org_path 是灌資料時算出來寫進去的衍生欄位，演算法改了資料就得重算
+ORG = Path(__file__).parent / "services" / "org.py"
 # 假資料的產生程式；映像檔裡放在 /srv/data/seed，跟 /srv/backend 同一層（見 backend/Dockerfile）
 SEED_DIR = Path(__file__).resolve().parents[2] / "data" / "seed"
 
@@ -42,13 +44,16 @@ def get_session() -> Iterator[Session]:
 
 
 def schema_version() -> str:
-    """資料表、語意層與假資料產生程式的指紋。部署時跟資料庫裡記下的比對，不一樣就代表要重建。
+    """資料表、語意層、組織樹與假資料產生程式的指紋。部署時跟資料庫裡記下的比對，不一樣就代表要重建。
 
     假資料的產生程式也算進來：測試與評測題庫的答案都照它的產出寫，程式改了 VM 上的資料就要跟著換。
-    部署流程在 runner 上用 sha256sum 算同一個值（四個檔案依序接起來取前 12 碼），改算法要一起改。
+    services/org.py 同理：org_path 不是使用者填的欄位，是灌資料時算出來的，改了推導方式舊資料
+    就是錯的，指紋要跟著動，不然部署不會重灌、每個人身上都留著過期的路徑。
+    部署流程在 runner 上用 sha256sum 算同一個值（這幾個檔案依序接起來取前 12 碼），
+    檔案清單與順序兩邊要一模一樣（.github/workflows/ci-cd.yml，test_seed.py 會比對）。
     """
     digest = hashlib.sha256()
-    for path in (MODELS, SEMANTIC_LAYER, SEED_DIR / "generate.py", SEED_DIR / "catalog.py"):
+    for path in (MODELS, SEMANTIC_LAYER, ORG, SEED_DIR / "generate.py", SEED_DIR / "catalog.py"):
         digest.update(path.read_bytes())
     return digest.hexdigest()[:12]
 
