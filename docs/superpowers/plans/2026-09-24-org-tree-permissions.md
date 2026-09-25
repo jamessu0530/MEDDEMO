@@ -43,11 +43,26 @@
 
 ## 任務順序的理由
 
-Task 3 是一次性切換：`Scope` 的舊 API（`owner_id`／`region`／`allows`／`customer_filter`）被所有呼叫點使用，沒辦法逐一遷移。所以 Task 3 把 `Scope` 換掉**並同時改完所有呼叫點，行為保持不變**——全部用 SELF，在現有假資料下與今天等價（M01 的 SELF 截到 `TW.N.M01`，正好涵蓋 U01、U02，等於今天的「北區」）。現有測試在 Task 3 結束時應該全綠。Task 4～6 才逐項放寬層級。
+四個 task，每一個結束時整套測試都必須是綠的，而且分支上不能出現任何一個「權限比合併前寬」的 commit。
+
+**Task 1 把 schema 與填滿它的資料綁在一起。** `org_position` 約束一旦建立，就需要 `manager_id`／`unit_id` 有值才成立；而 `conftest.py` 的 `engine` fixture 每次都重灌假資料。schema 與 seed 分成兩個 task 的話，中間那個 task 的測試會在建資料時就炸。
+
+**Task 2 把 `Scope` 與語意層一起換。** 舊的 `Scope` API（`owner_id`／`region`／`allows`／`customer_filter`）被所有呼叫點與 `sql_executor` 共用，沒辦法逐一遷移。分成兩個 task 的話，中間會有一個 commit 的語意層完全不過濾——數字查詢代理讀得到全國資料。這個 task 內部分兩個 commit：
+
+- **Commit 1：行為不變的切換。** `Scope` 換成樹、所有呼叫點與四個 View 全部用最嚴格的層級（深度 4）。在現有假資料下與今天等價（M01 的 SELF 截到 `TW.N.M01`，正好涵蓋 U01、U02，等於今天的「北區」），現有測試應該一個都不用改。
+- **Commit 2：放寬銷售數字到同區。** 只動四個 View 的深度常數與對應的測試。
+
+這樣「大規模機械式替換」與「行為變更」分在兩個 commit，出問題時二分得出來是哪一種。
+
+**Task 3、4 各自只放寬一個層級**，每次只動一個變數。
 
 ---
 
-### Task 1: ltree 擴充與組織樹的 schema
+### Task 1: 組織樹的 schema、路徑計算與假資料
+
+這個 task 有兩個部分、兩個 commit。**Part A 的 schema 單獨存在時假資料會違反 `org_position` 約束**（八個帳號的 `manager_id`／`unit_id` 還沒有值），所以兩部分要一起做完才跑完整測試；Part A 只跑它自己的結構測試。
+
+#### Part A：ltree 擴充與 schema
 
 **Files:**
 - Modify: `backend/app/db.py:60`
@@ -175,15 +190,16 @@ class OrgUnit(Base):
     )
 ```
 
-- [ ] **Step 7: 跑測試確認通過**
+- [ ] **Step 7: 確認錯誤換了一種**
 
 Run: `uv run --project backend pytest backend/tests/test_scope.py::test_the_org_tree_is_stored_as_ltree_paths -v`
-Expected: PASS
+Expected: 仍然 FAIL，但訊息換成 `org_position` 約束違反（灌資料時炸），不再是「沒有 ltree 擴充」。這代表 schema 建起來了，缺的只是資料。Part B 補完就會轉綠。
 
-- [ ] **Step 8: 確認沒弄壞別的**
+- [ ] **Step 8: 不要在這裡跑完整測試**
 
-Run: `uv run --project backend pytest backend/tests -x -q`
-Expected: 全部通過。`org_position` 約束此時還沒有資料違反它（假資料的八個帳號三欄都是 NULL 且 `acts_as_user_id` 也是 NULL）——**如果這裡失敗且訊息是 `org_position`，代表 Task 2 必須跟這一個 task 一起完成**；把 Task 2 接著做完再一起 commit。
+此時假資料的八個帳號 `manager_id`／`unit_id`／`org_path`／`acts_as_user_id` 全是 NULL，**一定**違反 `org_position` 約束，`seed.seed()` 會失敗，所以整套測試現在必然是紅的。這是預期的：Part B 灌進資料之後才會恢復。
+
+只確認 Step 1 的結構測試會因為建資料失敗而報錯即可，**直接往 Part B 做**，不要試圖讓完整測試在這裡變綠。
 
 - [ ] **Step 9: Commit**
 
@@ -202,7 +218,7 @@ EOF
 
 ---
 
-### Task 2: 算出路徑並灌進假資料
+#### Part B：算出路徑並灌進假資料
 
 **Files:**
 - Create: `backend/app/services/org.py`
@@ -212,7 +228,7 @@ EOF
 - Test: `backend/tests/test_scope.py`
 
 **Interfaces:**
-- Consumes: Task 1 的 `OrgUnit`、`AppUser.manager_id`／`.unit_id`／`.org_path`
+- Consumes: Part A 的 `OrgUnit`、`AppUser.manager_id`／`.unit_id`／`.org_path`
 - Produces: `app.services.org.rebuild_org_paths(session: Session) -> None`
 
 - [ ] **Step 1: 寫失敗的測試**
@@ -405,7 +421,7 @@ EOF
 
 ---
 
-### Task 3: 改寫 Scope 並切換所有呼叫點（行為不變）
+### Task 2: Scope 與語意層一次換到組織樹
 
 這一 task 的驗收標準是**現有測試全綠**。不放寬任何層級，只是把兩軸過濾換成樹。
 
@@ -420,7 +436,7 @@ EOF
 - Test: `backend/tests/test_scope.py`
 
 **Interfaces:**
-- Consumes: Task 2 的 `AppUser.org_path`
+- Consumes: Task 1 的 `AppUser.org_path`
 - Produces:
   - `app.services.scope.ROOT = 1`、`REGION = 2`、`TEAM = 3`、`SELF = 4`
   - `app.services.scope.SHARING_LEVEL: dict[str, int]`
@@ -578,7 +594,7 @@ def owner_path(session: Session, customer: Customer | None) -> str | None:
     stmt = _customer_query().where(Scope.for_user(user).customers_at(SELF))
 ```
 
-（Task 5 才放寬成 ROOT。）
+（Task 3 才放寬成 ROOT。）
 
 - [ ] **Step 5: 切換 visits.py**
 
@@ -682,7 +698,7 @@ EOF
 
 ---
 
-### Task 4: 語意層改用 ltree，銷售數字放寬到同區
+#### Part B：語意層放寬銷售數字到同區
 
 **Files:**
 - Modify: `backend/app/sql/semantic_layer.sql`（`app_in_scope`、四個 View、GRANT）
@@ -690,7 +706,7 @@ EOF
 - Test: `backend/tests/test_scope.py`
 
 **Interfaces:**
-- Consumes: Task 3 的 `Scope.path`
+- Consumes: Part A 的 `Scope.path`
 - Produces: SQL 函式 `app_in_scope(owner_path ltree, share_depth int) -> boolean`；交易設定 `app.scope_path`
 
 - [ ] **Step 1: 寫失敗的測試**
@@ -855,14 +871,14 @@ EOF
 
 ---
 
-### Task 5: 客戶清單放寬到全國，動作留在 SELF
+### Task 3: 客戶清單放寬到全國，動作留在 SELF
 
 **Files:**
 - Modify: `backend/app/api/customers.py`（`_load` 加層級參數、`list_customers`、四支動作端點）
 - Test: `backend/tests/test_scope.py`
 
 **Interfaces:**
-- Consumes: Task 3 的 `Scope.customers_at()`、`ROOT`、`SELF`
+- Consumes: Task 2 的 `Scope.customers_at()`、`ROOT`、`SELF`
 - Produces: `customers._load(session, customer_id, user, level)`（多一個必填的 `level` 參數）
 
 - [ ] **Step 1: 寫失敗的測試**
@@ -965,14 +981,14 @@ EOF
 
 ---
 
-### Task 6: 拜訪紀錄同團隊可讀，修改仍只限本人
+### Task 4: 拜訪紀錄同團隊可讀，修改仍只限本人
 
 **Files:**
 - Modify: `backend/app/api/visits.py`（`_load` 分讀寫）
 - Test: `backend/tests/test_scope.py`
 
 **Interfaces:**
-- Consumes: Task 3 的 `Scope.can_see()`、`TEAM`、`SELF`
+- Consumes: Task 2 的 `Scope.can_see()`、`TEAM`、`SELF`
 - Produces: `visits._load(session, visit_id, user, *, lock=False, write=False)`
 
 - [ ] **Step 1: 寫失敗的測試**
@@ -1042,7 +1058,7 @@ import 改成 `from app.services.scope import SELF, TEAM, Scope, owner_path`，�
     visit = _load(session, visit_id, user, write=True)              # reprocess、retry_writeback、discard
 ```
 
-`get_visit` 與 `submit_transcript` 之外的都要改。`submit_transcript` 是補逐字稿，也算修改，**也要加 `write=True`**。
+六支寫入端點：`update_fields`、`confirm`、`reprocess`、`retry_writeback`、`discard`、`submit_transcript`（補逐字稿也算修改）。**只有 `get_visit` 不加 `write=True`。**
 
 `upload_audio` 兩處不經過 `_load`，維持 Task 3 的 `can_see(SELF, owner_path(...))`，不動。
 
@@ -1082,7 +1098,7 @@ EOF
 - [ ] `uv run --project backend pytest backend/tests` 全綠
 - [ ] `uv run --project backend python data/seed/seed.py` 能從零重建
 - [ ] `cd frontend && npm run build` 過（前端沒改，但型別檢查要確認沒被 API 回應的變化影響）
-- [ ] `git log --oneline main..` 有六個 commit，spec 在最前面
+- [ ] `git log --oneline main..` 有八個 commit（spec、plan、四個 task 共六個實作 commit），spec 在最前面
 
 ## 一個刻意保留的不一致
 
