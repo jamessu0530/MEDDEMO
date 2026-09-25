@@ -15,7 +15,7 @@ from app.config import NotConfigured
 from app.db import get_session
 from app.models import Customer
 from app.services import live_transcription
-from app.services.scope import SELF, Scope, owner_path
+from app.services.scope import SHARING_LEVEL, Scope, owner_path
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/transcription", tags=["transcription"])
@@ -41,7 +41,8 @@ def start_session(session: SessionDep, body: TranscriptionSessionIn, user: Curre
     要登入：每次都發一把 Gemini 臨時金鑰，會花錢。熱詞只帶登入者看得到的客戶名稱。
     """
     customer_id = body.customer_id
-    if customer_id and not Scope.for_user(user).can_see(SELF, owner_path(session, session.get(Customer, customer_id))):
+    own_customer = SHARING_LEVEL["customer_profile"]
+    if customer_id and not Scope.for_user(user).can_see(own_customer, owner_path(session, session.get(Customer, customer_id))):
         customer_id = None
     try:
         live = live_transcription.create_session(live_transcription.vocabulary(session, customer_id))

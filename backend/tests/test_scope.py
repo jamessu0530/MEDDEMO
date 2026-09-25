@@ -1,6 +1,7 @@
 """資料權限：業務只看得到自己負責的客戶，主管只看得到自己轄區（原型登入頁與問答頁的說明）。"""
 
 import datetime as dt
+import re
 
 import pytest
 from fastapi.testclient import TestClient
@@ -8,9 +9,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.asks import mentioned_customers
+from app.db import SEMANTIC_LAYER
 from app.main import app
 from app.models import AppUser, AskRecord, Visit
-from app.services.scope import Scope
+from app.services.scope import SHARING_LEVEL, Scope
 from app.services.sql_executor import QueryRejected, run_readonly
 
 
@@ -86,8 +88,33 @@ def test_sales_figures_stop_at_the_region(engine):
     assert run_readonly(engine, sql, Scope(path="TW.N.M01")).rows == [[100]]
     assert run_readonly(engine, sql, Scope(path="TW.C.M02.U03")).rows == [[50]]
     for view in ("v_monthly_sales", "v_margin_breakdown"):
+        # 北區 100 家全部都有交易，所以是剛好 100；寫 <= 100 的話少過濾到一區以外的幾家也測不出來
         rows = run_readonly(engine, f"SELECT count(DISTINCT customer_id) FROM {view}", Scope(path="TW.N.M01.U01")).rows
-        assert rows[0][0] <= 100
+        assert rows[0][0] == 100
+
+
+def test_the_sql_views_declare_the_same_depths_as_python():
+    """同一條規則有兩個執法點：ORM（API）與語意層的四個 View（模型寫的 SQL）。
+
+    View 的深度是寫死在 semantic_layer.sql 裡的整數，沒辦法引用 Python 的 SHARING_LEVEL，
+    兩邊各改各的也不會有人報錯——這個測試是唯一會發現「只改了一邊」的機制，所以它直接
+    從 SQL 檔把深度讀出來，跟 SHARING_LEVEL 比對，而不是各自抄一份常數。
+    """
+    sql = SEMANTIC_LAYER.read_text(encoding="utf-8")
+    # 依 CREATE VIEW 切段，再抓每一段裡的 app_in_scope(<別名>.org_path, <深度>)。
+    # app_in_scope 的函式定義與 GRANT 在第一個 View 之前、參數也不是 <別名>.org_path，不會被抓進來
+    blocks = re.split(r"CREATE VIEW (\w+) AS", sql)[1:]
+    declared = {
+        name: [int(depth) for depth in re.findall(r"app_in_scope\(\s*\w+\.org_path\s*,\s*(\d+)\s*\)", body)]
+        for name, body in zip(blocks[::2], blocks[1::2], strict=True)
+    }
+    # 每個 View 一個過濾條件。少了哪個 View、多了新的 View、或深度跟 Python 對不上，都在這裡爆
+    assert declared == {
+        "v_monthly_sales": [SHARING_LEVEL["sales_figures"]],
+        "v_customer_summary": [SHARING_LEVEL["sales_figures"]],
+        "v_visit_signal": [SHARING_LEVEL["visit_record"]],
+        "v_margin_breakdown": [SHARING_LEVEL["sales_figures"]],
+    }
 
 
 def test_visit_records_stop_at_the_team(engine):

@@ -15,7 +15,7 @@ from app.db import get_session
 from app.models import AppUser, WRITEBACK_TARGETS, Customer, FollowUpReminder, OaExpenseForm, Visit, VisitAudio, ManagerNotice
 from app.services import privacy, writeback
 from app.services import risk
-from app.services.scope import SELF, TEAM, Scope, owner_path
+from app.services.scope import SHARING_LEVEL, Scope, owner_path
 from app.services.extraction import empty_fields, missing_sap_details, unsourced_fields, validate_fields
 from app.services.reminders import create_reminder
 from app.tasks import get_progress, visit_queue
@@ -89,9 +89,9 @@ def _load(session: Session, visit_id: str, user: AppUser, *, lock: bool = False,
         raise HTTPException(404, "找不到這筆拜訪紀錄")
     scope = Scope.for_user(user)
     rep = session.get(AppUser, visit.user_id)
-    if not scope.can_see(TEAM, rep.org_path if rep else None):
+    if not scope.can_see(SHARING_LEVEL["visit_record"], rep.org_path if rep else None):
         raise HTTPException(404, "找不到這筆拜訪紀錄")
-    if write and not scope.can_see(SELF, rep.org_path if rep else None):
+    if write and not scope.can_see(SHARING_LEVEL["visit_edit"], rep.org_path if rep else None):
         raise HTTPException(404, "找不到這筆拜訪紀錄")
     return visit
 
@@ -157,13 +157,14 @@ def upload_audio(
     client_ref: Annotated[str | None, Form()] = None,
 ):
     """上傳口述錄音。轉文字和整理欄位在背景做，畫面輪詢 GET /api/visits/{id} 看進度。"""
+    own_customer = SHARING_LEVEL["customer_profile"]
     if client_ref and (existing := session.scalar(select(Visit).where(Visit.client_ref == client_ref))):
-        if not Scope.for_user(user).can_see(SELF, owner_path(session, session.get(Customer, existing.customer_id))):
+        if not Scope.for_user(user).can_see(own_customer, owner_path(session, session.get(Customer, existing.customer_id))):
             raise HTTPException(404, "找不到這家客戶")
         response.status_code = 200  # 同一段錄音重送：不重建，也不再轉一次文字
         return _detail(session, existing)
     customer = session.get(Customer, customer_id)
-    if not Scope.for_user(user).can_see(SELF, owner_path(session, customer)):
+    if not Scope.for_user(user).can_see(own_customer, owner_path(session, customer)):
         raise HTTPException(404, "找不到這家客戶")
     content = file.file.read(MAX_AUDIO_BYTES + 1)
     if len(content) > MAX_AUDIO_BYTES:

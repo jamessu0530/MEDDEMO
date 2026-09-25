@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from sqlalchemy import ColumnElement, Select, cast, literal, select, true
 from sqlalchemy.orm import Session
 
-from app.models import LTREE, AppUser, Customer, Visit
+from app.models import LTREE, AppUser, Customer
 
 # 共享層級就是路徑深度（ltree 的 nlevel 從 1 起算）
 ROOT = 1     # TW
@@ -30,13 +30,19 @@ REGION = 2   # TW.N
 TEAM = 3     # TW.N.M01
 SELF = 4     # TW.N.M01.U01
 
-# 每一種資料看得多遠。改這裡要同步改 sql/semantic_layer.sql 裡各個 View 宣告的深度
+# 每一種資料看得多遠。API 端點一律從這裡讀層級，不要在呼叫端寫死常數，不然「這種資料共享
+# 到哪裡」就散在各個檔案裡、改一處等於漏改其他處。
+# 語意層的四個 View 是模型寫 SQL 時的另一個執法點，深度寫在 sql/semantic_layer.sql 裡，
+# 沒辦法直接引用這份 dict；改這裡要同步改那邊，test_scope.py 的
+# test_the_sql_views_declare_the_same_depths_as_python 會在只改一邊時失敗。
 SHARING_LEVEL = {
-    "customer_basic": ROOT,   # 客戶名稱、類型、區、等級、負責人
-    "sales_figures": REGION,  # 進貨金額、毛利、帳齡
-    "visit_record": TEAM,     # 拜訪紀錄與逐字稿
-    "quote": SELF,            # 報價、交易條件、議價卡
-    "oa_form": SELF,          # 出差單
+    "customer_basic": ROOT,     # 客戶清單：名稱、類型、區、縣市、等級、負責人
+    "sales_figures": REGION,    # 進貨金額、毛利、帳齡
+    "visit_record": TEAM,       # 讀拜訪紀錄與逐字稿
+    "visit_edit": SELF,         # 改、確認、刪除拜訪：做這次拜訪的本人（主管的路徑較短，也涵蓋在內）
+    "customer_profile": SELF,   # 客戶檔案、議價卡，以及對這家客戶做事（錄音、排進路線）
+    "quote": SELF,              # 報價與交易條件
+    "oa_form": SELF,            # 出差單
 }
 
 # 送給 app_in_scope 代表「誰都看不到」的假路徑：真實路徑一律從 TW 開始（services/org.py），
@@ -68,7 +74,13 @@ class Scope:
     def prefix(self, level: int) -> str | None:
         """自己的路徑截到 level 深度。unfiltered 回 None 代表不過濾；沒有 unfiltered 卻也沒有
         path，代表看不到任何東西，回 NO_ACCESS——不能回 None，那個意思已經被 unfiltered 佔用了。
-        路徑已經比 level 淺就原樣回傳——主管就是靠這個涵蓋屬下。"""
+        路徑已經比 level 淺就原樣回傳——主管就是靠這個涵蓋屬下。
+
+        level 比 ROOT 淺一律當成寫錯：level=0 在這裡會截成空字串、什麼都看不到，但 SQL 那邊
+        subpath(p, 0, 0) 是空 ltree，@> 對誰都成立、變成全部看得到。兩邊在放寬的方向上不一致，
+        寧可在 Python 這邊當場炸掉。"""
+        if level < ROOT:
+            raise ValueError(f"共享層級至少是 ROOT（{ROOT}），收到 {level}")
         if self.unfiltered:
             return None
         if self.path is None:
@@ -95,11 +107,6 @@ class Scope:
         """加在 where 上，依客戶負責人的位置過濾。查詢裡要有 Customer。"""
         users = self.users_at(level)
         return true() if users is None else Customer.owner_user_id.in_(users)
-
-    def visits_at(self, level: int) -> ColumnElement[bool]:
-        """加在 where 上，依做這次拜訪的業務過濾。查詢裡要有 Visit。"""
-        users = self.users_at(level)
-        return true() if users is None else Visit.user_id.in_(users)
 
     @property
     def sql_path(self) -> str:
