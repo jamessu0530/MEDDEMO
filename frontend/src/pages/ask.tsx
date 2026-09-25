@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react"
+import { Component, lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react"
 import { Loader2, Mic, Send } from "lucide-react"
 
 import { type Ask, type AskKind } from "@/api/asks"
@@ -17,7 +17,7 @@ import { askScopeText } from "@/lib/scope"
 import { cn } from "@/lib/utils"
 
 // 整包 src/voice（Gemini Live SDK 與音訊處理）只從這裡進來，按了麥克風才載
-const VoiceDock = lazy(() => import("@/components/ask/voice-dock"))
+const loadVoiceDock = () => import("@/components/ask/voice-dock")
 
 const MODES: { kind: AskKind; label: string; placeholder: string; examples: string[] }[] = [
   {
@@ -44,6 +44,8 @@ export function AskPage() {
   const [error, setError] = useState<string | null>(null)
   const [voiceOn, setVoiceOn] = useState(false)
   const [session, setSession] = useState<VoiceSession | null>(null)
+  // React 的 lazy 會把失敗的那一次記在元件身上，之後只會再丟同一個錯；要讓「請稍後再試」是真的，重試就得換一顆新的
+  const [VoiceDock, setVoiceDock] = useState(() => lazy(loadVoiceDock))
   // 語音的失敗與掛斷說明放在頁面上，不放 dock 裡：dock 會在收起時整個卸載，訊息要留得住才看得到
   const [notice, setNotice] = useState<string | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -101,6 +103,12 @@ export function AskPage() {
     setVoiceOn(false)
     setNotice(null)
   }
+  // 語音那一包載不下來：收掉語音、把原因寫在 notice 上，打字那條路完全不受影響
+  const failVoice = () => {
+    setVoiceOn(false)
+    setNotice("語音載入失敗，請稍後再試")
+    setVoiceDock(() => lazy(loadVoiceDock))
+  }
 
   return (
     <div className="flex min-h-svh flex-col">
@@ -155,16 +163,18 @@ export function AskPage() {
 
       <div className="fixed inset-x-0 bottom-14 z-10 mx-auto flex max-w-md flex-col gap-1.5 border-t bg-background px-3 py-2">
         {voiceOn && (
-          <Suspense
-            fallback={
-              <Button className="h-14 w-full gap-2 text-base" disabled>
-                <Loader2 className="size-5 animate-spin" />
-                載入中…
-              </Button>
-            }
-          >
-            <VoiceDock conversation={conversation} onClose={closeVoice} onSession={setSession} onNotice={setNotice} />
-          </Suspense>
+          <VoiceBoundary onFail={failVoice}>
+            <Suspense
+              fallback={
+                <Button className="h-14 w-full gap-2 text-base" disabled>
+                  <Loader2 className="size-5 animate-spin" />
+                  載入中…
+                </Button>
+              }
+            >
+              <VoiceDock conversation={conversation} onClose={closeVoice} onSession={setSession} onNotice={setNotice} />
+            </Suspense>
+          </VoiceBoundary>
         )}
         {/* 輸入框永遠顯示：會話開著時打字也送進同一個會話，跟語音共用同一條對話 */}
         <form
@@ -210,4 +220,25 @@ export function AskPage() {
       <BottomNav />
     </div>
   )
+}
+
+/**
+ * 語音那一包是按下麥克風的當下才去下載的，藥局裡收訊不好就會失敗。
+ * 沒有錯誤邊界的話 React 會把錯誤丟到根節點、卸載整棵樹，連打字問到一半的對話都會跟著不見。
+ * 這裡把它擋在語音這一區：原因由頁面的 notice 說，輸入框照常留著。React 的錯誤邊界只能用 class 元件寫。
+ */
+class VoiceBoundary extends Component<{ onFail: () => void; children: ReactNode }, { failed: boolean }> {
+  state = { failed: false }
+
+  static getDerivedStateFromError() {
+    return { failed: true }
+  }
+
+  componentDidCatch() {
+    this.props.onFail()
+  }
+
+  render() {
+    return this.state.failed ? null : this.props.children
+  }
 }
