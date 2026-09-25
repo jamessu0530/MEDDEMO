@@ -192,7 +192,8 @@ export class PcmPlayer {
   }
 
   setMuted(muted: boolean) {
-    this.gain.gain.value = muted ? 0 : 1
+    // 講到一半直接改 gain.value 會在波形上切一刀、聽起來是「啪」一聲；用很短的斜坡接過去
+    this.gain.gain.setTargetAtTime(muted ? 0 : 1, this.context.currentTime, 0.01)
   }
 
   play(base64: string) {

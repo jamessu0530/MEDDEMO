@@ -41,7 +41,6 @@ export function AskPage() {
   const [kind, setKind] = useState<AskKind>("data")
   const [question, setQuestion] = useState("")
   const [sending, setSending] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [voiceOn, setVoiceOn] = useState(false)
   const [session, setSession] = useState<VoiceSession | null>(null)
   // React 的 lazy 會把失敗的那一次記在元件身上，之後只會再丟同一個錯；要讓「請稍後再試」是真的，重試就得換一顆新的
@@ -69,7 +68,8 @@ export function AskPage() {
   async function submit(text: string) {
     const trimmed = text.trim()
     if (!trimmed || sending) return
-    setError(null)
+    // 抓住這一次要用的 signal：卸載後重新掛上會換掉 polls.current，catch 裡再讀一次會讀到另一個還沒被 abort 的
+    const signal = polls.current.signal
     // 語音會話開著就送進同一個會話，模型保有上下文並用講的回答；entry 由 controller 加
     if (session) {
       session.sendText(trimmed)
@@ -81,12 +81,11 @@ export function AskPage() {
     const entryId = conversation.addToolRun(kind, trimmed)
     setQuestion("")
     try {
-      await runAsk(conversation, entryId, kind, trimmed, polls.current.signal)
+      await runAsk(conversation, entryId, kind, trimmed, signal)
     } catch (err) {
-      if (polls.current.signal.aborted) return
-      const message = err instanceof Error ? err.message : "送出失敗，請再試一次"
-      conversation.replace(entryId, { error: message })
-      setError(message)
+      if (signal.aborted) return
+      // 錯誤寫在那一格卡片上就好。輸入框上面的橫幅要等下一次送出才清掉，會一路留到語音會話裡，跟當下的畫面對不上
+      conversation.replace(entryId, { error: err instanceof Error ? err.message : "送出失敗，請再試一次" })
     } finally {
       setSending(false)
     }
@@ -184,7 +183,6 @@ export function AskPage() {
           }}
           className="flex flex-col gap-1.5"
         >
-          {error && <p className="px-1 text-sm text-destructive">{error}</p>}
           {/* 數字查詢只查得到登入者看得到的客戶；規定題查的是公司文件，不分客戶，不必提。
               會話活著時是模型自己選工具，這行文字才對不上；連線中或掛斷後打字仍走這條路，要照樣說清楚查得到誰 */}
           {user && kind === "data" && !session && <p className="px-1 text-[11px] text-muted-foreground">{askScopeText(user)}</p>}

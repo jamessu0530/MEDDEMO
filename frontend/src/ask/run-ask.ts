@@ -6,7 +6,7 @@
 import { createAsk, getAsk, isFinished, type Ask, type AskKind } from "@/api/asks"
 import type { Conversation } from "@/ask/conversation"
 
-// 還沒答完的提問每半秒問一次進度（NFR-5），查到第幾輪會即時出現在畫面上。
+// 還沒答完的提問每半秒問一次進度，查到第幾輪會即時出現在畫面上。
 // 用 500ms 而不是打字問答原本的 1000ms：語音那條路的輪詢間隔會直接加在業務的等待時間上
 // （voice-controller.ts 原本的註解），統一到較慢的一邊等於讓語音變慢
 const POLL_MS = 500
