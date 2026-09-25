@@ -17,7 +17,7 @@ import { ApiError } from "@/api/client"
 import { startVoiceSession } from "@/api/voice"
 import { TABLE_PREVIEW_ROWS } from "@/components/ask/ask-result"
 import { CueLoop, INPUT_MIME_TYPE, PcmPlayer, openMicrophone, startCapture, toBase64 } from "@/voice/audio"
-import { tidyTranscript } from "@/voice/transcript"
+import { tidyTranscript } from "@/ask/transcript"
 
 // 模型在等查詢結果，輪詢間隔會直接加在業務的等待時間上；單人使用，每秒問兩次對 API 沒有負擔
 const POLL_MS = 500

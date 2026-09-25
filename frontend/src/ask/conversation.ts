@@ -1,0 +1,88 @@
+/**
+ * 一條問答對話裡有哪些東西。打字與語音都寫進同一條串，畫面才會是一條對話而不是兩條。
+ *
+ * 這裡刻意不碰音訊、網路與 React：語音模組（src/voice）是 lazy 載入的，只打字的人不該
+ * 為了顯示對話而載入 Gemini Live 與音訊處理。
+ */
+
+import { tidyTranscript } from "@/ask/transcript"
+import type { Ask, AskKind } from "@/api/asks"
+
+export type UtteranceSource = "voice" | "typed"
+
+/** 業務或 AI 說的一句話。source 決定要不要標「語音辨識，僅供參考」——打字的是原文，不必標 */
+export type Utterance = { id: number; kind: "user" | "model"; source: UtteranceSource; text: string }
+
+/** 一次查詢：打字問答與語音的工具呼叫長得一樣，所以共用同一種 entry */
+export type ToolRun = {
+  id: number
+  kind: "tool"
+  askKind: AskKind | null
+  question: string
+  ask: Ask | null
+  error: string | null
+  cancelled: boolean
+}
+
+export type Entry = Utterance | ToolRun
+
+export type Conversation = {
+  getSnapshot: () => Entry[]
+  subscribe: (listener: () => void) => () => void
+  addUtterance: (kind: "user" | "model", source: UtteranceSource, text?: string) => number
+  addToolRun: (askKind: AskKind | null, question: string) => number
+  appendText: (id: number, chunk: string) => void
+  replace: (id: number, patch: Partial<Omit<ToolRun, "id" | "kind">>) => void
+}
+
+export function createConversation(): Conversation {
+  let entries: Entry[] = []
+  let lastId = 0
+  const listeners = new Set<() => void>()
+
+  const emit = () => {
+    for (const listener of listeners) listener()
+  }
+
+  const commit = (next: Entry[]) => {
+    entries = next
+    emit()
+  }
+
+  return {
+    // 同一個參考回傳到下次變動為止：useSyncExternalStore 靠這個判斷要不要重繪
+    getSnapshot: () => entries,
+
+    subscribe: (listener) => {
+      listeners.add(listener)
+      return () => {
+        listeners.delete(listener)
+      }
+    },
+
+    addUtterance: (kind, source, text = "") => {
+      const id = ++lastId
+      commit([...entries, { id, kind, source, text }])
+      return id
+    },
+
+    addToolRun: (askKind, question) => {
+      const id = ++lastId
+      commit([...entries, { id, kind: "tool", askKind, question, ask: null, error: null, cancelled: false }])
+      return id
+    },
+
+    appendText: (id, chunk) => {
+      const target = entries.find((entry) => entry.id === id)
+      if (!target || target.kind === "tool") return
+      commit(entries.map((e) => (e.id === id && e.kind !== "tool" ? { ...e, text: tidyTranscript(e.text + chunk) } : e)))
+    },
+
+    replace: (id, patch) => {
+      // 會話結束後遲到的輪詢結果會打在已經不存在的 id 上，靜靜忽略就好
+      const target = entries.find((entry) => entry.id === id)
+      if (!target || target.kind !== "tool") return
+      commit(entries.map((e) => (e.id === id && e.kind === "tool" ? { ...e, ...patch } : e)))
+    },
+  }
+}

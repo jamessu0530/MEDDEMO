@@ -8,7 +8,7 @@ import { GoogleGenAI, type LiveConnectConfig, type Session } from "@google/genai
 
 import { startTranscriptionSession } from "@/api/transcription"
 import { INPUT_MIME_TYPE, startCapture, toBase64 } from "@/voice/audio"
-import { tidyTranscript } from "@/voice/transcript"
+import { tidyTranscript } from "@/ask/transcript"
 
 export type LiveTranscription = { stop: () => void }
 
