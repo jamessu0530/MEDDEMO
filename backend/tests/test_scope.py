@@ -19,11 +19,14 @@ def client(engine):
     return TestClient(app)
 
 
-def test_sales_see_their_own_customers_and_managers_their_region(client, auth):
+def test_everyone_sees_every_customer_but_only_acts_on_their_own(client, auth):
     assert client.get("/api/customers").status_code == 401
-    assert len(client.get("/api/customers", headers=auth("U01")).json()) == 50
-    assert len(client.get("/api/customers", headers=auth("M01")).json()) == 100  # 北區兩位業務
-    # 康泰南京店（C002）是王冠宇的：林昱辰打開就當作不存在，北區主管看得到，中區主管看不到
+    # 客戶清單是全國共享的：名稱、類型、區、等級、負責人
+    assert len(client.get("/api/customers", headers=auth("U01")).json()) == 250
+    assert len(client.get("/api/customers", headers=auth("M01")).json()) == 250
+    assert client.get("/api/customers/C002", headers=auth("U03")).status_code == 200
+
+    # 但檔案、議價卡、報價還是只有負責人與他的主管看得到。C002 是王冠宇（U02）的
     assert client.get("/api/customers/C002/profile", headers=auth("U01")).status_code == 404
     assert client.get("/api/customers/C002/profile", headers=auth("U02")).status_code == 200
     assert client.get("/api/customers/C002/profile", headers=auth("M01")).status_code == 200
@@ -36,6 +39,11 @@ def test_recording_a_visit_for_someone_elses_customer_is_refused(client, auth):
         files={"file": ("visit.webm", b"fake-audio", "audio/webm")}, headers=auth("U01"),
     )
     assert response.status_code == 404
+
+
+def test_quoting_for_someone_elses_customer_is_refused(client, auth):
+    body = {"items": [{"sku": "RX-TAM02", "qty": 10}]}
+    assert client.post("/api/customers/C002/quotes", json=body, headers=auth("U01")).status_code == 404
 
 
 def test_sales_figures_stop_at_the_region(engine):

@@ -15,11 +15,10 @@ def test_health_reports_ok_when_database_is_reachable(client):
     assert response.json() == {"status": "ok"}
 
 
-def test_customer_list_returns_only_my_customers_with_last_visit(client):
+def test_customer_list_returns_every_customer_with_last_visit(client):
     customers = client.get("/api/customers").json()
-    # 林昱辰負責 50 家；原型登入頁寫「登入後只會看到自己負責的客戶」
-    assert len(customers) == 50
-    assert {c["owner_name"] for c in customers} == {"林昱辰"}
+    # 客戶清單全國共享（services/scope.py），250 家客戶不分負責人一律列出
+    assert len(customers) == 250
     zhongxiao = next(c for c in customers if c["name"] == "康泰連鎖藥局 · 忠孝店")
     assert zhongxiao["last_visit_date"] == "2026-10-19"
     assert zhongxiao["owner_name"] == "林昱辰"

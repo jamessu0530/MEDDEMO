@@ -15,7 +15,7 @@ from app.db import get_session
 from app.models import AppUser, Customer, Product, SalesTransaction, SapQuotationDraft, Visit
 from app.pricing import supply_price
 from app.services import customer_profile, writeback
-from app.services.scope import SELF, Scope, owner_path
+from app.services.scope import ROOT, SELF, Scope, owner_path
 
 router = APIRouter(prefix="/api/customers", tags=["customers"])
 SessionDep = Annotated[Session, Depends(get_session)]
@@ -137,10 +137,14 @@ def _customer_query():
     )
 
 
-def _load(session: Session, customer_id: str, user: AppUser) -> tuple[Customer, CustomerItem]:
-    """看不到的客戶跟不存在一樣回 404，不透露這個編號是別人的客戶。"""
+def _load(session: Session, customer_id: str, user: AppUser, level: int) -> tuple[Customer, CustomerItem]:
+    """看不到的客戶跟不存在一樣回 404，不透露這個編號是別人的客戶。
+
+    level 決定這次要求的是哪一種資料：客戶本身是全國共享（ROOT），
+    檔案、議價卡與報價是負責人自己的（SELF）。
+    """
     row = session.execute(
-        _customer_query().where(Customer.id == customer_id, Scope.for_user(user).customers_at(SELF))
+        _customer_query().where(Customer.id == customer_id, Scope.for_user(user).customers_at(level))
     ).one_or_none()
     if row is None:
         raise HTTPException(404, "找不到這家客戶")
@@ -149,8 +153,8 @@ def _load(session: Session, customer_id: str, user: AppUser) -> tuple[Customer, 
 
 @router.get("", response_model=list[CustomerItem])
 def list_customers(session: SessionDep, user: CurrentUser, q: str | None = None):
-    """業務開始口述前先選客戶；q 以客戶名稱做部分比對。只列登入者看得到的客戶（services/scope.py）。"""
-    stmt = _customer_query().where(Scope.for_user(user).customers_at(SELF))
+    """業務開始口述前先選客戶；q 以客戶名稱做部分比對。客戶清單全國共享（services/scope.py）。"""
+    stmt = _customer_query().where(Scope.for_user(user).customers_at(ROOT))
     if q:
         stmt = stmt.where(Customer.name.contains(q, autoescape=True))
     return [CustomerItem(**row._mapping) for row in session.execute(stmt)]
@@ -158,13 +162,17 @@ def list_customers(session: SessionDep, user: CurrentUser, q: str | None = None)
 
 @router.get("/{customer_id}", response_model=CustomerItem)
 def get_customer(session: SessionDep, customer_id: str, user: CurrentUser):
-    return _load(session, customer_id, user)[1]
+    return _load(session, customer_id, user, ROOT)[1]
 
 
 @router.get("/{customer_id}/profile", response_model=CustomerProfile)
 def get_profile(session: SessionDep, customer_id: str, user: CurrentUser):
-    """客戶檔案：交易概況、待處理事項、競品紀錄放在同一頁（FR-2）。"""
-    customer, item = _load(session, customer_id, user)
+    """客戶檔案：交易概況、待處理事項、競品紀錄放在同一頁（FR-2）。
+
+    停在 SELF：內容是近 90 天進貨金額、帳齡、未結報價、承諾與客訴，是負責人自己的
+    經營資料，不是客戶清單那種「這家店叫什麼名字」的共用資訊。
+    """
+    customer, item = _load(session, customer_id, user, SELF)
     profile = customer_profile.build_profile(session, customer)
     data = dataclasses.asdict(profile)
     data.pop("signals")
@@ -174,7 +182,7 @@ def get_profile(session: SessionDep, customer_id: str, user: CurrentUser):
 @router.get("/{customer_id}/negotiation", response_model=NegotiationCard)
 def get_negotiation_card(session: SessionDep, customer_id: str, user: CurrentUser):
     """談判卡：只有連鎖客戶有（FR-3）。對照數據來自交易資料，切入點是內部文件的原文段落。"""
-    customer, item = _load(session, customer_id, user)
+    customer, item = _load(session, customer_id, user, SELF)
     if customer.type != "chain":
         raise HTTPException(409, "只有連鎖客戶有談判卡")
     profile = customer_profile.build_profile(session, customer)
@@ -227,7 +235,7 @@ class Quote(BaseModel):
 @router.get("/{customer_id}/quote-items", response_model=list[QuoteItemOption])
 def quote_items(session: SessionDep, customer_id: str, user: CurrentUser):
     """開報價時可以選的品項：這家客戶近半年進過的，照進貨金額排序。數量預設是平常一次進多少。"""
-    customer, _ = _load(session, customer_id, user)
+    customer, _ = _load(session, customer_id, user, SELF)
     today = customer_profile.app_today(session)
     rows = session.execute(
         select(
@@ -262,7 +270,7 @@ def _next_quote_no(session: Session, today: date) -> str:
 @router.post("/{customer_id}/quotes", status_code=201, response_model=Quote)
 def create_quote(session: SessionDep, customer_id: str, body: QuoteInput, user: CurrentUser):
     """在客戶檔案直接開 SAP 報價草稿，不必先有一次拜訪。"""
-    customer, _ = _load(session, customer_id, user)
+    customer, _ = _load(session, customer_id, user, SELF)
     skus = [line.sku for line in body.items]
     if len(set(skus)) != len(skus):
         raise HTTPException(422, "同一個品項只能列一次")
