@@ -1,23 +1,26 @@
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import { AudioLines, Hand, Loader2, Mic, PhoneOff } from "lucide-react"
 
 import { isFinished, type Ask } from "@/api/asks"
+import { createConversation, type Entry, type ToolRun } from "@/ask/conversation"
+import { useConversation } from "@/ask/use-conversation"
 import { AskAnswer, TracePanel } from "@/components/ask/ask-result"
 import { BottomNav } from "@/components/bottom-nav"
 import { Notice } from "@/components/notice"
 import { Button } from "@/components/ui/button"
 import { useVoiceSession } from "@/voice/use-voice-session"
-import type { Entry, ToolRun } from "@/voice/voice-controller"
 
 const EXAMPLES = ["北區這一季保健品為什麼掉？", "近效期的貨要多久前申請退貨？"]
 const TOOL_LABEL = { data: "查數字", knowledge: "查規定" }
 
 /** 語音問答：用講的問，AI 先查公司資料再用講的回答；查到的表格與出處同時列在畫面上 */
 export default function VoicePage() {
-  const voice = useVoiceSession()
+  const [conversation] = useState(() => createConversation())
+  const voice = useVoiceSession(conversation)
+  const allEntries = useConversation(conversation)
   const bottomRef = useRef<HTMLDivElement>(null)
   // 模型還在講、逐字稿還沒出來的那一格先不顯示
-  const entries = voice.entries.filter((entry) => entry.kind === "tool" || entry.text.trim())
+  const entries = allEntries.filter((entry) => entry.kind === "tool" || entry.text.trim())
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -33,7 +36,7 @@ export default function VoicePage() {
       <main className="flex flex-1 flex-col gap-3 px-4 pt-4 pb-44">
         {entries.length === 0 && voice.status === "idle" && !voice.notice && <Intro />}
         {entries.map((entry) => (
-          <EntryView key={entry.id} entry={entry} onAskChange={voice.replaceAsk} />
+          <EntryView key={entry.id} entry={entry} onAskChange={conversation.replace} />
         ))}
         {voice.notice && <Notice text={voice.notice} action={{ label: "重新開始", onClick: voice.start }} />}
         <div ref={bottomRef} />
@@ -113,14 +116,20 @@ function Controls({ voice }: { voice: Voice }) {
   )
 }
 
-function EntryView({ entry, onAskChange }: { entry: Entry; onAskChange: (entryId: number, ask: Ask) => void }) {
+function EntryView({
+  entry,
+  onAskChange,
+}: {
+  entry: Entry
+  onAskChange: (entryId: number, patch: { ask: Ask }) => void
+}) {
   if (entry.kind === "tool") return <ToolCard run={entry} onAskChange={onAskChange} />
   if (entry.kind === "user") {
-    // 這一句是 Gemini 另外做的語音轉文字，常有同音錯字；AI 查資料用的是它自己聽懂的問題（寫在查詢卡片上）
+    // 語音那句是 Gemini 另外做的語音轉文字，常有同音錯字；打字的是業務原文，不必標
     return (
       <div className="ml-10 flex flex-col items-end gap-1 self-end">
         <p className="rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-sm text-primary-foreground">{entry.text}</p>
-        <p className="text-[11px] text-muted-foreground">語音辨識，僅供參考</p>
+        {entry.source === "voice" && <p className="text-[11px] text-muted-foreground">語音辨識，僅供參考</p>}
       </div>
     )
   }
@@ -132,7 +141,13 @@ function EntryView({ entry, onAskChange }: { entry: Entry; onAskChange: (entryId
 }
 
 /** AI 呼叫查詢工具的那一步：跟打字問答同一套查詢，結果、依據與查詢過程都看得到 */
-function ToolCard({ run, onAskChange }: { run: ToolRun; onAskChange: (entryId: number, ask: Ask) => void }) {
+function ToolCard({
+  run,
+  onAskChange,
+}: {
+  run: ToolRun
+  onAskChange: (entryId: number, patch: { ask: Ask }) => void
+}) {
   return (
     <section className="mr-4 rounded-2xl border border-dashed bg-card px-4 py-3">
       <p className="mb-2 text-xs text-muted-foreground">
@@ -141,7 +156,7 @@ function ToolCard({ run, onAskChange }: { run: ToolRun; onAskChange: (entryId: n
       {run.error ? (
         <p className="text-sm text-destructive">{run.error}</p>
       ) : run.ask ? (
-        <AskAnswer ask={run.ask} onChange={(ask) => onAskChange(run.id, ask)} />
+        <AskAnswer ask={run.ask} onChange={(ask) => onAskChange(run.id, { ask })} />
       ) : (
         <p className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="size-4 animate-spin" />

@@ -15,9 +15,9 @@ import {
 import { createAsk, getAsk, isFinished, type Ask, type AskKind } from "@/api/asks"
 import { ApiError } from "@/api/client"
 import { startVoiceSession } from "@/api/voice"
+import type { Conversation } from "@/ask/conversation"
 import { TABLE_PREVIEW_ROWS } from "@/components/ask/ask-result"
 import { CueLoop, INPUT_MIME_TYPE, PcmPlayer, openMicrophone, startCapture, toBase64 } from "@/voice/audio"
-import { tidyTranscript } from "@/ask/transcript"
 
 // 模型在等查詢結果，輪詢間隔會直接加在業務的等待時間上；單人使用，每秒問兩次對 API 沒有負擔
 const POLL_MS = 500
@@ -31,20 +31,8 @@ const RESTART_HINT = "要再問就按「開始對話」。"
 const QUERYING_SOUND_URL = "/sounds/querying.wav"
 
 export type VoiceStatus = "idle" | "connecting" | "listening" | "speaking"
-export type Utterance = { id: number; kind: "user" | "model"; text: string }
-export type ToolRun = {
-  id: number
-  kind: "tool"
-  askKind: AskKind | null
-  question: string
-  ask: Ask | null
-  error: string | null
-  cancelled: boolean
-}
-export type Entry = Utterance | ToolRun
 export type VoiceView = {
   status: VoiceStatus
-  entries: Entry[]
   notice: string | null
   level: number
   pending: number
@@ -123,12 +111,17 @@ function sleep(ms: number, signal: AbortSignal) {
 }
 
 export class VoiceController {
-  private view: VoiceView = { status: "idle", entries: [], notice: null, level: 0, pending: 0 }
+  private view: VoiceView = { status: "idle", notice: null, level: 0, pending: 0 }
   private readonly listeners = new Set<() => void>()
   // 離開頁面時停止所有輪詢；對話結束但查詢還沒完成的，卡片照樣更新到查完
   private polls = new AbortController()
   private conn: Connection | null = null
-  private lastId = 0
+  private readonly conversation: Conversation
+
+  // tsconfig 開了 erasableSyntaxOnly，建構子參數屬性語法會編不過，所以拆成欄位＋指定
+  constructor(conversation: Conversation) {
+    this.conversation = conversation
+  }
 
   subscribe = (listener: () => void) => {
     this.listeners.add(listener)
@@ -222,9 +215,6 @@ export class VoiceController {
     conn.player.stop()
   }
 
-  /** 畫面上的操作改了提問（例如轉給主管），更新對應的卡片 */
-  replaceAsk = (entryId: number, ask: Ask) => this.patchTool(entryId, { ask })
-
   /** 頁面掛上時呼叫。React 開發模式會先卸載再掛上一次，所以卸載時停掉的輪詢要能重新開始 */
   attach = () => {
     if (this.polls.signal.aborted) this.polls = new AbortController()
@@ -239,12 +229,6 @@ export class VoiceController {
   private update(patch: Partial<VoiceView>) {
     this.view = { ...this.view, ...patch }
     for (const listener of this.listeners) listener()
-  }
-
-  private patchTool(entryId: number, patch: Partial<Omit<ToolRun, "id" | "kind">>) {
-    this.update({
-      entries: this.view.entries.map((entry) => (entry.id === entryId && entry.kind === "tool" ? { ...entry, ...patch } : entry)),
-    })
   }
 
   private finish(conn: Connection, notice: string | null) {
@@ -307,7 +291,7 @@ export class VoiceController {
     for (const id of message.toolCallCancellation?.ids ?? []) {
       conn.cancelled.add(id)
       const entryId = conn.toolEntries.get(id)
-      if (entryId !== undefined) this.patchTool(entryId, { cancelled: true })
+      if (entryId !== undefined) this.conversation.replace(entryId, { cancelled: true })
     }
     if (message.goAway) conn.goingAway = true
   }
@@ -318,20 +302,14 @@ export class VoiceController {
     if (current !== null) return current
     // 業務講話的逐字稿可能比模型的回答或工具呼叫晚到；先幫業務這一句佔位，順序才不會顛倒
     if (kind === "model") this.openEntry(conn, "user")
-    const id = ++this.lastId
+    const id = this.conversation.addUtterance(kind, "voice")
     if (kind === "user") conn.userEntry = id
     else conn.modelEntry = id
-    this.update({ entries: [...this.view.entries, { id, kind, text: "" }] })
     return id
   }
 
   private appendText(conn: Connection, kind: "user" | "model", text: string) {
-    const id = this.openEntry(conn, kind)
-    this.update({
-      entries: this.view.entries.map((entry) =>
-        entry.id === id && entry.kind === kind ? { ...entry, text: tidyTranscript(entry.text + text) } : entry
-      ),
-    })
+    this.conversation.appendText(this.openEntry(conn, kind), text)
   }
 
   private async runTool(conn: Connection, call: FunctionCall) {
@@ -339,14 +317,8 @@ export class VoiceController {
     const rawQuestion = call.args?.question
     const question = typeof rawQuestion === "string" ? rawQuestion.trim().slice(0, MAX_QUESTION_LENGTH) : ""
     this.openEntry(conn, "user")
-    const entryId = ++this.lastId
+    const entryId = this.conversation.addToolRun(askKind, question)
     if (call.id) conn.toolEntries.set(call.id, entryId)
-    this.update({
-      entries: [
-        ...this.view.entries,
-        { id: entryId, kind: "tool", askKind, question, ask: null, error: null, cancelled: false },
-      ],
-    })
     conn.pending += 1
     this.update({ pending: conn.pending })
     if (conn.pending === 1) {
@@ -360,7 +332,7 @@ export class VoiceController {
       if (!askKind) throw new Error(`沒有這個查詢工具：${call.name}`)
       if (!question) throw new Error("模型沒有給要查的問題")
       let ask = await createAsk(askKind, question)
-      this.patchTool(entryId, { ask })
+      this.conversation.replace(entryId, { ask })
       while (!isFinished(ask)) {
         await sleep(POLL_MS, signal)
         try {
@@ -369,13 +341,13 @@ export class VoiceController {
           if (signal.aborted) throw error
           continue // 網路一時不通就等下一輪
         }
-        this.patchTool(entryId, { ask })
+        this.conversation.replace(entryId, { ask })
       }
       response = toolResult(ask)
     } catch (error) {
       if (signal.aborted) return
       const message = error instanceof Error ? error.message : "查詢失敗"
-      this.patchTool(entryId, { error: message })
+      this.conversation.replace(entryId, { error: message })
       response = { error: message }
     }
 
