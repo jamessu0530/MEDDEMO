@@ -98,6 +98,23 @@ def test_every_mutating_visit_endpoint_stays_with_the_owner_not_just_delete(clie
     assert client.post(f"/api/visits/{visit_id}/writeback/crm/retry", headers=auth("U01")).status_code == 404
 
 
+def test_a_manager_can_act_on_his_reports_visit_even_though_a_teammate_cannot(client, auth, engine):
+    """SELF 一律涵蓋主管（主管的路徑比較短、截不掉），拜訪不做例外——這是選擇，不是漏網。
+
+    看回應碼：M01 拿到的 409 是端點自己的狀態檢查（已確認的紀錄不能再改欄位），代表權限這一關
+    已經過了；同一支端點對別區的 U03 是 404，對同團隊的 U01 也是 404。這個 409 不是巧合，
+    它就是「主管過得了權限」的訊號，改成 404 就是把這個決定悄悄改掉了。
+    """
+    with Session(engine) as session:
+        visit_id = session.scalars(
+            select(Visit).where(Visit.user_id == "U02", Visit.status.in_(("confirmed", "synced")))
+        ).first().id
+
+    assert client.put(f"/api/visits/{visit_id}/fields", json={"fields": {}}, headers=auth("M01")).status_code == 409
+    assert client.put(f"/api/visits/{visit_id}/fields", json={"fields": {}}, headers=auth("U01")).status_code == 404
+    assert client.put(f"/api/visits/{visit_id}/fields", json={"fields": {}}, headers=auth("U03")).status_code == 404
+
+
 def test_quoting_for_someone_elses_customer_is_refused(client, auth):
     body = {"items": [{"sku": "RX-TAM02", "qty": 10}]}
     assert client.post("/api/customers/C002/quotes", json=body, headers=auth("U01")).status_code == 404

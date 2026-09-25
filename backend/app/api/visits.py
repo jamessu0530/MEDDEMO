@@ -81,8 +81,10 @@ class FieldsInput(BaseModel):
 def _load(session: Session, visit_id: str, user: AppUser, *, lock: bool = False, write: bool = False) -> Visit:
     """看不到的拜訪跟不存在一樣回 404。
 
-    讀是團隊層級（同一個主管底下的業務互相看得到，主管看得到全部屬下的）；
-    改、確認、刪除只限這筆拜訪本人，別人的一律唯讀，同樣回 404 不回 403。
+    讀是團隊層級：同一個主管底下的業務互相看得到。
+    改、確認、刪除是個人層級：同團隊的其他業務一律唯讀，但主管的路徑比較短、截不掉，所以主管
+    動得了屬下的拜訪——這不是拜訪的例外，每一種資料的 SELF 都是這樣（services/scope.py）。
+    看不到和不能改都回 404 不回 403，不透露這筆紀錄存在。
     """
     visit = session.get(Visit, visit_id, with_for_update=lock)
     if visit is None:
