@@ -6,7 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import Date, cast, func, select
+from sqlalchemy import Date, case, cast, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -122,13 +122,20 @@ class NegotiationCard(BaseModel):
     tips: list[Tip]
 
 
-def _customer_query():
+def _customer_query(scope: Scope):
+    """客戶清單一列的內容。上次拜訪只算已確認的紀錄；還在處理或草稿中的不算。
+
+    清單本身是全公司共用的，但「上次拜訪」是從拜訪紀錄算出來的，拜訪紀錄在別的地方都停在
+    團隊層級——同一個欄位不該因為換了一支 API 就看得更遠，所以看不到這家客戶拜訪的人拿到 NULL，
+    其他欄位照常。過濾寫在 SQL 裡而不是撈回來再抹掉，日期不會先離開資料庫。
+    """
     last_visit = func.max(cast(func.timezone("Asia/Taipei", Visit.visited_at), Date))
-    # 上次拜訪只算已確認的紀錄；還在處理或草稿中的不算
+    # 沒有 else，條件不成立就是 NULL
+    visible_last_visit = case((scope.customers_at(SHARING_LEVEL["visit_record"]), last_visit))
     return (
         select(
             Customer.id, Customer.name, Customer.type, Customer.region, Customer.grade,
-            AppUser.name.label("owner_name"), last_visit.label("last_visit_date"),
+            AppUser.name.label("owner_name"), visible_last_visit.label("last_visit_date"),
         )
         .join(AppUser, AppUser.id == Customer.owner_user_id)
         .outerjoin(Visit, (Visit.customer_id == Customer.id) & Visit.status.in_(("confirmed", "synced")))
@@ -143,8 +150,9 @@ def _load(session: Session, customer_id: str, user: AppUser, level: int) -> tupl
     level 是這次要求的資料屬於哪一種共享層級，由呼叫端從 SHARING_LEVEL 取（services/scope.py）：
     客戶本身全公司共用，檔案、議價卡與報價是負責人自己的。
     """
+    scope = Scope.for_user(user)
     row = session.execute(
-        _customer_query().where(Customer.id == customer_id, Scope.for_user(user).customers_at(level))
+        _customer_query(scope).where(Customer.id == customer_id, scope.customers_at(level))
     ).one_or_none()
     if row is None:
         raise HTTPException(404, "找不到這家客戶")
@@ -154,7 +162,8 @@ def _load(session: Session, customer_id: str, user: AppUser, level: int) -> tupl
 @router.get("", response_model=list[CustomerItem])
 def list_customers(session: SessionDep, user: CurrentUser, q: str | None = None):
     """業務開始口述前先選客戶；q 以客戶名稱做部分比對。客戶清單全國共享（services/scope.py）。"""
-    stmt = _customer_query().where(Scope.for_user(user).customers_at(SHARING_LEVEL["customer_basic"]))
+    scope = Scope.for_user(user)
+    stmt = _customer_query(scope).where(scope.customers_at(SHARING_LEVEL["customer_basic"]))
     if q:
         stmt = stmt.where(Customer.name.contains(q, autoescape=True))
     return [CustomerItem(**row._mapping) for row in session.execute(stmt)]

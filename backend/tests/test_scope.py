@@ -36,6 +36,29 @@ def test_everyone_sees_every_customer_but_only_acts_on_their_own(client, auth):
     assert client.get("/api/customers/C002/quote-items", headers=auth("U01")).status_code == 404
 
 
+def test_the_customer_list_hides_visit_dates_from_outside_the_team(client, auth):
+    """客戶清單是全公司的，但「上次拜訪」是拜訪資料算出來的，拜訪資料只到團隊層級。
+
+    規格寫的全公司欄位只有名稱、類型、區、縣市、等級、負責人，上次拜訪不在裡面；
+    別區的客戶照樣列出來，只是這一欄是空的。
+    """
+    def listed(user_id):
+        return {c["id"]: c for c in client.get("/api/customers", headers=auth(user_id)).json()}
+
+    north = listed("U01")
+    assert len(north) == 250  # 清單本身沒有縮水
+    assert north["C001"]["last_visit_date"] is not None  # 自己的客戶
+    assert north["C002"]["last_visit_date"] is not None  # 同團隊 U02 的客戶
+    assert north["C017"]["last_visit_date"] is None      # 南區 U04 的客戶
+    assert north["C017"]["owner_name"] and north["C017"]["region"] == "南區"  # 其他欄位照給
+
+    # C017 確實有拜訪紀錄，上一行的 None 是擋下來的，不是本來就沒有
+    assert listed("U04")["C017"]["last_visit_date"] is not None
+    # 主管的路徑比較短，看得到屬下的
+    assert listed("M01")["C002"]["last_visit_date"] is not None
+    assert listed("M01")["C017"]["last_visit_date"] is None
+
+
 def test_recording_a_visit_for_someone_elses_customer_is_refused(client, auth):
     response = client.post(
         "/api/visits/audio", data={"customer_id": "C002"},
