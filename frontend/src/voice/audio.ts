@@ -175,15 +175,24 @@ export class PcmPlayer {
   private readonly context: AudioContext
   private readonly onPlayingChange: (playing: boolean) => void
   private readonly sources = new Set<AudioBufferSourceNode>()
+  // 靜音走這顆 gain：聲音照樣即時播放、照樣推進下面的排程，只是輸出音量歸零。
+  // 半雙工的收音判斷、「打斷」鈕、忙碌／聆聽狀態都是看 sources 有沒有東西在播，不能因為靜音就不餵聲音給 player
+  private readonly gain: GainNode
   private nextStart = 0
 
   constructor(context: AudioContext, onPlayingChange: (playing: boolean) => void) {
     this.context = context
     this.onPlayingChange = onPlayingChange
+    this.gain = context.createGain()
+    this.gain.connect(context.destination)
   }
 
   get playing() {
     return this.sources.size > 0
+  }
+
+  setMuted(muted: boolean) {
+    this.gain.gain.value = muted ? 0 : 1
   }
 
   play(base64: string) {
@@ -193,7 +202,7 @@ export class PcmPlayer {
     buffer.copyToChannel(samples, 0)
     const source = this.context.createBufferSource()
     source.buffer = buffer
-    source.connect(this.context.destination)
+    source.connect(this.gain)
     // 一段接一段排好時間，中間不留空隙；前一段已經播完就從現在開始
     const startAt = Math.max(this.context.currentTime, this.nextStart)
     source.start(startAt)

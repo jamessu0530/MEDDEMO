@@ -128,6 +128,7 @@ export class VoiceController {
     const context = new AudioContext()
     void context.resume()
     const player: PcmPlayer = new PcmPlayer(context, (playing) => this.onPlayingChange(player, playing))
+    player.setMuted(this.view.muted) // 靜音是使用者對這顆 controller 的偏好，重新開始一段連線不該自己解除
     const cue = new CueLoop(context, QUERYING_SOUND_URL)
     void cue.preload()
     const conn: Connection = {
@@ -216,9 +217,13 @@ export class VoiceController {
     if (this.conn) this.conn.lastActivity = Date.now()
   }
 
-  /** 靜音只是不播出來：Live 原生語音模型照樣會產生音訊，也照樣計費 */
+  /**
+   * 靜音只是把輸出音量壓到 0：聲音照樣即時播放進 player、照樣產生音訊也照樣計費（Live 原生語音模型不能只回文字）。
+   * 不能用「不餵聲音給 player」來做靜音——半雙工的收音判斷、「打斷」鈕、聆聽／回答中的狀態都是看 player 有沒有在播，
+   * 停餵聲音會連這些一起停擺
+   */
   setMuted = (muted: boolean) => {
-    if (muted) this.conn?.player.stop()
+    this.conn?.player.setMuted(muted)
     this.update({ muted })
   }
 
@@ -284,8 +289,7 @@ export class VoiceController {
       }
       for (const part of content.modelTurn?.parts ?? []) {
         const audio = part.inlineData
-        if (audio?.data && audio.mimeType?.startsWith("audio/pcm") && !conn.dropModelAudio && !this.view.muted)
-          conn.player.play(audio.data)
+        if (audio?.data && audio.mimeType?.startsWith("audio/pcm") && !conn.dropModelAudio) conn.player.play(audio.data)
       }
       if (content.inputTranscription?.text) this.appendText(conn, "user", content.inputTranscription.text)
       if (content.outputTranscription?.text) this.appendText(conn, "model", content.outputTranscription.text)
