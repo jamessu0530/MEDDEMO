@@ -38,15 +38,23 @@ def test_recording_a_visit_for_someone_elses_customer_is_refused(client, auth):
     assert response.status_code == 404
 
 
-def test_data_queries_only_see_the_askers_customers(engine):
+def test_sales_figures_stop_at_the_region(engine):
     sql = "SELECT count(DISTINCT customer_id) FROM v_customer_summary"
     assert run_readonly(engine, sql).rows == [[250]]
-    assert run_readonly(engine, sql, Scope(path="TW.N.M01.U01")).rows == [[50]]
+    # U01 在 REGION 層級看得到整個北區，不只自己的 50 家
+    assert run_readonly(engine, sql, Scope(path="TW.N.M01.U01")).rows == [[100]]
     assert run_readonly(engine, sql, Scope(path="TW.N.M01")).rows == [[100]]
-    # 四個 View 都有過濾
-    for view in ("v_monthly_sales", "v_visit_signal", "v_margin_breakdown"):
-        owners = run_readonly(engine, f"SELECT count(DISTINCT customer_id) FROM {view}", Scope(path="TW.N.M01.U01")).rows
-        assert owners[0][0] <= 50
+    assert run_readonly(engine, sql, Scope(path="TW.C.M02.U03")).rows == [[50]]
+    for view in ("v_monthly_sales", "v_margin_breakdown"):
+        rows = run_readonly(engine, f"SELECT count(DISTINCT customer_id) FROM {view}", Scope(path="TW.N.M01.U01")).rows
+        assert rows[0][0] <= 100
+
+
+def test_visit_records_stop_at_the_team(engine):
+    sql = "SELECT count(DISTINCT rep_id) FROM v_visit_signal"
+    # 同一個團隊（U01 與 U02）看得到彼此的拜訪，看不到別區的
+    assert run_readonly(engine, sql, Scope(path="TW.N.M01.U01")).rows == [[2]]
+    assert run_readonly(engine, sql, Scope(path="TW.C.M02.U03")).rows == [[1]]
 
 
 def test_the_model_cannot_lift_the_filter(engine):
