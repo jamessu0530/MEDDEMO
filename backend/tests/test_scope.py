@@ -41,20 +41,20 @@ def test_recording_a_visit_for_someone_elses_customer_is_refused(client, auth):
 def test_data_queries_only_see_the_askers_customers(engine):
     sql = "SELECT count(DISTINCT customer_id) FROM v_customer_summary"
     assert run_readonly(engine, sql).rows == [[250]]
-    assert run_readonly(engine, sql, Scope(owner_id="U01")).rows == [[50]]
-    assert run_readonly(engine, sql, Scope(region="北區")).rows == [[100]]
+    assert run_readonly(engine, sql, Scope(path="TW.N.M01.U01")).rows == [[50]]
+    assert run_readonly(engine, sql, Scope(path="TW.N.M01")).rows == [[100]]
     # 四個 View 都有過濾
     for view in ("v_monthly_sales", "v_visit_signal", "v_margin_breakdown"):
-        owners = run_readonly(engine, f"SELECT count(DISTINCT customer_id) FROM {view}", Scope(owner_id="U01")).rows
+        owners = run_readonly(engine, f"SELECT count(DISTINCT customer_id) FROM {view}", Scope(path="TW.N.M01.U01")).rows
         assert owners[0][0] <= 50
 
 
 def test_the_model_cannot_lift_the_filter(engine):
-    scope = Scope(owner_id="U01")
+    scope = Scope(path="TW.N.M01.U01")
     with pytest.raises(QueryRejected):
-        run_readonly(engine, "SELECT set_config('app.scope_owner', '', true)", scope)
+        run_readonly(engine, "SELECT set_config('app.scope_path', '', true)", scope)
     # 文字檢查擋不住 Unicode 跳脫的函式名稱，要靠資料庫收回的權限擋下
-    sneaky = """WITH x AS (SELECT U&"set\\005fconfig"('app.scope_owner', '', true))
+    sneaky = """WITH x AS (SELECT U&"set\\005fconfig"('app.scope_path', '', true))
                 SELECT (SELECT count(*) FROM x), count(DISTINCT customer_id) FROM v_customer_summary"""
     with pytest.raises(Exception, match="permission denied"):
         run_readonly(engine, sneaky, scope)
@@ -85,6 +85,26 @@ def test_the_org_tree_is_stored_as_ltree_paths(engine):
             WHERE a.attrelid = 'app_user'::regclass AND a.attname = 'org_path'
         """)).scalar()
         assert kind == "ltree"
+
+
+def test_a_shallower_path_covers_everyone_below_it():
+    from app.services.scope import REGION, SELF, TEAM, Scope
+
+    sales = Scope(path="TW.N.M01.U01")
+    assert sales.can_see(SELF, "TW.N.M01.U01") is True
+    assert sales.can_see(SELF, "TW.N.M01.U02") is False
+    assert sales.can_see(TEAM, "TW.N.M01.U02") is True
+    assert sales.can_see(TEAM, "TW.C.M02.U03") is False
+    assert sales.can_see(REGION, "TW.N.M01") is True
+
+    # 主管的路徑截不到 SELF 的深度，所以在 SELF 層級就已經涵蓋屬下
+    manager = Scope(path="TW.N.M01")
+    assert manager.prefix(SELF) == "TW.N.M01"
+    assert manager.can_see(SELF, "TW.N.M01.U01") is True
+    assert manager.can_see(SELF, "TW.C.M02.U03") is False
+
+    # everything()：評測與背景排程用，不過濾
+    assert Scope.everything().can_see(SELF, "TW.C.M02.U03") is True
 
 
 def test_org_paths_are_rebuilt_from_the_reporting_line(engine):

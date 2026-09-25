@@ -15,7 +15,7 @@ from app.db import get_session
 from app.models import AppUser, WRITEBACK_TARGETS, Customer, FollowUpReminder, OaExpenseForm, Visit, VisitAudio, ManagerNotice
 from app.services import privacy, writeback
 from app.services import risk
-from app.services.scope import Scope
+from app.services.scope import SELF, Scope, owner_path
 from app.services.extraction import empty_fields, missing_sap_details, unsourced_fields, validate_fields
 from app.services.reminders import create_reminder
 from app.tasks import get_progress, visit_queue
@@ -81,7 +81,9 @@ class FieldsInput(BaseModel):
 def _load(session: Session, visit_id: str, user: AppUser, *, lock: bool = False) -> Visit:
     visit = session.get(Visit, visit_id, with_for_update=lock)
     # 看不到的客戶的拜訪跟不存在一樣回 404
-    if visit is None or not Scope.for_user(user).allows(session.get(Customer, visit.customer_id)):
+    if visit is None or not Scope.for_user(user).can_see(
+        SELF, owner_path(session, session.get(Customer, visit.customer_id))
+    ):
         raise HTTPException(404, "找不到這筆拜訪紀錄")
     return visit
 
@@ -148,12 +150,12 @@ def upload_audio(
 ):
     """上傳口述錄音。轉文字和整理欄位在背景做，畫面輪詢 GET /api/visits/{id} 看進度。"""
     if client_ref and (existing := session.scalar(select(Visit).where(Visit.client_ref == client_ref))):
-        if not Scope.for_user(user).allows(session.get(Customer, existing.customer_id)):
+        if not Scope.for_user(user).can_see(SELF, owner_path(session, session.get(Customer, existing.customer_id))):
             raise HTTPException(404, "找不到這家客戶")
         response.status_code = 200  # 同一段錄音重送：不重建，也不再轉一次文字
         return _detail(session, existing)
     customer = session.get(Customer, customer_id)
-    if customer is None or not Scope.for_user(user).allows(customer):
+    if not Scope.for_user(user).can_see(SELF, owner_path(session, customer)):
         raise HTTPException(404, "找不到這家客戶")
     content = file.file.read(MAX_AUDIO_BYTES + 1)
     if len(content) > MAX_AUDIO_BYTES:

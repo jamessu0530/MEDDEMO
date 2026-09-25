@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.api.auth import CurrentUser
 from app.db import get_session
 from app.models import AppUser, AskRecord, Customer, Escalation, QueryTrace
-from app.services.scope import Scope
+from app.services.scope import SELF, Scope
 from app.tasks import visit_queue
 
 log = logging.getLogger(__name__)
@@ -72,7 +72,7 @@ def mentioned_customers(session: Session, record: AskRecord, user: AppUser) -> l
         return []
     text = record.answer + json.dumps((record.evidence or {}).get("rows") or [], ensure_ascii=False)
     candidates = session.execute(
-        select(Customer.id, Customer.name).where(Scope.for_user(user).customer_filter())
+        select(Customer.id, Customer.name).where(Scope.for_user(user).customers_at(SELF))
     ).all()
     found: list[tuple[int, CustomerRef]] = []
     for customer_id, name in candidates:

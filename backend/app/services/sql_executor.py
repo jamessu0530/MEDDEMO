@@ -41,7 +41,7 @@ def _plain(value: Any) -> Any:
     return value
 
 
-# 模型寫的 SQL 不准碰這兩個函式：資料權限靠交易裡的設定（app.scope_owner／app.scope_region）過濾，
+# 模型寫的 SQL 不准碰這兩個函式：資料權限靠交易裡的設定（app.scope_path）過濾，
 # SELECT set_config(...) 就能在同一個交易裡把範圍清掉，看到別人的客戶。
 # 這只是讓錯誤訊息好懂；真正的保證是 semantic_layer.sql 收回了唯讀角色呼叫 set_config 的權限
 # （文字檢查擋不住 U&"..." 這類跳脫寫法）
@@ -63,8 +63,8 @@ def run_readonly(engine: Engine, sql: str, scope: Scope | None = None) -> QueryR
             conn.exec_driver_sql("SET TRANSACTION READ ONLY")
             # 範圍在切成唯讀角色之前設好；第三個參數 true 代表只在這個交易有效，交易結束就還原
             conn.execute(
-                text("SELECT set_config('app.scope_owner', :owner, true), set_config('app.scope_region', :region, true)"),
-                {"owner": scope.owner_id or "", "region": scope.region or ""},
+                text("SELECT set_config('app.scope_path', :path, true)"),
+                {"path": scope.path or ""},
             )
             conn.exec_driver_sql("SET LOCAL ROLE semantic_reader")
             conn.exec_driver_sql(f"SET LOCAL statement_timeout = '{STATEMENT_TIMEOUT}'")

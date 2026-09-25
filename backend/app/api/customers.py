@@ -15,7 +15,7 @@ from app.db import get_session
 from app.models import AppUser, Customer, Product, SalesTransaction, SapQuotationDraft, Visit
 from app.pricing import supply_price
 from app.services import customer_profile, writeback
-from app.services.scope import Scope
+from app.services.scope import SELF, Scope, owner_path
 
 router = APIRouter(prefix="/api/customers", tags=["customers"])
 SessionDep = Annotated[Session, Depends(get_session)]
@@ -140,7 +140,7 @@ def _customer_query():
 def _load(session: Session, customer_id: str, user: AppUser) -> tuple[Customer, CustomerItem]:
     """看不到的客戶跟不存在一樣回 404，不透露這個編號是別人的客戶。"""
     row = session.execute(
-        _customer_query().where(Customer.id == customer_id, Scope.for_user(user).customer_filter())
+        _customer_query().where(Customer.id == customer_id, Scope.for_user(user).customers_at(SELF))
     ).one_or_none()
     if row is None:
         raise HTTPException(404, "找不到這家客戶")
@@ -150,7 +150,7 @@ def _load(session: Session, customer_id: str, user: AppUser) -> tuple[Customer, 
 @router.get("", response_model=list[CustomerItem])
 def list_customers(session: SessionDep, user: CurrentUser, q: str | None = None):
     """業務開始口述前先選客戶；q 以客戶名稱做部分比對。只列登入者看得到的客戶（services/scope.py）。"""
-    stmt = _customer_query().where(Scope.for_user(user).customer_filter())
+    stmt = _customer_query().where(Scope.for_user(user).customers_at(SELF))
     if q:
         stmt = stmt.where(Customer.name.contains(q, autoescape=True))
     return [CustomerItem(**row._mapping) for row in session.execute(stmt)]

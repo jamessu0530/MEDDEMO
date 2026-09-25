@@ -85,7 +85,7 @@ def form_id_for_visit(session: Session, visit_id: str) -> int | None:
 def _visible(session: Session, user: AppUser, form: OaExpenseForm) -> bool:
     if user.role == "manager":
         return session.get(Customer, form.customer_id).region == user.region
-    return form.applicant_id == Scope.for_user(user).owner_id
+    return form.applicant_id == Scope.for_user(user).acting_user_id
 
 
 def load_form(session: Session, form_id: int, user: AppUser) -> OaExpenseForm:
@@ -124,7 +124,7 @@ def _item(session: Session, form: OaExpenseForm) -> dict[str, Any]:
 
 
 def list_mine(session: Session, user: AppUser, status: str | None) -> dict[str, Any]:
-    owner = Scope.for_user(user).owner_id
+    owner = Scope.for_user(user).acting_user_id
     if owner is None:
         return {"items": [], "counts": {s: 0 for s in OA_FORM_STATUSES}}
     where = [OaExpenseForm.applicant_id == owner]

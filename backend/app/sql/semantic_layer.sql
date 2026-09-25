@@ -11,17 +11,23 @@ $$;
 -- 語意層：數字查詢代理只能讀這四個 View，不碰底層表（SDD 議題 3）。
 -- 欄位註解會一併交給產生 SQL 的模型，單位與陷阱要寫在註解裡。
 
--- 資料權限（backend/app/services/scope.py）：sql_executor 在每次查詢的交易裡設定範圍，
--- 業務只看得到自己負責的客戶、主管只看得到自己轄區。兩個設定都沒給就不過濾（評測、背景排程）。
--- 設定用 current_setting(..., true)：沒設過的時候回 NULL，不會報錯
-CREATE FUNCTION app_in_scope(owner text, customer_region text) RETURNS boolean
+-- 資料權限（backend/app/services/scope.py）：組織是一棵樹，每個人有一條路徑，
+-- 例如業務 U01 是 TW.N.M01.U01、他的主管 M01 是 TW.N.M01。
+-- sql_executor 在每次查詢的交易裡設定查詢者的路徑，每個 View 宣告自己的共享深度。
+--
+-- 可見範圍 = 把查詢者的路徑截到該 View 的深度，再問「這是不是對方路徑的祖先」（@>）。
+-- least() 是關鍵：主管的路徑比較短，截不動，所以他在任何深度都涵蓋自己底下的人——
+-- 「主管看得到屬下」不是另一條規則，是同一個式子的結果。
+--
+-- 深度：1=全國 TW，2=區 TW.N，3=團隊 TW.N.M01，4=個人 TW.N.M01.U01。
+-- 沒設定就不過濾（評測、背景排程）。current_setting(..., true) 在沒設過時回 NULL，不會報錯
+CREATE FUNCTION app_in_scope(owner_path ltree, share_depth int) RETURNS boolean
 LANGUAGE sql STABLE AS $$
   SELECT CASE
-    WHEN COALESCE(current_setting('app.scope_owner', true), '') <> ''
-      THEN owner = current_setting('app.scope_owner', true)
-    WHEN COALESCE(current_setting('app.scope_region', true), '') <> ''
-      THEN customer_region = current_setting('app.scope_region', true)
-    ELSE true
+    WHEN COALESCE(current_setting('app.scope_path', true), '') = '' THEN true
+    ELSE subpath(current_setting('app.scope_path', true)::ltree, 0,
+                 least(share_depth, nlevel(current_setting('app.scope_path', true)::ltree)))
+         @> owner_path
   END
 $$;
 
@@ -45,7 +51,8 @@ SELECT date_trunc('month', t.date)::date AS month,
 FROM sales_transaction t
 JOIN customer c ON c.id = t.customer_id
 JOIN product p ON p.sku = t.sku
-WHERE app_in_scope(c.owner_user_id, c.region)
+JOIN app_user owner ON owner.id = c.owner_user_id
+WHERE app_in_scope(owner.org_path, 4)
 GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11;
 
 COMMENT ON VIEW v_monthly_sales IS '每月 × 客戶 × 品項的銷售彙總。金額單位為新台幣元。';
@@ -114,7 +121,7 @@ JOIN app_user u ON u.id = c.owner_user_id
 LEFT JOIN order_stats o ON o.customer_id = c.id
 LEFT JOIN ar a ON a.customer_id = c.id
 LEFT JOIN visits vi ON vi.customer_id = c.id
-WHERE app_in_scope(c.owner_user_id, c.region);
+WHERE app_in_scope(u.org_path, 4);
 
 COMMENT ON VIEW v_customer_summary IS '每家客戶一列的現況摘要，時間窗以系統日 app_today() 為準。金額單位為新台幣元。';
 COMMENT ON COLUMN v_customer_summary.amount_last_90d IS '近 90 天進貨金額';
@@ -154,7 +161,7 @@ JOIN customer c ON c.id = v.customer_id
 JOIN app_user u ON u.id = v.user_id
 -- 只收已確認的拜訪：處理中、轉文字失敗、待確認的紀錄還沒整理好，逐字稿也還沒去識別（NFR-8）
 WHERE v.status IN ('confirmed', 'synced')
-  AND app_in_scope(c.owner_user_id, c.region);
+  AND app_in_scope(u.org_path, 4);
 
 COMMENT ON VIEW v_visit_signal IS '已確認的拜訪紀錄，一次拜訪一列，五個欄位已攤平。';
 COMMENT ON COLUMN v_visit_signal.competitor_names IS '本次提到的競品，多家以頓號分隔；沒提到為 NULL';
@@ -178,7 +185,8 @@ SELECT date_trunc('month', t.date)::date AS month,
 FROM sales_transaction t
 JOIN customer c ON c.id = t.customer_id
 JOIN product p ON p.sku = t.sku
-WHERE app_in_scope(c.owner_user_id, c.region)
+JOIN app_user owner ON owner.id = c.owner_user_id
+WHERE app_in_scope(owner.org_path, 4)
 GROUP BY 1, 2, 3, 4, 5, 6, 7;
 
 COMMENT ON VIEW v_margin_breakdown IS '每月 × 客戶 × 品類的毛利結構。金額單位為新台幣元。';
@@ -195,7 +203,7 @@ END
 $$;
 GRANT USAGE ON SCHEMA public TO semantic_reader;
 GRANT SELECT ON v_monthly_sales, v_customer_summary, v_visit_signal, v_margin_breakdown TO semantic_reader;
-GRANT EXECUTE ON FUNCTION app_in_scope(text, text) TO semantic_reader;
+GRANT EXECUTE ON FUNCTION app_in_scope(ltree, int) TO semantic_reader;
 -- 資料權限靠交易裡的 app.scope_* 設定過濾，唯讀角色不能自己改：收回所有人呼叫 set_config 的權限，只留給程式本身。
 -- sql_executor 另外用文字檢查擋 set_config，但文字檢查擋不住 U&"..." 這類跳脫寫法，這裡才是真的保證
 REVOKE EXECUTE ON FUNCTION pg_catalog.set_config(text, text, boolean) FROM PUBLIC;
