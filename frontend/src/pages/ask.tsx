@@ -9,6 +9,7 @@ import { EntryView } from "@/components/ask/entry-view"
 // type-only：只拿型別，不會把 VoiceDock（跟著它的 src/voice）拉進主 chunk
 import type { VoiceSession } from "@/components/ask/voice-dock"
 import { BottomNav } from "@/components/bottom-nav"
+import { Notice } from "@/components/notice"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useAuth } from "@/lib/auth"
@@ -43,6 +44,8 @@ export function AskPage() {
   const [error, setError] = useState<string | null>(null)
   const [voiceOn, setVoiceOn] = useState(false)
   const [session, setSession] = useState<VoiceSession | null>(null)
+  // 語音的失敗與掛斷說明放在頁面上，不放 dock 裡：dock 會在收起時整個卸載，訊息要留得住才看得到
+  const [notice, setNotice] = useState<string | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const polls = useRef(new AbortController())
   const mode = MODES.find((m) => m.kind === kind)!
@@ -89,13 +92,24 @@ export function AskPage() {
 
   const replaceAsk = (id: number, patch: { ask: Ask }) => conversation.replace(id, patch)
 
+  // 開新的一段語音、或把語音收起來，都要把上一段留下的訊息清掉，否則舊的「連線中斷」會跟著下一段對話跑
+  const openVoice = () => {
+    setNotice(null)
+    setVoiceOn(true)
+  }
+  const closeVoice = () => {
+    setVoiceOn(false)
+    setNotice(null)
+  }
+
   return (
     <div className="flex min-h-svh flex-col">
       <header className="sticky top-0 z-10 border-b bg-background/95 px-4 pt-4 pb-3 backdrop-blur">
         <p className="text-xs text-muted-foreground">先查公司資料與內部文件，查不到才參考網路公開資料（會另外標示）</p>
         <h1 className="mt-0.5 text-lg font-semibold">問答</h1>
-        {/* 語音會話裡是模型自己選要查數字還是查規定，這組切換只對打字有用，開著會話時收起來 */}
-        {!voiceOn && (
+        {/* 語音會話裡是模型自己選要查數字還是查規定，這組切換只對打字有用。
+            看的是 session 不是 voiceOn：連線中或掛斷後打字走的還是這裡選的工具，這時候藏起來業務就看不到也改不了 */}
+        {!session && (
           <div className="mt-3 grid grid-cols-2 gap-1 rounded-lg bg-muted p-1">
             {MODES.map((m) => (
               <button
@@ -114,7 +128,8 @@ export function AskPage() {
         )}
       </header>
 
-      <main className="flex flex-1 flex-col gap-4 px-4 pt-4 pb-44">
+      {/* 底部那條現在是語音 dock 與輸入框上下疊著（56 + 6 + 44），加上內距與導覽列約 178px，留到 192px 才不會蓋住最後一格 */}
+      <main className="flex flex-1 flex-col gap-4 px-4 pt-4 pb-48">
         {entries.length === 0 && !voiceOn && (
           <div className="flex flex-col gap-2">
             <p className="text-sm text-muted-foreground">可以這樣問，或按右下角的麥克風用說的：</p>
@@ -133,6 +148,8 @@ export function AskPage() {
         {entries.map((entry) => (
           <EntryView key={entry.id} entry={entry} onAskChange={replaceAsk} />
         ))}
+        {/* 重試的按鈕就在下面 dock 的「重新開始」，這裡只說原因，不再放第二顆 */}
+        {notice && <Notice text={notice} />}
         <div ref={bottomRef} />
       </main>
 
@@ -146,7 +163,7 @@ export function AskPage() {
               </Button>
             }
           >
-            <VoiceDock conversation={conversation} onClose={() => setVoiceOn(false)} onSession={setSession} />
+            <VoiceDock conversation={conversation} onClose={closeVoice} onSession={setSession} onNotice={setNotice} />
           </Suspense>
         )}
         {/* 輸入框永遠顯示：會話開著時打字也送進同一個會話，跟語音共用同一條對話 */}
@@ -158,8 +175,9 @@ export function AskPage() {
           className="flex flex-col gap-1.5"
         >
           {error && <p className="px-1 text-sm text-destructive">{error}</p>}
-          {/* 數字查詢只查得到登入者看得到的客戶；規定題查的是公司文件，不分客戶，不必提。會話中是模型自己選工具，這行文字對不上 */}
-          {user && kind === "data" && !voiceOn && <p className="px-1 text-[11px] text-muted-foreground">{askScopeText(user)}</p>}
+          {/* 數字查詢只查得到登入者看得到的客戶；規定題查的是公司文件，不分客戶，不必提。
+              會話活著時是模型自己選工具，這行文字才對不上；連線中或掛斷後打字仍走這條路，要照樣說清楚查得到誰 */}
+          {user && kind === "data" && !session && <p className="px-1 text-[11px] text-muted-foreground">{askScopeText(user)}</p>}
           <div className="flex gap-2">
             <Input
               value={question}
@@ -177,7 +195,7 @@ export function AskPage() {
                 variant="outline"
                 size="icon"
                 className="size-11 shrink-0"
-                onClick={() => setVoiceOn(true)}
+                onClick={openVoice}
                 aria-label="用說的問"
               >
                 <Mic className="size-4" />

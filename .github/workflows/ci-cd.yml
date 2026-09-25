@@ -68,6 +68,8 @@ jobs:
       - run: npm run lint
       # build 只跑 vite（型別檢查在 typecheck-frontend，兩個 job 平行跑）
       - run: npm run build
+      # 對話 store 的 vitest：沒有人跑的測試很快就會爛掉
+      - run: npm test
 
   # 型別檢查拆成獨立的 job：tsc 佔了原本 build 的九成時間（本機實測 4.1 秒裡的 3.6 秒），
   # 而 vite 把型別標註直接刪掉、本來就不看型別，兩件事沒有先後關係。

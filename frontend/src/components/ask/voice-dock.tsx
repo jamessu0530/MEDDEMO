@@ -1,5 +1,5 @@
 import { useEffect } from "react"
-import { AudioLines, Hand, Loader2, Mic, PhoneOff, VolumeX, Volume2 } from "lucide-react"
+import { AudioLines, Hand, Loader2, Mic, PhoneOff, Volume2, VolumeX } from "lucide-react"
 
 import type { Conversation } from "@/ask/conversation"
 import { Button } from "@/components/ui/button"
@@ -16,10 +16,12 @@ export default function VoiceDock({
   conversation,
   onClose,
   onSession,
+  onNotice,
 }: {
   conversation: Conversation
   onClose: () => void
   onSession: (session: VoiceSession | null) => void
+  onNotice: (notice: string | null) => void
 }) {
   const voice = useVoiceSession(conversation)
   const live = voice.status === "listening" || voice.status === "speaking"
@@ -36,13 +38,24 @@ export default function VoiceDock({
     onSession(live ? { sendText: voice.sendText, noteActivity: voice.noteActivity } : null)
   }, [live, onSession, voice.sendText, voice.noteActivity])
 
+  // 失敗與掛斷的說明交給頁面顯示：這個 dock 收起來時會整個卸載，訊息留在這裡會跟著不見
+  useEffect(() => {
+    onNotice(voice.notice)
+  }, [voice.notice, onNotice])
+
   if (voice.status === "idle") {
-    // 會話結束或連線失敗：把 dock 收掉，notice 由頁面顯示
+    // 會話結束或連線失敗。「重新開始」就直接再連一次：先收起再按一次麥克風等於要業務按兩次才問得到下一句。
+    // 原因寫在頁面的 notice 裡，這裡只放動作
     return (
-      <Button variant="outline" className="h-14 w-full gap-2 text-base" onClick={onClose}>
-        <Mic className="size-5" />
-        重新開始
-      </Button>
+      <div className="flex gap-2">
+        <Button variant="outline" className="h-14 flex-1 gap-2 text-base" onClick={() => void voice.start()}>
+          <Mic className="size-5" />
+          重新開始
+        </Button>
+        <Button variant="ghost" className="h-14 shrink-0 px-4 text-base" onClick={onClose}>
+          收起
+        </Button>
+      </div>
     )
   }
   if (voice.status === "connecting") {

@@ -25,7 +25,7 @@ const IDLE_LIMIT_MS = 60_000
 const IDLE_CHECK_MS = 5_000
 // 問答 API 收的問題長度上限（backend/app/api/asks.py）
 const MAX_QUESTION_LENGTH = 500
-const RESTART_HINT = "要再問就按「開始對話」。"
+const RESTART_HINT = "要再問就按「重新開始」。"
 // 查資料時的提示音（frontend/public/sounds/README.md 記了來源與授權）
 const QUERYING_SOUND_URL = "/sounds/querying.wav"
 
