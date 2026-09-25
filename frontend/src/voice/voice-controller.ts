@@ -154,6 +154,12 @@ export class VoiceController {
     try {
       // 先拿麥克風權限：臨時金鑰只給 1 分鐘開始連線，不能卡在權限視窗上
       conn.stream = await openMicrophone()
+      // 權限視窗還開著的時候就結束了（卸載、按結束）：finish() 那時還看不到這條 stream，
+      // 沒在這裡收掉的話麥克風會一直開到整頁關掉，作業系統的錄音指示燈也一直亮著
+      if (this.conn !== conn) {
+        conn.stream.getTracks().forEach((track) => track.stop())
+        return
+      }
       const voice = await startVoiceSession()
       if (this.conn !== conn) return // 連線途中按了結束
       conn.toolKinds = voice.tool_kinds
