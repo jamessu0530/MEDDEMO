@@ -24,7 +24,8 @@ from sqlalchemy import (
 )
 from pgvector.sqlalchemy import Vector
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.types import UserDefinedType
 
 CUSTOMER_TYPES = ("chain", "independent", "clinic")
 # processing：錄音已上傳，背景正在轉文字或整理欄位
@@ -40,6 +41,19 @@ ASK_KINDS = ("data", "knowledge")
 ASK_STATUSES = ("queued", "running", "answered", "no_evidence", "not_converged", "failed")
 # open：等主管回覆；answered：主管回覆了（FR-8.4 延伸）
 ESCALATION_STATUSES = ("open", "answered")
+
+
+class LTREE(UserDefinedType):
+    """Postgres 的 ltree。SQLAlchemy 沒有內建，宣告一個最小可用的（不加 sqlalchemy-utils 相依）。
+
+    只有 AppUser.org_path 用它：它是唯一會出現在 SQL 比對裡的路徑欄位。
+    OrgUnit 的路徑就是它的 id（'TW'、'TW.N'），純字串處理，不需要這個型別。
+    """
+
+    cache_ok = True
+
+    def get_col_spec(self, **kw: Any) -> str:
+        return "LTREE"
 
 
 def one_of(column: str, values: tuple[str, ...], name: str) -> CheckConstraint:
@@ -73,9 +87,37 @@ class AppSetting(Base):
     value: Mapped[str]
 
 
+ORG_UNIT_KINDS = ("root", "region")
+
+
+class OrgUnit(Base):
+    """組織樹的地理層，只有四列。人不放這裡：經理本人就是團隊節點，掛在 AppUser 上。
+
+    id 同時就是這個節點的路徑（'TW'、'TW.N'），所以不另外存 path 欄位。
+    """
+
+    __tablename__ = "org_unit"
+    __table_args__ = (one_of("kind", ORG_UNIT_KINDS, "kind"),)
+
+    id: Mapped[str] = mapped_column(primary_key=True)
+    name: Mapped[str]
+    kind: Mapped[str]
+    parent_id: Mapped[str | None] = mapped_column(ForeignKey("org_unit.id"))
+
+
 class AppUser(Base):
     __tablename__ = "app_user"
-    __table_args__ = (one_of("role", ("sales", "manager"), "role"),)
+    __table_args__ = (
+        one_of("role", ("sales", "manager"), "role"),
+        # 在組織裡：manager_id 與 unit_id 恰有一個有值，路徑算得出來。
+        # 不在組織裡：三個都空，且一定是代理別人的帳號（自建與第三方登入，見 api/auth.py）
+        CheckConstraint(
+            "((manager_id IS NULL) <> (unit_id IS NULL) AND org_path IS NOT NULL)"
+            " OR (manager_id IS NULL AND unit_id IS NULL AND org_path IS NULL"
+            "     AND acts_as_user_id IS NOT NULL)",
+            name="org_position",
+        ),
+    )
 
     id: Mapped[str] = mapped_column(primary_key=True)
     name: Mapped[str]
@@ -87,6 +129,15 @@ class AppUser(Base):
     password_hash: Mapped[str | None]
     # 第三方登入自動開的帳號自己沒有客戶，看的是這位示範業務的路線與客戶
     acts_as_user_id: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
+    # 組織樹（services/org.py）。manager_id 與 unit_id 是真相來源，org_path 是整棵重算出來的衍生值。
+    # 經理沒有 manager_id、掛在地理節點上；業務有 manager_id，路徑接在主管後面
+    manager_id: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
+    unit_id: Mapped[str | None] = mapped_column(ForeignKey("org_unit.id"))
+    org_path: Mapped[str | None] = mapped_column(LTREE)
+    # app_user 有兩個指向自己的外鍵（acts_as_user_id 與 manager_id），要明講是哪一個
+    acts_as: Mapped["AppUser | None"] = relationship(
+        remote_side="AppUser.id", foreign_keys="AppUser.acts_as_user_id"
+    )
     # 每次登入加一，並寫進 JWT。每個請求比對兩邊，對不上就是這個帳號已經在別的裝置登入，
     # 舊 token 直接失效。這樣不必另外維護一張作廢清單
     session_version: Mapped[int] = mapped_column(server_default="1")

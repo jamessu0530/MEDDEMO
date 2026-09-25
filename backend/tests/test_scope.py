@@ -71,3 +71,16 @@ def test_customers_named_in_an_answer_are_limited_to_the_asker(engine):
         assert [c.name for c in mentioned_customers(session, record, u02)] == ["康泰連鎖藥局 · 南京店"]
         record.kind = "knowledge"
         assert mentioned_customers(session, record, u01) == []
+
+
+def test_the_org_tree_is_stored_as_ltree_paths(engine):
+    from sqlalchemy import text as sql_text
+
+    with engine.connect() as conn:
+        assert conn.execute(sql_text("SELECT 1 FROM pg_extension WHERE extname = 'ltree'")).scalar() == 1
+        kind = conn.execute(sql_text("""
+            SELECT format_type(a.atttypid, a.atttypmod)
+            FROM pg_attribute a
+            WHERE a.attrelid = 'app_user'::regclass AND a.attname = 'org_path'
+        """)).scalar()
+        assert kind == "ltree"

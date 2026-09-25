@@ -59,6 +59,9 @@ def reset_schema(engine: Engine) -> None:
         conn.exec_driver_sql("DROP SCHEMA public CASCADE")
         conn.exec_driver_sql("CREATE SCHEMA public")
         conn.exec_driver_sql("CREATE EXTENSION IF NOT EXISTS vector")
+        # ltree：組織樹的路徑與祖先比對（services/scope.py）。Postgres 13 起是 trusted extension，
+        # 資料庫擁有者不需要 superuser 就能建立
+        conn.exec_driver_sql("CREATE EXTENSION IF NOT EXISTS ltree")
         Base.metadata.create_all(conn)
         # no_parameters：整份檔案原樣交給資料庫，裡面的 % 不會被當成參數符號
         conn.exec_driver_sql(
