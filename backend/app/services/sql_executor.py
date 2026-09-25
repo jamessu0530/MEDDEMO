@@ -64,7 +64,7 @@ def run_readonly(engine: Engine, sql: str, scope: Scope | None = None) -> QueryR
             # 範圍在切成唯讀角色之前設好；第三個參數 true 代表只在這個交易有效，交易結束就還原
             conn.execute(
                 text("SELECT set_config('app.scope_path', :path, true)"),
-                {"path": scope.path or ""},
+                {"path": scope.sql_path},
             )
             conn.exec_driver_sql("SET LOCAL ROLE semantic_reader")
             conn.exec_driver_sql(f"SET LOCAL statement_timeout = '{STATEMENT_TIMEOUT}'")

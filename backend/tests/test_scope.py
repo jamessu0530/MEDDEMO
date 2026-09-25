@@ -115,6 +115,39 @@ def test_a_shallower_path_covers_everyone_below_it():
     assert Scope.everything().can_see(SELF, "TW.C.M02.U03") is True
 
 
+def test_a_scope_with_no_path_denies_everyone_instead_of_allowing_everyone():
+    """org_path 是 nullable 欄位（models.py）。for_user() 解出 None 時絕對不能跟 everything() 撞在一起，
+    否則沒有路徑的使用者會變成看得到全公司——比對舊機制（owner_id 一定有值）還危險。"""
+    from app.services.scope import SELF, Scope
+
+    lost = Scope(path=None)
+    assert lost.unfiltered is False
+    assert lost != Scope.everything()
+    assert lost.can_see(SELF, "TW.N.M01.U01") is False
+    assert lost.can_see(SELF, None) is False
+
+
+def test_a_scope_with_no_path_sees_no_customers_through_the_orm(engine):
+    from sqlalchemy import select
+    from sqlalchemy.orm import Session as OrmSession
+
+    from app.models import Customer
+    from app.services.scope import SELF, Scope
+
+    lost = Scope(path=None)
+    with OrmSession(engine) as session:
+        rows = session.execute(select(Customer.id).where(lost.customers_at(SELF))).all()
+    assert rows == []
+
+
+def test_a_scope_with_no_path_sees_no_rows_in_the_semantic_layer(engine):
+    from app.services.scope import Scope
+
+    lost = Scope(path=None)
+    sql = "SELECT count(DISTINCT customer_id) FROM v_customer_summary"
+    assert run_readonly(engine, sql, lost).rows == [[0]]
+
+
 def test_org_paths_are_rebuilt_from_the_reporting_line(engine):
     with Session(engine) as session:
         paths = {u.id: u.org_path for u in session.scalars(select(AppUser)).all()}

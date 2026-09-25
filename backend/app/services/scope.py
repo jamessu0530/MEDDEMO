@@ -8,6 +8,11 @@
 
 數字查詢的 SQL 是模型寫的，靠提示叫它「只查自己的」擋不住，所以過濾做在資料庫：
 四個語意層 View 都用 app_in_scope() 過濾，路徑由 sql_executor 在每次查詢的交易裡設定。
+
+org_path 是 nullable 欄位（models.py），for_user() 解出的路徑理論上可能是 None。這跟
+「不過濾」的意思完全相反，不能共用同一個 None：只有 everything() 會把 unfiltered 設成
+True；for_user() 解不出路徑就是看不到任何東西，靠 NO_ACCESS 這個不會是任何人祖先的假
+路徑做到，can_see／users_at 不必另外判斷一次。
 """
 
 from __future__ import annotations
@@ -34,17 +39,26 @@ SHARING_LEVEL = {
     "oa_form": SELF,          # 出差單
 }
 
+# 送給 app_in_scope 代表「誰都看不到」的假路徑：真實路徑一律從 TW 開始（services/org.py），
+# 不會有人的祖先是這個標籤，所以 <@／@> 對誰都不成立。用一個真實路徑不可能撞到的標籤，
+# 比另外開一個「deny」的 SQL 分支省事，也不用改 app_in_scope 的函式簽章。
+NO_ACCESS = "_no_access_"
+
 
 @dataclass(frozen=True)
 class Scope:
     path: str | None = None
     # 代理之後的實際使用者。第三方登入的帳號看的是示範業務的資料（見 api/auth.py）
     acting_user_id: str | None = None
+    # 只有 everything() 會設成 True。path 是 None 但這裡是 False，代表「解不出路徑」，
+    # 跟「不過濾」是相反的意思——絕對不能共用同一個 None，否則 org_path 是 NULL 的使用者
+    # 會變成看得到全公司（比舊機制危險，舊的 owner_id 一定有值）
+    unfiltered: bool = False
 
     @classmethod
     def everything(cls) -> Scope:
         """不過濾。只給評測、測試與背景排程用，API 一律用 for_user。"""
-        return cls()
+        return cls(unfiltered=True)
 
     @classmethod
     def for_user(cls, user: AppUser) -> Scope:
@@ -52,9 +66,13 @@ class Scope:
         return cls(path=acting.org_path, acting_user_id=acting.id)
 
     def prefix(self, level: int) -> str | None:
-        """自己的路徑截到 level 深度。已經比 level 淺就原樣回傳——主管就是靠這個涵蓋屬下。"""
-        if self.path is None:
+        """自己的路徑截到 level 深度。unfiltered 回 None 代表不過濾；沒有 unfiltered 卻也沒有
+        path，代表看不到任何東西，回 NO_ACCESS——不能回 None，那個意思已經被 unfiltered 佔用了。
+        路徑已經比 level 淺就原樣回傳——主管就是靠這個涵蓋屬下。"""
+        if self.unfiltered:
             return None
+        if self.path is None:
+            return NO_ACCESS
         return ".".join(self.path.split(".")[:level])
 
     def can_see(self, level: int, org_path: str | None) -> bool:
@@ -82,6 +100,15 @@ class Scope:
         """加在 where 上，依做這次拜訪的業務過濾。查詢裡要有 Visit。"""
         users = self.users_at(level)
         return true() if users is None else Visit.user_id.in_(users)
+
+    @property
+    def sql_path(self) -> str:
+        """sql_executor 拿去設定 app.scope_path 的值：''代表不過濾（app_in_scope 認得這個
+        空字串），NO_ACCESS 代表看不到任何東西。不能直接送 path or ''——那樣 path 是 None
+        時會被 app_in_scope 當成沒設定、變成不過濾，跟這裡要 fail-closed 的目標相反。"""
+        if self.unfiltered:
+            return ""
+        return self.path or NO_ACCESS
 
 
 def owner_path(session: Session, customer: Customer | None) -> str | None:
