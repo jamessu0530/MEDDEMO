@@ -31,6 +31,7 @@ def test_everyone_sees_every_customer_but_only_acts_on_their_own(client, auth):
     assert client.get("/api/customers/C002/profile", headers=auth("U02")).status_code == 200
     assert client.get("/api/customers/C002/profile", headers=auth("M01")).status_code == 200
     assert client.get("/api/customers/C002/negotiation", headers=auth("M02")).status_code == 404
+    assert client.get("/api/customers/C002/quote-items", headers=auth("U01")).status_code == 404
 
 
 def test_recording_a_visit_for_someone_elses_customer_is_refused(client, auth):
