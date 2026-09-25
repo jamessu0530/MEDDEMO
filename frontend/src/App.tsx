@@ -1,5 +1,4 @@
-import { lazy, Suspense, useEffect, type ReactNode } from "react"
-import { Loader2 } from "lucide-react"
+import { useEffect, type ReactNode } from "react"
 import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from "react-router"
 
 import { fetchMe } from "@/api/auth"
@@ -24,17 +23,6 @@ import { RecordVisit } from "@/pages/record-visit"
 import { SettingsPage } from "@/pages/settings"
 import { TodayPage } from "@/pages/today"
 import { VisitPage } from "@/pages/visit"
-
-// 語音問答連同 Gemini SDK 另外打包，打開這一頁才下載，其他頁面不必多等
-const VoicePage = lazy(() => import("@/pages/voice"))
-
-function PageLoading() {
-  return (
-    <div className="flex min-h-svh items-center justify-center text-muted-foreground">
-      <Loader2 className="size-5 animate-spin" />
-    </div>
-  )
-}
 
 function NotFound() {
   const navigate = useNavigate()
@@ -121,14 +109,8 @@ export default function App() {
             <Route path="/" element={<Home />} />
             <Route path="/customers" element={<CustomerPicker />} />
             <Route path="/ask" element={<AskPage />} />
-            <Route
-              path="/voice"
-              element={
-                <Suspense fallback={<PageLoading />}>
-                  <VoicePage />
-                </Suspense>
-              }
-            />
+            {/* 語音併進問答頁了，舊書籤與導覽說明還指得到這個網址 */}
+            <Route path="/voice" element={<Navigate to="/ask" replace />} />
             <Route path="/customers/:customerId" element={<CustomerPage />} />
             <Route path="/customers/:customerId/negotiation" element={<NegotiationPage />} />
             <Route path="/customers/:customerId/quote" element={<QuotePage />} />

@@ -12,15 +12,14 @@ import {
   type Session,
 } from "@google/genai"
 
-import { createAsk, getAsk, isFinished, type Ask, type AskKind } from "@/api/asks"
+import { type Ask, type AskKind } from "@/api/asks"
 import { ApiError } from "@/api/client"
 import { startVoiceSession } from "@/api/voice"
 import type { Conversation } from "@/ask/conversation"
+import { runAsk } from "@/ask/run-ask"
 import { TABLE_PREVIEW_ROWS } from "@/components/ask/ask-result"
 import { CueLoop, INPUT_MIME_TYPE, PcmPlayer, openMicrophone, startCapture, toBase64 } from "@/voice/audio"
 
-// 模型在等查詢結果，輪詢間隔會直接加在業務的等待時間上；單人使用，每秒問兩次對 API 沒有負擔
-const POLL_MS = 500
 // 麥克風開著就一直把聲音送去 Gemini，音訊照秒數計費；一問一答之間一分鐘都沒動靜，多半是忘了按結束
 const IDLE_LIMIT_MS = 60_000
 const IDLE_CHECK_MS = 5_000
@@ -94,20 +93,6 @@ function describeStartError(error: unknown) {
   if (error instanceof DOMException && error.name === "NotFoundError") return "找不到麥克風。"
   if (error instanceof ApiError) return error.message
   return `語音連線失敗：${error instanceof Error ? error.message : String(error)}`
-}
-
-function sleep(ms: number, signal: AbortSignal) {
-  return new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(resolve, ms)
-    signal.addEventListener(
-      "abort",
-      () => {
-        clearTimeout(timer)
-        reject(signal.reason)
-      },
-      { once: true }
-    )
-  })
 }
 
 export class VoiceController {
@@ -331,19 +316,7 @@ export class VoiceController {
     try {
       if (!askKind) throw new Error(`沒有這個查詢工具：${call.name}`)
       if (!question) throw new Error("模型沒有給要查的問題")
-      let ask = await createAsk(askKind, question)
-      this.conversation.replace(entryId, { ask })
-      while (!isFinished(ask)) {
-        await sleep(POLL_MS, signal)
-        try {
-          ask = await getAsk(ask.id, signal)
-        } catch (error) {
-          if (signal.aborted) throw error
-          continue // 網路一時不通就等下一輪
-        }
-        this.conversation.replace(entryId, { ask })
-      }
-      response = toolResult(ask)
+      response = toolResult(await runAsk(this.conversation, entryId, askKind, question, signal))
     } catch (error) {
       if (signal.aborted) return
       const message = error instanceof Error ? error.message : "查詢失敗"

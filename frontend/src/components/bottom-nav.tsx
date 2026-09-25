@@ -1,4 +1,4 @@
-import { AudioLines, CalendarDays, MessageCircleQuestion, Users } from "lucide-react"
+import { CalendarDays, MessageCircleQuestion, Users } from "lucide-react"
 import { NavLink } from "react-router"
 
 import { useUploadQueue } from "@/lib/offline-queue"
@@ -8,7 +8,6 @@ const TABS = [
   { to: "/", label: "今日", icon: CalendarDays },
   { to: "/customers", label: "客戶", icon: Users },
   { to: "/ask", label: "問答", icon: MessageCircleQuestion },
-  { to: "/voice", label: "語音", icon: AudioLines },
 ]
 
 /** 底部分頁列：只放在最上層的頁面，進到錄音、確認這些流程裡就不顯示，免得誤觸離開 */
