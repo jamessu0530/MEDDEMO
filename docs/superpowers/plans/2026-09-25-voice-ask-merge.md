@@ -79,8 +79,12 @@
 - [ ] **Step 1: 裝 vitest**
 
 ```bash
-cd frontend && npm install -D vitest@^3
+cd frontend && npm install -D vitest@^5
 ```
+
+vitest 5 是唯一支援 Vite 8 的線（peer 是 `vite: ^6.4.0 || ^7.0.0 || ^8.0.0`）；vitest 3 不支援，不要降版。
+
+`@types/node` 是 vitest 的**選用** peer，但它要 `^22 || >=24` 而專案裝的是 `^20`。如果 npm 因此報 ERESOLVE，把 `frontend/package.json` 的 `"@types/node": "^20"` 改成 `"^24"` 再裝一次，並確認 `npm run typecheck` 仍然通過——這是 devDependency，只影響型別。
 
 - [ ] **Step 2: 設定 vitest 並加 script**
 
@@ -605,8 +609,10 @@ import { EntryView } from "@/components/ask/entry-view"
 import { createAsk, getAsk, isFinished, type Ask, type AskKind } from "@/api/asks"
 import type { Conversation } from "@/ask/conversation"
 
-// 還沒答完的提問每秒問一次進度（NFR-5），查到第幾輪會即時出現在畫面上
-const POLL_MS = 1000
+// 還沒答完的提問每半秒問一次進度（NFR-5），查到第幾輪會即時出現在畫面上。
+// 用 500ms 而不是打字問答原本的 1000ms：語音那條路的輪詢間隔會直接加在業務的等待時間上
+// （voice-controller.ts 原本的註解），統一到較慢的一邊等於讓語音變慢
+const POLL_MS = 500
 
 function sleep(ms: number, signal: AbortSignal) {
   return new Promise<void>((resolve, reject) => {
@@ -646,7 +652,7 @@ export async function runAsk(
 }
 ```
 
-`voice-controller.ts` 的 `runTool` 裡那段「`createAsk` → while 輪詢 → `replace`」換成呼叫它（`POLL_MS` 與本地的 `sleep` 一起刪掉，controller 的輪詢間隔從 500ms 變成 1000ms，這是刻意統一）：
+`voice-controller.ts` 的 `runTool` 裡那段「`createAsk` → while 輪詢 → `replace`」換成呼叫它，並把 controller 裡的 `POLL_MS` 常數與本地的 `sleep` 函式一起刪掉（`run-ask.ts` 已經有自己的一份，間隔同樣是 500ms，語音那條路不會變慢）：
 
 ```ts
       if (!askKind) throw new Error(`沒有這個查詢工具：${call.name}`)
