@@ -215,6 +215,38 @@ def test_a_scope_with_no_path_sees_no_rows_in_the_semantic_layer(engine):
     assert run_readonly(engine, sql, lost).rows == [[0]]
 
 
+def test_a_fifth_level_in_the_org_tree_is_refused_instead_of_leaking_upward():
+    """深度就是共享層級，所以葉節點一定要剛好在第四層（SELF）。
+
+    業務底下再掛一個人的話，他的路徑截到 SELF 剛好等於業務本人的路徑，於是看得到業務的
+    報價、議價卡與客戶檔案——權限往上漏，而且四個 View 與 ORM 兩邊都會這樣。
+    這種樹寧可在灌資料時就炸掉，錯誤訊息要指出是誰。
+    """
+    from app.services.org import paths_from_reports
+
+    flat = {"M01": (None, "TW.N"), "U01": ("M01", None)}
+    assert paths_from_reports({"TW.N"}, flat) == {"M01": "TW.N.M01", "U01": "TW.N.M01.U01"}
+
+    with pytest.raises(ValueError, match="S01"):
+        paths_from_reports({"TW.N"}, flat | {"S01": ("U01", None)})
+
+
+def test_a_level_shallower_than_root_is_a_bug_not_a_wildcard():
+    """level=0 在 Python 這邊截成空字串、誰都看不到，SQL 那邊 subpath(p, 0, 0) 卻是空 ltree、
+    @> 對誰都成立、變成全部看得到。兩邊不一致而且是往放寬的方向，所以在 Python 直接拒收。"""
+    from app.services.scope import ROOT, Scope
+
+    sales = Scope(path="TW.N.M01.U01")
+    assert sales.prefix(ROOT) == "TW"
+    with pytest.raises(ValueError):
+        sales.prefix(0)
+    with pytest.raises(ValueError):
+        sales.can_see(-1, "TW.C.M02.U03")
+    # 不過濾的 scope 也一樣要炸：level 算錯是呼叫端的 bug，不是「剛好沒差」
+    with pytest.raises(ValueError):
+        Scope.everything().prefix(0)
+
+
 def test_org_paths_are_rebuilt_from_the_reporting_line(engine):
     with Session(engine) as session:
         paths = {u.id: u.org_path for u in session.scalars(select(AppUser)).all()}

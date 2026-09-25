@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import AppUser, OrgUnit
+from app.services.scope import SELF
 
 
 def paths_from_reports(
@@ -22,6 +23,10 @@ def paths_from_reports(
     seed.py 灌 app_user 那筆 INSERT 就得帶著算好的 org_path：org_position 約束是一般
     CHECK 約束，Postgres 不支援延遲檢查，沒有「先插入、稍後用 rebuild_org_paths 補上」的空間。
     這裡跟 rebuild_org_paths 共用同一套演算法，只是資料來源換成灌資料前的原始 dict。
+
+    樹最深只到 SELF（第四層）。共享層級就是路徑深度（services/scope.py），多掛一層的人截到
+    SELF 會剛好等於他主管的路徑，於是看得到主管的報價、議價卡與客戶檔案——權限往上漏。
+    整個設計只在「每個葉節點都剛好四層」時成立，所以組織一長出第五層就當場失敗，不要默默灌進去。
     """
     resolved: dict[str, str | None] = {}
 
@@ -40,6 +45,8 @@ def paths_from_reports(
             if above is None:
                 raise ValueError(f"{manager_id} 不在組織裡，{user_id} 的路徑算不出來")
             path = f"{above}.{user_id}"
+        if path is not None and len(path.split(".")) > SELF:
+            raise ValueError(f"{user_id} 的組織路徑 {path} 有 {len(path.split('.'))} 層，最多只能到第 {SELF} 層")
         resolved[user_id] = path
         return path
 
