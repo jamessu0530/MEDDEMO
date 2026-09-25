@@ -279,17 +279,27 @@ def providers() -> dict[str, dict[str, str] | None]:
 
 
 def _new_sales_account(session: Session, name: str, email: str | None, password_hash: str | None) -> AppUser:
-    """自己建立的帳號與第三方登入自動開的帳號：一律是業務，不會是主管；自己名下沒有客戶，看示範業務的。"""
+    """自己建立的帳號與第三方登入自動開的帳號：一律是業務，不會是主管；自己名下沒有客戶，看示範業務的。
+
+    沒有示範業務就不能開帳號：這種帳號不在組織樹上（manager_id、unit_id、org_path 三個都空），
+    org_position 約束要求它一定得代理某個人，少了 acts_as_user_id 就是違反約束。
+    在這裡擋下來，錯誤訊息才講得出真正的原因，不是 commit 時一句看不懂的 IntegrityError。
+    """
     demo = session.get(AppUser, auth.EXTERNAL_ACCOUNT_ACTS_AS)
+    if demo is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"示範帳號 {auth.EXTERNAL_ACCOUNT_ACTS_AS} 不在資料庫裡，現在沒辦法開新帳號，請聯絡管理員",
+        )
     user = AppUser(
         # 工號格式跟公司帳號（U01、M01）分開，一眼看得出是自己開的
         id=f"X{secrets.token_hex(4).upper()}",
         name=name.strip()[:40],
         role="sales",
-        region=demo.region if demo else "",
+        region=demo.region,
         email=email,
         password_hash=password_hash,
-        acts_as_user_id=demo.id if demo else None,
+        acts_as_user_id=demo.id,
     )
     session.add(user)
     session.flush()

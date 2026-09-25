@@ -22,7 +22,7 @@ $$;
 -- 深度：1=全國 TW，2=區 TW.N，3=團隊 TW.N.M01，4=個人 TW.N.M01.U01。
 -- 沒設定就不過濾（評測、背景排程）。current_setting(..., true) 在沒設過時回 NULL，不會報錯
 CREATE FUNCTION app_in_scope(owner_path ltree, share_depth int) RETURNS boolean
-LANGUAGE sql STABLE AS $$
+LANGUAGE sql STABLE SET search_path = public AS $$
   SELECT CASE
     WHEN COALESCE(current_setting('app.scope_path', true), '') = '' THEN true
     ELSE subpath(current_setting('app.scope_path', true)::ltree, 0,

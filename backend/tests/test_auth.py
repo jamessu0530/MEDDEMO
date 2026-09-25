@@ -171,6 +171,25 @@ def test_anyone_can_create_an_account_and_is_signed_in(client, engine):
         _cleanup_registered(engine)
 
 
+def test_registering_without_the_demo_account_says_so_instead_of_blowing_up(client, monkeypatch, engine):
+    """自己開的帳號不在組織樹上，org_position 約束要求它一定要代理某個人。
+
+    示範業務不在資料庫裡時，舊寫法會把 acts_as_user_id 留成 NULL，四個組織欄位全空、違反約束，
+    使用者只會看到 commit 時冒出來的 IntegrityError。現在當場擋下並說明原因。
+    """
+    from app.services import auth as auth_service
+
+    monkeypatch.setattr(auth_service, "EXTERNAL_ACCOUNT_ACTS_AS", "NOBODY")
+    try:
+        refused = client.post(
+            "/api/auth/register", json={"name": "沒有示範業務", "email": "nodemo@register.test", "password": "long-enough-1"}
+        )
+        assert refused.status_code == 503
+        assert "NOBODY" in refused.json()["detail"]
+    finally:
+        _cleanup_registered(engine)
+
+
 def test_company_emails_cannot_be_registered_again(client):
     taken = client.post("/api/auth/register", json={"name": "冒名", "email": "u01@meddemo.tw", "password": "whatever-123"})
     assert taken.status_code == 409
