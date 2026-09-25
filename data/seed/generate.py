@@ -543,8 +543,13 @@ def generate(as_of: date, seed: int = SEED) -> dict[str, list[dict]]:
     password_hash = hash_password(password)
     users = [
         {"id": i, "name": n, "role": r, "region": g,
-         "email": f"{i.lower()}@meddemo.tw", "password_hash": password_hash, "session_version": 1}
-        for i, n, r, g in catalog.USERS
+         "email": f"{i.lower()}@meddemo.tw", "password_hash": password_hash, "session_version": 1,
+         "manager_id": m, "unit_id": u}
+        for i, n, r, g, m, u in catalog.USERS
+    ]
+    org_units = [
+        {"id": i, "name": n, "kind": k, "parent_id": p}
+        for i, n, k, p in catalog.ORG_UNITS
     ]
     products = {
         sku: {"sku": sku, "name": name, "category": cat, "spec": spec, "unit": unit,
@@ -577,6 +582,7 @@ def generate(as_of: date, seed: int = SEED) -> dict[str, list[dict]]:
     customers += extra
 
     return {
+        "org_unit": org_units,
         "app_user": users,
         "product": list(products.values()),
         "customer": customers,

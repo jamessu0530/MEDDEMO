@@ -3,16 +3,26 @@
 名稱全為虛構。康泰連鎖藥局・忠孝店與競品「御松田」沿用原型與需求文件的情境。
 """
 
+# 組織樹的地理層。id 同時就是 ltree 路徑，只能用 ASCII
+ORG_UNITS = [
+    # id, name, kind, parent_id
+    ("TW", "全國", "root", None),
+    ("TW.N", "北區", "region", "TW"),
+    ("TW.C", "中區", "region", "TW"),
+    ("TW.S", "南區", "region", "TW"),
+]
+
 USERS = [
-    # id, name, role, region
-    ("U01", "林昱辰", "sales", "北區"),
-    ("U02", "王冠宇", "sales", "北區"),
-    ("U03", "黃怡君", "sales", "中區"),
-    ("U04", "吳承翰", "sales", "南區"),
-    ("U05", "李佳蓉", "sales", "南區"),
-    ("M01", "陳建宏", "manager", "北區"),
-    ("M02", "張淑芬", "manager", "中區"),
-    ("M03", "許文彬", "manager", "南區"),
+    # id, name, role, region, manager_id, unit_id
+    # 經理掛在地理節點上，業務掛在經理底下；org_path 由 services/org.py 算出來
+    ("U01", "林昱辰", "sales", "北區", "M01", None),
+    ("U02", "王冠宇", "sales", "北區", "M01", None),
+    ("U03", "黃怡君", "sales", "中區", "M02", None),
+    ("U04", "吳承翰", "sales", "南區", "M03", None),
+    ("U05", "李佳蓉", "sales", "南區", "M03", None),
+    ("M01", "陳建宏", "manager", "北區", None, "TW.N"),
+    ("M02", "張淑芬", "manager", "中區", None, "TW.C"),
+    ("M03", "許文彬", "manager", "南區", None, "TW.S"),
 ]
 
 DEMO_USER_ID = "U01"

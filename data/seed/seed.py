@@ -21,12 +21,14 @@ from app import models
 from app.db import make_engine, reset_schema, schema_version
 from app.embeddings import optional_embedder
 from app.services.documents import index_documents
+from app.services.org import paths_from_reports, rebuild_org_paths
 
 # 決賽日。評測題庫的標準答案以這一天為「今天」計算
 DEFAULT_AS_OF = date(2026, 10, 28)
 
 # 依外鍵相依的順序寫入
 TABLES = [
+    ("org_unit", models.OrgUnit),
     ("app_user", models.AppUser),
     ("product", models.Product),
     ("customer", models.Customer),
@@ -51,7 +53,20 @@ def seed(url: str | None, as_of: date) -> dict[str, int]:
             models.AppSetting(key="schema_version", value=schema_version()),
         ])
         for name, model in TABLES:
-            session.execute(insert(model), data[name])
+            rows = data[name]
+            if name == "app_user":
+                # org_position 約束是一般 CHECK 約束，Postgres 不支援延遲檢查：
+                # manager_id／unit_id 有值的那一列，org_path 得在同一筆 INSERT 就一起帶著，
+                # 沒有「先插入、稍後用 rebuild_org_paths 補上」的空間，所以先在寫入前算好路徑
+                unit_ids = {u["id"] for u in data["org_unit"]}
+                reports = {u["id"]: (u["manager_id"], u["unit_id"]) for u in rows}
+                paths = paths_from_reports(unit_ids, reports)
+                rows = [{**u, "org_path": paths[u["id"]]} for u in rows]
+                # manager_id 指向同一張表：經理要先寫進去，業務那幾列的外鍵才成立
+                rows.sort(key=lambda u: u["manager_id"] is not None)
+            session.execute(insert(model), rows)
+        # 跟 services/org.py 的演算法核對一次：未來透過管理介面改組織架構時，也是呼叫這個函式重算
+        rebuild_org_paths(session)
         # 歷史出差單當已核准：請求者與區處主管兩關都過，申請匣才不會被幾千張舊單塞滿
         session.execute(text("""
             INSERT INTO oa_approval_step (form_id, step_no, role_label, user_id, title, status, acted_at)

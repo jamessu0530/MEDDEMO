@@ -4,6 +4,7 @@ import datetime as dt
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.asks import mentioned_customers
@@ -84,3 +85,18 @@ def test_the_org_tree_is_stored_as_ltree_paths(engine):
             WHERE a.attrelid = 'app_user'::regclass AND a.attname = 'org_path'
         """)).scalar()
         assert kind == "ltree"
+
+
+def test_org_paths_are_rebuilt_from_the_reporting_line(engine):
+    with Session(engine) as session:
+        paths = {u.id: u.org_path for u in session.scalars(select(AppUser)).all()}
+    assert paths == {
+        "U01": "TW.N.M01.U01",
+        "U02": "TW.N.M01.U02",
+        "U03": "TW.C.M02.U03",
+        "U04": "TW.S.M03.U04",
+        "U05": "TW.S.M03.U05",
+        "M01": "TW.N.M01",
+        "M02": "TW.C.M02",
+        "M03": "TW.S.M03",
+    }
