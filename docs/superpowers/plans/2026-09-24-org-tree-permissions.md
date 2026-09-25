@@ -658,103 +658,23 @@ import 改成 `from app.services.scope import SELF, Scope, owner_path`。
     owner = Scope.for_user(user).acting_user_id
 ```
 
-- [ ] **Step 8: 讓舊的語意層暫時還能跑**
+- [ ] **Step 8: 語意層同步換成 ltree，深度一律先用 4**
 
-`backend/app/services/sql_executor.py` 這一 task 先不改 SQL 設定名稱（Task 4 才改），但 `Scope` 已經沒有 `owner_id`／`region` 了。把第 64-68 行暫時改成：
+語意層要跟 `Scope` 在**同一個 commit** 裡換掉。分開換會留下一個過濾失效的 commit——數字查詢代理讀得到全國資料。
+
+先改 `backend/app/services/sql_executor.py`，只塞一個設定：
 
 ```python
-            # Task 4 會把語意層換成 app.scope_path；在那之前先讓既有的兩個設定收到空值（不過濾）
+            # 範圍在切成唯讀角色之前設好；第三個參數 true 代表只在這個交易有效，交易結束就還原
             conn.execute(
-                text("SELECT set_config('app.scope_owner', '', true), set_config('app.scope_region', '', true)"),
+                text("SELECT set_config('app.scope_path', :path, true)"),
+                {"path": scope.path or ""},
             )
 ```
 
-**這會讓 `test_data_queries_only_see_the_askers_customers` 暫時失敗。** 把那個測試標上 `@pytest.mark.skip(reason="Task 4 換成 app.scope_path 之後改寫")`，Task 4 再拿掉。
+並更新上面 `SETTING_FUNCTIONS` 的註解，把 `app.scope_owner／app.scope_region` 改成 `app.scope_path`。
 
-- [ ] **Step 9: 跑全部測試**
-
-Run: `uv run --project backend pytest backend/tests -q`
-Expected: 全部通過，只有一個 skip。特別確認這四個斷言仍然成立（M01 的 SELF 截到 `TW.N.M01`，涵蓋 U01、U02）：
-
-```
-客戶 C002（U02 的）：U01 → 404、U02 → 200、M01 → 200、M02 → 404
-```
-
-- [ ] **Step 10: Commit**
-
-```bash
-git add backend/app/services/scope.py backend/app/api/customers.py backend/app/api/visits.py backend/app/api/asks.py backend/app/api/transcription.py backend/app/services/oa.py backend/app/services/sql_executor.py backend/tests/test_scope.py
-git commit -m "$(cat <<'EOF'
-Filter by position in the org tree instead of owner and region
-
-Pure refactor: every call site asks for the SELF level, which matches
-today's behaviour because a manager's path is short enough to cover
-their reports.
-
-Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
-EOF
-)"
-```
-
----
-
-#### Part B：語意層放寬銷售數字到同區
-
-**Files:**
-- Modify: `backend/app/sql/semantic_layer.sql`（`app_in_scope`、四個 View、GRANT）
-- Modify: `backend/app/services/sql_executor.py:64-68`
-- Test: `backend/tests/test_scope.py`
-
-**Interfaces:**
-- Consumes: Part A 的 `Scope.path`
-- Produces: SQL 函式 `app_in_scope(owner_path ltree, share_depth int) -> boolean`；交易設定 `app.scope_path`
-
-- [ ] **Step 1: 寫失敗的測試**
-
-把 Task 3 標了 skip 的 `test_data_queries_only_see_the_askers_customers` 換成這兩個（拿掉 skip 標記）：
-
-```python
-def test_sales_figures_stop_at_the_region(engine):
-    sql = "SELECT count(DISTINCT customer_id) FROM v_customer_summary"
-    assert run_readonly(engine, sql).rows == [[250]]
-    # U01 在 REGION 層級看得到整個北區，不只自己的 50 家
-    assert run_readonly(engine, sql, Scope(path="TW.N.M01.U01")).rows == [[100]]
-    assert run_readonly(engine, sql, Scope(path="TW.N.M01")).rows == [[100]]
-    assert run_readonly(engine, sql, Scope(path="TW.C.M02.U03")).rows == [[50]]
-    for view in ("v_monthly_sales", "v_margin_breakdown"):
-        rows = run_readonly(engine, f"SELECT count(DISTINCT customer_id) FROM {view}", Scope(path="TW.N.M01.U01")).rows
-        assert rows[0][0] <= 100
-
-
-def test_visit_records_stop_at_the_team(engine):
-    sql = "SELECT count(DISTINCT rep_id) FROM v_visit_signal"
-    # 同一個團隊（U01 與 U02）看得到彼此的拜訪，看不到別區的
-    assert run_readonly(engine, sql, Scope(path="TW.N.M01.U01")).rows == [[2]]
-    assert run_readonly(engine, sql, Scope(path="TW.C.M02.U03")).rows == [[1]]
-```
-
-並把 `test_the_model_cannot_lift_the_filter` 裡的設定名稱從 `app.scope_owner` 換成 `app.scope_path`、`Scope(owner_id="U01")` 換成 `Scope(path="TW.N.M01.U01")`：
-
-```python
-def test_the_model_cannot_lift_the_filter(engine):
-    scope = Scope(path="TW.N.M01.U01")
-    with pytest.raises(QueryRejected):
-        run_readonly(engine, "SELECT set_config('app.scope_path', '', true)", scope)
-    # 文字檢查擋不住 Unicode 跳脫的函式名稱，要靠資料庫收回的權限擋下
-    sneaky = """WITH x AS (SELECT U&"set\\005fconfig"('app.scope_path', '', true))
-                SELECT (SELECT count(*) FROM x), count(DISTINCT customer_id) FROM v_customer_summary"""
-    with pytest.raises(Exception, match="permission denied"):
-        run_readonly(engine, sneaky, scope)
-```
-
-- [ ] **Step 2: 跑測試確認它失敗**
-
-Run: `uv run --project backend pytest backend/tests/test_scope.py -k "sales_figures or visit_records or cannot_lift" -v`
-Expected: FAIL
-
-- [ ] **Step 3: 換掉 app_in_scope**
-
-`backend/app/sql/semantic_layer.sql`，把現有的註解與函式（`-- 資料權限……` 到 `$$;`）換成：
+再改 `backend/app/sql/semantic_layer.sql`。把現有的註解與 `app_in_scope` 函式（`-- 資料權限……` 到 `$$;`）整段換成：
 
 ```sql
 -- 資料權限（backend/app/services/scope.py）：組織是一棵樹，每個人有一條路徑，
@@ -778,9 +698,116 @@ LANGUAGE sql STABLE AS $$
 $$;
 ```
 
-- [ ] **Step 4: 四個 View 各自宣告深度**
+最下面的 `GRANT EXECUTE ON FUNCTION app_in_scope(text, text) TO semantic_reader;` 改成 `app_in_scope(ltree, int)`。（`REVOKE EXECUTE ON FUNCTION pg_catalog.set_config` 那兩行**完全不動**——設定改名不影響那道防線。）
 
-`v_monthly_sales`：`FROM sales_transaction t` 底下的 join 區加一行，`WHERE` 換掉。
+四個 View 的 `WHERE` 改成呼叫新函式，**深度一律先填 `4`**，並補上需要的 join：
+
+| View | join 到的 `app_user` | 這一步的深度 |
+|---|---|---|
+| `v_monthly_sales` | 新增 `JOIN app_user owner ON owner.id = c.owner_user_id` | `app_in_scope(owner.org_path, 4)` |
+| `v_customer_summary` | 已有 `u`（客戶負責人） | `app_in_scope(u.org_path, 4)` |
+| `v_visit_signal` | 已有 `u`（做拜訪的業務 `v.user_id`） | `app_in_scope(u.org_path, 4)` |
+| `v_margin_breakdown` | 新增 `JOIN app_user owner ON owner.id = c.owner_user_id` | `app_in_scope(owner.org_path, 4)` |
+
+深度 4 在現有假資料下與今天等價：U01 的 SELF 就是自己的 50 家，M01 的路徑只有三層截不動，還是涵蓋北區那 100 家。Part B 才放寬。
+
+**`org_path` 一律只出現在 `WHERE`，不進 `SELECT`**：`describe_views()` 餵給模型的欄位清單裡看不到它，過濾對模型維持隱形。
+
+- [ ] **Step 9: 只改測試裡的 Scope 建構方式，數字不動**
+
+`test_data_queries_only_see_the_askers_customers` 與 `test_the_model_cannot_lift_the_filter` 用的是已經不存在的 `Scope(owner_id=...)`／`Scope(region=...)`。改成路徑，**期望的數字一個都不要改**——改了就代表行為變了，那是 Part B 的事：
+
+```python
+def test_data_queries_only_see_the_askers_customers(engine):
+    sql = "SELECT count(DISTINCT customer_id) FROM v_customer_summary"
+    assert run_readonly(engine, sql).rows == [[250]]
+    assert run_readonly(engine, sql, Scope(path="TW.N.M01.U01")).rows == [[50]]
+    assert run_readonly(engine, sql, Scope(path="TW.N.M01")).rows == [[100]]
+    # 四個 View 都有過濾
+    for view in ("v_monthly_sales", "v_visit_signal", "v_margin_breakdown"):
+        owners = run_readonly(engine, f"SELECT count(DISTINCT customer_id) FROM {view}", Scope(path="TW.N.M01.U01")).rows
+        assert owners[0][0] <= 50
+```
+
+`test_the_model_cannot_lift_the_filter` 裡把 `Scope(owner_id="U01")` 換成 `Scope(path="TW.N.M01.U01")`，兩處 `'app.scope_owner'` 字串換成 `'app.scope_path'`，其餘不動。
+
+- [ ] **Step 10: 跑全部測試**
+
+Run: `uv run --project backend pytest backend/tests -q`
+Expected: 全部通過，**沒有任何 skip，也沒有任何期望值被改小**。特別確認這四個斷言仍然成立（M01 的 SELF 截到 `TW.N.M01`，涵蓋 U01、U02）：
+
+```
+客戶 C002（U02 的）：U01 → 404、U02 → 200、M01 → 200、M02 → 404
+```
+
+- [ ] **Step 11: Commit**
+
+```bash
+git add backend/app/services/scope.py backend/app/api/customers.py backend/app/api/visits.py backend/app/api/asks.py backend/app/api/transcription.py backend/app/services/oa.py backend/app/services/sql_executor.py backend/app/sql/semantic_layer.sql backend/tests/test_scope.py
+git commit -m "$(cat <<'EOF'
+Filter by position in the org tree instead of owner and region
+
+Pure refactor across the ORM and the semantic layer at once: every call
+site and every view asks for the SELF level, which matches today's
+behaviour because a manager's path is short enough to cover their
+reports. Switching them separately would leave a commit where data
+queries are unfiltered.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+EOF
+)"
+```
+
+---
+
+#### Part B：把銷售數字放寬到同區、拜訪紀錄放寬到團隊
+
+Part A 已經把語意層換成 ltree、join 補好、深度填成 `4`。這一部分**只改那四個深度數字與對應的測試**。
+
+**Files:**
+- Modify: `backend/app/sql/semantic_layer.sql`（只有四個深度常數）
+- Test: `backend/tests/test_scope.py`
+
+**Interfaces:**
+- Consumes: Part A 的 `app_in_scope(ltree, int)` 與 `app.scope_path`
+- Produces: 無新介面
+
+- [ ] **Step 1: 寫失敗的測試**
+
+把 Part A 改過的 `test_data_queries_only_see_the_askers_customers` 換成這兩個（行為現在要變了，期望值跟著變）：
+
+```python
+def test_sales_figures_stop_at_the_region(engine):
+    sql = "SELECT count(DISTINCT customer_id) FROM v_customer_summary"
+    assert run_readonly(engine, sql).rows == [[250]]
+    # U01 在 REGION 層級看得到整個北區，不只自己的 50 家
+    assert run_readonly(engine, sql, Scope(path="TW.N.M01.U01")).rows == [[100]]
+    assert run_readonly(engine, sql, Scope(path="TW.N.M01")).rows == [[100]]
+    assert run_readonly(engine, sql, Scope(path="TW.C.M02.U03")).rows == [[50]]
+    for view in ("v_monthly_sales", "v_margin_breakdown"):
+        rows = run_readonly(engine, f"SELECT count(DISTINCT customer_id) FROM {view}", Scope(path="TW.N.M01.U01")).rows
+        assert rows[0][0] <= 100
+
+
+def test_visit_records_stop_at_the_team(engine):
+    sql = "SELECT count(DISTINCT rep_id) FROM v_visit_signal"
+    # 同一個團隊（U01 與 U02）看得到彼此的拜訪，看不到別區的
+    assert run_readonly(engine, sql, Scope(path="TW.N.M01.U01")).rows == [[2]]
+    assert run_readonly(engine, sql, Scope(path="TW.C.M02.U03")).rows == [[1]]
+```
+
+`test_the_model_cannot_lift_the_filter` 在 Part A 已經改好了，**這一部分不要再動它**——它驗的是「唯讀角色改不了 `app.scope_path`」，與深度無關，放寬層級之後必須原樣通過。
+
+- [ ] **Step 2: 跑測試確認它失敗**
+
+Run: `uv run --project backend pytest backend/tests/test_scope.py -k "sales_figures or visit_records" -v`
+Expected: FAIL
+
+- [ ] **Step 3: 把四個 View 的深度常數改掉**
+
+Part A 已經補好 join、深度填成 `4`。這一步**只改那四個深度數字與它們的註解**，join 與其他任何東西都不要動。
+
+`v_monthly_sales`：
 
 ```sql
 FROM sales_transaction t
@@ -817,31 +844,7 @@ GROUP BY 1, 2, 3, 4, 5, 6, 7;
 
 **`org_path` 一律只出現在 `WHERE`，不進 `SELECT`**：`describe_views()` 餵給模型的欄位清單裡看不到它，過濾對模型維持隱形。
 
-- [ ] **Step 5: 改 GRANT 的簽章**
-
-`backend/app/sql/semantic_layer.sql` 最下面：
-
-```sql
-GRANT EXECUTE ON FUNCTION app_in_scope(ltree, int) TO semantic_reader;
-```
-
-（`REVOKE EXECUTE ON FUNCTION pg_catalog.set_config` 那兩行完全不動——設定改名不影響那道防線。）
-
-- [ ] **Step 6: 改 sql_executor 塞的設定**
-
-`backend/app/services/sql_executor.py`，把 Task 3 留下的暫時版本換成：
-
-```python
-            # 範圍在切成唯讀角色之前設好；第三個參數 true 代表只在這個交易有效，交易結束就還原
-            conn.execute(
-                text("SELECT set_config('app.scope_path', :path, true)"),
-                {"path": scope.path or ""},
-            )
-```
-
-並更新上面 `SETTING_FUNCTIONS` 的註解，把 `app.scope_owner／app.scope_region` 改成 `app.scope_path`。
-
-- [ ] **Step 7: 重灌資料並跑測試**
+- [ ] **Step 4: 重灌資料並跑測試**
 
 ```bash
 uv run --project backend python data/seed/seed.py
@@ -849,20 +852,21 @@ uv run --project backend pytest backend/tests/test_scope.py -v
 ```
 Expected: PASS
 
-- [ ] **Step 8: 跑全部測試**
+- [ ] **Step 5: 跑全部測試**
 
 Run: `uv run --project backend pytest backend/tests -q`
 Expected: 全部通過。`test_asks.py`、`test_eval_*` 若有斷言依賴「只看得到自己 50 家」的數字，要跟著改成同區的數字——**改測試前先確認新數字是對的，不要為了讓測試綠而改斷言**。
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add backend/app/sql/semantic_layer.sql backend/app/services/sql_executor.py backend/tests/test_scope.py
+git add backend/app/sql/semantic_layer.sql backend/tests/test_scope.py
 git commit -m "$(cat <<'EOF'
-Filter the semantic layer by org path and share figures region-wide
+Share sales figures region-wide and visits team-wide
 
-Each view declares its own sharing depth. org_path stays out of every
-SELECT list, so the filter remains invisible to the model writing SQL.
+Only the four depth constants move. The mechanism landed in the previous
+commit with behaviour held identical, so this diff is the behaviour
+change on its own.
 
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
 EOF
