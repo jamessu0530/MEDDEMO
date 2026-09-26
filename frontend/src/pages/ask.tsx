@@ -46,7 +46,9 @@ export function AskPage() {
   // React 的 lazy 會把失敗的那一次記在元件身上，之後只會再丟同一個錯；要讓「請稍後再試」是真的，重試就得換一顆新的
   const [VoiceDock, setVoiceDock] = useState(() => lazy(loadVoiceDock))
   // 語音的失敗與掛斷說明放在頁面上，不放 dock 裡：dock 會在收起時整個卸載，訊息要留得住才看得到
-  const [notice, setNotice] = useState<string | null>(null)
+  // retryByReload：語音那一包載不下來時才有。瀏覽器會把失敗的動態 import 記在 module map 裡，
+  // 同一個網址再 import 會直接失敗而不重抓，所以唯一真的能再試一次的方法是重新整理
+  const [notice, setNotice] = useState<{ text: string; retryByReload?: boolean } | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const polls = useRef(new AbortController())
   const mode = MODES.find((m) => m.kind === kind)!
@@ -102,10 +104,12 @@ export function AskPage() {
     setVoiceOn(false)
     setNotice(null)
   }
-  // 語音那一包載不下來：收掉語音、把原因寫在 notice 上，打字那條路完全不受影響
+  // 語音那一包載不下來：收掉語音、把原因寫在 notice 上，打字那條路完全不受影響。
+  // 換一個新的 lazy 只救得了「失敗發生在 Vite 的 preload 輔助程式」那一種；模組本身抓失敗的話，
+  // 瀏覽器已經記住了，所以按鈕給的是重新整理，不是假裝再試一次
   const failVoice = () => {
     setVoiceOn(false)
-    setNotice("語音載入失敗，請稍後再試")
+    setNotice({ text: "語音載入失敗。要再試一次得重新整理頁面，打字問到一半的內容會清空。", retryByReload: true })
     setVoiceDock(() => lazy(loadVoiceDock))
   }
 
@@ -135,8 +139,10 @@ export function AskPage() {
         )}
       </header>
 
-      {/* 底部那條現在是語音 dock 與輸入框上下疊著（56 + 6 + 44），加上內距與導覽列約 178px，留到 192px 才不會蓋住最後一格 */}
-      <main className="flex flex-1 flex-col gap-4 px-4 pt-4 pb-48">
+      {/* 底部最高的那個狀態是 dock（56）＋查詢範圍那行（17）＋輸入框（44），中間兩個 6px 間距，
+          加上 py-2 的 16、border 的 1 與導覽列的 56，約 202px。留到 208px 才不會蓋住最後一格。
+          會同時出現是因為查詢範圍那行看的是 session 而不是 voiceOn：連線中與斷線後 dock 還在，但送出走的是打字那條路 */}
+      <main className="flex flex-1 flex-col gap-4 px-4 pt-4 pb-52">
         {entries.length === 0 && !voiceOn && (
           <div className="flex flex-col gap-2">
             <p className="text-sm text-muted-foreground">可以這樣問，或按右下角的麥克風用說的：</p>
@@ -155,8 +161,16 @@ export function AskPage() {
         {entries.map((entry) => (
           <EntryView key={entry.id} entry={entry} onAskChange={replaceAsk} />
         ))}
-        {/* 重試的按鈕就在下面 dock 的「重新開始」，這裡只說原因，不再放第二顆 */}
-        {notice && <Notice text={notice} />}
+        {/* 語音會話的訊息不放按鈕：重試就在下面 dock 的「重新開始」。
+            但整包載不下來時沒有 dock，那一種才自己帶重新整理 */}
+        {notice && (
+          <Notice
+            text={notice.text}
+            action={
+              notice.retryByReload ? { label: "重新整理", onClick: () => window.location.reload() } : undefined
+            }
+          />
+        )}
         <div ref={bottomRef} />
       </main>
 
@@ -171,7 +185,7 @@ export function AskPage() {
                 </Button>
               }
             >
-              <VoiceDock conversation={conversation} onClose={closeVoice} onSession={setSession} onNotice={setNotice} />
+              <VoiceDock conversation={conversation} onClose={closeVoice} onSession={setSession} onNotice={(text) => setNotice(text ? { text } : null)} />
             </Suspense>
           </VoiceBoundary>
         )}
