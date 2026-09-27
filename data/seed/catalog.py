@@ -13,16 +13,19 @@ ORG_UNITS = [
 ]
 
 USERS = [
-    # id, name, role, region, manager_id, unit_id
+    # id, name, role, region, manager_id, unit_id, email（None 就用工號小寫加網域）
     # 經理掛在地理節點上，業務掛在經理底下；org_path 由 services/org.py 算出來
-    ("U01", "林昱辰", "sales", "北區", "M01", None),
-    ("U02", "王冠宇", "sales", "北區", "M01", None),
-    ("U03", "黃怡君", "sales", "中區", "M02", None),
-    ("U04", "吳承翰", "sales", "南區", "M03", None),
-    ("U05", "李佳蓉", "sales", "南區", "M03", None),
-    ("M01", "陳建宏", "manager", "北區", None, "TW.N"),
-    ("M02", "張淑芬", "manager", "中區", None, "TW.C"),
-    ("M03", "許文彬", "manager", "南區", None, "TW.S"),
+    ("U01", "林昱辰", "sales", "北區", "M04", None, None),
+    ("U02", "王冠宇", "sales", "北區", "M04", None, None),
+    ("U03", "黃怡君", "sales", "中區", "M02", None, None),
+    ("U04", "吳承翰", "sales", "南區", "M03", None, None),
+    ("U05", "李佳蓉", "sales", "南區", "M03", None, None),
+    ("M01", "陳建宏", "manager", "北區", None, "TW.N", None),
+    ("M02", "張淑芬", "manager", "中區", None, "TW.C", None),
+    ("M03", "許文彬", "manager", "南區", None, "TW.S", None),
+    # 開發者自己的帳號，接手北區這一隊。用自己的信箱才能在展示時登入看主管端；
+    # 陳建宏留著但沒有屬下，所以風險通報與 OA 簽核仍然歸他（那兩處都取該區工號最小的主管）
+    ("M04", "James", "manager", "北區", None, "TW.N", "jamessu2026@gmail.com"),
 ]
 
 DEMO_USER_ID = "U01"

@@ -78,7 +78,11 @@ def seed(url: str | None, as_of: date) -> dict[str, int]:
             SELECT o.id, 2, '經辦人的主管', m.id, '區處主管', 'done', o.created_at
             FROM oa_expense_form o
             JOIN customer c ON c.id = o.customer_id
-            JOIN app_user m ON m.role = 'manager' AND m.region = c.region
+            -- 一個區可能有不只一位主管，所以要挑一位，而且要跟 App 挑的是同一位
+            -- （services/oa.py 與 services/risk.py 都取該區工號最小的），否則歷史簽核會對不上現在的行為
+            JOIN LATERAL (
+              SELECT id FROM app_user WHERE role = 'manager' AND region = c.region ORDER BY id LIMIT 1
+            ) m ON true
         """))
         session.execute(text("""
             INSERT INTO oa_activity (form_id, action, actor_id, detail, created_at)
@@ -90,7 +94,11 @@ def seed(url: str | None, as_of: date) -> dict[str, int]:
             SELECT o.id, 'approved', m.id, '簽核者', o.created_at
             FROM oa_expense_form o
             JOIN customer c ON c.id = o.customer_id
-            JOIN app_user m ON m.role = 'manager' AND m.region = c.region
+            -- 一個區可能有不只一位主管，所以要挑一位，而且要跟 App 挑的是同一位
+            -- （services/oa.py 與 services/risk.py 都取該區工號最小的），否則歷史簽核會對不上現在的行為
+            JOIN LATERAL (
+              SELECT id FROM app_user WHERE role = 'manager' AND region = c.region ORDER BY id LIMIT 1
+            ) m ON true
         """))
         # 假資料的拜訪編號是直接指定的，序號要接在後面，新拜訪才不會撞號
         session.execute(text("SELECT setval('visit_seq', :n)"), {"n": len(data["visit"])})

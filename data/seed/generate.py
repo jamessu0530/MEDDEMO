@@ -543,9 +543,9 @@ def generate(as_of: date, seed: int = SEED) -> dict[str, list[dict]]:
     password_hash = hash_password(password)
     users = [
         {"id": i, "name": n, "role": r, "region": g,
-         "email": f"{i.lower()}@meddemo.tw", "password_hash": password_hash, "session_version": 1,
+         "email": e or f"{i.lower()}@meddemo.tw", "password_hash": password_hash, "session_version": 1,
          "manager_id": m, "unit_id": u}
-        for i, n, r, g, m, u in catalog.USERS
+        for i, n, r, g, m, u, e in catalog.USERS
     ]
     org_units = [
         {"id": i, "name": n, "kind": k, "parent_id": p}
