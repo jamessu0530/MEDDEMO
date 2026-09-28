@@ -247,3 +247,32 @@ def test_promotion_products_have_no_sales_history(db):
         SELECT count(*) FROM sales_transaction t
         WHERE t.sku IN (SELECT sku FROM promotion_item)
     """)[0][0] == 0
+
+
+def test_every_customer_sits_on_a_place_in_its_own_region(db):
+    # 縣市一個地點，台北市客戶多，拆成十二個行政區；每個地點都有客戶
+    by_place = dict(rows(db, "SELECT p.name, count(*) FROM customer c JOIN place p ON p.id = c.place_id GROUP BY 1"))
+    assert len(by_place) == 17
+    assert by_place["台北市・大安區"] > 0 and by_place["新北市"] > 0
+    # 地點所在的區就是客戶的區；台北市的客戶一定對到行政區，其他縣市就是縣市本身
+    assert rows(db, """
+        SELECT c.name FROM customer c
+        JOIN place p ON p.id = c.place_id
+        JOIN org_unit u ON u.id = p.unit_id
+        WHERE u.name <> c.region
+           OR (c.city = '台北市' AND p.name NOT LIKE '台北市・%')
+           OR (c.city <> '台北市' AND p.name <> c.city)
+    """) == []
+    # 連鎖分店與「長春」這種不是行政區名稱的地區，照對照表放
+    places = dict(rows(db, "SELECT c.name, p.name FROM customer c JOIN place p ON p.id = c.place_id"))
+    assert places["康泰連鎖藥局 · 忠孝店"] == "台北市・大安區"
+    assert places["福安連鎖藥局 · 西門店"] == "台北市・萬華區"
+    assert places["家家藥局 · 長春"] == "台北市・中山區"
+
+
+def test_a_taipei_customer_without_a_district_fails_loudly():
+    with pytest.raises(ValueError, match="測試藥局 · 天龍"):
+        generate.place_of("測試藥局 · 天龍", "independent", "台北市", "天龍")
+    with pytest.raises(ValueError, match="康泰連鎖藥局 · 新開店"):
+        generate.place_of("康泰連鎖藥局 · 新開店", "chain", "台北市", "新開店")
+    assert generate.place_of("德安藥局 · 逢甲", "independent", "台中市", "逢甲") == "TXG"

@@ -180,22 +180,42 @@ def scripted_date(as_of: date, days_ago: int) -> date:
     return d - timedelta(days=max(0, d.weekday() - 4))
 
 
+PLACE_BY_NAME = {name: place_id for place_id, name, _ in catalog.PLACES}
+
+
 def customer_specs(chains, independents, clinics):
+    """(名稱, 類型, 連鎖體系, 區處, 城市, 地區)。地區是連鎖的分店名、其他客戶名稱裡的地區，用來對到地點"""
     specs = []
     for group, region, branches in chains:
         for branch, city in branches:
-            specs.append((f"{group} · {branch}", "chain", group, region, city))
+            specs.append((f"{group} · {branch}", "chain", group, region, city, branch))
     for name, area, region, city in independents:
-        specs.append((f"{name} · {area}", "independent", None, region, city))
+        specs.append((f"{name} · {area}", "independent", None, region, city, area))
     for name, area, region, city in clinics:
-        specs.append((f"{name} · {area}", "clinic", None, region, city))
+        specs.append((f"{name} · {area}", "clinic", None, region, city, area))
     return specs
+
+
+def place_of(name: str, type_: str, city: str, area: str) -> str:
+    """客戶所在的地點（catalog.PLACES 的 id）：台北市對到行政區，其他縣市就是縣市本身。
+    對不到就直接失敗並點名是哪一家：地點決定討論串掛在哪、整區誰看得到，不能默默放錯。"""
+    if city == "台北市":
+        if type_ == "chain":
+            district = catalog.TAIPEI_BRANCH_DISTRICT.get(area)
+        else:
+            district = catalog.TAIPEI_AREA_DISTRICT.get(area, area)
+        place = PLACE_BY_NAME.get(f"台北市・{district}區")
+    else:
+        place = PLACE_BY_NAME.get(city)
+    if place is None:
+        raise ValueError(f"{name} 對不到地點（{city}・{area}），請在 catalog.py 的台北市對照表補上")
+    return place
 
 
 def build_customers(rng, as_of, specs, assigned, first_id=1):
     """同一區的客戶由該區業務輪流負責；assigned 記每一區已經分了幾家，補客戶時接著輪。"""
     customers = []
-    for i, (name, type_, group, region, city) in enumerate(specs, start=first_id):
+    for i, (name, type_, group, region, city, area) in enumerate(specs, start=first_id):
         owners = catalog.REGION_SALES[region]
         owner = owners[assigned[region] % len(owners)]
         assigned[region] += 1
@@ -209,7 +229,7 @@ def build_customers(rng, as_of, specs, assigned, first_id=1):
         contract_end = as_of + timedelta(days=rng.randint(20, 400)) if has_contract else None
         customers.append({
             "id": f"C{i:03d}", "name": name, "type": type_, "chain_group": group,
-            "region": region, "city": city, "grade": grade,
+            "region": region, "city": city, "place_id": place_of(name, type_, city, area), "grade": grade,
             "contract_end_date": contract_end, "owner_user_id": owner,
         })
     return customers
@@ -593,6 +613,7 @@ def generate(as_of: date, seed: int = SEED) -> dict[str, list[dict]]:
         {"id": i, "name": n, "kind": k, "parent_id": p}
         for i, n, k, p in catalog.ORG_UNITS
     ]
+    places = [{"id": i, "name": n, "unit_id": u} for i, n, u in catalog.PLACES]
     products = {
         sku: {"sku": sku, "name": name, "category": cat, "spec": spec, "unit": unit,
               "unit_price": price, "unit_cost": cost, "aliases": aliases}
@@ -633,6 +654,7 @@ def generate(as_of: date, seed: int = SEED) -> dict[str, list[dict]]:
 
     return {
         "org_unit": org_units,
+        "place": places,
         "app_user": users,
         "product": list(products.values()) + promo_products,
         "promotion": promotions,

@@ -29,6 +29,7 @@ DEFAULT_AS_OF = date(2026, 10, 28)
 # 依外鍵相依的順序寫入
 TABLES = [
     ("org_unit", models.OrgUnit),
+    ("place", models.Place),
     ("app_user", models.AppUser),
     ("product", models.Product),
     ("promotion", models.Promotion),

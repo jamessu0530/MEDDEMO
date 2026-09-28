@@ -190,6 +190,18 @@ class UserIdentity(Base):
     created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
 
 
+class Place(Base):
+    """地點頻道的範圍：縣市，台北市客戶多，細分到行政區（services/channels.py）。
+    客戶掛在一個地點上，地點掛在一個區上：整區的人看得到這個地點的頻道與底下的客戶討論串。
+    id 只用 ASCII（'TPE-DA'、'NTPC'），網址與約束訊息裡比較好認。"""
+
+    __tablename__ = "place"
+
+    id: Mapped[str] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(unique=True)
+    unit_id: Mapped[str] = mapped_column(ForeignKey("org_unit.id"))
+
+
 class Customer(Base):
     __tablename__ = "customer"
     __table_args__ = (
@@ -204,6 +216,8 @@ class Customer(Base):
     chain_group: Mapped[str | None]
     region: Mapped[str]
     city: Mapped[str]
+    # 地點（縣市，台北市到行政區）：客戶討論串掛在這裡。city 保留，今日路線與語意層照舊用它
+    place_id: Mapped[str] = mapped_column(ForeignKey("place.id"))
     grade: Mapped[str]
     contract_end_date: Mapped[dt.date | None]
     owner_user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id"))
