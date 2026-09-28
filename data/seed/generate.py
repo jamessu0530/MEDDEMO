@@ -1,7 +1,8 @@
 """依固定亂數種子產生假資料。as_of 與種子相同時，產出的每一筆都相同。
 
 所有日期都從 as_of 往前推。換 as_of 會連拜訪日期與內容一起變（拜訪只排平日），
-評測題庫的標準答案要用同一個 as_of 產生的資料計算。
+評測題庫的標準答案要用同一個 as_of 產生的資料計算。例外是促銷方案：照搬的那一期是真實方案，
+固定在 2026 年 8 月，換 as_of 只會改變模擬到哪個月。
 
 亂數分三條：原本 80 家客戶與交易、補的 170 家客戶與交易、拜訪各用一條。
 改其中一段不會連帶改到另一段，例如重排拜訪時，交易金額與帳款一筆都不會變。
@@ -533,6 +534,46 @@ def build_visits(rng, customers, baskets, products, as_of, transactions, receiva
     return tables
 
 
+# 真實品項沒有成本資料，照虛構品項的成本率（約六成）估，毛利相關的欄位才不會是空的
+PROMO_COST_RATIO = 0.6
+
+
+def build_promotions(as_of):
+    """CYH 的 202608 那一期照搬，之後每個月模擬一期到 as_of 那個月，決賽日才有一期「進行中」。
+
+    模擬的每一期品項與搭贈照舊（獅王本來就標「常態搭贈」），PM 提醒只留還在期限內的段落。
+    促銷品項編號接著往下編，一期用掉一段，同一個品項在每一期的相對位置不變。
+    """
+    promotions, items = [], []
+    ship_price = {sku: ship for sku, _, _, _, _, ship, _, _ in catalog.PROMO_PRODUCTS}
+    list_price = {sku: price for sku, _, _, _, _, _, price, _ in catalog.PROMO_PRODUCTS}
+    start = catalog.PROMOTION_START
+    period = 0
+    while start <= as_of:
+        end = (start + timedelta(days=31)).replace(day=1) - timedelta(days=1)
+        month = f"{start:%Y%m}"
+        promotion_id = f"PR-{month}"
+        active = [(until, text, tag) for until, text, tag in catalog.PROMOTION_NOTES if until is None or month <= until]
+        ended = [tag for until, _, tag in catalog.PROMOTION_NOTES if tag and until and month > until]
+        promotions.append({
+            "id": promotion_id, "name": f"{month}{catalog.PROMOTION_NAME}",
+            "department": catalog.PROMOTION_DEPARTMENT, "type": catalog.PROMOTION_TYPE,
+            "start_date": start, "end_date": end, "pm_note": "\n".join(text for _, text, _ in active),
+        })
+        for group, code, name, sku, deal, buy, free, price in catalog.PROMOTION_ITEMS:
+            for tag in ended:
+                deal = deal.removesuffix(f", {tag}")
+            items.append({
+                "code": f"PP-{int(code[3:]) + period * len(catalog.PROMOTION_ITEMS):06d}",
+                "promotion_id": promotion_id, "group_name": group, "name": name, "sku": sku, "deal": deal,
+                "buy_qty": buy, "free_qty": free, "deal_price": price,
+                "list_price": list_price[sku], "ship_price": ship_price[sku],
+            })
+        start = end + timedelta(days=1)
+        period += 1
+    return promotions, items
+
+
 def generate(as_of: date, seed: int = SEED) -> dict[str, list[dict]]:
     rng = random.Random(seed)
     # 公司給的帳號。Email 用工號，密碼九個帳號都一樣，由 DEMO_PASSWORD 設定
@@ -582,10 +623,20 @@ def generate(as_of: date, seed: int = SEED) -> dict[str, list[dict]]:
     add_trade(extra_rng, extra, extra_late, branch_scale=EXTRA_BRANCH_QTY_SCALE)
     customers += extra
 
+    # 促銷的真實品項只進品項表，不放進上面的 products：常進品項是從 products 抽的
+    promo_products = [
+        {"sku": sku, "name": name, "category": cat, "spec": spec, "unit": unit,
+         "unit_price": ship, "unit_cost": round(ship * PROMO_COST_RATIO), "aliases": aliases}
+        for sku, name, cat, spec, unit, ship, _, aliases in catalog.PROMO_PRODUCTS
+    ]
+    promotions, promotion_items = build_promotions(as_of)
+
     return {
         "org_unit": org_units,
         "app_user": users,
-        "product": list(products.values()),
+        "product": list(products.values()) + promo_products,
+        "promotion": promotions,
+        "promotion_item": promotion_items,
         "customer": customers,
         "sales_transaction": transactions,
         "receivable": receivables,

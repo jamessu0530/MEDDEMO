@@ -223,6 +223,50 @@ class Product(Base):
     aliases: Mapped[list[str]] = mapped_column(server_default="{}")
 
 
+class Promotion(Base):
+    """促銷方案（CYH Sales 的「促銷方案」），一個月一期。
+
+    滿額贈、實銷活動這類看整張訂單的規則只寫在 PM 提醒裡，沒有拆成欄位：原始系統的「門檻一～五」
+    欄位本來就是空的，規則只有這段文字。
+    """
+
+    __tablename__ = "promotion"
+    __table_args__ = (CheckConstraint("start_date <= end_date", name="period"),)
+
+    id: Mapped[str] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(unique=True)
+    department: Mapped[str]
+    type: Mapped[str]
+    # 狀態（進行中、已結束）不存，在語意層跟 app_today() 比出來：存下來的話，展示日一換就不對
+    start_date: Mapped[dt.date]
+    end_date: Mapped[dt.date]
+    pm_note: Mapped[str] = mapped_column(Text)
+
+
+class PromotionItem(Base):
+    """促銷品項：一個品項的一種口數一列，例如骨營膠囊的小口與大口是兩列。一「口」是一個購買單位。"""
+
+    __tablename__ = "promotion_item"
+    __table_args__ = (CheckConstraint("buy_qty > 0 AND free_qty >= 0", name="qty"),)
+
+    # 促銷品項編號，例如 PP-027919
+    code: Mapped[str] = mapped_column(primary_key=True)
+    promotion_id: Mapped[str] = mapped_column(ForeignKey("promotion.id"), index=True)
+    group_name: Mapped[str]
+    name: Mapped[str]
+    sku: Mapped[str] = mapped_column(ForeignKey("product.sku"))
+    # 搭贈說明原文，例如「<11+1>+贈1盒骨粉(C450111)+2盒海藻鈣10T」
+    deal: Mapped[str]
+    # 一口買幾個、同品送幾個；直走價送 0。另外加贈的其他品項只寫在 deal 裡
+    buy_qty: Mapped[int]
+    free_qty: Mapped[int]
+    # 每口售價
+    deal_price: Mapped[Decimal] = mapped_column(Numeric(10, 2))
+    # 促銷當時的原建議售價與原出貨價（大宗價）
+    list_price: Mapped[Decimal] = mapped_column(Numeric(10, 2))
+    ship_price: Mapped[Decimal] = mapped_column(Numeric(10, 2))
+
+
 class SalesTransaction(Base):
     """交易明細，一列一個品項；同一次進貨的品項共用 order_no。"""
 

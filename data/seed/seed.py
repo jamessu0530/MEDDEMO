@@ -31,6 +31,8 @@ TABLES = [
     ("org_unit", models.OrgUnit),
     ("app_user", models.AppUser),
     ("product", models.Product),
+    ("promotion", models.Promotion),
+    ("promotion_item", models.PromotionItem),
     ("customer", models.Customer),
     ("sales_transaction", models.SalesTransaction),
     ("receivable", models.Receivable),

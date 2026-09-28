@@ -37,5 +37,6 @@ def test_single_customer_lookup(client):
 
 def test_product_list_includes_spoken_aliases(client):
     products = {p["sku"]: p for p in client.get("/api/products").json()}
-    assert len(products) == 40
+    # 40 個虛構品項，加上促銷方案的 20 個真實品項
+    assert len(products) == 60
     assert "魚油" in products["HS-FO30"]["aliases"]

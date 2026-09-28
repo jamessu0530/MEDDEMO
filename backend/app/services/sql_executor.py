@@ -1,6 +1,6 @@
 """數字查詢的 SQL 執行器（SDD 議題 3）。
 
-模型寫的 SQL 只能讀四個語意層 View：真正的保證是資料庫權限（semantic_reader 角色只拿得到這四個 View），
+模型寫的 SQL 只能讀語意層的 View：真正的保證是資料庫權限（semantic_reader 角色只拿得到這幾個 View），
 這裡的文字檢查只是先擋掉明顯不對的輸入，讓錯誤訊息好懂。
 """
 
@@ -15,7 +15,10 @@ from sqlalchemy import Engine, text
 
 from app.services.scope import Scope
 
-ALLOWED_VIEWS = ("v_monthly_sales", "v_customer_summary", "v_visit_signal", "v_margin_breakdown")
+ALLOWED_VIEWS = (
+    "v_monthly_sales", "v_customer_summary", "v_visit_signal", "v_margin_breakdown",
+    "v_promotion", "v_promotion_item",
+)
 # 給模型看的結果最多 50 列：數字題的答案通常是彙總，列數多到這裡代表查詢不夠聚焦，應該再改寫
 MAX_ROWS = 50
 # 這幾個 View 在假資料上都是毫秒級；超過 5 秒一定是寫錯的查詢（例如沒有條件的交叉合併）
@@ -79,7 +82,7 @@ def run_readonly(engine: Engine, sql: str, scope: Scope | None = None) -> QueryR
 
 @cache
 def describe_views(engine: Engine) -> str:
-    """把四個 View 的欄位與註解整理成文字，交給產生 SQL 的模型（註解寫在 semantic_layer.sql）。"""
+    """把語意層 View 的欄位與註解整理成文字，交給產生 SQL 的模型（註解寫在 semantic_layer.sql）。"""
     with engine.connect() as conn:
         rows = conn.execute(
             text("""

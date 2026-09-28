@@ -162,6 +162,9 @@ def test_the_sql_views_declare_the_same_depths_as_python():
         "v_customer_summary": [SHARING_LEVEL["sales_figures"]],
         "v_visit_signal": [SHARING_LEVEL["visit_record"]],
         "v_margin_breakdown": [SHARING_LEVEL["sales_figures"]],
+        # 促銷方案不分客戶，全公司共用
+        "v_promotion": [],
+        "v_promotion_item": [],
     }
 
 

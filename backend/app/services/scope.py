@@ -8,7 +8,8 @@
 IT 坐在根節點上、路徑就是 TW，截到哪一層都是 TW，全公司看得到也動得了，也是同一個式子。
 
 數字查詢的 SQL 是模型寫的，靠提示叫它「只查自己的」擋不住，所以過濾做在資料庫：
-四個語意層 View 都用 app_in_scope() 過濾，路徑由 sql_executor 在每次查詢的交易裡設定。
+跟客戶有關的四個語意層 View 都用 app_in_scope() 過濾，路徑由 sql_executor 在每次查詢的交易裡設定
+（促銷的兩個 View 不分客戶，全公司共用，不過濾）。
 
 org_path 是 nullable 欄位（models.py），for_user() 解出的路徑理論上可能是 None。這跟
 「不過濾」的意思完全相反，不能共用同一個 None：只有 everything() 會把 unfiltered 設成
@@ -33,7 +34,7 @@ SELF = 4     # TW.N.M01.U01
 
 # 每一種資料看得多遠。API 端點一律從這裡讀層級，不要在呼叫端寫死常數，不然「這種資料共享
 # 到哪裡」就散在各個檔案裡、改一處等於漏改其他處。
-# 語意層的四個 View 是模型寫 SQL 時的另一個執法點，深度寫在 sql/semantic_layer.sql 裡，
+# 語意層跟客戶有關的四個 View 是模型寫 SQL 時的另一個執法點，深度寫在 sql/semantic_layer.sql 裡，
 # 沒辦法直接引用這份 dict；改這裡要同步改那邊，test_scope.py 的
 # test_the_sql_views_declare_the_same_depths_as_python 會在只改一邊時失敗。
 SHARING_LEVEL = {

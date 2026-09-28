@@ -8,7 +8,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
   SELECT COALESCE((SELECT value::date FROM app_setting WHERE key = 'as_of_date'), CURRENT_DATE)
 $$;
 
--- 語意層：數字查詢代理只能讀這四個 View，不碰底層表（SDD 議題 3）。
+-- 語意層：數字查詢代理只能讀這幾個 View，不碰底層表（SDD 議題 3）。
 -- 欄位註解會一併交給產生 SQL 的模型，單位與陷阱要寫在註解裡。
 
 -- 資料權限（backend/app/services/scope.py）：組織是一棵樹，每個人有一條路徑，
@@ -193,7 +193,67 @@ COMMENT ON VIEW v_margin_breakdown IS '每月 × 客戶 × 品類的毛利結構
 COMMENT ON COLUMN v_margin_breakdown.gross_margin IS '毛利＝營收－成本';
 COMMENT ON COLUMN v_margin_breakdown.net_margin IS '淨毛利＝毛利－上架費－通路獎勵；毛利率請用 sum(net_margin)/sum(revenue) 計算，不要平均各列的比率';
 
--- 查詢代理的唯讀角色：只拿得到四個 View。角色是整個叢集共用的，重建 schema 時要避免重複建立。
+-- 促銷方案不分客戶，全公司都看得到，所以這兩個 View 不用 app_in_scope() 過濾。
+-- 狀態不存在表裡，跟 app_today() 比出來，換展示日才不會對不上
+CREATE VIEW v_promotion AS
+SELECT pr.name AS promotion_name,
+       pr.type AS promotion_type,
+       pr.department,
+       pr.start_date,
+       pr.end_date,
+       CASE WHEN app_today() < pr.start_date THEN '未開始'
+            WHEN app_today() > pr.end_date   THEN '已結束'
+            ELSE '進行中' END AS status,
+       pr.pm_note
+FROM promotion pr;
+
+COMMENT ON VIEW v_promotion IS '促銷方案，一期一列，每月一期。品項與搭贈在 v_promotion_item';
+COMMENT ON COLUMN v_promotion.status IS '未開始／進行中／已結束，以系統日 app_today() 判斷';
+COMMENT ON COLUMN v_promotion.department IS '銷售部門';
+COMMENT ON COLUMN v_promotion.pm_note IS 'PM 提醒原文。滿額贈、滿額回贈禮券、組合加碼、實銷活動這類看整張訂單的規則只寫在這裡，沒有拆成欄位';
+
+CREATE VIEW v_promotion_item AS
+SELECT pr.name AS promotion_name,
+       pr.start_date,
+       pr.end_date,
+       CASE WHEN app_today() < pr.start_date THEN '未開始'
+            WHEN app_today() > pr.end_date   THEN '已結束'
+            ELSE '進行中' END AS status,
+       i.group_name,
+       i.code AS item_code,
+       i.name AS item_name,
+       i.sku,
+       p.name AS product_name,
+       p.category,
+       p.spec,
+       p.unit,
+       i.deal,
+       i.buy_qty,
+       i.free_qty,
+       i.deal_price,
+       round(i.deal_price / (i.buy_qty + i.free_qty), 2) AS unit_deal_price,
+       i.list_price,
+       i.ship_price,
+       round(1 - i.deal_price / (i.buy_qty + i.free_qty) / i.ship_price, 4) AS discount_rate
+FROM promotion_item i
+JOIN promotion pr ON pr.id = i.promotion_id
+JOIN product p ON p.sku = i.sku;
+
+COMMENT ON VIEW v_promotion_item IS '促銷品項，一個品項的一種口數一列。一「口」是一個購買單位，同一品項常分小口、中口、大口。金額單位為新台幣元。這些品項沒有交易紀錄，v_monthly_sales 查不到';
+COMMENT ON COLUMN v_promotion_item.status IS '所屬方案的狀態：未開始／進行中／已結束，以系統日 app_today() 判斷';
+COMMENT ON COLUMN v_promotion_item.group_name IS '品牌群組，例如 骨營、黴癒、獅王眼藥水、中化健康360';
+COMMENT ON COLUMN v_promotion_item.item_name IS '促銷品項名稱，口數寫在括號裡：(小口)、(中口)、(大口)';
+COMMENT ON COLUMN v_promotion_item.deal IS '搭贈說明原文。<11+1> 是買 11 送 1 同品；直走價是不送同品、整口一個價；「+贈…」「加贈…」是另外送的其他品項，不算在 free_qty';
+COMMENT ON COLUMN v_promotion_item.unit IS '品項單位，例如 盒、瓶、支';
+COMMENT ON COLUMN v_promotion_item.buy_qty IS '一口要買的數量';
+COMMENT ON COLUMN v_promotion_item.free_qty IS '一口同品搭贈的數量；直走價為 0';
+COMMENT ON COLUMN v_promotion_item.deal_price IS '每口售價：買一口要付的錢';
+COMMENT ON COLUMN v_promotion_item.unit_deal_price IS '每 PCS 平均單價＝每口售價 ÷（buy_qty＋free_qty）';
+COMMENT ON COLUMN v_promotion_item.list_price IS '原建議售價（消費者零售價）';
+COMMENT ON COLUMN v_promotion_item.ship_price IS '原出貨價（大宗價）';
+COMMENT ON COLUMN v_promotion_item.discount_rate IS '比原出貨價便宜的比例＝1－每 PCS 平均單價÷原出貨價，0.0833 代表便宜 8.33%。只算同品搭贈與直走價，另外加贈的品項與滿額贈不計';
+
+-- 查詢代理的唯讀角色：只拿得到語意層的 View。角色是整個叢集共用的，重建 schema 時要避免重複建立。
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'semantic_reader') THEN
@@ -202,7 +262,8 @@ BEGIN
 END
 $$;
 GRANT USAGE ON SCHEMA public TO semantic_reader;
-GRANT SELECT ON v_monthly_sales, v_customer_summary, v_visit_signal, v_margin_breakdown TO semantic_reader;
+GRANT SELECT ON v_monthly_sales, v_customer_summary, v_visit_signal, v_margin_breakdown,
+                 v_promotion, v_promotion_item TO semantic_reader;
 GRANT EXECUTE ON FUNCTION app_in_scope(ltree, int) TO semantic_reader;
 -- 資料權限靠交易裡的 app.scope_* 設定過濾，唯讀角色不能自己改：收回所有人呼叫 set_config 的權限，只留給程式本身。
 -- sql_executor 另外用文字檢查擋 set_config，但文字檢查擋不住 U&"..." 這類跳脫寫法，這裡才是真的保證

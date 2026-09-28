@@ -20,7 +20,10 @@ from app.db import schema_version
 
 ROOT = Path(__file__).resolve().parents[2]
 AS_OF = seed.DEFAULT_AS_OF
-VIEWS = ["v_monthly_sales", "v_customer_summary", "v_visit_signal", "v_margin_breakdown"]
+VIEWS = [
+    "v_monthly_sales", "v_customer_summary", "v_visit_signal", "v_margin_breakdown",
+    "v_promotion", "v_promotion_item",
+]
 SCHEMA = json.loads((ROOT / "backend/app/schemas/visit_fields.schema.json").read_text(encoding="utf-8"))
 
 
@@ -39,7 +42,8 @@ def test_generation_is_deterministic():
 
 def test_scale_matches_plan(db):
     assert rows(db, "SELECT count(*) FROM customer")[0][0] == 250
-    assert rows(db, "SELECT count(*) FROM product")[0][0] == 40
+    # 40 個虛構品項，加上促銷方案照搬的 20 個真實品項
+    assert rows(db, "SELECT count(*) FROM product")[0][0] == 60
     by_type = dict(rows(db, "SELECT type, count(*) FROM customer GROUP BY type"))
     assert by_type == {"chain": 76, "independent": 112, "clinic": 62}
     first, last, months = rows(db, """
@@ -192,3 +196,54 @@ def test_every_synced_visit_landed_in_all_three_targets(db):
     skipped = rows(db, "SELECT count(*) FROM writeback_log WHERE target = 'sap' AND status = 'skipped'")[0][0]
     no_intent = rows(db, "SELECT count(*) FROM visit WHERE fields_final->'intent' = 'null'::jsonb")[0][0]
     assert skipped == no_intent > 0
+
+
+def test_promotions_run_monthly_up_to_the_as_of_month(db):
+    # 202608 是照搬的那一期，之後每月模擬一期，決賽日那一期是進行中
+    assert rows(db, "SELECT promotion_name, start_date, end_date, status FROM v_promotion ORDER BY start_date") == [
+        ("202608保藥特搭活動", datetime(2026, 8, 1).date(), datetime(2026, 8, 31).date(), "已結束"),
+        ("202609保藥特搭活動", datetime(2026, 9, 1).date(), datetime(2026, 9, 30).date(), "已結束"),
+        ("202610保藥特搭活動", datetime(2026, 10, 1).date(), datetime(2026, 10, 31).date(), "進行中"),
+    ]
+    assert dict(rows(db, "SELECT promotion_name, count(*) FROM v_promotion_item GROUP BY 1")) == {
+        "202608保藥特搭活動": 37, "202609保藥特搭活動": 37, "202610保藥特搭活動": 37,
+    }
+
+
+def test_promotion_prices_match_the_cyh_page(db):
+    # 每 PCS 平均單價是 CYH 頁面上的數字：一口買幾送幾讀錯，這裡就對不上
+    found = dict(rows(db, """
+        SELECT item_code, unit_deal_price FROM v_promotion_item
+        WHERE promotion_name = '202608保藥特搭活動'
+          AND item_code IN ('PP-027919', 'PP-027930', 'PP-027918', 'PP-027929', 'PP-027954')
+    """))
+    assert {code: float(price) for code, price in found.items()} == {
+        "PP-027919": 962.50,  # 骨營膠囊小口 <11+1>
+        "PP-027930": 91.67,   # 金舒胃得小口 <10+1>+1，共送 2
+        "PP-027918": 442.86,  # 骨營粉劑直走 7 盒
+        "PP-027929": 117.19,  # 雄讚大口 <100+28>
+        "PP-027954": 500.00,  # 蔓越莓 1+1
+    }
+
+
+def test_expired_pm_rules_drop_out_of_later_promotions(db):
+    notes = dict(rows(db, "SELECT promotion_name, pm_note FROM v_promotion"))
+    # 骨營粉劑實銷做到 8 月、黴癒滿額贈做到 9 月，沒寫期限的兩段每期都在
+    assert "骨營粉劑實銷活動" in notes["202608保藥特搭活動"]
+    assert "骨營粉劑實銷活動" not in notes["202609保藥特搭活動"]
+    assert "黴癒8-9月品牌滿額贈" in notes["202609保藥特搭活動"]
+    assert "黴癒8-9月品牌滿額贈" not in notes["202610保藥特搭活動"]
+    assert all("骨營滿額贈" in n and "中化健康360保健品" in n for n in notes.values())
+    deals = dict(rows(db, """
+        SELECT promotion_name, deal FROM v_promotion_item WHERE item_name = 'LISIM CREAM乳膏'
+    """))
+    assert deals["202609保藥特搭活動"] == "<42+8>, 黴癒滿額贈活動"
+    assert deals["202610保藥特搭活動"] == "<42+8>"
+
+
+def test_promotion_products_have_no_sales_history(db):
+    # 真實品項只進品項表，常進品項照舊從虛構的 40 個抽，交易與評測答案不受影響
+    assert rows(db, """
+        SELECT count(*) FROM sales_transaction t
+        WHERE t.sku IN (SELECT sku FROM promotion_item)
+    """)[0][0] == 0
