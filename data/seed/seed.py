@@ -7,15 +7,16 @@
 
 import argparse
 import sys
-from datetime import date
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 # macOS 上 .venv 會被標成隱藏，Python 就略過可編輯安裝的 .pth、找不到 app；直接把 backend 加進搜尋路徑
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 
-from sqlalchemy import insert, text  # noqa: E402
+from sqlalchemy import insert, select, text  # noqa: E402
 from sqlalchemy.orm import Session
 
+import catalog
 import generate
 from app import models
 from app.db import make_engine, reset_schema, schema_version
@@ -44,6 +45,30 @@ TABLES = [
     ("oa_expense_form", models.OaExpenseForm),
     ("writeback_log", models.WritebackLog),
 ]
+
+
+def seed_conversations(session: Session) -> int:
+    """頻道裡預先寫好的對話（catalog.CONVERSATIONS）。時間從灌資料的這一刻往前推，之後有人發言一定排在後面。
+    不放在 generate.py：那裡的產出跟著 as_of 固定下來，這裡的時間要跟著實際灌資料的日子走。"""
+    now = datetime.now(generate.TAIPEI)
+    count = 0
+    for (kind, key), lines in catalog.CONVERSATIONS:
+        if kind == "customer":
+            customer_id = session.scalar(select(models.Customer.id).where(models.Customer.name == key))
+            channel = models.Channel(kind="customer", customer_id=customer_id)
+            session.add(channel)
+            session.flush()
+        else:
+            column = {"team": models.Channel.manager_id, "place": models.Channel.place_id}[kind]
+            channel = session.scalar(select(models.Channel).where(column == key))
+        for days_ago, clock, author_id, body in lines:
+            hour, minute = map(int, clock.split(":"))
+            at = (now - timedelta(days=days_ago)).replace(hour=hour, minute=minute, second=0, microsecond=0)
+            session.add(models.ChannelMessage(channel_id=channel.id, author_id=author_id, kind="user", body=body, created_at=at))
+            count += 1
+        # 每個頻道寫完就送出去：編號照加入的順序，同一個頻道裡越晚的編號越大
+        session.flush()
+    return count
 
 
 def seed(url: str | None, as_of: date) -> dict[str, int]:
@@ -100,13 +125,14 @@ def seed(url: str | None, as_of: date) -> dict[str, int]:
         """))
         # 全國、整區、地點與小組頻道（客戶討論串第一次有人打開才建）
         ensure_channels(session)
+        messages = seed_conversations(session)
         # 假資料的拜訪編號是直接指定的，序號要接在後面，新拜訪才不會撞號
         session.execute(text("SELECT setval('visit_seq', :n)"), {"n": len(data["visit"])})
         # 內部文件建索引；有設定 embedding 服務才一併算向量，否則只建關鍵字索引
         embedder = optional_embedder()
         chunks = index_documents(session, embed=embedder.embed_documents if embedder else None)
     engine.dispose()
-    return {name: len(data[name]) for name, _ in TABLES} | {"document_chunk": chunks}
+    return {name: len(data[name]) for name, _ in TABLES} | {"document_chunk": chunks, "channel_message": messages}
 
 
 def main():

@@ -276,3 +276,26 @@ def test_a_taipei_customer_without_a_district_fails_loudly():
     with pytest.raises(ValueError, match="康泰連鎖藥局 · 新開店"):
         generate.place_of("康泰連鎖藥局 · 新開店", "chain", "台北市", "新開店")
     assert generate.place_of("德安藥局 · 逢甲", "independent", "台中市", "逢甲") == "TXG"
+
+
+def test_seeded_conversations_sit_in_their_channels(db):
+    found = dict(rows(db, """
+        SELECT CASE ch.kind WHEN 'team' THEN m.name || '小組' WHEN 'place' THEN p.name ELSE cu.name END, count(*)
+        FROM channel_message msg
+        JOIN channel ch ON ch.id = msg.channel_id
+        LEFT JOIN app_user m ON m.id = ch.manager_id
+        LEFT JOIN place p ON p.id = ch.place_id
+        LEFT JOIN customer cu ON cu.id = ch.customer_id
+        GROUP BY 1
+    """))
+    assert found == {
+        "陳建宏小組": 5, "台北市・大安區": 2, "康泰連鎖藥局 · 忠孝店": 2, "許文彬小組": 2, "蔡宗翰小組": 2,
+    }
+    # 全國 1、整區 3、小組 4、地點 17，加上灌資料建的忠孝店討論串
+    assert rows(db, "SELECT count(*) FROM channel")[0][0] == 26
+    # 時間都在灌資料之前，同一個頻道裡編號越大越晚
+    assert rows(db, "SELECT count(*) FROM channel_message WHERE created_at > now()")[0][0] == 0
+    assert rows(db, """
+        SELECT count(*) FROM channel_message a JOIN channel_message b
+          ON a.channel_id = b.channel_id AND a.id < b.id AND a.created_at > b.created_at
+    """)[0][0] == 0
