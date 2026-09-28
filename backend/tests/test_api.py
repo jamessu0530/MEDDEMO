@@ -35,6 +35,23 @@ def test_single_customer_lookup(client):
     assert client.get("/api/customers/C999").status_code == 404
 
 
+def test_promotions_list_every_period_newest_first(client):
+    promotions = client.get("/api/promotions").json()
+    assert [(p["name"], p["status"]) for p in promotions] == [
+        ("202610保藥特搭活動", "進行中"), ("202609保藥特搭活動", "已結束"), ("202608保藥特搭活動", "已結束"),
+    ]
+    current = promotions[0]
+    assert len(current["items"]) == 37 and "骨營滿額贈" in current["pm_note"]
+    # 數字跟問答查的 v_promotion_item 是同一份：骨營膠囊小口 <11+1>，每口 11,550、平均每個 962.5
+    small = next(i for i in current["items"] if i["name"] == "骨營膠囊600T(小口)")
+    assert (small["buy_qty"], small["free_qty"], small["deal_price"], small["unit_deal_price"]) == (11, 1, 11550, 962.5)
+
+
+def test_promotions_need_sign_in(engine):
+    # 促銷不分客戶，但價格是公司內部的，沒登入拿不到
+    assert TestClient(app).get("/api/promotions").status_code == 401
+
+
 def test_product_list_includes_spoken_aliases(client):
     products = {p["sku"]: p for p in client.get("/api/products").json()}
     # 40 個虛構品項，加上促銷方案的 20 個真實品項

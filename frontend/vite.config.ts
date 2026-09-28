@@ -18,7 +18,7 @@ export default defineConfig({
       "/health": "http://127.0.0.1:8000",
     },
   },
-  // 只測純邏輯模組（目前是 src/ask 的對話 store）：元件與 Live 連線靠 build 與實際操作驗
+  // 只測純邏輯模組（src/ask 的對話 store、src/lib 的促銷整理）：元件與 Live 連線靠 build 與實際操作驗
   test: {
     environment: "node",
     include: ["src/**/*.test.ts"],

@@ -260,6 +260,14 @@ uv run --project backend python backend/scripts/index_documents.py
 uv run --project backend python backend/scripts/eval_ask.py
 ```
 
+## 促銷
+
+底部分頁的「促銷」，不必問 AI 就能翻這個月有什麼活動。資料見下方「假資料」的促銷方案。
+
+- 預設看進行中的那一期，上方可以切到前幾期；搜尋框篩品項、品牌或料號。
+- 最上面是整張訂單的活動（PM 提醒，一段一個活動、點開看原文），下面依品牌列每一口：搭贈說明、每口售價、平均每個、比原出貨價省幾成。
+- 數字直接讀語意層的 `v_promotion`、`v_promotion_item`，不在 API 另算，所以頁面跟問答查到的一定一樣。促銷不分客戶，登入的人都看得到。
+
 ## 語音問答（Gemini Live）
 
 問答頁上的麥克風：用講的問，AI 先查資料再用講的回答，查到的表格和出處同時列在畫面上。打字與語音合併成一頁、一條對話後，會話開著時輸入框也還在——打字會送進同一個 Live 會話，模型保有上下文，一樣用講的回答。
@@ -427,7 +435,7 @@ MEDDEMO 跟 CARE 共用 GCP 上的 care-vm：K3s、Helm、Traefik、HTTPS 憑證
 
 ```
 backend/app/main.py                 API 入口（FastAPI）
-backend/app/api/                    API 路由：客戶（含開報價）、品項、拜訪紀錄、問答、轉給主管、主管端風險通報、語音問答、模擬系統開關
+backend/app/api/                    API 路由：客戶（含開報價）、品項、促銷方案、拜訪紀錄、問答、轉給主管、主管端風險通報、語音問答、模擬系統開關
 backend/app/services/               轉文字、抽欄位、背景處理、回寫三套系統、追蹤提醒、問答、語音問答設定、去識別與保存期限
 backend/app/services/scope.py       資料權限：誰看得到哪些客戶
 backend/app/services/org.py         組織樹：從回報線算出路徑與轄區，並驗證整棵樹

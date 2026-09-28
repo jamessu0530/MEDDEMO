@@ -8,7 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app import usage
-from app.api import admin, asks, auth, customers, escalations, manager, mock_systems, oa, products, route, transcription, visits, voice
+from app.api import admin, asks, auth, customers, escalations, manager, mock_systems, oa, products, promotions, route, transcription, visits, voice
 from app.config import settings
 from app.db import get_session
 
@@ -22,6 +22,7 @@ app.include_router(auth.router)
 app.include_router(asks.router)
 app.include_router(customers.router)
 app.include_router(products.router)
+app.include_router(promotions.router)
 app.include_router(visits.router)
 app.include_router(mock_systems.router)
 app.include_router(voice.router)

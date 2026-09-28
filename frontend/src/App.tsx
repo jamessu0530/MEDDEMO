@@ -16,6 +16,7 @@ import { OaFormsPage } from "@/pages/oa-forms"
 import { GitHubCallbackPage } from "@/pages/github-callback"
 import { LoginPage } from "@/pages/login"
 import { PrivacyPage } from "@/pages/privacy"
+import { PromotionsPage } from "@/pages/promotions"
 import { RegisterPage } from "@/pages/register"
 import { ManagerPage } from "@/pages/manager"
 import { NegotiationPage } from "@/pages/negotiation"
@@ -128,6 +129,7 @@ export default function App() {
             <Route path="/" element={<Home />} />
             <Route path="/customers" element={<CustomerPicker />} />
             <Route path="/ask" element={<AskPage />} />
+            <Route path="/promotions" element={<PromotionsPage />} />
             {/* 語音併進問答頁了，舊書籤與導覽說明還指得到這個網址 */}
             <Route path="/voice" element={<Navigate to="/ask" replace />} />
             <Route path="/customers/:customerId" element={<CustomerPage />} />

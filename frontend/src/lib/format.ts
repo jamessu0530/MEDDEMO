@@ -25,3 +25,8 @@ export function formatElapsed(seconds: number) {
 export function formatMoney(amount: number) {
   return `NT$${Math.round(amount).toLocaleString("zh-TW")}`
 }
+
+/** 962.5 → NT$962.5；促銷的平均單價照 CYH 上的寫法，留到小數兩位 */
+export function formatUnitPrice(amount: number) {
+  return `NT$${amount.toLocaleString("zh-TW", { maximumFractionDigits: 2 })}`
+}
