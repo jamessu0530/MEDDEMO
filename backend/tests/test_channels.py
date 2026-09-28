@@ -235,3 +235,13 @@ def test_a_place_lists_only_threads_with_messages(tx, client, auth):
     assert [t["name"] for t in client.get(f"/api/channels/{daan}/threads", headers=auth("M01")).json()] == [
         "康泰連鎖藥局 · 忠孝店"
     ]
+
+
+def test_threads_404s_on_a_channel_that_is_not_a_place(client, auth):
+    # 全國、整區、小組頻道底下沒有討論串，回 404 而不是空清單，免得畫面顯示「還沒有人開討論串」這種誤導的訊息
+    national = channel_id(client, auth, "全國")
+    team = channel_id(client, auth, "陳建宏小組")
+    for cid in (national, team):
+        response = client.get(f"/api/channels/{cid}/threads", headers=auth("U01"))
+        assert response.status_code == 404
+        assert response.json()["detail"] == "找不到這個地點"

@@ -8,7 +8,7 @@ import { Link, useNavigate } from "react-router"
  * 改了做法要回來改這一頁。
  */
 
-const UPDATED = "2026 年 9 月 28 日"
+const UPDATED = "2026 年 9 月 29 日"
 
 function Section({ id, title, children }: { id?: string; title: string; children: React.ReactNode }) {
   return (
@@ -64,6 +64,9 @@ export function PrivacyPage() {
             <li>限制每個帳號與網路的使用次數，避免服務被濫用。</li>
           </ul>
           <p>我們不販售資料，不用於廣告，也不拿你的資料訓練 AI 模型。</p>
+          <p>
+            在頻道裡發的訊息，連同你的顯示名稱，看得到那個頻道的人都看得到，包括其他自己註冊的帳號；用 Google 或 Facebook 登入時，顯示的名字是該服務提供的名字。
+          </p>
         </Section>
 
         <Section title="交給哪些服務處理">
@@ -102,11 +105,12 @@ export function PrivacyPage() {
             <li>你的帳號（名字、Email、密碼）</li>
             <li>綁定的 Google／GitHub／Facebook 登入資訊</li>
             <li>你問過的問題，以及轉給主管的提問與回覆</li>
+            <li>你在頻道發的訊息，以及頻道的已讀位置</li>
           </ul>
           <p>
             你開的報價草稿是客戶的交易紀錄，會保留，但不再記錄是誰開的。用 Facebook 登入的，也可以在 Facebook 的「設定和隱私 → 應用程式和網站」移除這個應用程式，移除之後就無法再用 Facebook 登入這個帳號。
           </p>
-          <p className="text-muted-foreground">公司示範用的八個帳號（u01～u05、m01～m03）是虛構資料，不能自行刪除。</p>
+          <p className="text-muted-foreground">公司示範用的九個帳號（u01～u05、m01～m04）是虛構資料，不能自行刪除。</p>
         </Section>
 
         <Link to="/login" className="inline-flex min-h-11 items-center text-sm font-medium text-primary">

@@ -1,4 +1,5 @@
-"""用量上限（第六週）：會呼叫 Gemini 的入口都限次數，免得額度被用光。
+"""用量上限（第六週）：會呼叫 Gemini 的入口都限次數，免得額度被用光；
+不花錢但容易被濫用、做了無法復原的入口（建立帳號、頻道發言）也一併限流。
 
 兩層上限：
 - 每個來源每小時：擋單一裝置或程式一直送。有登入就按帳號算，沒有才按 IP
@@ -51,10 +52,14 @@ LIMITS: dict[str, Limit] = {
     # 建立帳號不花錢，但每個帳號有自己一份「每小時」額度，開很多帳號就等於繞過上限。
     # 決賽現場約 10 位評審共用一個 Wi-Fi（同一個 IP），每小時 20 個是兩倍；每天 200 個擋腳本大量開
     "register": Limit("建立帳號", per_client_hour=20, per_day=200),
+    # 頻道發言也不花錢，但任何人都能自己開帳號發言，第一版又不能編輯、刪除：
+    # 洗版式的濫用比額度更難處理，這裡擋的是濫用，不是成本
+    "channel_post": Limit("頻道發言", per_client_hour=60, per_day=1000),
 }
 
-# 會呼叫 Gemini 的入口。提問與錄音整理在背景工作裡呼叫，這裡擋的是把工作排進去的請求；
-# 語音問答與即時文字由手機直連 Gemini，這裡擋的是發臨時金鑰
+# 會呼叫 Gemini，或是不花錢但容易被濫用、做了無法復原的入口。提問與錄音整理在背景工作裡呼叫，
+# 這裡擋的是把工作排進去的請求；語音問答與即時文字由手機直連 Gemini，這裡擋的是發臨時金鑰；
+# 建立帳號、頻道發言不花 Gemini 的錢，純粹擋濫用
 ROUTES: list[tuple[str, re.Pattern[str], str]] = [
     ("POST", re.compile(r"/api/asks"), "ask"),
     ("POST", re.compile(r"/api/voice/session"), "voice"),
@@ -62,6 +67,7 @@ ROUTES: list[tuple[str, re.Pattern[str], str]] = [
     ("POST", re.compile(r"/api/visits/audio"), "visit"),
     ("POST", re.compile(r"/api/visits/[^/]+/(?:transcript|reprocess)"), "visit"),
     ("POST", re.compile(r"/api/auth/register"), "register"),
+    ("POST", re.compile(r"/api/channels/\d+/messages"), "channel_post"),
 ]
 
 
@@ -74,7 +80,7 @@ class Counter:
 
 
 def bucket_for(method: str, path: str) -> str | None:
-    """這個請求會不會呼叫 Gemini；會的話算在哪一項。"""
+    """這個請求算不算在用量上限裡；算的話算在哪一項。"""
     return next((bucket for m, pattern, bucket in ROUTES if m == method and pattern.fullmatch(path)), None)
 
 

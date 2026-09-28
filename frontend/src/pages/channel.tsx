@@ -70,7 +70,16 @@ function ChannelView({ id }: { id: number }) {
   function handleScroll() {
     const el = main.current
     if (!el) return
+    const wasNearBottom = nearBottom.current
     nearBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX
+    // 從上面捲回底部：把讀歷史訊息時錯過的新訊息補標成已讀，紅點才會跟著消掉
+    if (nearBottom.current && !wasNearBottom && lastId !== undefined) {
+      markRead(id, lastId)
+        .then(() => channelUnread.refresh())
+        .catch(() => {
+          // 下一次捲回底部再標一次
+        })
+    }
   }
 
   // 頻道資訊與最新一頁
@@ -107,20 +116,22 @@ function ChannelView({ id }: { id: number }) {
     }
   }, [id, lastId, state.status])
 
-  // 看到最新一則就算讀過，紅點跟著更新。捲到最下面：第一次載入一定捲；之後只有還在底部附近，
-  // 或新的這則是自己剛送出的才捲，免得使用者往上捲看舊訊息時被輪詢進來的訊息拉回去
+  // 看到最新一則就算讀過，紅點跟著更新。只在還在底部附近、新的這則是自己剛送出的，或第一次載入時才標記，
+  // 不然往上捲看歷史訊息時，輪詢進來的新訊息會被誤標成已經讀過（往回捲底部再標，見 handleScroll）。
+  // 捲到最下面用同一組條件：第一次載入一定捲；之後只有還在底部附近，或新的這則是自己剛送出的才捲，
+  // 免得使用者往上捲看舊訊息時被強制拉回去
   useEffect(() => {
     if (lastId === undefined) return
     const firstLoad = !seenFirstLoad.current
     seenFirstLoad.current = true
     if (firstLoad || nearBottom.current || lastMine) {
       bottom.current?.scrollIntoView({ block: "end" })
+      markRead(id, lastId)
+        .then(() => channelUnread.refresh())
+        .catch(() => {
+          // 下一則進來會再記一次
+        })
     }
-    markRead(id, lastId)
-      .then(() => channelUnread.refresh())
-      .catch(() => {
-        // 下一則進來會再記一次
-      })
   }, [id, lastId, lastMine])
 
   async function loadOlder() {

@@ -144,6 +144,9 @@ def mark_read(session: SessionDep, user: CurrentUser, channel_id: int, body: Rea
 def list_threads(session: SessionDep, user: CurrentUser, channel_id: int):
     """地點頻道底下有人發過言的客戶討論串，最近有訊息的在前。"""
     info = _visible(session, user, channel_id)
+    # 全國、整區、小組頻道底下沒有討論串這個概念，不是「還沒有人開」，回 404 才不會讓畫面顯示誤導的空清單
+    if info.kind != "place":
+        raise HTTPException(404, "找不到這個地點")
     return _items(session, user, channels.threads(session, user, info))
 
 

@@ -272,7 +272,8 @@ def test_a_self_created_account_can_delete_itself_with_its_data(client, engine):
     quote = client.post("/api/customers/C001/quotes", json={"items": [{"sku": "HS-FO30", "qty": 1}]}, headers=headers).json()
     client.post("/api/asks", json={"kind": "knowledge", "question": "測試：刪帳號前問的"}, headers=headers)
     national = next(c["id"] for c in client.get("/api/channels", headers=headers).json() if c["kind"] == "national")
-    client.post(f"/api/channels/{national}/messages", json={"body": "刪帳號前說的話"}, headers=headers)
+    posted = client.post(f"/api/channels/{national}/messages", json={"body": "刪帳號前說的話"}, headers=headers)
+    assert posted.status_code == 201
     try:
         assert client.delete("/api/auth/me", headers=headers).status_code == 204
         assert client.get("/api/auth/me", headers=headers).status_code == 401
@@ -282,6 +283,8 @@ def test_a_self_created_account_can_delete_itself_with_its_data(client, engine):
             assert conn.execute(sql("SELECT count(*) FROM ask_record WHERE user_id = :u"), {"u": user_id}).scalar_one() == 0
             # 自己在頻道發的訊息一起刪
             assert conn.execute(sql("SELECT count(*) FROM channel_message WHERE author_id = :u"), {"u": user_id}).scalar_one() == 0
+            # 頻道的已讀位置也一起刪，不留下已刪除帳號的紀錄
+            assert conn.execute(sql("SELECT count(*) FROM channel_read WHERE user_id = :u"), {"u": user_id}).scalar_one() == 0
             # 報價草稿是客戶的交易紀錄，留著，只清掉是誰開的
             assert conn.execute(
                 sql("SELECT created_by FROM sap_quotation_draft WHERE quote_no = :q"), {"q": quote["quote_no"]}

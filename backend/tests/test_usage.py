@@ -79,6 +79,7 @@ def test_requests_still_go_through_when_redis_is_down(client, auth, monkeypatch)
         ("POST", "/api/visits/V00001/transcript", "visit"),
         ("POST", "/api/visits/V00001/reprocess", "visit"),
         ("POST", "/api/auth/register", "register"),
+        ("POST", "/api/channels/1/messages", "channel_post"),
         ("POST", "/api/auth/login", None),
         ("GET", "/api/asks/abc", None),
         ("POST", "/api/asks/abc/escalate", None),
@@ -88,3 +89,18 @@ def test_requests_still_go_through_when_redis_is_down(client, auth, monkeypatch)
 )
 def test_every_route_that_calls_gemini_is_counted(method, path, bucket):
     assert usage.bucket_for(method, path) == bucket
+
+
+def test_channel_posts_are_limited_per_hour_even_though_they_never_call_gemini(client, auth, tx, monkeypatch):
+    # 頻道發言不花 Gemini 的錢，但任何人都能自己開帳號發言，且第一版不能編輯、刪除：這裡擋的是洗版，不是額度
+    monkeypatch.setitem(usage.LIMITS, "channel_post", usage.Limit("頻道發言", per_client_hour=2, per_day=3))
+    national = next(c["id"] for c in client.get("/api/channels", headers=auth("U01")).json() if c["kind"] == "national")
+
+    def post():
+        return client.post(f"/api/channels/{national}/messages", json={"body": "測試：訊息"}, headers=auth("U01"))
+
+    assert post().status_code == 201
+    assert post().status_code == 201
+    blocked = post()
+    assert blocked.status_code == 429
+    assert "這一小時" in blocked.json()["detail"]
