@@ -55,7 +55,8 @@
 | `frontend/src/lib/count-poller.ts` | 新增 | 每分鐘問一次數字的共用輪詢（主管回覆與頻道未讀共用） |
 | `frontend/src/lib/manager-replies.ts` | 改 | 改用 `CountPoller` |
 | `frontend/src/lib/channel-unread.ts` | 新增 | 頻道紅點數字 |
-| `frontend/src/components/channels-link.tsx` | 新增 | 主管端、組織管理頁標頭的頻道按鈕 |
+| `frontend/src/components/channels-link.tsx` | 新增 | 主管端、組織管理頁標頭的頻道按鈕；紅點 `UnreadDot` |
+| `frontend/src/components/channel-row.tsx` | 新增 | 頻道列表與客戶討論串清單共用的一列 |
 | `frontend/src/components/bottom-nav.tsx` | 改 | 第五個分頁「頻道」 |
 | `frontend/src/pages/channels.tsx` | 新增 | 頻道列表 |
 | `frontend/src/pages/channel.tsx` | 新增 | 頻道頁（對話） |
@@ -1849,7 +1850,7 @@ git commit -m "Add the channel API client and a shared count poller"
 ### Task 7: 前端畫面
 
 **Files:**
-- Create: `frontend/src/components/channels-link.tsx`
+- Create: `frontend/src/components/channels-link.tsx`、`frontend/src/components/channel-row.tsx`
 - Create: `frontend/src/pages/channels.tsx`、`frontend/src/pages/channel.tsx`、`frontend/src/pages/channel-threads.tsx`
 - Modify: `frontend/src/components/bottom-nav.tsx`
 - Modify: `frontend/src/pages/manager.tsx:65-76`、`frontend/src/pages/admin.tsx:84-96`（標頭）
@@ -1889,10 +1890,46 @@ export function ChannelsLink() {
 export function UnreadDot({ count, className }: { count: number; className?: string }) {
   return (
     <span
-      className={`flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-white ${className ?? ""}`}
+      className={cn(
+        "flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-white",
+        className
+      )}
     >
       {count > 99 ? "99+" : count}
     </span>
+  )
+}
+```
+
+（`channels-link.tsx` 另外 import `{ cn } from "@/lib/utils"`。）
+
+新增 `frontend/src/components/channel-row.tsx`，頻道列表與客戶討論串清單共用的一列：
+
+```tsx
+import { Link } from "react-router"
+
+import type { Channel } from "@/api/channels"
+import { UnreadDot } from "@/components/channels-link"
+import { formatDateTime } from "@/lib/format"
+import { cn } from "@/lib/utils"
+
+/** 頻道列表、客戶討論串清單的一列：名稱（有未讀就粗體）、最近一則的時間、未讀數。
+ * backTo 是進到頻道後返回鍵要回哪裡，沒給就回頻道列表 */
+export function ChannelRow({ channel, indent = false, backTo }: { channel: Channel; indent?: boolean; backTo?: string }) {
+  return (
+    <Link
+      to={`/channels/${channel.id}`}
+      state={backTo ? { backTo } : undefined}
+      className={cn("flex min-h-12 items-center gap-3 border-t py-2 pr-4 first:border-t-0", indent ? "pl-10" : "pl-4")}
+    >
+      <div className="min-w-0 flex-1">
+        <p className={cn("truncate text-sm", channel.unread > 0 && "font-semibold")}>{channel.name}</p>
+        {channel.last_message_at && (
+          <p className="text-[11px] text-muted-foreground">最近 {formatDateTime(channel.last_message_at)}</p>
+        )}
+      </div>
+      {channel.unread > 0 && <UnreadDot count={channel.unread} />}
+    </Link>
   )
 }
 ```
@@ -1967,16 +2004,15 @@ const TABS = [
 ```tsx
 import { useEffect, useState } from "react"
 import { ChevronDown, ChevronRight } from "lucide-react"
-import { Link } from "react-router"
 
 import { listChannels, type Channel } from "@/api/channels"
 import { BottomNav } from "@/components/bottom-nav"
+import { ChannelRow } from "@/components/channel-row"
 import { UnreadDot } from "@/components/channels-link"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
 import { homePath, useAuth } from "@/lib/auth"
 import { groupChannels } from "@/lib/channels"
-import { formatDateTime } from "@/lib/format"
 
 type LoadState = { status: "loading" } | { status: "error" } | { status: "ready"; channels: Channel[] }
 
@@ -2052,23 +2088,6 @@ export function ChannelsPage() {
       </main>
       {sales && <BottomNav />}
     </div>
-  )
-}
-
-function ChannelRow({ channel, indent = false }: { channel: Channel; indent?: boolean }) {
-  return (
-    <Link
-      to={`/channels/${channel.id}`}
-      className={`flex min-h-12 items-center gap-3 border-t py-2 pr-4 first:border-t-0 ${indent ? "pl-10" : "pl-4"}`}
-    >
-      <div className="min-w-0 flex-1">
-        <p className={`truncate text-sm ${channel.unread ? "font-semibold" : ""}`}>{channel.name}</p>
-        {channel.last_message_at && (
-          <p className="text-[11px] text-muted-foreground">最近 {formatDateTime(channel.last_message_at)}</p>
-        )}
-      </div>
-      {channel.unread > 0 && <UnreadDot count={channel.unread} />}
-    </Link>
   )
 }
 ```
@@ -2294,13 +2313,12 @@ function MessageBubble({ message }: { message: ChannelMessage }) {
 
 ```tsx
 import { useEffect, useState } from "react"
-import { Link, useParams } from "react-router"
+import { useParams } from "react-router"
 
 import { getChannel, listThreads, type Channel } from "@/api/channels"
-import { UnreadDot } from "@/components/channels-link"
+import { ChannelRow } from "@/components/channel-row"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
-import { formatDateTime } from "@/lib/format"
 
 type LoadState = { status: "loading" } | { status: "error" } | { status: "ready"; place: Channel; threads: Channel[] }
 
@@ -2333,20 +2351,7 @@ export function ChannelThreadsPage() {
         {state.status === "ready" && state.threads.length > 0 && (
           <div className="overflow-hidden rounded-2xl border bg-card">
             {state.threads.map((thread) => (
-              <Link
-                key={thread.id}
-                to={`/channels/${thread.id}`}
-                state={{ backTo: `/channels/${id}/threads` }}
-                className="flex min-h-12 items-center gap-3 border-t px-4 py-2 first:border-t-0"
-              >
-                <div className="min-w-0 flex-1">
-                  <p className={`truncate text-sm ${thread.unread ? "font-semibold" : ""}`}>{thread.name}</p>
-                  {thread.last_message_at && (
-                    <p className="text-[11px] text-muted-foreground">最近 {formatDateTime(thread.last_message_at)}</p>
-                  )}
-                </div>
-                {thread.unread > 0 && <UnreadDot count={thread.unread} />}
-              </Link>
+              <ChannelRow key={thread.id} channel={thread} backTo={`/channels/${id}/threads`} />
             ))}
           </div>
         )}
