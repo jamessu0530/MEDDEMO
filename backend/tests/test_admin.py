@@ -66,7 +66,7 @@ def test_it_sits_on_the_root_and_sees_everything(client, auth, engine):
     sql = "SELECT count(DISTINCT customer_id) FROM v_customer_summary"
     assert run_readonly(engine, sql, Scope(path="TW")).rows == [[250]]
     # 動得了：SELF 層級也涵蓋每個人
-    assert Scope(path="TW").can_see(SELF, "TW.S.M03.U05") is True
+    assert Scope(path="TW").can_see(SELF, "TW.S.M04.U05") is True
 
 
 def test_the_tree_refuses_a_position_that_does_not_match_the_role():
@@ -97,7 +97,7 @@ def test_only_it_can_open_the_org_admin(client, auth):
     # 根節點在前，區由北到南
     assert [u["id"] for u in chart["units"]] == ["TW", "TW.N", "TW.C", "TW.S"]
     # 公司帳號全列（自建與第三方登入的不在組織裡，不列）
-    assert {u["id"] for u in chart["users"]} >= {"A01", "M01", "M02", "M03", "U01", "U02", "U03", "U04", "U05"}
+    assert {u["id"] for u in chart["users"]} >= {"A01", "M01", "M02", "M03", "M04", "U01", "U02", "U03", "U04", "U05"}
     assert all(not u["id"].startswith("X") for u in chart["users"])
     assert member(chart, "U01")["customer_count"] == 50
     # 主管端 IT 也進得去
@@ -190,7 +190,7 @@ def test_a_deactivated_account_cannot_sign_in(tx, client, auth):
     assert member(chart, "U05")["customer_count"] == 0
     assert member(chart, "U04")["customer_count"] == 100
     # 停用的人留在樹上原位：他的歷史拜訪照舊給原本的團隊看
-    assert fresh(tx, "U05").org_path == "TW.S.M03.U05"
+    assert fresh(tx, "U05").org_path == "TW.S.M04.U05"
 
     # 手上的 token 下一個請求就失效；密碼對了也登不進來
     me = client.get("/api/auth/me", headers=token)
@@ -217,7 +217,7 @@ def test_the_guards_explain_what_cannot_be_done(tx, client, auth):
     # 最高權限不能在畫面上動
     assert refused("POST", "/api/admin/users/A01/deactivate", {}) == "IT 帳號不能在這裡改"
     # 主管底下還有人：停用與降職都不行（降職連停用的屬下也算，否則樹會長到第五層）
-    assert "2 位在職的業務" in refused("POST", "/api/admin/users/M03/deactivate", {})
+    assert "1 位在職的業務" in refused("POST", "/api/admin/users/M03/deactivate", {})
     assert "1 位業務" in refused("PUT", "/api/admin/users/M02/role", {"role": "sales", "manager_id": "M01"})
     # 主管只能是主管；接手客戶的只能是業務
     assert refused("PUT", "/api/admin/users/U03/manager", {"manager_id": "U04"}) == "直屬主管要選一位主管"
@@ -276,8 +276,8 @@ def test_a_new_account_gets_the_next_number_and_can_sign_in(tx, client, auth):
 
     manager = {"name": "測試主管", "email": "new.boss@meddemo.tw", "password": "abcd1234", "role": "manager", "unit_id": "TW.S"}
     chart = client.post("/api/admin/users", json=manager, headers=auth("A01")).json()
-    # M 開頭接著 M03 編；IT 是 A01，不佔主管的號碼
-    assert member(chart, "M04")["region"] == "南區"
+    # M 開頭接著 M04 編；IT 是 A01，不佔主管的號碼
+    assert member(chart, "M05")["region"] == "南區"
 
     login = client.post("/api/auth/login", json={"email": "new.rep@meddemo.tw", "password": "abcd1234"})
     assert login.status_code == 200

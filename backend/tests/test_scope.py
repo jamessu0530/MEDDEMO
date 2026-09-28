@@ -307,10 +307,12 @@ def test_org_paths_are_rebuilt_from_the_reporting_line(engine):
         "U02": "TW.N.M01.U02",
         "U03": "TW.C.M02.U03",
         "U04": "TW.S.M03.U04",
-        "U05": "TW.S.M03.U05",
+        # 南區兩組：頻道的整區看板才看得到「各組」
+        "U05": "TW.S.M04.U05",
         "M01": "TW.N.M01",
         "M02": "TW.C.M02",
         "M03": "TW.S.M03",
+        "M04": "TW.S.M04",
         # IT 坐在根節點上，路徑就是根節點本身
         "A01": "TW",
     }

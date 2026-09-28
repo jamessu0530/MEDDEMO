@@ -98,7 +98,7 @@ curl -X PUT localhost:8000/api/mock-systems/oa -H 'Content-Type: application/jso
   - **只有自己開的帳號能改名字**。公司帳號的名字是公司資料；而且自己開的帳號看的都是「林昱辰的客戶」，公司帳號被改名，所有人畫面上的示範業務都會跟著變。
   - 沒做 flutterproject4 的忘記密碼：它是「教育版」，重設碼直接放在 API 回應裡，任何人輸入別人的 Email 就能拿到重設碼、改掉別人的密碼。要做得寄信，這次沒有寄信服務。
 
-- 九個帳號在灌假資料時建好：Email 是工號小寫加網域，例如業務林昱辰是 `u01@meddemo.tw`、主管陳建宏是 `m01@meddemo.tw`。例外是開發者自己的 IT 帳號 A01，用的是本人的信箱（見 `data/seed/catalog.py` 的 `USERS`）。密碼九個帳號都一樣，由 `DEMO_PASSWORD` 設定（本機預設 `meddemo1234`）。
+- 十個帳號在灌假資料時建好：Email 是工號小寫加網域，例如業務林昱辰是 `u01@meddemo.tw`、主管陳建宏是 `m01@meddemo.tw`。例外是開發者自己的 IT 帳號 A01，用的是本人的信箱（見 `data/seed/catalog.py` 的 `USERS`）。密碼十個帳號都一樣，由 `DEMO_PASSWORD` 設定（本機預設 `meddemo1234`）。
   - 第三方登入是用各家給的使用者編號對帳號、不是用 Email 對，所以拿同一個信箱去 Google 登入不會進到 A01，會另外開一個業務帳號。要用 Google 進 A01，得先用 Email 加密碼登入，再到「設定」把 Google 綁上去。
 - 密碼用 bcrypt 存雜湊；登入發一張 JWT，預設 24 小時到期。
 - **同一個帳號只能在一台裝置登入**：token 裡除了帳號還帶 `sessionVersion`，每次登入把資料庫的版號加一，每個請求比對兩邊。版號對不上就回「帳號已在其他裝置登入，請重新登入」。這樣不必另外維護一張作廢清單。做法照著 flutterproject4（同一位作者的另一個專案）那套，只是資料庫從 MongoDB 換成 Postgres。

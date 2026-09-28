@@ -22,12 +22,14 @@ USERS = [
     ("U02", "王冠宇", "sales", "M01", None, None),
     ("U03", "黃怡君", "sales", "M02", None, None),
     ("U04", "吳承翰", "sales", "M03", None, None),
-    ("U05", "李佳蓉", "sales", "M03", None, None),
+    # 南區兩組各一位業務：頻道的整區看板要看得到「各組」往上傳的重點
+    ("U05", "李佳蓉", "sales", "M04", None, None),
     ("M01", "陳建宏", "manager", None, "TW.N", None),
     ("M02", "張淑芬", "manager", None, "TW.C", None),
     ("M03", "許文彬", "manager", None, "TW.S", None),
+    ("M04", "蔡宗翰", "manager", None, "TW.S", None),
     # 開發者自己的帳號：IT，全公司看得到也動得了，並且是唯一能在組織管理頁改組織的人。
-    # 用自己的信箱才能在展示時登入；A 開頭跟主管的 M 分開，新開的主管帳號照 M04、M05 編下去
+    # 用自己的信箱才能在展示時登入；A 開頭跟主管的 M 分開，新開的主管帳號照 M05、M06 編下去
     ("A01", "James", "it", None, "TW", "jamessu2026@gmail.com"),
 ]
 

@@ -596,7 +596,7 @@ def build_promotions(as_of):
 
 def generate(as_of: date, seed: int = SEED) -> dict[str, list[dict]]:
     rng = random.Random(seed)
-    # 公司給的帳號。Email 用工號，密碼九個帳號都一樣，由 DEMO_PASSWORD 設定
+    # 公司給的帳號。Email 用工號，密碼十個帳號都一樣，由 DEMO_PASSWORD 設定
     password = settings().demo_password
     # 部署時灌資料失敗會讓整次部署失敗，比線上帳號默默變成弱密碼好發現
     if len(password) < MIN_PASSWORD_LENGTH:
