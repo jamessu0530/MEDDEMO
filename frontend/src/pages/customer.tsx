@@ -39,14 +39,20 @@ export function CustomerPage() {
   const [state, setState] = useState<LoadState>({ status: "loading" })
   const [attempt, setAttempt] = useState(0)
   const [threadError, setThreadError] = useState<string | null>(null)
+  const [opening, setOpening] = useState(false)
 
   async function openThread() {
+    // 雙擊按鈕不要開兩次討論串、多推兩筆瀏覽紀錄
+    if (opening) return
+    setOpening(true)
     setThreadError(null)
     try {
       const thread = await openCustomerThread(customerId)
       navigate(`/channels/${thread.id}`, { state: { backTo: `/customers/${customerId}` } })
     } catch {
       setThreadError("討論串沒有打開，請再試一次")
+    } finally {
+      setOpening(false)
     }
   }
 
@@ -109,8 +115,9 @@ export function CustomerPage() {
           <button
             type="button"
             aria-label="討論串"
+            disabled={opening}
             onClick={() => void openThread()}
-            className="flex size-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
+            className="flex size-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted disabled:opacity-50"
           >
             <MessagesSquare className="size-5" />
           </button>
