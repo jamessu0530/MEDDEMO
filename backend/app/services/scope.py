@@ -45,6 +45,10 @@ SHARING_LEVEL = {
     "customer_profile": SELF,   # 客戶檔案、議價卡，以及對這家客戶做事（錄音、排進路線）
     "quote": SELF,              # 報價與交易條件
     "oa_form": SELF,            # 出差單
+    # 頻道（services/channels.py）：全國頻道全公司；整區、地點頻道與客戶討論串整區；小組頻道到小組
+    "channel_national": ROOT,
+    "channel_region": REGION,
+    "channel_team": TEAM,
     # 主管端的提問、風險通報、簽核：當事人在不在自己底下。主管與 IT 的路徑比 SELF 淺、截不動，
     # 所以就是整棵子樹（主管是自己加屬下，IT 是全公司）
     "manager_inbox": SELF,

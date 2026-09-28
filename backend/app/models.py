@@ -605,3 +605,72 @@ class Escalation(Base):
     # 業務看過回覆的時間；還沒看過的回覆會在首頁提醒。主管改了回覆就清空，業務會再收到一次提醒
     seen_at: Mapped[dt.datetime | None]
     created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+
+
+# national：全國；region：整區；team：一位主管帶的小組；place：地點（縣市，台北市到行政區）；customer：一家客戶的討論串
+CHANNEL_KINDS = ("national", "region", "team", "place", "customer")
+# user：人發的；ai：AI 主理發的；notice：拜訪的風險通報（見 docs/superpowers/specs/2026-09-28-channels-design.md）
+MESSAGE_KINDS = ("user", "ai", "notice")
+# 一則訊息最多幾個字。回報一件事用不到這麼多，再長多半是誤貼了一大段
+MESSAGE_MAX_LENGTH = 2000
+
+
+class Channel(Base):
+    """頻道。不存路徑，只記屬於誰：路徑每次從組織樹現算（services/channels.py），
+    主管調區、客戶換負責人都不必另外同步。"""
+
+    __tablename__ = "channel"
+    __table_args__ = (
+        one_of("kind", CHANNEL_KINDS, "kind"),
+        # 依種類只有一個歸屬欄位有值
+        CheckConstraint(
+            "(kind IN ('national', 'region')"
+            "  AND unit_id IS NOT NULL AND manager_id IS NULL AND place_id IS NULL AND customer_id IS NULL)"
+            " OR (kind = 'team'"
+            "  AND manager_id IS NOT NULL AND unit_id IS NULL AND place_id IS NULL AND customer_id IS NULL)"
+            " OR (kind = 'place'"
+            "  AND place_id IS NOT NULL AND unit_id IS NULL AND manager_id IS NULL AND customer_id IS NULL)"
+            " OR (kind = 'customer'"
+            "  AND customer_id IS NOT NULL AND unit_id IS NULL AND manager_id IS NULL AND place_id IS NULL)",
+            name="owner",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    kind: Mapped[str]
+    # 每個歸屬只有一個頻道（NULL 不算重複）
+    unit_id: Mapped[str | None] = mapped_column(ForeignKey("org_unit.id"), unique=True)
+    manager_id: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"), unique=True)
+    place_id: Mapped[str | None] = mapped_column(ForeignKey("place.id"), unique=True)
+    customer_id: Mapped[str | None] = mapped_column(ForeignKey("customer.id"), unique=True)
+    created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+
+
+class ChannelMessage(Base):
+    """頻道裡的一則訊息。第一版不能改、不能刪：回報會被整理進記憶，原文留著才追得回來。"""
+
+    __tablename__ = "channel_message"
+    __table_args__ = (
+        one_of("kind", MESSAGE_KINDS, "kind"),
+        # 人發的一定有作者；AI 主理與風險通報沒有
+        CheckConstraint("(kind = 'user') = (author_id IS NOT NULL)", name="author"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    # 輪詢「這個頻道這則之後的新訊息」靠這個索引
+    channel_id: Mapped[int] = mapped_column(ForeignKey("channel.id", ondelete="CASCADE"), index=True)
+    # 自建帳號刪除時，他發的訊息一起刪（隱私權政策寫的刪除方式）；公司帳號只能停用，不會被刪
+    author_id: Mapped[str | None] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"))
+    kind: Mapped[str] = mapped_column(server_default="user")
+    body: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+
+
+class ChannelRead(Base):
+    """每個人在每個頻道讀到哪一則，算未讀數用。記在實際登入的帳號上，不是代理的那位。"""
+
+    __tablename__ = "channel_read"
+
+    user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), primary_key=True)
+    channel_id: Mapped[int] = mapped_column(ForeignKey("channel.id", ondelete="CASCADE"), primary_key=True)
+    last_read_id: Mapped[int] = mapped_column(BigInteger)

@@ -137,3 +137,26 @@ def sign_in(engine):
         return client
 
     return apply
+
+
+@pytest.fixture
+def tx(engine):
+    """一條連線包一個交易，API 與測試都在裡面，測完回滾。commit 只會結束一個 savepoint。
+    會改組織或發訊息的測試都用它，別的測試看到的還是原本灌好的資料。"""
+    from app.db import get_session
+    from app.main import app
+
+    with engine.connect() as conn:
+        outer = conn.begin()
+
+        def session():
+            with Session(bind=conn, join_transaction_mode="create_savepoint") as s:
+                yield s
+
+        app.dependency_overrides[get_session] = session
+        try:
+            with Session(bind=conn, join_transaction_mode="create_savepoint") as orm:
+                yield orm
+        finally:
+            app.dependency_overrides.pop(get_session, None)
+            outer.rollback()

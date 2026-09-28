@@ -3,7 +3,7 @@
 IT 坐在組織樹的根節點上，路徑就是 TW：截到任何共享層級都還是 TW，所以全公司看得到也動得了，
 跟「主管看得到屬下」是同一個式子。主管端的提問、通報、簽核也改看組織樹，組織一改就跟著走。
 
-會改組織的測試都跑在一條連線的交易裡（tx fixture）：API 的每個請求與測試本身共用這條連線，
+會改組織的測試都跑在一條連線的交易裡（tx fixture，定義在 conftest.py）：API 的每個請求與測試本身共用這條連線，
 測完整個回滾，別的測試看到的還是原本灌好的組織。
 """
 
@@ -13,32 +13,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.db import get_session
 from app.main import app
 from app.models import AppUser, AskRecord, Escalation, OaApprovalStep, OaExpenseForm, OrgChangeLog, Visit
 from app.services import risk
 from app.services.org import paths_from_reports
 from app.services.scope import SELF, Scope
 from app.services.sql_executor import run_readonly
-
-
-@pytest.fixture
-def tx(engine):
-    """一條連線包一個交易，API 與測試都在裡面，測完回滾。commit 只會結束一個 savepoint。"""
-    with engine.connect() as conn:
-        outer = conn.begin()
-
-        def session():
-            with Session(bind=conn, join_transaction_mode="create_savepoint") as s:
-                yield s
-
-        app.dependency_overrides[get_session] = session
-        try:
-            with Session(bind=conn, join_transaction_mode="create_savepoint") as orm:
-                yield orm
-        finally:
-            app.dependency_overrides.pop(get_session, None)
-            outer.rollback()
 
 
 @pytest.fixture

@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.models import AppUser, Customer, OaApprovalStep, OaExpenseForm, OrgChangeLog, OrgUnit
 from app.services import auth
+from app.services.channels import ensure_channels
 from app.services.oa import MANAGER_STEP_LABEL
 from app.services.org import rebuild_org_paths
 
@@ -310,11 +311,13 @@ def _follow_manager(session: Session, rep: AppUser) -> None:
 
 
 def _rebuild(session: Session) -> None:
-    """重算整棵樹。規則寫在 paths_from_reports，這裡的檢查漏掉的，它還會再擋一次。"""
+    """重算整棵樹。規則寫在 paths_from_reports，這裡的檢查漏掉的，它還會再擋一次。
+    新的主管（新增帳號、業務升主管）順便開小組頻道。"""
     try:
         rebuild_org_paths(session)
     except ValueError as exc:
         raise OrgError(str(exc)) from None
+    ensure_channels(session)
 
 
 def _unit_order(unit: OrgUnit) -> tuple[bool, int, str]:

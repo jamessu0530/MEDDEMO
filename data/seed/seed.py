@@ -20,6 +20,7 @@ import generate
 from app import models
 from app.db import make_engine, reset_schema, schema_version
 from app.embeddings import optional_embedder
+from app.services.channels import ensure_channels
 from app.services.documents import index_documents
 from app.services.org import paths_from_reports, rebuild_org_paths, region_of
 
@@ -97,6 +98,8 @@ def seed(url: str | None, as_of: date) -> dict[str, int]:
             -- 簽核的是申請人的直屬主管，跟 App 開新單時一樣（services/oa.py）
             JOIN app_user m ON m.id = (SELECT manager_id FROM app_user WHERE id = o.applicant_id)
         """))
+        # 全國、整區、地點與小組頻道（客戶討論串第一次有人打開才建）
+        ensure_channels(session)
         # 假資料的拜訪編號是直接指定的，序號要接在後面，新拜訪才不會撞號
         session.execute(text("SELECT setval('visit_seq', :n)"), {"n": len(data["visit"])})
         # 內部文件建索引；有設定 embedding 服務才一併算向量，否則只建關鍵字索引
