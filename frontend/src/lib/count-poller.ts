@@ -1,0 +1,54 @@
+// 紅點數字不像聊天，晚一分鐘看到沒關係；一分鐘問一次，一台手機一天最多 1,440 個很小的請求
+const POLL_MS = 60_000
+
+/** 有畫面在看的時候，每分鐘問一次某個數字（主管回覆、頻道未讀）。手機從背景切回來、恢復連線時先問一次 */
+export class CountPoller {
+  private count = 0
+  private readonly listeners = new Set<() => void>()
+  private timer: ReturnType<typeof setInterval> | null = null
+  private readonly fetchCount: () => Promise<{ count: number }>
+
+  constructor(fetchCount: () => Promise<{ count: number }>) {
+    this.fetchCount = fetchCount
+  }
+
+  subscribe = (listener: () => void) => {
+    this.listeners.add(listener)
+    if (this.listeners.size === 1) this.start()
+    return () => {
+      this.listeners.delete(listener)
+      if (this.listeners.size === 0) this.stop()
+    }
+  }
+
+  getSnapshot = () => this.count
+
+  /** 看過之後馬上重問一次，紅點不必等下一分鐘才消失 */
+  refresh = async () => {
+    if (document.visibilityState === "hidden" || !navigator.onLine) return
+    try {
+      const { count } = await this.fetchCount()
+      if (count === this.count) return
+      this.count = count
+      this.listeners.forEach((listener) => listener())
+    } catch {
+      // 連不上就等下一輪
+    }
+  }
+
+  private readonly onWake = () => void this.refresh()
+
+  private start() {
+    void this.refresh()
+    this.timer = setInterval(this.onWake, POLL_MS)
+    document.addEventListener("visibilitychange", this.onWake)
+    window.addEventListener("online", this.onWake)
+  }
+
+  private stop() {
+    if (this.timer) clearInterval(this.timer)
+    this.timer = null
+    document.removeEventListener("visibilitychange", this.onWake)
+    window.removeEventListener("online", this.onWake)
+  }
+}
