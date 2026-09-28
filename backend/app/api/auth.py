@@ -1,12 +1,11 @@
 """登入相關 API（FR-12）。
 
-三種帳號：公司給的八個（灌假資料時建好，用 Email 密碼登入）、自己用 Email 建立的，
+三種帳號：公司給的（灌假資料時建好、或 IT 在組織管理頁開的，用 Email 密碼登入）、自己用 Email 建立的，
 以及用 Google／GitHub／Facebook 第一次登入時自動開的。後兩種都是業務，看示範業務的客戶。
 註冊與錯誤訊息的寫法照 flutterproject4（同一位作者的專案）。
 """
 
 import datetime as dt
-import re
 import secrets
 from typing import Annotated, Literal
 
@@ -49,7 +48,7 @@ class UserPublic(BaseModel):
     linked: list[LinkedIdentity] = Field(default_factory=list)
     # 第三方登入開的帳號自己沒有客戶，看的是這位示範業務的資料；畫面上要講清楚
     acting_as: ActingAs | None = None
-    # 自己開的帳號才能改名字；公司的八個帳號名字是公司資料，畫面上不給改
+    # 自己開的帳號才能改名字；公司帳號的名字是公司資料，畫面上不給改
     can_rename: bool = False
 
 
@@ -118,8 +117,12 @@ def current_user(
 CurrentUser = Annotated[AppUser, Depends(current_user)]
 
 
+# 進得了主管端的角色。IT 看得到也動得了全公司，主管端也不例外
+MANAGER_SIDE_ROLES = ("manager", "it")
+
+
 def manager_only(user: CurrentUser) -> AppUser:
-    if user.role != "manager":
+    if user.role not in MANAGER_SIDE_ROLES:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="這個頁面只有主管看得到")
     return user
 
@@ -127,15 +130,21 @@ def manager_only(user: CurrentUser) -> AppUser:
 ManagerUser = Annotated[AppUser, Depends(manager_only)]
 
 
-# 只檢查長得像 Email：真的收不收得到信要寄確認信才知道，這次沒有寄信服務
-EMAIL_SHAPE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+def it_only(user: CurrentUser) -> AppUser:
+    """組織管理只有 IT 能做。"""
+    if user.role != "it":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="組織管理只有 IT 能用")
+    return user
+
+
+ItUser = Annotated[AppUser, Depends(it_only)]
 
 
 @router.post("/register", status_code=status.HTTP_201_CREATED, response_model=AuthResponse)
 def register(session: SessionDep, body: RegisterRequest):
     """用 Email 建立帳號，建好直接登入。"""
     email = auth.normalize_email(body.email)
-    if not EMAIL_SHAPE.match(email):
+    if not auth.EMAIL_SHAPE.match(email):
         raise HTTPException(status_code=422, detail="Email 格式不對")
     try:
         name = auth.validate_name(body.name)
@@ -207,7 +216,7 @@ def update_profile(session: SessionDep, user: CurrentUser, body: ProfileUpdate):
 
 @router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
 def delete_account(session: SessionDep, user: CurrentUser):
-    """刪除自己的帳號（隱私權政策 /privacy 寫的刪除方式）。公司的八個帳號是示範資料，不能刪。
+    """刪除自己的帳號（隱私權政策 /privacy 寫的刪除方式）。公司帳號不能自己刪，要由 IT 停用。
 
     一起刪掉：帳號、綁定的第三方身分、自己的提問與轉給主管的提問（外鍵 ON DELETE CASCADE）。
     自己開的報價草稿留在 SAP 模擬表，只把「誰開的」清掉：報價是交易紀錄，屬於客戶。
@@ -332,7 +341,10 @@ def oauth_login(session: SessionDep, provider: Provider, body: OAuthCredential):
         user = _create_external_account(session, identity)
     else:
         user = session.get(AppUser, bound.user_id)
-    token = auth.start_session(session, user)
+    try:
+        token = auth.start_session(session, user)
+    except auth.AuthError as exc:  # 綁的那個帳號被停用了
+        raise _unauthorized(str(exc)) from None
     session.commit()
     return AuthResponse(token=token, user=_public(session, user))
 

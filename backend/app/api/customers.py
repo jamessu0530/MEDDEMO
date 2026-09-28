@@ -27,6 +27,8 @@ class CustomerItem(BaseModel):
     type: str
     region: str
     grade: str
+    # 負責業務。IT 在客戶檔案頁換負責人時，要知道現在是誰
+    owner_id: str
     owner_name: str
     last_visit_date: date | None
 
@@ -135,7 +137,8 @@ def _customer_query(scope: Scope):
     return (
         select(
             Customer.id, Customer.name, Customer.type, Customer.region, Customer.grade,
-            AppUser.name.label("owner_name"), visible_last_visit.label("last_visit_date"),
+            Customer.owner_user_id.label("owner_id"), AppUser.name.label("owner_name"),
+            visible_last_visit.label("last_visit_date"),
         )
         .join(AppUser, AppUser.id == Customer.owner_user_id)
         .outerjoin(Visit, (Visit.customer_id == Customer.id) & Visit.status.in_(("confirmed", "synced")))

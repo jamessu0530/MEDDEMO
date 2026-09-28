@@ -5,6 +5,7 @@
 
 可見範圍 = 把自己的路徑截到該種資料的共享層級深度，再看對方是不是在底下。
 主管的路徑比較短、截不動，所以「主管看得到屬下」不必另外寫規則，是同一個式子的結果。
+IT 坐在根節點上、路徑就是 TW，截到哪一層都是 TW，全公司看得到也動得了，也是同一個式子。
 
 數字查詢的 SQL 是模型寫的，靠提示叫它「只查自己的」擋不住，所以過濾做在資料庫：
 四個語意層 View 都用 app_in_scope() 過濾，路徑由 sql_executor 在每次查詢的交易裡設定。
@@ -43,6 +44,9 @@ SHARING_LEVEL = {
     "customer_profile": SELF,   # 客戶檔案、議價卡，以及對這家客戶做事（錄音、排進路線）
     "quote": SELF,              # 報價與交易條件
     "oa_form": SELF,            # 出差單
+    # 主管端的提問、風險通報、簽核：當事人在不在自己底下。主管與 IT 的路徑比 SELF 淺、截不動，
+    # 所以就是整棵子樹（主管是自己加屬下，IT 是全公司）
+    "manager_inbox": SELF,
 }
 
 # 送給 app_in_scope 代表「誰都看不到」的假路徑：真實路徑一律從 TW 開始（services/org.py），
@@ -103,10 +107,14 @@ class Scope:
         # <@ 是「是……的子孫或自己」
         return select(AppUser.id).where(AppUser.org_path.bool_op("<@")(cast(literal(prefix), LTREE)))
 
+    def includes(self, level: int, user_id: ColumnElement[str]) -> ColumnElement[bool]:
+        """加在 where 上：user_id 這個工號欄位（或運算式）指的人在不在這個層級底下。"""
+        users = self.users_at(level)
+        return true() if users is None else user_id.in_(users)
+
     def customers_at(self, level: int) -> ColumnElement[bool]:
         """加在 where 上，依客戶負責人的位置過濾。查詢裡要有 Customer。"""
-        users = self.users_at(level)
-        return true() if users is None else Customer.owner_user_id.in_(users)
+        return self.includes(level, Customer.owner_user_id)
 
     @property
     def sql_path(self) -> str:

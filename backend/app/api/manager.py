@@ -1,4 +1,8 @@
-"""主管端：風險通報（原型回寫完成頁的「主管同步收到通報」）。只有主管，只看自己轄區。"""
+"""主管端：風險通報（原型回寫完成頁的「主管同步收到通報」）。
+
+主管看自己底下業務的通報，IT 看全公司的（SHARING_LEVEL["manager_inbox"]）。
+依拜訪的業務在組織樹上的位置過濾，不看轄區，也不看通報當時記的 manager_id：業務換了主管，通報跟著人走。
+"""
 
 import datetime as dt
 from typing import Annotated
@@ -12,6 +16,7 @@ from app.api.auth import ManagerUser
 from app.db import get_session
 from app.models import AppUser, Customer, ManagerNotice
 from app.services.risk import RISK_MAX
+from app.services.scope import SHARING_LEVEL, Scope
 
 router = APIRouter(prefix="/api/manager", tags=["manager"])
 SessionDep = Annotated[Session, Depends(get_session)]
@@ -36,13 +41,16 @@ class Unseen(BaseModel):
     count: int
 
 
+def _mine(manager: AppUser):
+    return Scope.for_user(manager).includes(SHARING_LEVEL["manager_inbox"], ManagerNotice.rep_id)
+
+
 def _items(session: Session, manager: AppUser, *criteria) -> list[NoticeItem]:
     rows = session.execute(
         select(ManagerNotice, Customer.name, Rep.name)
         .join(Customer, Customer.id == ManagerNotice.customer_id)
         .join(Rep, Rep.id == ManagerNotice.rep_id)
-        # 用轄區而不是 manager_id 過濾：同一區有兩位主管時，大家都看得到
-        .where(Customer.region == manager.region, *criteria)
+        .where(_mine(manager), *criteria)
         .order_by(ManagerNotice.created_at.desc(), ManagerNotice.id.desc())
     )
     return [
@@ -65,8 +73,7 @@ def unseen_notices(session: SessionDep, manager: ManagerUser):
     count = session.scalar(
         select(func.count())
         .select_from(ManagerNotice)
-        .join(Customer, Customer.id == ManagerNotice.customer_id)
-        .where(Customer.region == manager.region, ManagerNotice.seen_at.is_(None))
+        .where(_mine(manager), ManagerNotice.seen_at.is_(None))
     )
     return Unseen(count=count or 0)
 

@@ -1,6 +1,6 @@
 """轉給主管的提問（FR-8.4 延伸）：主管回覆，業務收到通知。
 
-沒有登入（FR-12／13 不在這次範圍），主管端靠網址進入，回覆時選自己是哪一位主管；
+業務的直屬主管（與 IT）在主管端回覆，回覆者就是登入的帳號；
 業務的首頁定時問有沒有還沒看過的回覆，打開「轉給主管的提問」就標成看過。
 """
 
@@ -12,9 +12,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, aliased
 
-from app.api.auth import CurrentUser, ManagerUser
+from app.api.auth import MANAGER_SIDE_ROLES, CurrentUser, ManagerUser
 from app.db import get_session
 from app.models import AppUser, AskRecord, Escalation
+from app.services.scope import SHARING_LEVEL, Scope
 
 router = APIRouter(prefix="/api/escalations", tags=["escalations"])
 SessionDep = Annotated[Session, Depends(get_session)]
@@ -49,9 +50,11 @@ Asker = aliased(AppUser)
 
 
 def _visible_to(user: AppUser) -> Any:
-    """業務只看得到自己轉出去的提問；主管只看得到自己轄區業務轉來的。"""
-    if user.role == "manager":
-        return Asker.region == user.region
+    """業務只看得到自己轉出去的提問；主管看得到自己底下的人轉來的，IT 看得到全公司的
+    （SHARING_LEVEL["manager_inbox"]）。自建帳號不在組織樹上，換算成他代理的那位業務再看。"""
+    if user.role in MANAGER_SIDE_ROLES:
+        asker = func.coalesce(Asker.acts_as_user_id, Asker.id)
+        return Scope.for_user(user).includes(SHARING_LEVEL["manager_inbox"], asker)
     return AskRecord.user_id == user.id
 
 

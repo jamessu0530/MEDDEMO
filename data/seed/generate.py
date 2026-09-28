@@ -535,17 +535,18 @@ def build_visits(rng, customers, baskets, products, as_of, transactions, receiva
 
 def generate(as_of: date, seed: int = SEED) -> dict[str, list[dict]]:
     rng = random.Random(seed)
-    # 帳號是公司給的，沒有註冊功能。Email 用工號，密碼八個帳號都一樣，由 DEMO_PASSWORD 設定
+    # 公司給的帳號。Email 用工號，密碼九個帳號都一樣，由 DEMO_PASSWORD 設定
     password = settings().demo_password
     # 部署時灌資料失敗會讓整次部署失敗，比線上帳號默默變成弱密碼好發現
     if len(password) < MIN_PASSWORD_LENGTH:
         raise ValueError(f"DEMO_PASSWORD 至少要 {MIN_PASSWORD_LENGTH} 碼")
     password_hash = hash_password(password)
+    # org_path 與 region 是衍生值，seed.py 寫入前才依組織樹算（services/org.py）
     users = [
-        {"id": i, "name": n, "role": r, "region": g,
+        {"id": i, "name": n, "role": r,
          "email": e or f"{i.lower()}@meddemo.tw", "password_hash": password_hash, "session_version": 1,
          "manager_id": m, "unit_id": u}
-        for i, n, r, g, m, u, e in catalog.USERS
+        for i, n, r, m, u, e in catalog.USERS
     ]
     org_units = [
         {"id": i, "name": n, "kind": k, "parent_id": p}

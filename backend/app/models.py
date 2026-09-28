@@ -88,6 +88,8 @@ class AppSetting(Base):
 
 
 ORG_UNIT_KINDS = ("root", "region")
+# sales：跑今日路線；manager：帶一隊業務，多一個主管端；it：坐在根節點上，看得到也動得了全公司，並管組織
+ROLES = ("sales", "manager", "it")
 
 
 class OrgUnit(Base):
@@ -108,12 +110,14 @@ class OrgUnit(Base):
 class AppUser(Base):
     __tablename__ = "app_user"
     __table_args__ = (
-        one_of("role", ("sales", "manager"), "role"),
-        # 在組織裡：manager_id 與 unit_id 恰有一個有值，路徑算得出來。
+        one_of("role", ROLES, "role"),
+        # 位置跟著角色：業務接在主管後面；主管與 IT 掛在地理節點上（主管掛區、IT 掛根，這一層約束
+        # 查不到 org_unit，由 services/org.py 的 paths_from_reports 檢查）。
         # 不在組織裡：三個都空，且一定是代理別人的帳號（自建與第三方登入，見 api/auth.py）
         CheckConstraint(
-            "((manager_id IS NULL) <> (unit_id IS NULL) AND org_path IS NOT NULL)"
-            " OR (manager_id IS NULL AND unit_id IS NULL AND org_path IS NULL"
+            "(role = 'sales' AND manager_id IS NOT NULL AND unit_id IS NULL AND org_path IS NOT NULL)"
+            " OR (role IN ('manager', 'it') AND manager_id IS NULL AND unit_id IS NOT NULL AND org_path IS NOT NULL)"
+            " OR (role = 'sales' AND manager_id IS NULL AND unit_id IS NULL AND org_path IS NULL"
             "     AND acts_as_user_id IS NOT NULL)",
             name="org_position",
         ),
@@ -122,6 +126,8 @@ class AppUser(Base):
     id: Mapped[str] = mapped_column(primary_key=True)
     name: Mapped[str]
     role: Mapped[str]
+    # 衍生值：路徑所在的那一區（IT 是根節點「全國」），由 services/org.py 的 rebuild_org_paths 跟路徑一起重算，
+    # 組織怎麼改都不會跟樹對不上。自建帳號跟著代理的那位業務
     region: Mapped[str]
     # 公司給的帳號用 Email 登入；第三方登入自動開的帳號沒有 Email 與密碼（信箱記在 user_identity）。
     # 可以是 NULL 而不是塞假信箱：同一個人用 Google 和 GitHub 各開一次，兩邊信箱一樣會撞到唯一限制
@@ -142,6 +148,22 @@ class AppUser(Base):
     # 舊 token 直接失效。這樣不必另外維護一張作廢清單
     session_version: Mapped[int] = mapped_column(server_default="1")
     updated_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+    # IT 停用的時間，NULL 是在職。停用的人登不進來，但留在組織樹原位：
+    # 他的歷史拜訪照舊給原本的團隊看（路徑一拿掉，連 IT 都看不到那些紀錄）
+    deactivated_at: Mapped[dt.datetime | None]
+
+
+class OrgChangeLog(Base):
+    """組織與帳號的異動紀錄（組織管理頁最下面）。detail 是寫給人看的一句話，當下就寫好，
+    之後名字、組織再怎麼變都不回頭改。"""
+
+    __tablename__ = "org_change_log"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    actor_id: Mapped[str] = mapped_column(ForeignKey("app_user.id"))
+    action: Mapped[str]
+    detail: Mapped[str]
+    created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
 
 
 class UserIdentity(Base):
@@ -454,7 +476,7 @@ class DocumentChunk(Base):
 
 
 class ManagerNotice(Base):
-    """拜訪提到競品或客訴時，通報轄區主管（原型回寫完成頁：「競品已加入風險分，主管同步收到通報」）。"""
+    """拜訪提到競品或客訴時，通報業務的直屬主管（原型回寫完成頁：「競品已加入風險分，主管同步收到通報」）。"""
 
     __tablename__ = "manager_notice"
 
@@ -462,6 +484,8 @@ class ManagerNotice(Base):
     visit_id: Mapped[str] = mapped_column(ForeignKey("visit.id", ondelete="CASCADE"), unique=True)
     customer_id: Mapped[str] = mapped_column(ForeignKey("customer.id"))
     rep_id: Mapped[str] = mapped_column(ForeignKey("app_user.id"))
+    # 通報當時的直屬主管，拜訪結果頁顯示這個名字。誰看得到通報不看這欄，看 rep_id 在不在自己的組織範圍內
+    # （api/manager.py），業務之後換了主管，通報跟著人走
     manager_id: Mapped[str] = mapped_column(ForeignKey("app_user.id"), index=True)
     reason: Mapped[str]
     # 通報當下的風險分與項目；之後客戶狀況變了也不回頭改，主管看到的是當時的判斷

@@ -50,15 +50,14 @@ def notify_manager(session: Session, visit: Visit) -> ManagerNotice | None:
     existing = session.scalar(select(ManagerNotice).where(ManagerNotice.visit_id == visit.id))
     if existing is not None:
         return existing
-    customer = session.get(Customer, visit.customer_id)
-    manager = session.scalar(
-        select(AppUser).where(AppUser.role == "manager", AppUser.region == customer.region).order_by(AppUser.id)
-    )
-    if manager is None:
+    # 通報業務的直屬主管，不是「該區工號最小的主管」：一區可以有好幾位主管，各帶各的人
+    rep = session.get(AppUser, visit.user_id)
+    if rep is None or rep.manager_id is None:
         return None
+    customer = session.get(Customer, visit.customer_id)
     items = risk_items(customer_profile.build_profile(session, customer))
     notice = ManagerNotice(
-        visit_id=visit.id, customer_id=customer.id, rep_id=visit.user_id, manager_id=manager.id,
+        visit_id=visit.id, customer_id=customer.id, rep_id=rep.id, manager_id=rep.manager_id,
         reason=reason, score=len(items), items=items,
     )
     session.add(notice)

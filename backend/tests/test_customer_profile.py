@@ -13,9 +13,8 @@ from app.services.documents import index_documents
 
 @pytest.fixture
 def client(engine, sign_in):
-    # 用到的 C001、C030 分屬北區兩位業務，他們的主管 M04 兩家都看得到
-    # （北區有兩位主管，M01 底下沒有人，看不到這兩家）
-    return sign_in(TestClient(app), "M04")
+    # 用到的 C001、C030 分屬北區兩位業務，他們的主管 M01 兩家都看得到
+    return sign_in(TestClient(app), "M01")
 
 
 @pytest.fixture

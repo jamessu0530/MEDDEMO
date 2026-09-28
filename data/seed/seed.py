@@ -21,7 +21,7 @@ from app import models
 from app.db import make_engine, reset_schema, schema_version
 from app.embeddings import optional_embedder
 from app.services.documents import index_documents
-from app.services.org import paths_from_reports, rebuild_org_paths
+from app.services.org import paths_from_reports, rebuild_org_paths, region_of
 
 # 決賽日。評測題庫的標準答案以這一天為「今天」計算
 DEFAULT_AS_OF = date(2026, 10, 28)
@@ -58,14 +58,16 @@ def seed(url: str | None, as_of: date) -> dict[str, int]:
                 # org_position 約束是一般 CHECK 約束，Postgres 不支援延遲檢查：
                 # manager_id／unit_id 有值的那一列，org_path 得在同一筆 INSERT 就一起帶著，
                 # 沒有「先插入、稍後用 rebuild_org_paths 補上」的空間，所以先在寫入前算好路徑
-                unit_ids = {u["id"] for u in data["org_unit"]}
-                reports = {u["id"]: (u["manager_id"], u["unit_id"]) for u in rows}
-                paths = paths_from_reports(unit_ids, reports)
-                rows = [{**u, "org_path": paths[u["id"]]} for u in rows]
+                # region 是從路徑算出來的衍生值，也是 NOT NULL，一樣得在這筆 INSERT 帶著
+                units = data["org_unit"]
+                reports = {u["id"]: (u["role"], u["manager_id"], u["unit_id"]) for u in rows}
+                paths = paths_from_reports({u["id"]: u["kind"] for u in units}, reports)
+                names = {u["id"]: u["name"] for u in units}
+                rows = [{**u, "org_path": paths[u["id"]], "region": region_of(paths[u["id"]], names)} for u in rows]
                 # manager_id 指向同一張表：經理要先寫進去，業務那幾列的外鍵才成立
                 rows.sort(key=lambda u: u["manager_id"] is not None)
             session.execute(insert(model), rows)
-        # 跟 services/org.py 的演算法核對一次：未來透過管理介面改組織架構時，也是呼叫這個函式重算
+        # 跟 services/org.py 的演算法核對一次：組織管理頁改組織時，也是呼叫這個函式重算
         rebuild_org_paths(session)
         # 歷史出差單當已核准：請求者與區處主管兩關都過，申請匣才不會被幾千張舊單塞滿
         session.execute(text("""
@@ -77,12 +79,8 @@ def seed(url: str | None, as_of: date) -> dict[str, int]:
             INSERT INTO oa_approval_step (form_id, step_no, role_label, user_id, title, status, acted_at)
             SELECT o.id, 2, '經辦人的主管', m.id, '區處主管', 'done', o.created_at
             FROM oa_expense_form o
-            JOIN customer c ON c.id = o.customer_id
-            -- 一個區可能有不只一位主管，所以要挑一位，而且要跟 App 挑的是同一位
-            -- （services/oa.py 與 services/risk.py 都取該區工號最小的），否則歷史簽核會對不上現在的行為
-            JOIN LATERAL (
-              SELECT id FROM app_user WHERE role = 'manager' AND region = c.region ORDER BY id LIMIT 1
-            ) m ON true
+            -- 簽核的是申請人的直屬主管，跟 App 開新單時一樣（services/oa.py）
+            JOIN app_user m ON m.id = (SELECT manager_id FROM app_user WHERE id = o.applicant_id)
         """))
         session.execute(text("""
             INSERT INTO oa_activity (form_id, action, actor_id, detail, created_at)
@@ -93,12 +91,8 @@ def seed(url: str | None, as_of: date) -> dict[str, int]:
             INSERT INTO oa_activity (form_id, action, actor_id, detail, created_at)
             SELECT o.id, 'approved', m.id, '簽核者', o.created_at
             FROM oa_expense_form o
-            JOIN customer c ON c.id = o.customer_id
-            -- 一個區可能有不只一位主管，所以要挑一位，而且要跟 App 挑的是同一位
-            -- （services/oa.py 與 services/risk.py 都取該區工號最小的），否則歷史簽核會對不上現在的行為
-            JOIN LATERAL (
-              SELECT id FROM app_user WHERE role = 'manager' AND region = c.region ORDER BY id LIMIT 1
-            ) m ON true
+            -- 簽核的是申請人的直屬主管，跟 App 開新單時一樣（services/oa.py）
+            JOIN app_user m ON m.id = (SELECT manager_id FROM app_user WHERE id = o.applicant_id)
         """))
         # 假資料的拜訪編號是直接指定的，序號要接在後面，新拜訪才不會撞號
         session.execute(text("SELECT setval('visit_seq', :n)"), {"n": len(data["visit"])})

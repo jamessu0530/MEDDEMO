@@ -33,13 +33,13 @@ def test_everyone_sees_every_customer_but_only_acts_on_their_own(client, auth):
     assert client.get("/api/customers").status_code == 401
     # 客戶清單是全國共享的：名稱、類型、區、等級、負責人
     assert len(client.get("/api/customers", headers=auth("U01")).json()) == 250
-    assert len(client.get("/api/customers", headers=auth("M04")).json()) == 250
+    assert len(client.get("/api/customers", headers=auth("M01")).json()) == 250
     assert client.get("/api/customers/C002", headers=auth("U03")).status_code == 200
 
     # 但檔案、議價卡、報價還是只有負責人與他的主管看得到。C002 是王冠宇（U02）的
     assert client.get("/api/customers/C002/profile", headers=auth("U01")).status_code == 404
     assert client.get("/api/customers/C002/profile", headers=auth("U02")).status_code == 200
-    assert client.get("/api/customers/C002/profile", headers=auth("M04")).status_code == 200
+    assert client.get("/api/customers/C002/profile", headers=auth("M01")).status_code == 200
     assert client.get("/api/customers/C002/negotiation", headers=auth("M02")).status_code == 404
     assert client.get("/api/customers/C002/quote-items", headers=auth("U01")).status_code == 404
 
@@ -62,9 +62,9 @@ def test_the_customer_list_hides_visit_dates_from_outside_the_team(client, auth)
 
     # C017 確實有拜訪紀錄，上一行的 None 是擋下來的，不是本來就沒有
     assert listed("U04")["C017"]["last_visit_date"] is not None
-    # 主管的路徑比較短，看得到屬下的。M04 是 U01 與 U02 的主管
-    assert listed("M04")["C002"]["last_visit_date"] is not None
-    assert listed("M04")["C017"]["last_visit_date"] is None
+    # 主管的路徑比較短，看得到屬下的。M01 是 U01 與 U02 的主管
+    assert listed("M01")["C002"]["last_visit_date"] is not None
+    assert listed("M01")["C017"]["last_visit_date"] is None
 
 
 def test_recording_a_visit_for_someone_elses_customer_is_refused(client, auth):
@@ -82,9 +82,9 @@ def test_teammates_can_read_a_visit_but_only_the_owner_can_change_it(client, aut
         ).first()
         visit_id = visit.id
 
-    # U01 與 U02 同一個團隊（都在 M04 底下）
+    # U01 與 U02 同一個團隊（都在 M01 底下）
     assert client.get(f"/api/visits/{visit_id}", headers=auth("U01")).status_code == 200
-    assert client.get(f"/api/visits/{visit_id}", headers=auth("M04")).status_code == 200
+    assert client.get(f"/api/visits/{visit_id}", headers=auth("M01")).status_code == 200
     # U03 在中區，看不到
     assert client.get(f"/api/visits/{visit_id}", headers=auth("U03")).status_code == 404
     # 看得到不等於能改：同團隊的拜訪唯讀
@@ -109,7 +109,7 @@ def test_every_mutating_visit_endpoint_stays_with_the_owner_not_just_delete(clie
 def test_a_manager_can_act_on_his_reports_visit_even_though_a_teammate_cannot(client, auth, engine):
     """SELF 一律涵蓋主管（主管的路徑比較短、截不掉），拜訪不做例外——這是選擇，不是漏網。
 
-    看回應碼：M04 拿到的 409 是端點自己的狀態檢查（已確認的紀錄不能再改欄位），代表權限這一關
+    看回應碼：M01 拿到的 409 是端點自己的狀態檢查（已確認的紀錄不能再改欄位），代表權限這一關
     已經過了；同一支端點對別區的 U03 是 404，對同團隊的 U01 也是 404。這個 409 不是巧合，
     它就是「主管過得了權限」的訊號，改成 404 就是把這個決定悄悄改掉了。
     """
@@ -118,7 +118,7 @@ def test_a_manager_can_act_on_his_reports_visit_even_though_a_teammate_cannot(cl
             select(Visit).where(Visit.user_id == "U02", Visit.status.in_(("confirmed", "synced")))
         ).first().id
 
-    assert client.put(f"/api/visits/{visit_id}/fields", json={"fields": {}}, headers=auth("M04")).status_code == 409
+    assert client.put(f"/api/visits/{visit_id}/fields", json={"fields": {}}, headers=auth("M01")).status_code == 409
     assert client.put(f"/api/visits/{visit_id}/fields", json={"fields": {}}, headers=auth("U01")).status_code == 404
     assert client.put(f"/api/visits/{visit_id}/fields", json={"fields": {}}, headers=auth("U03")).status_code == 404
 
@@ -132,12 +132,12 @@ def test_sales_figures_stop_at_the_region(engine):
     sql = "SELECT count(DISTINCT customer_id) FROM v_customer_summary"
     assert run_readonly(engine, sql).rows == [[250]]
     # U01 在 REGION 層級看得到整個北區，不只自己的 50 家
-    assert run_readonly(engine, sql, Scope(path="TW.N.M04.U01")).rows == [[100]]
-    assert run_readonly(engine, sql, Scope(path="TW.N.M04")).rows == [[100]]
+    assert run_readonly(engine, sql, Scope(path="TW.N.M01.U01")).rows == [[100]]
+    assert run_readonly(engine, sql, Scope(path="TW.N.M01")).rows == [[100]]
     assert run_readonly(engine, sql, Scope(path="TW.C.M02.U03")).rows == [[50]]
     for view in ("v_monthly_sales", "v_margin_breakdown"):
         # 北區 100 家全部都有交易，所以是剛好 100；寫 <= 100 的話少過濾到一區以外的幾家也測不出來
-        rows = run_readonly(engine, f"SELECT count(DISTINCT customer_id) FROM {view}", Scope(path="TW.N.M04.U01")).rows
+        rows = run_readonly(engine, f"SELECT count(DISTINCT customer_id) FROM {view}", Scope(path="TW.N.M01.U01")).rows
         assert rows[0][0] == 100
 
 
@@ -168,12 +168,12 @@ def test_the_sql_views_declare_the_same_depths_as_python():
 def test_visit_records_stop_at_the_team(engine):
     sql = "SELECT count(DISTINCT rep_id) FROM v_visit_signal"
     # 同一個團隊（U01 與 U02）看得到彼此的拜訪，看不到別區的
-    assert run_readonly(engine, sql, Scope(path="TW.N.M04.U01")).rows == [[2]]
+    assert run_readonly(engine, sql, Scope(path="TW.N.M01.U01")).rows == [[2]]
     assert run_readonly(engine, sql, Scope(path="TW.C.M02.U03")).rows == [[1]]
 
 
 def test_the_model_cannot_lift_the_filter(engine):
-    scope = Scope(path="TW.N.M04.U01")
+    scope = Scope(path="TW.N.M01.U01")
     with pytest.raises(QueryRejected):
         run_readonly(engine, "SELECT set_config('app.scope_path', '', true)", scope)
     # 文字檢查擋不住 Unicode 跳脫的函式名稱，要靠資料庫收回的權限擋下
@@ -272,11 +272,12 @@ def test_a_fifth_level_in_the_org_tree_is_refused_instead_of_leaking_upward():
     """
     from app.services.org import paths_from_reports
 
-    flat = {"M01": (None, "TW.N"), "U01": ("M01", None)}
-    assert paths_from_reports({"TW.N"}, flat) == {"M01": "TW.N.M01", "U01": "TW.N.M01.U01"}
+    units = {"TW": "root", "TW.N": "region"}
+    flat = {"M01": ("manager", None, "TW.N"), "U01": ("sales", "M01", None)}
+    assert paths_from_reports(units, flat) == {"M01": "TW.N.M01", "U01": "TW.N.M01.U01"}
 
     with pytest.raises(ValueError, match="S01"):
-        paths_from_reports({"TW.N"}, flat | {"S01": ("U01", None)})
+        paths_from_reports(units, flat | {"S01": ("sales", "U01", None)})
 
 
 def test_a_level_shallower_than_root_is_a_bug_not_a_wildcard():
@@ -299,14 +300,14 @@ def test_org_paths_are_rebuilt_from_the_reporting_line(engine):
     with Session(engine) as session:
         paths = {u.id: u.org_path for u in session.scalars(select(AppUser)).all()}
     assert paths == {
-        "U01": "TW.N.M04.U01",
-        "U02": "TW.N.M04.U02",
+        "U01": "TW.N.M01.U01",
+        "U02": "TW.N.M01.U02",
         "U03": "TW.C.M02.U03",
         "U04": "TW.S.M03.U04",
         "U05": "TW.S.M03.U05",
         "M01": "TW.N.M01",
         "M02": "TW.C.M02",
         "M03": "TW.S.M03",
-        # 北區兩位主管：M04 帶 U01 與 U02，M01 底下沒有人
-        "M04": "TW.N.M04",
+        # IT 坐在根節點上，路徑就是根節點本身
+        "A01": "TW",
     }

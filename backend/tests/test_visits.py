@@ -229,11 +229,11 @@ def test_a_draft_can_be_discarded_but_a_confirmed_visit_cannot(client, providers
     assert client.post(f"/api/visits/{confirmed_id}/confirm").status_code == 409
 
 
-def test_a_competitor_or_complaint_notifies_the_region_manager(client, providers, auth):
+def test_a_competitor_or_complaint_notifies_the_reps_manager(client, providers, auth):
     visit_id = make_draft(client, providers)
     visit = client.post(f"/api/visits/{visit_id}/confirm").json()
     notice = visit["risk_notice"]
-    assert notice["manager_name"] == "陳建宏"  # 忠孝店在北區
+    assert notice["manager_name"] == "陳建宏"  # 林昱辰的直屬主管
     assert notice["reason"] == "提到競品御松田；客訴：補貨延遲三天"
     assert notice["max"] == 5 and notice["score"] == len(notice["items"])
     # 忠孝店是刻意設計的「進貨間隔拉長」案例，這次又提到競品與客訴
@@ -242,7 +242,7 @@ def test_a_competitor_or_complaint_notifies_the_region_manager(client, providers
     notices = client.get("/api/manager/notices", headers=auth("M01")).json()
     mine = next(n for n in notices if n["visit_id"] == visit_id)
     assert mine["rep_name"] == "林昱辰" and mine["customer_name"] == "康泰連鎖藥局 · 忠孝店" and mine["seen_at"] is None
-    # 中區主管看不到北區的通報；業務打不開主管端
+    # 別的主管看不到；業務打不開主管端
     assert all(n["visit_id"] != visit_id for n in client.get("/api/manager/notices", headers=auth("M02")).json())
     assert client.get("/api/manager/notices").status_code == 403
 

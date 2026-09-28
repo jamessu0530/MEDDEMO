@@ -4,13 +4,14 @@
 token 裡除了帳號還帶 sessionVersion，每次登入把資料庫的版號加一，每個請求比對兩邊。
 版號對不上就是這個帳號已經在別的裝置登入，舊 token 立刻失效，不必另外維護一張作廢清單。
 
-公司給的八個帳號在灌假資料時建好，用 Email 登入；另外任何人都能用 Google／GitHub／Facebook 登入，
+公司給的帳號在灌假資料時建好（之後 IT 可以在組織管理頁再開），用 Email 登入；另外任何人都能用 Google／GitHub／Facebook 登入，
 第一次登入自動開一個業務帳號（見 api/auth.py 的 oauth_login）。
 """
 
 from __future__ import annotations
 
 import datetime as dt
+import re
 import secrets
 
 import bcrypt
@@ -25,6 +26,10 @@ ALGORITHM = "HS256"
 # 密碼最短長度。NIST SP 800-63B 建議至少 8 碼，且不要強制混大小寫與符號
 MIN_PASSWORD_LENGTH = 8
 
+# 只檢查長得像 Email：真的收不收得到信要寄確認信才知道，這次沒有寄信服務。
+# 自己註冊（api/auth.py）與 IT 開帳號（services/org_admin.py）共用
+EMAIL_SHAPE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
 # 名字規則照 flutterproject4 的暱稱：2～32 字、擋不當用字（大小寫不分、子字串比對）。
 # 兩處不照抄：那邊是遊戲排行榜 ID，所以不能重複、不能有空白；這裡是業務的姓名，同名很正常，英文姓名要有空白
 NAME_MIN_LENGTH = 2
@@ -37,6 +42,7 @@ EMAIL_NOT_FOUND = "找不到這個 Email，還沒有帳號的話請先建立帳�
 WRONG_PASSWORD = "密碼錯誤，請再試一次"
 WRONG_CURRENT_PASSWORD = "目前的密碼不對"
 NO_PASSWORD = "這個帳號是用第三方登入開的，沒有密碼可以改"
+ACCOUNT_DISABLED = "這個帳號已停用，請洽 IT"
 
 # 第三方登入自動開的帳號看誰的客戶與路線。新帳號自己名下沒有客戶，今日路線會是空的；
 # 決賽評審用自己的 Google 登入，要能馬上試完整流程（9/16 James 決定）
@@ -100,7 +106,12 @@ def login(session: Session, email: str, password: str) -> tuple[AppUser, str]:
 
 
 def start_session(session: Session, user: AppUser) -> str:
-    """版號加一（別的裝置上的登入隨之失效），發一張新 token。Email 與第三方登入共用。"""
+    """版號加一（別的裝置上的登入隨之失效），發一張新 token。Email 與第三方登入共用。
+
+    停用的帳號在這裡擋：兩種登入方式都會走到，而且 Email 登入是驗過密碼才到這裡，
+    沒有密碼的人問不出「這個信箱的帳號被停用了」。"""
+    if user.deactivated_at is not None:
+        raise AuthError(ACCOUNT_DISABLED)
     user.session_version += 1
     user.updated_at = func.now()
     session.flush()
@@ -118,6 +129,9 @@ def user_from_token(session: Session, token: str) -> AppUser:
     user = session.get(AppUser, claims.get("sub"))
     if user is None:
         raise AuthError(TOKEN_EXPIRED)
+    # 比版號之前先看：被停用的人手上的 token 版號還對得上，要講的是停用，不是「在別的裝置登入」
+    if user.deactivated_at is not None:
+        raise AuthError(ACCOUNT_DISABLED)
     if int(claims.get("sv", -1)) != user.session_version:
         raise AuthError(SESSION_SUPERSEDED)
     return user

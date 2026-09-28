@@ -20,18 +20,15 @@ from app.models import (
     OaExpenseForm,
     Visit,
 )
-from app.services.scope import Scope
+from app.services.scope import SHARING_LEVEL, Scope
 from app.timeutil import local_date
 
 KIND_LABEL = "出差單"
 FLOW_NAME = "出差單_簽核流程"
-
-
-def region_manager(session: Session, region: str) -> AppUser:
-    manager = session.scalar(select(AppUser).where(AppUser.role == "manager", AppUser.region == region).order_by(AppUser.id))
-    if manager is None:
-        raise RuntimeError(f"找不到{region}的主管")
-    return manager
+# 第二關「經辦人的主管」。業務換主管時，還沒簽的這一關跟著改指派（services/org_admin.py）
+MANAGER_STEP_LABEL = "經辦人的主管"
+# 進得了簽核匣的角色（跟 api/auth.py 的 MANAGER_SIDE_ROLES 一致；這裡不能反過來引用 api 層）
+INBOX_ROLES = ("manager", "it")
 
 
 def next_form_no(session: Session, trip_date: dt.date) -> str:
@@ -47,7 +44,10 @@ def create_trip_form(session: Session, visit: Visit) -> OaExpenseForm:
         return existing
     applicant = session.get(AppUser, visit.user_id)
     customer = session.get(Customer, visit.customer_id)
-    manager = region_manager(session, customer.region)
+    # 簽核的是申請人的直屬主管，不是「該區工號最小的主管」：一區可以有好幾位主管，各帶各的人
+    manager = session.get(AppUser, applicant.manager_id) if applicant.manager_id else None
+    if manager is None:
+        raise RuntimeError(f"{applicant.name} 沒有直屬主管，出差單送不出去")
     now = dt.datetime.now(dt.UTC)
     form = OaExpenseForm(
         form_no=next_form_no(session, local_date(visit.visited_at)),
@@ -70,7 +70,7 @@ def create_trip_form(session: Session, visit: Visit) -> OaExpenseForm:
     )
     session.add(
         OaApprovalStep(
-            form_id=form.id, step_no=2, role_label="經辦人的主管", user_id=manager.id,
+            form_id=form.id, step_no=2, role_label=MANAGER_STEP_LABEL, user_id=manager.id,
             title="區處主管", status="pending",
         )
     )
@@ -83,9 +83,17 @@ def form_id_for_visit(session: Session, visit_id: str) -> int | None:
 
 
 def _visible(session: Session, user: AppUser, form: OaExpenseForm) -> bool:
-    if user.role == "manager":
-        return session.get(Customer, form.customer_id).region == user.region
-    return form.applicant_id == Scope.for_user(user).acting_user_id
+    """申請人在我的範圍內：業務是自己（自建帳號是代理的那位），主管是自己底下的人，IT 是全公司。"""
+    applicant = session.get(AppUser, form.applicant_id)
+    return Scope.for_user(user).can_see(SHARING_LEVEL["oa_form"], applicant.org_path)
+
+
+def _step_to_decide(session: Session, form: OaExpenseForm, user: AppUser) -> OaApprovalStep | None:
+    """這張單現在等這個人簽的那一關：指派給他、還沒簽的。IT 可以代簽任何一關還沒簽的。"""
+    stmt = select(OaApprovalStep).where(OaApprovalStep.form_id == form.id, OaApprovalStep.status == "pending")
+    if user.role != "it":
+        stmt = stmt.where(OaApprovalStep.user_id == user.id)
+    return session.scalar(stmt.order_by(OaApprovalStep.step_no))
 
 
 def load_form(session: Session, form_id: int, user: AppUser) -> OaExpenseForm:
@@ -136,9 +144,12 @@ def list_mine(session: Session, user: AppUser, status: str | None) -> dict[str, 
 
 
 def list_inbox(session: Session, user: AppUser) -> dict[str, Any]:
-    if user.role != "manager":
+    if user.role not in INBOX_ROLES:
         raise HTTPException(403, "只有主管可以看簽核匣")
-    pending_ids = select(OaApprovalStep.form_id).where(OaApprovalStep.user_id == user.id, OaApprovalStep.status == "pending")
+    # 主管看指派給自己的；IT 看全公司還沒簽的
+    pending_ids = select(OaApprovalStep.form_id).where(OaApprovalStep.status == "pending")
+    if user.role != "it":
+        pending_ids = pending_ids.where(OaApprovalStep.user_id == user.id)
     forms = session.scalars(
         select(OaExpenseForm).where(OaExpenseForm.id.in_(pending_ids)).order_by(OaExpenseForm.created_at.desc(), OaExpenseForm.id.desc()).limit(50)
     ).all()
@@ -202,18 +213,16 @@ def detail(session: Session, form: OaExpenseForm, user: AppUser | None = None) -
             }
             for x in activity
         ],
-        "can_decide": bool(user and any(s.user_id == user.id and s.status == "pending" for s in steps)),
+        "can_decide": bool(user and _step_to_decide(session, form, user)),
     }
 
 
 def decide(session: Session, form: OaExpenseForm, user: AppUser, action: Literal["approve", "reject", "return"], comment: str | None) -> OaExpenseForm:
-    step = session.scalar(
-        select(OaApprovalStep).where(
-            OaApprovalStep.form_id == form.id, OaApprovalStep.user_id == user.id, OaApprovalStep.status == "pending"
-        )
-    )
+    step = _step_to_decide(session, form, user)
     if step is None:
         raise HTTPException(403, "這張單現在不是等你簽核")
+    # IT 代簽時，這一關記實際簽的人，流程圖上才不會顯示成原本指派的主管簽的
+    step.user_id = user.id
     now = dt.datetime.now(dt.UTC)
     step.status = "done"
     step.acted_at = now
