@@ -2,16 +2,20 @@ import {
   BadgePercent,
   CalendarDays,
   MessageCircleQuestion,
+  MessagesSquare,
   Users,
 } from "lucide-react"
 import { NavLink } from "react-router"
 
+import { UnreadDot } from "@/components/channels-link"
+import { useChannelUnread } from "@/lib/channel-unread"
 import { useUploadQueue } from "@/lib/offline-queue"
 import { cn } from "@/lib/utils"
 
 const TABS = [
   { to: "/", label: "今日", icon: CalendarDays },
   { to: "/customers", label: "客戶", icon: Users },
+  { to: "/channels", label: "頻道", icon: MessagesSquare },
   { to: "/ask", label: "問答", icon: MessageCircleQuestion },
   { to: "/promotions", label: "促銷", icon: BadgePercent },
 ]
@@ -19,6 +23,7 @@ const TABS = [
 /** 底部分頁列：只放在最上層的頁面，進到錄音、確認這些流程裡就不顯示，免得誤觸離開 */
 export function BottomNav() {
   const { items } = useUploadQueue()
+  const unread = useChannelUnread()
   // FR-4.3：手機裡還有沒送出的錄音，客戶分頁上顯示筆數（錄音是從客戶清單進去錄的）
   const pending = items.filter((item) => item.state === "pending").length
   return (
@@ -45,6 +50,7 @@ export function BottomNav() {
                 {pending}
               </span>
             )}
+            {to === "/channels" && unread > 0 && <UnreadDot count={unread} className="absolute -top-1.5 -right-2.5" />}
           </span>
           {label}
         </NavLink>

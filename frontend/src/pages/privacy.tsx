@@ -8,7 +8,7 @@ import { Link, useNavigate } from "react-router"
  * 改了做法要回來改這一頁。
  */
 
-const UPDATED = "2026 年 9 月 17 日"
+const UPDATED = "2026 年 9 月 28 日"
 
 function Section({ id, title, children }: { id?: string; title: string; children: React.ReactNode }) {
   return (
@@ -49,7 +49,7 @@ export function PrivacyPage() {
               <b>用 Google、GitHub 或 Facebook 登入時</b>：該服務提供的使用者編號、名字與 Email。我們只拿這幾項，不會讀取你在這些服務上的其他內容，也不會替你發文。
             </li>
             <li>
-              <b>你輸入或說出的內容</b>：問答的提問、語音問答的聲音、拜訪錄音、逐字稿與整理出來的拜訪紀錄、報價草稿。
+              <b>你輸入或說出的內容</b>：問答的提問、語音問答的聲音、拜訪錄音、逐字稿與整理出來的拜訪紀錄、報價草稿、在頻道裡發的訊息。
             </li>
             <li>
               <b>連線資訊</b>：IP 位址。沒登入時用來計算用量上限，計數在該小時或該天結束後一小時自動清除；伺服器的連線紀錄裡也會出現。
@@ -90,7 +90,7 @@ export function PrivacyPage() {
               逐字稿：確認送出後 6 個月刪除。送出時會先遮掉 Email、電話、身分證字號、系統裡業務與主管的姓名，以及「王藥師」「陳小姐」這類稱呼；只講名字或客戶聯絡人的全名認不出來，不會遮。
             </li>
             <li>沒有送出的拜訪紀錄：建立後 60 天整筆刪除。</li>
-            <li>帳號、提問與報價草稿：保留到你刪除帳號為止。</li>
+            <li>帳號、提問、頻道訊息與報價草稿：保留到你刪除帳號為止。</li>
           </ul>
         </Section>
 

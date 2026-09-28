@@ -5,6 +5,7 @@ import { Link, useNavigate, useSearchParams } from "react-router"
 import { listEscalations, replyEscalation, type Escalation } from "@/api/escalations"
 import { getUnseenNoticeCount, listNotices, markNoticeSeen, type ManagerNotice } from "@/api/notices"
 import { listOaInbox, type OaFormItem } from "@/api/oa"
+import { ChannelsLink } from "@/components/channels-link"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
@@ -64,6 +65,7 @@ export function ManagerPage() {
         subtitle="主管端"
         trailing={
           <>
+            <ChannelsLink />
             {user?.role === "it" && (
               <Link to="/admin" aria-label="組織管理" className={HEADER_BUTTON}>
                 <Network className="size-5" />

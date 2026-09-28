@@ -8,6 +8,9 @@ import { canManage, homePath, refreshUser, useAuth } from "@/lib/auth"
 import { uploadQueue } from "@/lib/offline-queue"
 import { AdminPage } from "@/pages/admin"
 import { AskPage } from "@/pages/ask"
+import { ChannelPage } from "@/pages/channel"
+import { ChannelThreadsPage } from "@/pages/channel-threads"
+import { ChannelsPage } from "@/pages/channels"
 import { CustomerPage } from "@/pages/customer"
 import { CustomerPicker } from "@/pages/customer-picker"
 import { EscalationsPage } from "@/pages/escalations"
@@ -129,6 +132,10 @@ export default function App() {
             <Route path="/" element={<Home />} />
             <Route path="/customers" element={<CustomerPicker />} />
             <Route path="/ask" element={<AskPage />} />
+            {/* 頻道：業務、主管、IT 都進得去，看得到哪些頻道由後端依組織樹決定 */}
+            <Route path="/channels" element={<ChannelsPage />} />
+            <Route path="/channels/:channelId" element={<ChannelPage />} />
+            <Route path="/channels/:channelId/threads" element={<ChannelThreadsPage />} />
             <Route path="/promotions" element={<PromotionsPage />} />
             {/* 語音併進問答頁了，舊書籤與導覽說明還指得到這個網址 */}
             <Route path="/voice" element={<Navigate to="/ask" replace />} />

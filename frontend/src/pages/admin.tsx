@@ -14,6 +14,7 @@ import {
   type OrgChart,
   type OrgMember,
 } from "@/api/admin"
+import { ChannelsLink } from "@/components/channels-link"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
@@ -85,13 +86,16 @@ export function AdminPage() {
         title="組織管理"
         subtitle="IT"
         trailing={
-          <Link
-            to="/settings"
-            aria-label="帳號設定"
-            className="flex size-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
-          >
-            <Settings className="size-5" />
-          </Link>
+          <>
+            <ChannelsLink />
+            <Link
+              to="/settings"
+              aria-label="帳號設定"
+              className="flex size-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
+            >
+              <Settings className="size-5" />
+            </Link>
+          </>
         }
       />
       <main className="flex flex-1 flex-col gap-5 px-4 pt-4 pb-10">
