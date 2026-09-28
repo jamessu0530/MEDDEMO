@@ -218,7 +218,8 @@ def update_profile(session: SessionDep, user: CurrentUser, body: ProfileUpdate):
 def delete_account(session: SessionDep, user: CurrentUser):
     """刪除自己的帳號（隱私權政策 /privacy 寫的刪除方式）。公司帳號不能自己刪，要由 IT 停用。
 
-    一起刪掉：帳號、綁定的第三方身分、自己的提問與轉給主管的提問（外鍵 ON DELETE CASCADE）。
+    一起刪掉：帳號、綁定的第三方身分、自己的提問與轉給主管的提問、自己在頻道發的訊息與已讀位置
+    （外鍵 ON DELETE CASCADE）。
     自己開的報價草稿留在 SAP 模擬表，只把「誰開的」清掉：報價是交易紀錄，屬於客戶。
     拜訪紀錄記在示範業務名下（自己開的帳號沒有自己的客戶），不受影響。
     """

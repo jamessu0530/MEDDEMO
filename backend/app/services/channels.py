@@ -9,13 +9,15 @@
 
 from __future__ import annotations
 
+import datetime as dt
 from dataclasses import dataclass
 
-from sqlalchemy import select
+from sqlalchemy import Row, func, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models import AppUser, Channel, Customer, OrgUnit, Place
+from app.models import AppUser, Channel, ChannelMessage, ChannelRead, Customer, OrgUnit, Place
 from app.services.scope import SELF, SHARING_LEVEL, Scope
 
 # 頻道列表的區順序，跟組織管理頁一樣由北到南
@@ -28,6 +30,8 @@ LEVEL = {
     "place": SHARING_LEVEL["channel_region"],
     "customer": SHARING_LEVEL["channel_region"],
 }
+# 一次給幾則訊息：打開頻道先給最新的一頁，往上捲再要前一頁
+MESSAGE_PAGE = 50
 
 
 class NotFound(Exception):
@@ -184,3 +188,105 @@ def customer_thread(session: Session, user: AppUser, customer_id: str) -> Channe
     if not can_see(user, info):
         raise NotFound
     return info
+
+
+def messages(
+    session: Session, channel_id: int, *, after: int | None = None, before: int | None = None, limit: int = MESSAGE_PAGE
+) -> list[Row[tuple[ChannelMessage, str | None]]]:
+    """(訊息, 作者名字)，由舊到新。after：輪詢用，這則之後的新訊息；before：往上捲，這則之前的一頁；
+    都沒給就是最新的一頁。"""
+    stmt = (
+        select(ChannelMessage, AppUser.name)
+        .outerjoin(AppUser, AppUser.id == ChannelMessage.author_id)
+        .where(ChannelMessage.channel_id == channel_id)
+    )
+    if after is not None:
+        return list(session.execute(stmt.where(ChannelMessage.id > after).order_by(ChannelMessage.id).limit(limit)))
+    if before is not None:
+        stmt = stmt.where(ChannelMessage.id < before)
+    return list(session.execute(stmt.order_by(ChannelMessage.id.desc()).limit(limit)))[::-1]
+
+
+def post(session: Session, user: AppUser, info: ChannelInfo, body: str) -> ChannelMessage:
+    """發言。記在實際登入的帳號上（自建帳號用自己的名字，不是代理的示範業務）；自己發的就算讀過了。"""
+    if info.archived:
+        raise Archived
+    message = ChannelMessage(channel_id=info.id, author_id=user.id, kind="user", body=body)
+    session.add(message)
+    session.flush()
+    mark_read(session, user, info.id, message.id)
+    session.refresh(message)
+    return message
+
+
+def mark_read(session: Session, user: AppUser, channel_id: int, message_id: int) -> None:
+    """讀到 message_id 這一則。只往前推：畫面上舊的請求晚到，不會把位置往回拉；
+    超過頻道最新一則的編號只算到最新那則，之後的新訊息才不會被吃掉。"""
+    latest = session.scalar(select(func.max(ChannelMessage.id)).where(ChannelMessage.channel_id == channel_id))
+    if latest is None:
+        return
+    stmt = insert(ChannelRead).values(user_id=user.id, channel_id=channel_id, last_read_id=min(message_id, latest))
+    session.execute(stmt.on_conflict_do_update(
+        index_elements=[ChannelRead.user_id, ChannelRead.channel_id],
+        set_={"last_read_id": func.greatest(ChannelRead.last_read_id, stmt.excluded.last_read_id)},
+    ))
+
+
+def unread_counts(session: Session, user: AppUser, channel_ids: list[int]) -> dict[int, int]:
+    """每個頻道有幾則還沒讀。自己發的不算；沒有未讀的頻道不會出現在結果裡。"""
+    if not channel_ids:
+        return {}
+    last_read = (
+        select(ChannelRead.last_read_id)
+        .where(ChannelRead.user_id == user.id, ChannelRead.channel_id == ChannelMessage.channel_id)
+        .scalar_subquery()
+    )
+    rows = session.execute(
+        select(ChannelMessage.channel_id, func.count())
+        .where(
+            ChannelMessage.channel_id.in_(channel_ids),
+            ChannelMessage.id > func.coalesce(last_read, 0),
+            ChannelMessage.author_id.is_distinct_from(user.id),
+        )
+        .group_by(ChannelMessage.channel_id)
+    )
+    return dict(rows.all())
+
+
+def last_message_at(session: Session, channel_ids: list[int]) -> dict[int, dt.datetime]:
+    if not channel_ids:
+        return {}
+    rows = session.execute(
+        select(ChannelMessage.channel_id, func.max(ChannelMessage.created_at))
+        .where(ChannelMessage.channel_id.in_(channel_ids))
+        .group_by(ChannelMessage.channel_id)
+    )
+    return dict(rows.all())
+
+
+def badge_count(session: Session, user: AppUser) -> int:
+    """分頁列紅點的數字：全國、自己的區、自己的小組，加上自己負責（主管是組內業務負責）的客戶討論串。
+    地點頻道與別人客戶的討論串太多，只在列表上顯示未讀，不算進紅點。IT 看得到每一組，只算全國與三個區。"""
+    kinds = ("national", "region") if user.role == "it" else ("national", "region", "team")
+    ids = [info.id for info in visible_channels(session, user) if info.kind in kinds and not info.archived]
+    if user.role != "it":
+        mine = Scope.for_user(user).customers_at(SELF)
+        ids += list(session.scalars(select(Channel.id).join(Customer, Customer.id == Channel.customer_id).where(mine)))
+    return sum(unread_counts(session, user, ids).values())
+
+
+def threads(session: Session, user: AppUser, place: ChannelInfo) -> list[ChannelInfo]:
+    """地點頻道底下有人發過言的客戶討論串，最近有訊息的在前。其他種類的頻道沒有討論串。"""
+    if place.kind != "place":
+        return []
+    place_id = session.get(Channel, place.id).place_id
+    last = func.max(ChannelMessage.id)
+    rows = session.execute(
+        select(Channel)
+        .join(Customer, Customer.id == Channel.customer_id)
+        .join(ChannelMessage, ChannelMessage.channel_id == Channel.id)
+        .where(Customer.place_id == place_id)
+        .group_by(Channel.id)
+        .order_by(last.desc())
+    ).scalars()
+    return [info for info in describe(session, list(rows)) if can_see(user, info)]

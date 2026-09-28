@@ -150,3 +150,88 @@ def test_ensure_channels_can_run_twice(tx):
     assert tx.scalar(select(Channel.id).order_by(Channel.id.desc()).limit(1)) == before
     # 每位主管剛好一個小組頻道
     assert tx.scalar(select(func.count()).select_from(Channel).where(Channel.kind == "team")) == 4
+
+
+def post(client, headers, channel, body):
+    return client.post(f"/api/channels/{channel}/messages", json={"body": body}, headers=headers)
+
+
+def history(client, headers, channel, **params):
+    response = client.get(f"/api/channels/{channel}/messages", params=params, headers=headers)
+    assert response.status_code == 200
+    return response.json()
+
+
+def test_posting_and_polling_for_new_messages(tx, client, auth):
+    team = channel_id(client, auth, "陳建宏小組", "U01")
+    before = history(client, auth("U02"), team)
+    posted = post(client, auth("U01"), team, "  忠孝店的檔期資料我週三前給  ")
+    assert posted.status_code == 201
+    message = posted.json()
+    assert (message["kind"], message["body"], message["author_name"], message["mine"]) == (
+        "user", "忠孝店的檔期資料我週三前給", "林昱辰", True
+    )
+    # 同組的人輪詢拿得到，對他來說不是自己發的
+    new = history(client, auth("U02"), team, after=before[-1]["id"] if before else 0)
+    assert [m["id"] for m in new][-1] == message["id"] and new[-1]["mine"] is False
+    # 空白、太長的訊息擋下
+    assert post(client, auth("U01"), team, "   ").status_code == 422
+    assert post(client, auth("U01"), team, "字" * 2001).status_code == 422
+
+
+def test_scrolling_back_pages_from_old_to_new(tx, client, auth):
+    national = channel_id(client, auth, "全國", "U01")
+    ids = [post(client, auth("U01"), national, f"第 {n} 則").json()["id"] for n in range(3)]
+    latest = history(client, auth("U03"), national, limit=2)
+    assert [m["id"] for m in latest] == ids[1:]
+    assert [m["id"] for m in history(client, auth("U03"), national, before=ids[1], limit=2)][-1] == ids[0]
+
+
+def test_unread_skips_my_own_messages_and_only_moves_forward(tx, client, auth):
+    team = channel_id(client, auth, "陳建宏小組", "U01")
+
+    def unread(user_id):
+        return next(c["unread"] for c in listing(client, auth(user_id)) if c["id"] == team)
+
+    # 不靠灌資料的對話：自己先放一則，U02 讀到這裡
+    first = post(client, auth("M01"), team, "這週的拜訪量記得回報").json()
+    assert client.post(f"/api/channels/{team}/read", json={"message_id": first["id"]}, headers=auth("U02")).status_code == 204
+    assert unread("U02") == 0
+    mine = post(client, auth("U01"), team, "新的一則").json()
+    assert unread("U02") == 1
+    # 發言的人自己不算未讀，發言之前的也一起算讀過
+    assert unread("U01") == 0
+    # 舊的請求晚到，不會把讀到的位置往回拉；比最新還大的編號也只算到最新那則
+    client.post(f"/api/channels/{team}/read", json={"message_id": mine["id"] + 1000}, headers=auth("U02"))
+    client.post(f"/api/channels/{team}/read", json={"message_id": 1}, headers=auth("U02"))
+    assert unread("U02") == 0
+    post(client, auth("M01"), team, "再一則")
+    assert unread("U02") == 1
+
+
+def test_the_badge_counts_my_team_my_region_and_my_customers_only(tx, client, auth):
+    def badge(user_id):
+        return client.get("/api/channels/unread", headers=auth(user_id)).json()["count"]
+
+    # 灌資料放的對話：陳建宏小組 5 則（林昱辰 2、陳建宏 2、王冠宇 1）、大安區 2 則、忠孝店討論串 2 則（林昱辰）
+    assert badge("U02") == 4          # 小組裡別人發的 4 則；地點頻道不算紅點
+    assert badge("U01") == 3          # 小組裡別人發的 3 則；忠孝店是自己負責、自己發的
+    assert badge("M01") == 5          # 小組 3 則，加上組員負責的忠孝店 2 則
+    assert badge("A01") == 0          # IT 只算全國與三個區
+    national = channel_id(client, auth, "全國", "U04")
+    post(client, auth("U04"), national, "南區這週辦檔期")
+    assert badge("U02") == 5 and badge("A01") == 1
+
+
+def test_a_place_lists_only_threads_with_messages(tx, client, auth):
+    zhongshan = channel_id(client, auth, "台北市・中山區", "U01")
+    thread = client.post("/api/customers/C002/thread", headers=auth("U01")).json()
+    assert client.get(f"/api/channels/{zhongshan}/threads", headers=auth("U01")).json() == []
+    post(client, auth("U01"), thread["id"], "南京店店長換人了")
+    listed = client.get(f"/api/channels/{zhongshan}/threads", headers=auth("U02")).json()
+    assert [(t["name"], t["unread"]) for t in listed] == [("康泰連鎖藥局 · 南京店", 1)]
+    # 大安區有灌資料放的忠孝店討論串
+    daan = channel_id(client, auth, "台北市・大安區", "U01")
+    assert [t["name"] for t in client.get(f"/api/channels/{daan}/threads", headers=auth("M01")).json()] == [
+        "康泰連鎖藥局 · 忠孝店"
+    ]
