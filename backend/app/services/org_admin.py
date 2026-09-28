@@ -29,6 +29,9 @@ ROLE_LABEL = {"sales": "業務", "manager": "主管", "it": "IT"}
 # 新帳號的工號前綴，號碼接著目前最大的編
 ID_PREFIX = {"sales": "U", "manager": "M"}
 LOG_LIMIT = 50
+# 組織管理頁上區的順序：由北到南。地理節點只有灌資料時建的這幾個（新增區不在這次範圍），
+# 表上沒有排序欄位，照 id 排會變成中、北、南
+REGION_ORDER = ("TW.N", "TW.C", "TW.S")
 
 
 class OrgError(Exception):
@@ -45,7 +48,7 @@ class NotFound(OrgError):
 def chart(session: Session) -> dict[str, Any]:
     """組織管理頁要的全部資料：地理節點、每個公司帳號（含停用的）、最近的異動紀錄。
     自建與第三方登入的帳號不在組織裡，不列。"""
-    units = session.scalars(select(OrgUnit).order_by(OrgUnit.id)).all()
+    units = sorted(session.scalars(select(OrgUnit)).all(), key=_unit_order)
     users = session.scalars(select(AppUser).where(AppUser.acts_as_user_id.is_(None)).order_by(AppUser.id)).all()
     customers = dict(session.execute(select(Customer.owner_user_id, func.count()).group_by(Customer.owner_user_id)).all())
     log = session.execute(
@@ -135,9 +138,11 @@ def change_role(
         user.role, user.manager_id, user.unit_id = "manager", None, unit.id
         detail = f"{user.name}從業務升為{unit.name}主管{handed}"
     else:
-        reports = len(_reports(session, user, active_only=False))
+        reports = _reports(session, user, active_only=False)
         if reports:
-            raise OrgError(f"{user.name}底下還有 {reports} 位業務（含停用的），先把他們換到別的主管底下")
+            inactive = sum(report.deactivated_at is not None for report in reports)
+            note = f"（其中 {inactive} 位已停用）" if inactive else ""
+            raise OrgError(f"{user.name}底下還有 {len(reports)} 位業務{note}，先把他們換到別的主管底下")
         manager = _active_manager(session, manager_id)
         user.role, user.unit_id, user.manager_id = "sales", None, manager.id
         detail = f"{user.name}從主管改為業務，直屬主管是{manager.name}"
@@ -310,6 +315,11 @@ def _rebuild(session: Session) -> None:
         rebuild_org_paths(session)
     except ValueError as exc:
         raise OrgError(str(exc)) from None
+
+
+def _unit_order(unit: OrgUnit) -> tuple[bool, int, str]:
+    known = REGION_ORDER.index(unit.id) if unit.id in REGION_ORDER else len(REGION_ORDER)
+    return (unit.kind != "root", known, unit.id)
 
 
 def _next_id(session: Session, role: str) -> str:

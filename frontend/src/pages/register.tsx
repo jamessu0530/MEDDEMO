@@ -6,7 +6,7 @@ import { register } from "@/api/auth"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { signIn, useAuth } from "@/lib/auth"
+import { homePath, signIn, useAuth } from "@/lib/auth"
 
 // 後端要求至少 8 碼；這裡先擋一次，免得為了太短的密碼白跑一趟伺服器
 const MIN_LENGTH = 8
@@ -27,7 +27,7 @@ export function RegisterPage() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  if (session) return <Navigate to={session.user.role === "manager" ? "/manager" : "/"} replace />
+  if (session) return <Navigate to={homePath(session.user.role)} replace />
 
   async function submit(event: FormEvent) {
     event.preventDefault()

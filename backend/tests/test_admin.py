@@ -94,7 +94,8 @@ def test_only_it_can_open_the_org_admin(client, auth):
     assert client.get("/api/admin/org", headers=auth("M01")).status_code == 403
 
     chart = client.get("/api/admin/org", headers=auth("A01")).json()
-    assert {u["id"] for u in chart["units"]} == {"TW", "TW.N", "TW.C", "TW.S"}
+    # 根節點在前，區由北到南
+    assert [u["id"] for u in chart["units"]] == ["TW", "TW.N", "TW.C", "TW.S"]
     # 公司帳號全列（自建與第三方登入的不在組織裡，不列）
     assert {u["id"] for u in chart["users"]} >= {"A01", "M01", "M02", "M03", "U01", "U02", "U03", "U04", "U05"}
     assert all(not u["id"].startswith("X") for u in chart["users"])

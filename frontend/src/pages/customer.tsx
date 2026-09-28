@@ -6,6 +6,7 @@ import { ApiError } from "@/api/client"
 import { CUSTOMER_TYPE_LABEL, getCustomerProfile, type CustomerProfile, type ProfileStats } from "@/api/customers"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
+import { ReassignOwner } from "@/components/reassign-owner"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/lib/auth"
 import { formatDate, formatMoney } from "@/lib/format"
@@ -95,6 +96,8 @@ export function CustomerPage() {
       />
       <main className="flex flex-1 flex-col gap-4 px-4 pt-4 pb-28">
         {flash && <p className="rounded-xl bg-primary/10 px-3 py-2 text-sm text-primary">{flash}</p>}
+        {/* IT 可以把這家交給別的業務；換完重新載入，負責人就是新的那位 */}
+        {user?.role === "it" && <ReassignOwner customer={customer} onDone={() => setAttempt((n) => n + 1)} />}
         <section className="rounded-2xl border border-primary/20 bg-primary/10 p-4">
           <p className="text-xs font-semibold tracking-wide text-primary">進門前三分鐘</p>
           <ul className="mt-2 flex list-disc flex-col gap-1.5 pl-4 text-sm leading-relaxed">

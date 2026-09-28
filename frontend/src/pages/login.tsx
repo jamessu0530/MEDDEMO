@@ -7,13 +7,10 @@ import { FacebookButton, GitHubButton, GoogleButton, NotReadyButton } from "@/co
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { readSignedOutReason, signIn, useAuth, type Session } from "@/lib/auth"
+import { homePath, readSignedOutReason, signIn, useAuth, type Session } from "@/lib/auth"
 import { useProviders } from "@/lib/oauth"
 
 /** 登入成功後要去哪一頁：業務是今日路線，主管是主管端 */
-function home(role: "sales" | "manager") {
-  return role === "manager" ? "/manager" : "/"
-}
 
 /**
  * 登入頁（FR-12）：Email 加密碼，或第三方帳號。還沒有帳號的到 /register 建立。
@@ -41,7 +38,7 @@ export function LoginPage() {
   const signedOut = readSignedOutReason()
 
   // 已經登入了還打開 /login（例如用書籤進來）：直接回自己的首頁
-  if (session) return <Navigate to={home(session.user.role)} replace />
+  if (session) return <Navigate to={homePath(session.user.role)} replace />
 
   async function submit(event: FormEvent) {
     event.preventDefault()
@@ -63,7 +60,7 @@ export function LoginPage() {
   function enter(result: Session) {
     signIn(result)
     const from = (location.state as { from?: string } | null)?.from
-    navigate(from ?? home(result.user.role), { replace: true })
+    navigate(from ?? homePath(result.user.role), { replace: true })
   }
 
   /**

@@ -1,10 +1,13 @@
 import { useSyncExternalStore } from "react"
 
-// 登入後的身分。角色只有兩種：業務跑今日路線，主管多一個主管端（/manager）
+// 登入後的身分。業務跑今日路線，主管多一個主管端（/manager），
+// IT 看得到也動得了全公司，並且是唯一能改組織的人（/admin）
+export type Role = "sales" | "manager" | "it"
+
 export type AuthUser = {
   id: string
   name: string
-  role: "sales" | "manager"
+  role: Role
   region: string
   // 第三方登入自動開的帳號沒有 Email 與密碼
   email: string | null
@@ -15,6 +18,16 @@ export type AuthUser = {
   acting_as?: { id: string; name: string } | null
   // 自己開的帳號才能改名字；公司帳號由公司設定
   can_rename?: boolean
+}
+
+/** 登入後的首頁：業務是今日路線；主管沒有自己的路線，直接進主管端；IT 進組織管理 */
+export function homePath(role: Role) {
+  return role === "it" ? "/admin" : role === "manager" ? "/manager" : "/"
+}
+
+/** 進得了主管端的角色 */
+export function canManage(role: Role) {
+  return role === "manager" || role === "it"
 }
 
 export type LinkedAccount = {

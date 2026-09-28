@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { ChevronRight, Settings, TriangleAlert } from "lucide-react"
+import { ChevronRight, Network, Settings, TriangleAlert } from "lucide-react"
 import { Link, useNavigate, useSearchParams } from "react-router"
 
 import { listEscalations, replyEscalation, type Escalation } from "@/api/escalations"
@@ -9,7 +9,7 @@ import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { useAuth } from "@/lib/auth"
+import { useAuth, type AuthUser } from "@/lib/auth"
 import { formatDate, formatDateTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type { CustomerLocationState } from "@/pages/customer"
@@ -21,9 +21,16 @@ type LoadState = { status: "loading" } | { status: "error" } | { status: "ready"
 type NoticeState = { status: "loading" } | { status: "error" } | { status: "ready"; items: ManagerNotice[] }
 
 const NOTICES_PATH = "/manager?view=notices"
+const HEADER_BUTTON = "flex size-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
 
-/** 主管端（FR-8.4 延伸）：回覆業務轉過來的提問，看自己轄區的風險通報 */
+/** 三個分頁看的是誰的事：主管是自己底下的人，IT 是全公司（後端依組織樹過濾，不看轄區） */
+function whose(user: AuthUser) {
+  return user.role === "it" ? "全公司" : "你團隊"
+}
+
+/** 主管端（FR-8.4 延伸）：回覆業務轉過來的提問、看風險通報、簽出差單。主管看自己底下的人，IT 看全公司 */
 export function ManagerPage() {
+  const user = useAuth()?.user
   const [params, setParams] = useSearchParams()
   const view: View = params.get("view") === "notices" ? "notices" : params.get("view") === "oa" ? "oa" : "asks"
   const [unseenNotices, setUnseenNotices] = useState(0)
@@ -56,13 +63,16 @@ export function ManagerPage() {
         title={view === "notices" ? "風險通報" : view === "oa" ? "OA 簽核" : "待回覆的提問"}
         subtitle="主管端"
         trailing={
-          <Link
-            to="/settings"
-            aria-label="帳號設定"
-            className="flex size-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
-          >
-            <Settings className="size-5" />
-          </Link>
+          <>
+            {user?.role === "it" && (
+              <Link to="/admin" aria-label="組織管理" className={HEADER_BUTTON}>
+                <Network className="size-5" />
+              </Link>
+            )}
+            <Link to="/settings" aria-label="帳號設定" className={HEADER_BUTTON}>
+              <Settings className="size-5" />
+            </Link>
+          </>
         }
       />
       <div className="flex border-b bg-background px-4" role="tablist">
@@ -146,8 +156,8 @@ function EscalationsPanel() {
 
   return (
     <>
-      {/* 回覆的身分就是登入的帳號，業務看到的是這個名字；只看得到自己轄區的業務轉來的提問 */}
-      {user && <p className="text-xs text-muted-foreground">以 {user.name}（{user.region}主管）的身分回覆{user.region}業務轉來的提問</p>}
+      {/* 回覆的身分就是登入的帳號，業務看到的是這個名字 */}
+      {user && <p className="text-xs text-muted-foreground">以 {user.name} 的身分回覆{whose(user)}業務轉來的提問</p>}
 
       <div className="grid grid-cols-2 rounded-lg bg-muted p-1 text-sm" role="tablist">
         {(["open", "answered"] as const).map((value) => (
@@ -278,7 +288,7 @@ function NoticesPanel({ onSeen }: { onSeen: () => void }) {
 
   return (
     <>
-      {user && <p className="text-xs text-muted-foreground">{user.region}的業務確認拜訪時提到競品或客訴，會通報到這裡</p>}
+      {user && <p className="text-xs text-muted-foreground">{whose(user)}的業務確認拜訪時提到競品或客訴，會通報到這裡</p>}
       {state.status === "loading" && <p className="py-10 text-center text-sm text-muted-foreground">載入中…</p>}
       {state.status === "error" && (
         <Notice
@@ -382,7 +392,11 @@ function OaInboxPanel() {
 
   return (
     <>
-      {user && <p className="text-xs text-muted-foreground">{user.region}業務確認拜訪後開的出差單，會送到這裡簽核</p>}
+      {user && (
+        <p className="text-xs text-muted-foreground">
+          {user.role === "it" ? "全公司還沒簽的出差單都在這裡，IT 可以代簽" : "你團隊業務確認拜訪後開的出差單，會送到這裡簽核"}
+        </p>
+      )}
       {state.status === "loading" && <p className="py-10 text-center text-sm text-muted-foreground">載入中…</p>}
       {state.status === "error" && (
         <Notice

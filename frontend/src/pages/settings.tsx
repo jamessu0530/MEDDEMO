@@ -25,10 +25,10 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { refreshUser, signIn, useAuth, type AuthUser } from "@/lib/auth"
+import { canManage, homePath, refreshUser, signIn, useAuth, type AuthUser } from "@/lib/auth"
 import { PROVIDER_LABEL, useProviders, type OAuthProvider } from "@/lib/oauth"
 
-const ROLE_LABEL = { sales: "業務", manager: "主管" } as const
+const ROLE_LABEL = { sales: "業務", manager: "主管", it: "IT" } as const
 // 後端要求至少 8 碼；這裡先擋一次，免得為了太短的密碼白跑一趟伺服器
 const MIN_LENGTH = 8
 
@@ -355,7 +355,7 @@ function DeleteAccount() {
   )
 }
 
-/** 帳號設定：看自己的身分、綁定第三方登入、改密碼、登出。業務從今日路線標頭的姓名進來，主管從主管端標頭進來 */
+/** 帳號設定：看自己的身分、綁定第三方登入、改密碼、登出。業務從今日路線標頭的姓名進來，主管與 IT 從各自首頁的標頭進來 */
 export function SettingsPage() {
   const session = useAuth()
   const user = session?.user
@@ -399,7 +399,7 @@ export function SettingsPage() {
 
   return (
     <div className="flex min-h-svh flex-col">
-      <PageHeader title="帳號設定" backTo={user.role === "manager" ? "/manager" : "/"} />
+      <PageHeader title="帳號設定" backTo={homePath(user.role)} />
       <main className="flex flex-1 flex-col gap-5 px-4 pt-4 pb-10">
         <section className="rounded-2xl border bg-card p-4">
           <NameEditor user={user} />
@@ -415,10 +415,10 @@ export function SettingsPage() {
         </section>
 
         <Link
-          to={user.role === "manager" ? "/manager?view=oa" : "/oa/forms"}
+          to={canManage(user.role) ? "/manager?view=oa" : "/oa/forms"}
           className="flex min-h-14 items-center justify-between rounded-2xl border bg-card px-4"
         >
-          <span className="text-sm font-medium">{user.role === "manager" ? "OA 簽核匣" : "我的申請單"}</span>
+          <span className="text-sm font-medium">{canManage(user.role) ? "OA 簽核匣" : "我的申請單"}</span>
           <ChevronRight className="size-4 text-muted-foreground" />
         </Link>
 

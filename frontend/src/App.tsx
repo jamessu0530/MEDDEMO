@@ -4,8 +4,9 @@ import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation, useNavigat
 import { fetchMe } from "@/api/auth"
 import { Notice } from "@/components/notice"
 import { Onboarding } from "@/components/onboarding"
-import { refreshUser, useAuth } from "@/lib/auth"
+import { canManage, homePath, refreshUser, useAuth } from "@/lib/auth"
 import { uploadQueue } from "@/lib/offline-queue"
+import { AdminPage } from "@/pages/admin"
 import { AskPage } from "@/pages/ask"
 import { CustomerPage } from "@/pages/customer"
 import { CustomerPicker } from "@/pages/customer-picker"
@@ -66,27 +67,45 @@ function RequireAuth() {
   )
 }
 
-/** 首頁：業務是今日路線；主管沒有自己的路線，直接進主管端 */
+/** 首頁：業務是今日路線；主管與 IT 沒有自己的路線，各自進主管端與組織管理 */
 function Home() {
   const session = useAuth()
-  return session?.user.role === "manager" ? <Navigate to="/manager" replace /> : <TodayPage />
+  const home = session ? homePath(session.user.role) : "/"
+  return home === "/" ? <TodayPage /> : <Navigate to={home} replace />
 }
 
-/** 主管端只有主管進得去；業務點到（舊的連結、書籤）說明一下並給回首頁的路 */
-function ManagerOnly({ children }: { children: ReactNode }) {
+/** 限定角色的頁面；進不去的人（舊的連結、書籤）說明一下並給回首頁的路 */
+function Restricted({ allowed, text, children }: { allowed: boolean; text: string; children: ReactNode }) {
   const session = useAuth()
   const navigate = useNavigate()
-  if (session && session.user.role !== "manager") {
+  if (session && !allowed) {
     return (
       <div className="p-4 pt-10">
-        <Notice
-          text="主管端只有主管的帳號進得去，你的帳號是業務。"
-          action={{ label: "回今日路線", onClick: () => navigate("/", { replace: true }) }}
-        />
+        <Notice text={text} action={{ label: "回首頁", onClick: () => navigate("/", { replace: true }) }} />
       </div>
     )
   }
   return <>{children}</>
+}
+
+/** 主管端：主管與 IT 進得去 */
+function ManagerOnly({ children }: { children: ReactNode }) {
+  const session = useAuth()
+  return (
+    <Restricted allowed={Boolean(session && canManage(session.user.role))} text="主管端只有主管的帳號進得去，你的帳號是業務。">
+      {children}
+    </Restricted>
+  )
+}
+
+/** 組織管理：只有 IT */
+function ItOnly({ children }: { children: ReactNode }) {
+  const session = useAuth()
+  return (
+    <Restricted allowed={session?.user.role === "it"} text="組織管理只有 IT 的帳號進得去。">
+      {children}
+    </Restricted>
+  )
 }
 
 export default function App() {
@@ -125,6 +144,14 @@ export default function App() {
                 <ManagerOnly>
                   <ManagerPage />
                 </ManagerOnly>
+              }
+            />
+            <Route
+              path="/admin"
+              element={
+                <ItOnly>
+                  <AdminPage />
+                </ItOnly>
               }
             />
             <Route path="/settings" element={<SettingsPage />} />

@@ -7,7 +7,7 @@ import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { useAuth } from "@/lib/auth"
+import { canManage, useAuth } from "@/lib/auth"
 import { formatDate, formatDateTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
@@ -30,7 +30,7 @@ export function OaFormPage() {
   const id = Number(formId)
   const navigate = useNavigate()
   const user = useAuth()?.user
-  const backTo = user?.role === "manager" ? "/manager?view=oa" : "/oa/forms"
+  const backTo = user && canManage(user.role) ? "/manager?view=oa" : "/oa/forms"
   const [tab, setTab] = useState<Tab>("表單")
   const [state, setState] = useState<LoadState>({ status: "loading" })
   const [attempt, setAttempt] = useState(0)

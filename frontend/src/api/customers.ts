@@ -7,6 +7,7 @@ export type Customer = {
   type: "chain" | "independent" | "clinic"
   region: string
   grade: string
+  owner_id: string
   owner_name: string
   last_visit_date: string | null
 }
