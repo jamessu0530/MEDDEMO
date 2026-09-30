@@ -53,7 +53,7 @@ export function FirstWeekPage() {
   const taskIds = data ? data.days.flatMap((day) => day.tasks.map((task) => task.id)) : []
 
   function toggle(taskId: string, checked: boolean) {
-    if (userId) setDoneIds(setDone(userId, taskId, checked))
+    if (userId) setDoneIds(setDone(userId, done, taskId, checked))
   }
 
   return (

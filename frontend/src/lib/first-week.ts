@@ -19,10 +19,14 @@ export function readDone(userId: string): string[] {
   }
 }
 
-/** 打勾或取消，回傳更新後的勾選給畫面用 */
-export function setDone(userId: string, taskId: string, done: boolean): string[] {
-  const others = readDone(userId).filter((id) => id !== taskId)
-  const next = done ? [...others, taskId] : others
+/**
+ * 打勾或取消，回傳更新後的勾選給畫面用。
+ * 照畫面目前的勾選（current）算，不回頭讀手機裡那份：存不進去的手機上，那份永遠是空的，
+ * 重讀的話勾第二件會把第一件弄不見。手機裡那份只在打開頁面時讀一次（readDone）。
+ */
+export function setDone(userId: string, current: string[], taskId: string, checked: boolean): string[] {
+  const others = current.filter((id) => id !== taskId)
+  const next = checked ? [...others, taskId] : others
   try {
     localStorage.setItem(storageKey(userId), JSON.stringify(next))
   } catch {

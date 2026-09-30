@@ -22,16 +22,19 @@ afterEach(() => {
 describe("readDone／setDone", () => {
   it("打勾就記下來，取消就拿掉，重複打勾不會多記一次", () => {
     expect(readDone("U01")).toEqual([])
-    setDone("U01", "d1-customers", true)
-    expect(setDone("U01", "d1-doc-visit", true)).toEqual(["d1-customers", "d1-doc-visit"])
-    expect(setDone("U01", "d1-doc-visit", true)).toEqual(["d1-customers", "d1-doc-visit"])
+    let done = setDone("U01", [], "d1-customers", true)
+    done = setDone("U01", done, "d1-doc-visit", true)
+    expect(done).toEqual(["d1-customers", "d1-doc-visit"])
+    done = setDone("U01", done, "d1-doc-visit", true)
+    expect(done).toEqual(["d1-customers", "d1-doc-visit"])
     expect(readDone("U01")).toEqual(["d1-customers", "d1-doc-visit"])
-    expect(setDone("U01", "d1-customers", false)).toEqual(["d1-doc-visit"])
+    done = setDone("U01", done, "d1-customers", false)
+    expect(done).toEqual(["d1-doc-visit"])
     expect(readDone("U01")).toEqual(["d1-doc-visit"])
   })
 
   it("同一支手機換人登入，看不到上一個人的勾選", () => {
-    setDone("U01", "d1-customers", true)
+    setDone("U01", [], "d1-customers", true)
     expect(readDone("U02")).toEqual([])
   })
 
@@ -50,14 +53,19 @@ describe("readDone／setDone", () => {
     expect(readDone("U01")).toEqual([])
   })
 
-  it("存不進去（空間滿了、無痕模式）不出錯，這次的勾選照樣回傳給畫面", () => {
+  it("存不進去（空間滿了、無痕模式）不出錯，連勾兩件，兩件都還在畫面上", () => {
     vi.stubGlobal("localStorage", {
       getItem: () => null,
       setItem: () => {
         throw new Error("QuotaExceededError")
       },
     })
-    expect(setDone("U01", "d1-customers", true)).toEqual(["d1-customers"])
+    // 照畫面目前的勾選算，不回頭讀手機裡那份：手機裡什麼都沒存進去，重讀的話勾第二件會把第一件弄不見
+    const first = setDone("U01", [], "d1-customers", true)
+    expect(first).toEqual(["d1-customers"])
+    const second = setDone("U01", first, "d1-doc-visit", true)
+    expect(second).toEqual(["d1-customers", "d1-doc-visit"])
+    expect(setDone("U01", second, "d1-customers", false)).toEqual(["d1-doc-visit"])
   })
 })
 
