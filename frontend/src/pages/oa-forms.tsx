@@ -92,7 +92,7 @@ function FormCard({ item }: { item: OaFormItem }) {
   return (
     <Link to={`/oa/forms/${item.id}`} className="rounded-2xl border bg-card p-4">
       <div className="flex items-start justify-between gap-2">
-        <p className="text-sm font-medium">{item.kind}</p>
+        <p className="text-sm font-medium">{item.kind_label}</p>
         <span
           className={cn(
             "shrink-0 rounded-md px-2 py-0.5 text-[11px]",

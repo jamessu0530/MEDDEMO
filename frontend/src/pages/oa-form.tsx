@@ -51,7 +51,7 @@ export function OaFormPage() {
 
   return (
     <div className="flex min-h-svh flex-col">
-      <PageHeader title={form?.kind ?? "出差單"} subtitle={form?.form_no} backTo={backTo} />
+      <PageHeader title={form?.kind_label ?? "申請單"} subtitle={form?.form_no} backTo={backTo} />
       <div className="flex gap-1 overflow-x-auto border-b px-2">
         {TABS.map((item) => (
           <button
@@ -123,7 +123,7 @@ function FormTab({ form }: { form: OaFormDetail }) {
       </div>
       <p className="text-xs text-muted-foreground">申請日期：{formatDate(form.trip_date)}</p>
       <Field label="文號" value={form.form_no} />
-      <Field label="申請種類" value={form.kind} />
+      <Field label="申請種類" value={form.kind_label} />
       <Field label="客戶" value={form.customer_name} />
       <Field label="用途說明" value={form.purpose} />
       <p className="text-xs text-muted-foreground">狀態：{STATUS_LABEL[form.status]}</p>

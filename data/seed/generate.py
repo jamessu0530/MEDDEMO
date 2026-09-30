@@ -540,7 +540,7 @@ def build_visits(rng, customers, baskets, products, as_of, transactions, receiva
                 "created_at": confirmed_at,
             })
         tables["oa_expense_form"].append({
-            "form_no": f"OA{d:%Y%m}{n:05d}",
+            "form_no": f"OA{d:%Y%m}{n:05d}", "kind": "trip", "required_level": "manager",
             "visit_id": visit_id, "applicant_id": c["owner_user_id"], "trip_date": d,
             "customer_id": c["id"], "purpose": "客戶拜訪", "unit_name": c["region"],
             "status": "approved", "created_at": confirmed_at, "submitted_at": confirmed_at,

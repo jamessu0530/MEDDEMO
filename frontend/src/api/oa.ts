@@ -2,10 +2,14 @@ import { jsonBody, request } from "@/api/client"
 
 export type OaStatus = "draft" | "pending" | "returned" | "rejected" | "approved"
 
+// trip：出差單；discount：優惠（報價折扣）；contract：合約（連鎖續約）
+export type OaKind = "trip" | "discount" | "contract"
+
 export type OaFormItem = {
   id: number
   form_no: string
-  kind: string
+  kind: OaKind
+  kind_label: string
   status: OaStatus
   applicant_name: string
   customer_name: string
@@ -22,7 +26,8 @@ export type OaList = {
 export type OaFormDetail = {
   id: number
   form_no: string
-  kind: string
+  kind: OaKind
+  kind_label: string
   flow_name: string
   status: OaStatus
   visit_id: string

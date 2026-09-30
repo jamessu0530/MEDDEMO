@@ -419,7 +419,7 @@ function OaInboxPanel() {
       {state.status === "ready" &&
         state.items.map((item) => (
           <Link key={item.id} to={`/oa/forms/${item.id}`} className="rounded-2xl border bg-card p-4">
-            <p className="text-sm font-medium">{item.kind}</p>
+            <p className="text-sm font-medium">{item.kind_label}</p>
             <p className="mt-1 text-xs text-muted-foreground">
               {item.form_no} · {item.applicant_name} · {item.customer_name}
             </p>
