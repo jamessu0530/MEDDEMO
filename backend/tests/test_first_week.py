@@ -44,6 +44,13 @@ def self_created(tx) -> AppUser:
     return user
 
 
+def status_of(client, headers) -> dict:
+    """首頁的入口卡問的那一支。task_ids 每個業務都一樣（設定檔裡每件事的 id），另外有一個測試看，這裡先拿掉。"""
+    body = client.get("/api/first-week/status", headers=headers).json()
+    body.pop("task_ids")
+    return body
+
+
 def region_ranking(db, region: str) -> dict[str, list[str]]:
     """這一區近 90 天每個類別進貨金額由高到低的料號。用客戶的區算，跟服務裡照組織樹取範圍的寫法互相對照。"""
     ranked: dict[str, list[str]] = {}
@@ -62,7 +69,7 @@ def region_ranking(db, region: str) -> dict[str, list[str]]:
 def test_a_long_serving_rep_is_not_a_newcomer_but_can_still_open_the_page(client, auth):
     # 林昱辰 2021-03-01 到職：到職日當天算第 1 天
     day_no = (seed.DEFAULT_AS_OF - date(2021, 3, 1)).days + 1
-    assert client.get("/api/first-week/status", headers=auth("U01")).json() == {"is_newcomer": False, "day_no": day_no}
+    assert status_of(client, auth("U01")) == {"is_newcomer": False, "day_no": day_no}
 
     page = client.get("/api/first-week", headers=auth("U01")).json()
     assert (page["is_newcomer"], page["day_no"]) == (False, day_no)
@@ -85,7 +92,7 @@ def test_a_rep_it_just_created_is_on_day_one_and_has_no_customers_yet(tx, client
     assert client.post("/api/admin/users", json=account, headers=auth("A01")).status_code == 201
     rookie = headers_for(tx.get(AppUser, "U06"))
 
-    assert client.get("/api/first-week/status", headers=rookie).json() == {"is_newcomer": True, "day_no": 1}
+    assert status_of(client, rookie) == {"is_newcomer": True, "day_no": 1}
     page = client.get("/api/first-week", headers=rookie).json()
     assert (page["is_newcomer"], page["day_no"]) == (True, 1)
     assert page["employee"] == {
@@ -108,7 +115,7 @@ def test_newcomer_means_the_first_thirty_days(tx, client, auth):
     def status_on_day(day_no: int) -> dict:
         employee.hire_date = seed.DEFAULT_AS_OF - timedelta(days=day_no - 1)
         tx.commit()
-        return client.get("/api/first-week/status", headers=auth("U02")).json()
+        return status_of(client, auth("U02"))
 
     assert first_week.NEWCOMER_DAYS == 30
     assert status_on_day(30) == {"is_newcomer": True, "day_no": 30}
@@ -118,7 +125,7 @@ def test_newcomer_means_the_first_thirty_days(tx, client, auth):
 def test_a_self_created_account_is_a_newcomer_looking_at_the_demo_rep(tx, client, auth):
     judge = headers_for(self_created(tx))
     # 沒有人員主檔：一律當新人，沒有到職日所以也沒有「第幾天」
-    assert client.get("/api/first-week/status", headers=judge).json() == {"is_newcomer": True, "day_no": None}
+    assert status_of(client, judge) == {"is_newcomer": True, "day_no": None}
 
     page = client.get("/api/first-week", headers=judge).json()
     assert (page["is_newcomer"], page["day_no"]) == (True, None)
@@ -137,9 +144,18 @@ def test_managers_and_it_have_no_first_week(client, auth):
     assert client.get("/api/first-week").status_code == 401
     assert client.get("/api/first-week/status").status_code == 401
     for user_id in ("M01", "A01"):
-        # 首頁問 status 時不必先分角色：主管與 IT 一律不是新人
-        assert client.get("/api/first-week/status", headers=auth(user_id)).json() == {"is_newcomer": False, "day_no": None}
+        # 首頁問 status 時不必先分角色：主管與 IT 一律不是新人，也沒有要做的事
+        status = client.get("/api/first-week/status", headers=auth(user_id)).json()
+        assert status == {"is_newcomer": False, "day_no": None, "task_ids": []}
         assert client.get("/api/first-week", headers=auth(user_id)).status_code == 403
+
+
+def test_status_lists_the_task_ids_so_the_home_card_can_count_progress(client, auth):
+    # 首頁的入口卡要寫「完成 4／15」：勾選記在手機裡，有哪些事要從這裡知道，不必為了一張卡把整頁的資料都查一遍
+    status = client.get("/api/first-week/status", headers=auth("U01")).json()
+    page = client.get("/api/first-week", headers=auth("U01")).json()
+    assert status["task_ids"] == [task["id"] for day in page["days"] for task in day["tasks"]]
+    assert len(status["task_ids"]) == 15 and "task_ids" not in page
 
 
 def test_product_lines_list_the_regions_best_sellers_of_that_category(client, auth, db):

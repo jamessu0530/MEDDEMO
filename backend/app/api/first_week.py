@@ -15,10 +15,15 @@ router = APIRouter(prefix="/api/first-week", tags=["first-week"])
 SessionDep = Annotated[Session, Depends(get_session)]
 
 
-class Status(BaseModel):
+class Newcomer(BaseModel):
     is_newcomer: bool
     # 到職第幾天，到職日當天是 1；沒有人員主檔的帳號（自建與第三方登入）是 null
     day_no: int | None
+
+
+class Status(Newcomer):
+    # 第一週每件事的 id：勾選進度記在手機裡，首頁的入口卡拿它算「完成幾件／共幾件」
+    task_ids: list[str]
 
 
 class Employee(BaseModel):
@@ -84,7 +89,7 @@ class RequiredDocument(BaseModel):
     title: str
 
 
-class FirstWeek(Status):
+class FirstWeek(Newcomer):
     employee: Employee
     customers: CustomerCounts
     product_lines: list[ProductLine]

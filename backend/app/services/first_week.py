@@ -45,7 +45,17 @@ def has_page(user: AppUser) -> bool:
 
 
 def status(session: Session, user: AppUser) -> dict[str, Any]:
-    """是不是新人、到職第幾天（到職日當天是第 1 天）。首頁決定要不要顯示入口卡用。
+    """首頁的入口卡用：要不要顯示、到職第幾天，以及第一週有哪些事（task_ids）。
+
+    勾選進度只記在手機裡，卡片上的「完成 4／15」要知道現在設定檔裡有哪些 id 才算得出來；
+    附在這裡，首頁就不必為了一張卡把整頁的資料都查一遍。主管與 IT 沒有這一頁，也就沒有事要做。
+    """
+    task_ids = [task["id"] for day in load_config()["days"] for task in day["tasks"]] if has_page(user) else []
+    return {**newcomer(session, user), "task_ids": task_ids}
+
+
+def newcomer(session: Session, user: AppUser) -> dict[str, Any]:
+    """是不是新人、到職第幾天（到職日當天是第 1 天）。
 
     沒有人員主檔的業務帳號（自建與第三方登入的）一律當新人，沒有到職日所以 day_no 是 None：
     決賽評審用自己的帳號登入，看到的就是新人的畫面。
@@ -76,7 +86,7 @@ def page(session: Session, user: AppUser) -> dict[str, Any]:
     config = load_config()
     titles = _document_titles(session, config)
     return {
-        **status(session, user),
+        **newcomer(session, user),
         "employee": {
             "employee_no": employee.employee_no if employee else None,
             "hire_date": employee.hire_date if employee else None,

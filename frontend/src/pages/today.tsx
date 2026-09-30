@@ -14,6 +14,7 @@ import { useUnseenReplies } from "@/lib/manager-replies"
 import { openGuide } from "@/lib/onboarding"
 import { markMisjudged, pinCustomer, readFeedback, snoozeCustomer } from "@/lib/route-feedback"
 import { cn } from "@/lib/utils"
+import { FirstWeekEntry } from "@/pages/first-week"
 
 type LoadState =
   | { status: "loading" }
@@ -159,6 +160,8 @@ export function TodayPage() {
       </header>
 
       <main className="flex-1 px-4 pt-3 pb-20">
+        {/* 新人才有的入口卡；自己問自己的資料，載不到就不顯示，跟下面的路線互不影響 */}
+        <FirstWeekEntry userId={user.id} />
         {state.status === "ready" && state.cached && (
           <div className="mb-3 flex items-center gap-2 rounded-xl bg-muted px-3 py-2">
             <p className="flex-1 text-xs text-muted-foreground">
