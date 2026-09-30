@@ -288,6 +288,20 @@ def test_deals_ignore_promotions_that_are_not_running(client, tx):
     assert card_of(client, "C030")["deals"] == before
 
 
+def test_an_item_without_a_list_price_is_left_out(client, tx):
+    # 資料表沒有限制建議售價要大於 0：算不出毛利率的品項直接不列，不讓整張卡因為除以零壞掉
+    before = [item["sku"] for item in card_of(client, "C030")["deals"]["items"]]
+    assert before[0] == "F763991"
+    tx.execute(text(
+        "UPDATE promotion_item SET list_price = 0 WHERE sku = 'F763991' "
+        "AND promotion_id = (SELECT id FROM promotion WHERE name = '202610保藥特搭活動')"
+    ))
+    tx.flush()
+    after = [item["sku"] for item in card_of(client, "C030")["deals"]["items"]]
+    # 葡萄籽不見了，後面的往前遞補，還是五個
+    assert "F763991" not in after and after[:4] == before[1:] and len(after) == negotiation.MAX_DEALS
+
+
 def test_no_running_promotion_means_no_deals(client, tx):
     tx.execute(text("UPDATE promotion SET end_date = app_today() - 1 WHERE end_date >= app_today()"))
     tx.flush()

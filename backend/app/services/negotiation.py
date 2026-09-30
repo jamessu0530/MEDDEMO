@@ -284,7 +284,8 @@ def _margin(session: Session, customer: Customer, today: dt.date) -> Margin | No
 def _best_lots(session: Session, promotion_name: str, categories: list[str] | None) -> list[Deal]:
     """這一期每個料號取搭贈後每個最便宜的那一口，照毛利率由高到低。"""
     c = promotion_item.c
-    conditions = [c.promotion_name == promotion_name]
+    # 資料表沒有限制建議售價要大於 0：算不出毛利率的品項不列，不讓整張卡因為除以零壞掉
+    conditions = [c.promotion_name == promotion_name, c.list_price > 0]
     if categories:
         conditions.append(c.category.in_(categories))
     lots = (
