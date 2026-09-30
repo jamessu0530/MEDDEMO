@@ -59,6 +59,8 @@ STEP_TITLE = {"manager": "區處主管", "director": "業務處長", "gm": "總�
 STEP_ROLE_LABEL = {"manager": oa.MANAGER_STEP_LABEL, "director": "業務處長", "gm": "總經理"}
 AUTO_STEP_LABEL = "系統核准"
 PURPOSE = {"discount": "報價折扣", "contract": "連鎖續約"}
+# 單號的唯一限制（models.py 的命名規則產生的名字）：兩個人同時送單撞到它，換下一號再試
+FORM_NO_CONSTRAINT = "uq_oa_expense_form_form_no"
 
 # 客戶狀態看近 90 天，跟客戶檔案、談判卡同一個時間窗
 STATE_DAYS = customer_profile.RECENT_DAYS
@@ -190,6 +192,12 @@ def _is_threshold(value: Any) -> bool:
     return isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(value) and 0 <= value <= 1
 
 
+def _finite_parameters(one: dict[str, Any], names: tuple[str, ...]) -> bool:
+    """截距與每個特徵的平均、標準差、權重都要是有限的數字。Infinity 讀得進來，算出來的機率卻剛好是 1，會直接放行"""
+    values = [one["bias"], *(one[part][name] for part in ("mean", "sd", "weights") for name in names)]
+    return all(isinstance(v, int | float) and not isinstance(v, bool) and math.isfinite(v) for v in values)
+
+
 def estimate(kind: str, features: dict[str, float]) -> tuple[float | None, float | None]:
     """（模型估計的核准機率, 這一種申請的門檻）。門檻是 None 代表這一種申請不做系統核准（訓練時達不到命中率的條件）。
 
@@ -206,8 +214,11 @@ def estimate(kind: str, features: dict[str, float]) -> tuple[float | None, float
         threshold = one["threshold"] if "threshold" in one else None
         if not _is_threshold(threshold):
             raise ValueError(f"門檻 {threshold!r} 不是 0～1 的數字")
+        if not _finite_parameters(one, FEATURES[kind]):
+            raise ValueError("截距、平均、標準差或權重有不是有限數字的值")
         probability = logreg.predict(features, one, list(FEATURES[kind]))
-        if not math.isfinite(probability):
+        # 剛好 0 或 1 代表權重大得離譜：標準化的特徵加上 L2 訓練出來的模型到不了這麼極端，當成檔案被改壞
+        if not (math.isfinite(probability) and 0 < probability < 1):
             raise ValueError(f"算出來的機率是 {probability}")
     except (KeyError, TypeError, ValueError, AttributeError, ZeroDivisionError, OverflowError) as exc:
         log.warning("approval_model.json 的 %s 模型不能用（%r），當成沒有模型，這張申請照規則送人簽", kind, exc)
@@ -359,8 +370,12 @@ def submit(session: Session, *, kind: str, applicant: AppUser, customer: Custome
                 session.flush()
             break
         except IntegrityError as exc:
-            if getattr(getattr(exc.orig, "diag", None), "constraint_name", None) == PENDING_CONTRACT_INDEX:
+            constraint = getattr(getattr(exc.orig, "diag", None), "constraint_name", None)
+            if constraint == PENDING_CONTRACT_INDEX:
                 raise HTTPException(409, "這家客戶已經有一張還沒簽完的續約申請") from None
+            # 只有單號撞號才換號重試；其他約束擋下來的是程式寫錯，不能包成「單號衝突」
+            if constraint != FORM_NO_CONSTRAINT:
+                raise
     else:
         raise HTTPException(409, "申請單號衝突，請再送一次")
     session.add(OaApprovalStep(

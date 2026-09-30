@@ -235,6 +235,9 @@ def broken(change):
     ("權重是字串", broken(lambda m: m["discount"]["weights"].update(margin_after="0.5"))),
     ("標準差是 0", broken(lambda m: m["discount"]["sd"].update(margin_after=0))),
     ("權重大到溢位", broken(lambda m: m["discount"].update(bias=-1e6))),
+    ("截距是無限大", broken(lambda m: m["discount"].update(bias=float("inf")))),
+    ("平均是無限大", broken(lambda m: m["discount"]["mean"].update(margin_after=float("-inf")))),
+    ("權重大得離譜，機率剛好是 1", broken(lambda m: m["discount"]["weights"].update(discount_pct=1e308))),
 ])
 def test_a_broken_model_never_stops_a_request_or_stores_nan(tx, api, auth, model, caplog, why, fake):
     # 模型檔壞掉就當成沒有模型：照規則送人簽、機率是空的，記一筆 log；不能 500，NaN 也不能存進資料庫
