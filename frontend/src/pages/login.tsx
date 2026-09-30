@@ -3,6 +3,7 @@ import { Eye, EyeOff, Loader2 } from "lucide-react"
 import { Link, Navigate, useLocation, useNavigate } from "react-router"
 
 import { login, oauthLogin, type OAuthCredential } from "@/api/auth"
+import { Mascot } from "@/components/mascot"
 import { FacebookButton, GitHubButton, GoogleButton, NotReadyButton } from "@/components/oauth-buttons"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -84,6 +85,7 @@ export function LoginPage() {
   return (
     <div className="flex min-h-svh flex-col justify-center px-6 py-10">
       <header className="mb-8">
+        <Mascot state="hi" size={96} className="mb-3 -ml-3" />
         <p className="text-xs text-muted-foreground">中化裕民</p>
         <h1 className="mt-1 text-2xl font-semibold">業務 AI 助理</h1>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">用 Email 或第三方帳號登入。</p>

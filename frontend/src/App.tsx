@@ -2,6 +2,7 @@ import { useEffect, type ReactNode } from "react"
 import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from "react-router"
 
 import { fetchMe } from "@/api/auth"
+import { Mascot } from "@/components/mascot"
 import { Notice } from "@/components/notice"
 import { Onboarding } from "@/components/onboarding"
 import { canManage, homePath, refreshUser, useAuth } from "@/lib/auth"
@@ -32,7 +33,8 @@ import { VisitPage } from "@/pages/visit"
 function NotFound() {
   const navigate = useNavigate()
   return (
-    <div className="p-4">
+    <div className="flex flex-col gap-3 p-4 pt-10">
+      <Mascot state="think" size={96} className="self-center" />
       <Notice text="找不到這個頁面。" action={{ label: "回今日路線", onClick: () => navigate("/") }} />
     </div>
   )

@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react"
-import { Loader2 } from "lucide-react"
 import { useNavigate, useParams } from "react-router"
 
 import { ApiError } from "@/api/client"
 import { discardVisit, getVisit, reprocessVisit, type Visit } from "@/api/visits"
+import { Mascot } from "@/components/mascot"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
@@ -104,7 +104,7 @@ function Processing({ visit, onChange }: { visit: Visit; onChange: (visit: Visit
 
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-3 px-4 pb-16 text-muted-foreground">
-      <Loader2 className="size-8 animate-spin text-primary" />
+      <Mascot state="wait" size={140} />
       <p className="text-sm">{(visit.stage && STAGE_TEXT[visit.stage]) || "排隊處理中…"}</p>
       {stalled && (
         <div className="mt-4 w-full">

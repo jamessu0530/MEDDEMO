@@ -4,6 +4,7 @@ import { Link, useLocation, useParams } from "react-router"
 
 import { ApiError } from "@/api/client"
 import { getChannel, listMessages, markRead, postMessage, type Channel, type ChannelMessage } from "@/api/channels"
+import { Mascot } from "@/components/mascot"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
@@ -236,13 +237,20 @@ function ChannelView({ id }: { id: number }) {
 
 function MessageBubble({ message }: { message: ChannelMessage }) {
   if (message.kind !== "user") {
-    // AI 主理與風險通報（第 3 階段）先用同一種樣式
-    return (
+    // AI 主理與風險通報（第 3 階段）先用同一種樣式；AI 主理的左邊多一個熊熊滾的頭像
+    const bubble = (
       <div className="rounded-xl bg-muted px-3 py-2 text-sm">
         <p className="text-[11px] text-muted-foreground">
           {message.kind === "ai" ? "AI 主理" : "風險通報"} · {formatDateTime(message.created_at)}
         </p>
         <p className="whitespace-pre-wrap">{message.body}</p>
+      </div>
+    )
+    if (message.kind !== "ai") return bubble
+    return (
+      <div className="flex items-end gap-2">
+        <Mascot size={28} bust className="shrink-0 rounded-full bg-accent" />
+        <div className="min-w-0 flex-1">{bubble}</div>
       </div>
     )
   }

@@ -1,9 +1,10 @@
 import { useState } from "react"
-import { CheckCircle2, CircleAlert, RotateCw, TriangleAlert } from "lucide-react"
+import { CircleAlert, RotateCw, TriangleAlert } from "lucide-react"
 import { useNavigate } from "react-router"
 
 import { remainingStops } from "@/api/route"
 import { retryWriteback, type RiskNotice, type Visit, type WritebackItem, type WritebackTarget } from "@/api/visits"
+import { Mascot } from "@/components/mascot"
 import { Button } from "@/components/ui/button"
 import { CompetitorNames } from "@/components/visit/competitor-names"
 import { readUser } from "@/lib/auth"
@@ -49,7 +50,7 @@ export function ResultView({ visit, onChange }: { visit: Visit; onChange: (visit
   return (
     <div className="flex flex-col gap-4 px-4 py-5">
       <div className="flex flex-col items-center gap-1 text-center">
-        {complete ? <CheckCircle2 className="size-12 text-success" /> : <CircleAlert className="size-12 text-destructive" />}
+        {complete ? <Mascot state="yay" size={96} /> : <CircleAlert className="size-12 text-destructive" />}
         <h2 className="mt-1 text-lg font-semibold">{complete ? "已寫入三套系統" : `三套系統寫入 ${written} 套`}</h2>
         <p className="text-sm text-muted-foreground">{visit.customer_name}</p>
       </div>
