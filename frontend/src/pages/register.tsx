@@ -6,6 +6,7 @@ import { register } from "@/api/auth"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { playInk } from "@/ink/ink"
 import { homePath, signIn, useAuth } from "@/lib/auth"
 
 // 後端要求至少 8 碼；這裡先擋一次，免得為了太短的密碼白跑一趟伺服器
@@ -38,9 +39,12 @@ export function RegisterPage() {
     setError(null)
     try {
       const result = await register(name.trim(), email.trim(), password)
-      signIn(result)
-      const from = (location.state as { from?: string } | null)?.from
-      navigate(from ?? "/", { replace: true })
+      // 等墨蓋滿才登入，理由同登入頁（pages/login.tsx 的 enter）
+      playInk("splat", () => {
+        signIn(result)
+        const from = (location.state as { from?: string } | null)?.from
+        navigate(from ?? "/", { replace: true })
+      })
     } catch (err) {
       // 409 是這個 Email 已經註冊過或是第三方登入開的帳號，後端的訊息會說要怎麼登入
       setError(err instanceof Error ? err.message : "連不上伺服器，請確認網路後再試一次")
