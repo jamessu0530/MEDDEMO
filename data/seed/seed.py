@@ -151,6 +151,32 @@ def seed_conversations(session: Session) -> int:
     return count
 
 
+def seed_method_cards(session: Session, cards: list[dict[str, Any]], feedback: list[dict[str, Any]]) -> tuple[int, int]:
+    """方法卡與回饋（generate.build_method_cards），回傳（卡片數, 回饋數）。不放進 TABLES：卡片的 id 是資料庫
+    自己編的（GENERATED ALWAYS），不能指定，所以先寫卡片、再用標題查回 id 寫回饋。
+    時間跟頻道的對話一樣，從灌資料的這一刻往前推。"""
+    now = datetime.now(generate.TAIPEI)
+    for card in cards:
+        written = now - timedelta(days=card["days_ago"])
+        values = {key: value for key, value in card.items() if key != "days_ago"}
+        session.add(models.MethodCard(**values, created_at=written, updated_at=written))
+    session.flush()
+    ids = dict(session.execute(select(models.MethodCard.title, models.MethodCard.id)).all())
+    rows = [
+        {
+            "card_id": ids[f["card_title"]], "user_id": f["user_id"], "customer_id": f["customer_id"], "helped": f["helped"],
+            "created_at": (now - timedelta(days=f["days_ago"])).replace(
+                hour=f["minute"] // 60, minute=f["minute"] % 60, second=0, microsecond=0
+            ),
+        }
+        for f in feedback
+    ]
+    # 編號照時間排，越晚按的編號越大
+    rows.sort(key=lambda row: row["created_at"])
+    session.execute(insert(models.MethodCardFeedback), rows)
+    return len(cards), len(rows)
+
+
 def seed(url: str | None, as_of: date) -> dict[str, int]:
     data = generate.generate(as_of)
     engine = make_engine(url)
@@ -210,6 +236,7 @@ def seed(url: str | None, as_of: date) -> dict[str, int]:
         # 全國、整區、地點與小組頻道（客戶討論串第一次有人打開才建）
         ensure_channels(session)
         messages = seed_conversations(session)
+        method_cards, method_feedback = seed_method_cards(session, data["method_card"], data["method_card_feedback"])
         # 假資料的拜訪編號是直接指定的，序號要接在後面，新拜訪才不會撞號
         session.execute(text("SELECT setval('visit_seq', :n)"), {"n": len(data["visit"])})
         # 內部文件建索引；有設定 embedding 服務才一併算向量，否則只建關鍵字索引
@@ -218,6 +245,7 @@ def seed(url: str | None, as_of: date) -> dict[str, int]:
     engine.dispose()
     return {name: len(data[name]) for name, _ in TABLES} | {
         "document_chunk": chunks, "channel_message": messages,
+        "method_card": method_cards, "method_card_feedback": method_feedback,
         "kept_account": kept_accounts, "kept_identity": kept_identities,
     }
 

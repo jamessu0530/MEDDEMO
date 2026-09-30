@@ -594,6 +594,39 @@ def build_promotions(as_of):
     return promotions, items
 
 
+# 方法卡是幾天前寫的。回饋落在寫好之後、灌資料之前
+METHOD_CARD_AGE_DAYS = (60, 150)
+# 回饋是上班時間按的（從零點起算的分鐘數）
+FEEDBACK_MINUTES = (9 * 60, 18 * 60)
+
+
+def build_method_cards(customers, seed):
+    """catalog.METHOD_CARDS 的卡片，加上每張卡的回饋：照目標次數分散到業務各自名下、這張卡適用的那種客戶。
+
+    用自己的亂數，而且只讀客戶清單：前面的客戶、交易、拜訪一筆都不會變。
+    時間只給「幾天前、幾點幾分」，由 seed.py 從灌資料那一刻往前推：回饋跟頻道的對話一樣是最近的事，不跟著 as_of。
+    卡片的 id 是資料庫自己編的，回饋先記卡片標題，寫入時再查回 id。
+    """
+    rng = random.Random(seed + 101)
+    cards, feedback = [], []
+    for title, situation, approach, customer_type, tags, author_id, adopted, not_helped in catalog.METHOD_CARDS:
+        age = rng.randint(*METHOD_CARD_AGE_DAYS)
+        cards.append({
+            "title": title, "situation": situation, "approach": approach, "customer_type": customer_type,
+            "tags": tags, "author_id": author_id, "status": "published", "days_ago": age,
+        })
+        # 一家客戶只有一位負責人，客戶不重複抽，(卡片, 業務, 客戶) 就不會重複
+        pool = [c for c in customers if customer_type in (None, c["type"])]
+        answers = [True] * adopted + [False] * not_helped
+        rng.shuffle(answers)
+        for c, helped in zip(rng.sample(pool, len(answers)), answers):
+            feedback.append({
+                "card_title": title, "user_id": c["owner_user_id"], "customer_id": c["id"], "helped": helped,
+                "days_ago": rng.randint(1, age - 1), "minute": rng.randint(*FEEDBACK_MINUTES),
+            })
+    return {"method_card": cards, "method_card_feedback": feedback}
+
+
 def generate(as_of: date, seed: int = SEED) -> dict[str, list[dict]]:
     rng = random.Random(seed)
     # 公司給的帳號。Email 用工號，密碼十個帳號都一樣，由 DEMO_PASSWORD 設定
@@ -664,4 +697,6 @@ def generate(as_of: date, seed: int = SEED) -> dict[str, list[dict]]:
         "receivable": receivables,
         # 拜訪用第三條亂數：改排程或內容機率，不會動到客戶與交易
         **build_visits(random.Random(seed + 2), customers, baskets, products, as_of, transactions, receivables),
+        # 方法卡放最後、用自己的亂數（seed + 101）：上面每一張表的產出都跟沒有方法卡時一模一樣
+        **build_method_cards(customers, seed),
     }

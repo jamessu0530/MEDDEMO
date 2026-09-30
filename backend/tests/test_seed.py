@@ -6,6 +6,7 @@ from collections import Counter
 from datetime import datetime, timedelta
 from pathlib import Path
 
+import catalog
 import conftest
 import generate
 import psycopg
@@ -13,7 +14,7 @@ import pytest
 import seed
 from jsonschema import Draft202012Validator
 from sqlalchemy import create_engine, func, select, text
-from sqlalchemy.exc import ProgrammingError
+from sqlalchemy.exc import IntegrityError, ProgrammingError
 from sqlalchemy.orm import Session
 
 from app import models
@@ -300,6 +301,73 @@ def test_seeded_conversations_sit_in_their_channels(db):
         SELECT count(*) FROM channel_message a JOIN channel_message b
           ON a.channel_id = b.channel_id AND a.id < b.id AND a.created_at > b.created_at
     """)[0][0] == 0
+
+
+def test_method_cards_cover_every_tag_and_are_written_by_managers(db):
+    assert rows(db, "SELECT count(*) FROM method_card WHERE status = 'published'")[0][0] == len(catalog.METHOD_CARDS)
+    tags = Counter(tag for (card_tags,) in rows(db, "SELECT tags FROM method_card WHERE status = 'published'") for tag in card_tags)
+    # 談判卡與新人頁之後靠標籤帶出相關的卡：每個標籤都要有卡可帶，新人頁一次帶三張
+    assert set(tags) == set(models.METHOD_TAGS)
+    assert tags["newcomer"] >= 3
+    authors = rows(db, "SELECT u.id, u.role FROM method_card c JOIN app_user u ON u.id = c.author_id GROUP BY 1, 2")
+    assert {role for _, role in authors} == {"manager"}
+    # 四位主管都有寫，不是只有一區在教
+    assert {author for author, _ in authors} == {"M01", "M02", "M03", "M04"}
+
+
+def test_method_card_feedback_comes_from_reps_on_their_own_customers(db):
+    # 回饋的人都是業務，按的地方是自己名下、而且是這張卡適用的那種客戶
+    assert rows(db, """
+        SELECT count(*) FROM method_card_feedback f
+        JOIN method_card m ON m.id = f.card_id
+        JOIN app_user u ON u.id = f.user_id
+        LEFT JOIN customer c ON c.id = f.customer_id
+        WHERE u.role <> 'sales'
+           OR c.owner_user_id IS DISTINCT FROM f.user_id
+           OR (m.customer_type IS NOT NULL AND c.type <> m.customer_type)
+    """)[0][0] == 0
+    assert {r[0] for r in rows(db, "SELECT DISTINCT user_id FROM method_card_feedback")} == {"U01", "U02", "U03", "U04", "U05"}
+    # 每張卡的採用與沒幫上次數照 catalog 寫的目標
+    found = {title: (adopted, not_helped) for title, adopted, not_helped in rows(db, """
+        SELECT m.title, count(*) FILTER (WHERE f.helped), count(*) FILTER (WHERE NOT f.helped)
+        FROM method_card m LEFT JOIN method_card_feedback f ON f.card_id = m.id GROUP BY m.id
+    """)}
+    assert found == {card[0]: card[-2:] for card in catalog.METHOD_CARDS}
+    # 時間都在灌資料之前，而且在卡片寫好之後
+    assert rows(db, """
+        SELECT count(*) FROM method_card_feedback f JOIN method_card m ON m.id = f.card_id
+        WHERE f.created_at > now() OR f.created_at < m.created_at
+    """)[0][0] == 0
+
+
+def test_generated_method_card_feedback_never_repeats_a_card_rep_and_customer():
+    data = generate.generate(AS_OF)
+    keys = [(f["card_title"], f["user_id"], f["customer_id"]) for f in data["method_card_feedback"]]
+    assert keys and len(set(keys)) == len(keys)
+    # 標題是灌資料時把回饋對回卡片的依據，不能重複
+    titles = [card["title"] for card in data["method_card"]]
+    assert len(set(titles)) == len(titles)
+    assert {f["card_title"] for f in data["method_card_feedback"]} <= set(titles)
+
+
+def test_one_account_has_one_answer_per_card_and_customer_even_without_a_customer(tx):
+    card_id = tx.scalar(select(models.MethodCard.id).limit(1))
+
+    def press(customer_id):
+        with tx.begin_nested():
+            tx.add(models.MethodCardFeedback(card_id=card_id, user_id="A01", customer_id=customer_id, helped=True))
+
+    press(None)
+    press("C001")
+    # 從方法卡清單按的沒有客戶：NULL 也算同一筆，不然同一個人可以一直按、次數一直加
+    for customer_id in (None, "C001"):
+        with pytest.raises(IntegrityError):
+            press(customer_id)
+
+
+def test_a_method_card_needs_at_least_one_tag(tx):
+    with pytest.raises(IntegrityError), tx.begin_nested():
+        tx.add(models.MethodCard(title="沒有標籤的卡", situation="什麼時候用", approach="怎麼做", tags=[], author_id="M01"))
 
 
 @pytest.fixture
