@@ -5,12 +5,15 @@ import { Link, useNavigate } from "react-router"
 import { ApiError } from "@/api/client"
 import { CUSTOMER_TYPE_LABEL, type Customer } from "@/api/customers"
 import { getFirstWeek, getFirstWeekStatus, type FirstWeek, type FirstWeekTask } from "@/api/first-week"
+import type { MethodCard } from "@/api/methods"
+import { MethodCardItem } from "@/components/method-card"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
 import { Badge } from "@/components/ui/badge"
 import { useAuth } from "@/lib/auth"
 import { countDone, dayLabel, readDone, setDone } from "@/lib/first-week"
 import { formatMoney } from "@/lib/format"
+import { replaceCard } from "@/lib/methods"
 import { cn } from "@/lib/utils"
 
 type LoadState =
@@ -28,7 +31,7 @@ function documentPath(sourceName: string) {
 
 /**
  * 新人第一週：你在哪一區、主管是誰、賣什麼、先認識哪幾家客戶、第一週每天做什麼。
- * 數字是後端現查的，每天做什麼與必讀文件是設定檔裡人寫的，整頁沒有 AI 生成的內容。
+ * 數字是後端現查的，每天做什麼與必讀文件是設定檔裡人寫的，方法卡是主管寫的，整頁沒有 AI 生成的內容。
  * 勾選進度只存在這支手機（lib/first-week.ts）。業務帳號都打得開，不是新人也能從帳號設定回來看。
  */
 export function FirstWeekPage() {
@@ -54,6 +57,15 @@ export function FirstWeekPage() {
 
   function toggle(taskId: string, checked: boolean) {
     if (userId) setDoneIds(setDone(userId, done, taskId, checked))
+  }
+
+  // 方法卡按完回饋，換掉那一張；整頁其餘的內容不必重新載入
+  function methodChanged(next: MethodCard) {
+    setState((current) =>
+      current.status === "ready"
+        ? { status: "ready", data: { ...current.data, methods: replaceCard(current.data.methods, next) } }
+        : current
+    )
   }
 
   return (
@@ -82,6 +94,22 @@ export function FirstWeekPage() {
             <ProfileSection data={data} />
             <ProductLines data={data} />
             <KeyCustomers data={data} />
+
+            {/* 還沒有掛「新人必看」的方法卡就不顯示這一區 */}
+            {data.methods.length > 0 && (
+              <section className="flex flex-col gap-2">
+                <h2 className="text-sm font-semibold">主管教的做法</h2>
+                <p className="text-xs text-muted-foreground">主管標了「新人必看」的方法卡裡，最多人說有幫上的三張。</p>
+                {/* 這一頁不是在哪一家客戶看的，回饋不帶客戶，跟在方法卡頁按的是同一筆 */}
+                {data.methods.map((method) => (
+                  <MethodCardItem key={method.id} card={method} onChanged={methodChanged} />
+                ))}
+                <Link to="/methods" className="flex min-h-14 items-center justify-between gap-3 rounded-2xl border bg-card px-4 active:bg-muted">
+                  <span className="text-sm font-medium">看全部方法卡</span>
+                  <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+                </Link>
+              </section>
+            )}
 
             <section className="flex flex-col gap-2">
               <div className="flex items-baseline justify-between gap-3">

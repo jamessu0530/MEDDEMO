@@ -24,6 +24,8 @@ RIVAL = "御松田來搶陳列位：先守住櫃檯旁那一格"
 SMALL_LOT = "獨立藥局小口進貨：算一盒賺多少給老闆看"
 GENERICS = "慢箋量在長的診所：帶學名藥比價表去"
 DISCOUNT = "客戶開口要折扣：先問量，超過 3% 不要當場答應"
+FISH_OIL = "魚油進貨變慢：先看架位，再談價格"
+CAMPAIGN = "檔期要提前 21 天送單：從活動日往回推"
 
 
 @pytest.fixture
@@ -337,8 +339,45 @@ def test_a_deactivated_authors_card_stays_up_and_it_can_change_it(client, auth):
     assert mine["id"] in {c["id"] for c in client.get("/api/methods/mine", headers=it).json()}
 
 
+def related_titles(tx, **params) -> list[str]:
+    params = {"customer_type": None, "customer_id": None, "limit": 10} | params
+    return [c["title"] for c in method_cards.related(tx, tx.get(AppUser, "U01"), **params)]
+
+
+def test_related_cards_share_a_tag_fit_the_customer_type_and_put_the_most_adopted_first(tx):
+    # 談判卡與新人頁靠標籤帶出相關的卡。標籤有一個對上就算；魚油那張同時掛「進貨間隔拉長」與「客戶提到競品」，只列一次
+    assert related_titles(tx, tags={"competitor", "interval_up", "festival"}, customer_type="chain") == [RIVAL, FISH_OIL, CAMPAIGN]
+    # 適用類型：指定那一種的，加上每種客戶都適用的。連鎖的競品卡不會出現在獨立藥局
+    assert related_titles(tx, tags={"competitor", "cost"}, customer_type="independent") == [SMALL_LOT, DISCOUNT]
+    # 沒給類型就不篩（新人頁）
+    assert related_titles(tx, tags={"cost"}) == [SMALL_LOT, GENERICS, DISCOUNT]
+    assert related_titles(tx, tags={"cost"}, limit=2) == [SMALL_LOT, GENERICS]
+    # 沒有標籤、或標籤不是方法卡的那一組（談判卡的 chain 訊號）：一張都沒有，不是全部
+    assert related_titles(tx, tags=set()) == []
+    assert related_titles(tx, tags={"chain"}) == []
+
+
+def test_related_cards_leave_out_retired_ones_and_read_my_feedback_at_that_customer(tx):
+    rep = tx.get(AppUser, "U01")
+    one = tx.scalar(select(MethodCard).where(MethodCard.title == RIVAL))
+    helped, customer_id = tx.execute(
+        select(MethodCardFeedback.helped, MethodCardFeedback.customer_id)
+        .where(MethodCardFeedback.card_id == one.id, MethodCardFeedback.user_id == "U01")
+        .limit(1)
+    ).one()
+    # 每張就是 card_out 的樣子；my_feedback 看的是帶進來的那家客戶
+    found = method_cards.related(tx, rep, tags={"competitor"}, customer_type="chain", customer_id=customer_id, limit=1)
+    assert found == [method_cards.card_out(tx, one, rep, customer_id=customer_id)]
+    assert found[0]["my_feedback"] is helped
+    assert method_cards.related(tx, rep, tags={"competitor"}, customer_type="chain", customer_id=None, limit=1)[0]["my_feedback"] is None
+    # 下架的卡不帶出來，後面的遞補
+    one.status = "retired"
+    tx.flush()
+    assert related_titles(tx, tags={"competitor"}, customer_type="chain") == [FISH_OIL]
+
+
 def test_the_service_hands_cards_to_other_features(tx):
-    # 第二輪談判卡與新人頁會直接呼叫這兩個函式
+    # 談判卡與新人頁的 related 拿的就是這份清單、這個形狀
     rep = tx.get(AppUser, "U01")
     newcomer = method_cards.list_published(tx, rep, tag="newcomer")
     assert [c["adopted"] for c in newcomer] == [43, 12, 7]

@@ -9,7 +9,7 @@ import { PageHeader } from "@/components/page-header"
 import { Input } from "@/components/ui/input"
 import { NativeSelect } from "@/components/ui/native-select"
 import { homePath, useAuth } from "@/lib/auth"
-import { filterCards, TAG_LABELS, TAGS } from "@/lib/methods"
+import { filterCards, replaceCard, TAG_LABELS, TAGS } from "@/lib/methods"
 import { cn } from "@/lib/utils"
 
 type LoadState = { status: "loading" } | { status: "error" } | { status: "ready"; cards: MethodCard[] }
@@ -42,12 +42,9 @@ export function MethodsPage() {
   const shown = filterCards(cards, { tag, customerType, keyword: query })
   const filtering = Boolean(tag || customerType || query.trim())
 
-  // 按完回饋只換掉那一張，不重新排序：卡片在手指底下跳走，會按到別張
   function changed(next: MethodCard) {
     setState((current) =>
-      current.status === "ready"
-        ? { status: "ready", cards: current.cards.map((card) => (card.id === next.id ? next : card)) }
-        : current
+      current.status === "ready" ? { status: "ready", cards: replaceCard(current.cards, next) } : current
     )
   }
 

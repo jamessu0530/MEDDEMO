@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.auth import CurrentUser
+from app.api.methods import MethodCardOut
 from app.db import get_session
 from app.services import first_week
 
@@ -95,6 +96,8 @@ class FirstWeek(Newcomer):
     product_lines: list[ProductLine]
     promotion: RunningPromotion | None
     key_customers: list[KeyCustomer]
+    # 掛「新人必看」標籤的方法卡，採用次數最多的三張
+    methods: list[MethodCardOut]
     days: list[Day]
     documents: list[RequiredDocument]
 

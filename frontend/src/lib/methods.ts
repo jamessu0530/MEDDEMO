@@ -19,6 +19,11 @@ export function tagLabel(tag: string) {
   return TAG_LABELS[tag] ?? tag
 }
 
+/** 按完回饋只換掉那一張，不重新排序：卡片在手指底下跳走，會按到別張。方法卡頁、談判卡與新人頁共用 */
+export function replaceCard(cards: MethodCard[], next: MethodCard) {
+  return cards.map((card) => (card.id === next.id ? next : card))
+}
+
 export type CardFilter = {
   tag: string | null
   customerType: MethodCard["customer_type"]

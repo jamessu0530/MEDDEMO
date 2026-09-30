@@ -338,7 +338,7 @@ function DeleteAccount() {
           <DialogHeader>
             <DialogTitle>刪除帳號？</DialogTitle>
             <DialogDescription>
-              會刪掉這個帳號、綁定的第三方登入、你問過的問題與轉給主管的提問，刪了不能復原。你開的報價草稿是客戶的交易紀錄，會留著，但不再記是誰開的。
+              會刪掉這個帳號、綁定的第三方登入、你問過的問題與轉給主管的提問，以及你對方法卡按的「有幫上／沒幫上」，刪了不能復原。你開的報價草稿是客戶的交易紀錄，會留著，但不再記是誰開的。
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

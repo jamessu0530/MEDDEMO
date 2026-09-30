@@ -17,6 +17,13 @@ from app.services import festivals, negotiation
 from app.services.documents import index_documents
 
 CATEGORY = {product[0]: product[2] for product in catalog.PRODUCTS}
+# 方法卡（catalog.METHOD_CARDS）：談判卡照這家客戶的情況帶出相關的卡
+RIVAL = "御松田來搶陳列位：先守住櫃檯旁那一格"
+FISH_OIL = "魚油進貨變慢：先看架位，再談價格"
+CAMPAIGN = "檔期要提前 21 天送單：從活動日往回推"
+SMALL_LOT = "獨立藥局小口進貨：算一盒賺多少給老闆看"
+GENERICS = "慢箋量在長的診所：帶學名藥比價表去"
+DISCOUNT = "客戶開口要折扣：先問量，超過 3% 不要當場答應"
 
 
 @pytest.fixture
@@ -46,10 +53,14 @@ def calendar(tmp_path, monkeypatch):
     return use
 
 
-def card_of(client, customer_id):
-    response = client.get(f"/api/customers/{customer_id}/negotiation")
+def card_of(client, customer_id, headers=None):
+    response = client.get(f"/api/customers/{customer_id}/negotiation", headers=headers)
     assert response.status_code == 200, response.text
     return response.json()
+
+
+def method_titles(client, customer_id, headers=None):
+    return [method["title"] for method in card_of(client, customer_id, headers)["methods"]]
 
 
 def test_a_chain_card_is_customer_oriented_and_opens_with_the_next_festival(client):
@@ -373,3 +384,89 @@ def test_the_festival_and_cost_topics_come_first_in_the_settings():
     assert [topic["signal"] for topic in topics] == [
         "festival", "cost", "cost", "competitor", "interval_up", "contract_ending", "ar_overdue", "chain",
     ]
+
+
+# ── 主管教的做法：照這家客戶的情況帶出方法卡 ─────────────────────────
+
+
+def test_a_chain_card_brings_the_method_cards_for_this_customers_situation(client):
+    # 忠孝店近期提到競品、進貨間隔拉長，又有下一個節慶：這三種情況的卡裡，連鎖適用、採用次數最多的兩張
+    methods = card_of(client, "C001")["methods"]
+    assert [(method["title"], method["adopted"]) for method in methods] == [(RIVAL, 46), (FISH_OIL, 41)]
+    assert len(methods) == negotiation.MAX_METHODS == 2
+    # 跟方法卡頁的一張卡同一個形狀，畫面用同一個元件
+    assert set(methods[0]) == {
+        "id", "title", "situation", "approach", "customer_type", "tags", "author_name", "status",
+        "adopted", "not_helped", "my_feedback", "updated_at",
+    }
+    # client 登入的是主管陳建宏，他沒在這家按過
+    assert all(method["status"] == "published" and method["my_feedback"] is None for method in methods)
+
+
+def test_a_cost_card_brings_the_method_cards_about_cost(client):
+    # 成本導向的卡多帶「談進價與成本」：獨立藥局與診所各有一張自己的，再加每種客戶都適用的那一張。
+    # 連鎖的卡（搶陳列位、續約）不會出現在這裡
+    assert method_titles(client, "C030") == [SMALL_LOT, DISCOUNT]
+    assert method_titles(client, "C061") == [GENERICS, DISCOUNT]
+
+
+def test_a_retired_method_card_leaves_the_negotiation_card(tx, client):
+    rival = card_of(client, "C001")["methods"][0]
+    # client 登入的是陳建宏，這張卡的作者
+    assert client.patch(f"/api/methods/{rival['id']}", json={"status": "retired"}).status_code == 200
+    assert method_titles(client, "C001") == [FISH_OIL, CAMPAIGN]
+    # 一張相關的卡都沒有：methods 是空的，卡片其餘照常
+    tx.execute(text("UPDATE method_card SET status = 'retired'"))
+    tx.flush()
+    card = card_of(client, "C001")
+    assert card["methods"] == [] and card["margin"]
+
+
+def test_feedback_pressed_on_the_negotiation_card_is_kept_with_that_customer(tx, client, auth):
+    rep = auth("U01")  # 忠孝店是林昱辰的客戶
+    rival, fish_oil = card_of(client, "C001", rep)["methods"]
+    # 灌資料時他在這家按過第一張「有幫上」，回饋掛在客戶上，打開談判卡就看得到；第二張還沒按過
+    assert (rival["title"], rival["my_feedback"]) == (RIVAL, True)
+    assert (fish_oil["title"], fish_oil["not_helped"], fish_oil["my_feedback"]) == (FISH_OIL, 7, None)
+
+    def mine_at_this_customer() -> list[bool]:
+        # 他在別家客戶也按過這張卡，這裡只看記在忠孝店的
+        return list(tx.execute(
+            text("SELECT helped FROM method_card_feedback WHERE card_id = :card_id AND user_id = 'U01' AND customer_id = 'C001'"),
+            {"card_id": fish_oil["id"]},
+        ).scalars())
+
+    assert mine_at_this_customer() == []
+    body = {"helped": False, "customer_id": "C001"}
+    assert client.post(f"/api/methods/{fish_oil['id']}/feedback", json=body, headers=rep).status_code == 200
+    assert mine_at_this_customer() == [False]
+    # 重新打開這家的談判卡，那一顆還是選著的，次數也是按完之後的
+    after = card_of(client, "C001", rep)["methods"][1]
+    assert (after["id"], after["not_helped"], after["my_feedback"]) == (fish_oil["id"], 8, False)
+    # 只算這一家：方法卡頁上同一張卡他還沒按過
+    listed = client.get("/api/methods", headers=rep).json()
+    assert next(method for method in listed if method["id"] == fish_oil["id"])["my_feedback"] is None
+    # 主管打開同一家的談判卡，次數一樣，但看不到別人按了什麼
+    seen = card_of(client, "C001")["methods"]
+    assert [(method["not_helped"], method["my_feedback"]) for method in seen] == [(6, None), (8, None)]
+
+
+def test_a_self_created_account_gets_the_method_cards_on_the_demo_reps_customers(tx, client, auth):
+    created = client.post(
+        "/api/auth/register", json={"name": "評審", "email": "judge@negotiation.test", "password": "judge-pass-1"}
+    ).json()
+    judge = {"Authorization": f"Bearer {created['token']}"}
+    # 自建帳號看的是林昱辰的客戶：談判卡帶出來的卡跟他看到的一樣
+    methods = card_of(client, "C001", judge)["methods"]
+    assert [method["title"] for method in methods] == method_titles(client, "C001", auth("U01")) == [RIVAL, FISH_OIL]
+    # 但林昱辰在這家按過的不算他的
+    assert all(method["my_feedback"] is None for method in methods)
+    # 回饋記在自己名下、這家客戶上
+    body = {"helped": True, "customer_id": "C001"}
+    assert client.post(f"/api/methods/{methods[0]['id']}/feedback", json=body, headers=judge).json()["adopted"] == 47
+    rows = tx.execute(
+        text("SELECT customer_id, helped FROM method_card_feedback WHERE user_id = :user_id"), {"user_id": created["user"]["id"]}
+    ).all()
+    assert [tuple(row) for row in rows] == [("C001", True)]
+    after = card_of(client, "C001", judge)["methods"][0]
+    assert (after["title"], after["adopted"], after["my_feedback"]) == (RIVAL, 47, True)

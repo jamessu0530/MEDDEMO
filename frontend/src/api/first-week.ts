@@ -1,5 +1,6 @@
 import { request } from "@/api/client"
 import type { Customer } from "@/api/customers"
+import type { MethodCard } from "@/api/methods"
 
 // 第一週的一件事：to 是 App 裡的路徑，doc 是一份內部文件的檔名，最多一個有值。
 // 兩個都是 null 的事沒有連結（在新人頁本身就做得完，或文件不在索引裡），照樣能打勾
@@ -12,7 +13,7 @@ export type TopProduct = { sku: string; name: string; unit_price: number; aliase
 
 /*
  * 新人第一週整頁的資料。「你是誰、賣什麼」來自模擬 SAP 的人員主檔，其他數字後端現查；
- * days 與 documents 是設定檔裡人寫的內容（backend/app/resources/first_week.json），不是 AI 生成的。
+ * days 與 documents 是設定檔裡人寫的內容（backend/app/resources/first_week.json），methods 是主管寫的方法卡，都不是 AI 生成的。
  */
 export type FirstWeek = {
   is_newcomer: boolean
@@ -39,6 +40,8 @@ export type FirstWeek = {
     city: string
     amount_last_90d: number
   }[]
+  // 掛「新人必看」標籤的方法卡，採用次數最多的三張
+  methods: MethodCard[]
   days: FirstWeekDay[]
   documents: { source_name: string; title: string }[]
 }

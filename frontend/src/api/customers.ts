@@ -1,4 +1,5 @@
 import { jsonBody, request } from "@/api/client"
+import type { MethodCard } from "@/api/methods"
 import { readUser } from "@/lib/auth"
 
 export type Customer = {
@@ -152,6 +153,8 @@ export type NegotiationCard = {
     avg_order_amount: number | null
   } | null
   tips: { reason: string; doc_title: string; section: string; content: string; source_name: string }[]
+  // 主管教的做法：照這家的情況帶出來的方法卡，最多兩張；my_feedback 是我在這家客戶按過什麼。沒有相關的就是空的
+  methods: MethodCard[]
 }
 
 export function getCustomerProfile(id: string, signal?: AbortSignal) {
