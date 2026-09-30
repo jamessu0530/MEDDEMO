@@ -161,12 +161,11 @@ export function CustomerPage() {
       </main>
 
       <div className="fixed inset-x-0 bottom-0 z-10 mx-auto flex max-w-md gap-2 border-t bg-card px-4 pt-3 pb-[max(env(safe-area-inset-bottom),0.75rem)]">
-        {customer.type === "chain" && (
-          <Button variant="outline" className="h-12 flex-1 gap-1.5" onClick={() => navigate(`/customers/${customer.id}/negotiation`)}>
-            <Handshake className="size-4" />
-            談判卡
-          </Button>
-        )}
+        {/* 每種客戶都有談判卡：連鎖是顧客導向，獨立藥局與診所是成本導向 */}
+        <Button variant="outline" className="h-12 flex-1 gap-1.5" onClick={() => navigate(`/customers/${customer.id}/negotiation`)}>
+          <Handshake className="size-4" />
+          談判卡
+        </Button>
         {/* 原型放在「語音記錄」旁邊：不必等拜訪口述，直接挑常進的品項開 SAP 報價草稿 */}
         <Button variant="outline" className="h-12 flex-1 gap-1.5" onClick={() => navigate(`/customers/${customer.id}/quote`)}>
           <FileText className="size-4" />
