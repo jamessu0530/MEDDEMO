@@ -48,8 +48,6 @@ DISCOUNT_DIRECTOR = 12.0
 DISCOUNT_MAX = 20.0
 # 折扣每 0.5% 一格
 DISCOUNT_STEP = 0.5
-# 續約可以選的月數
-CONTRACT_TERMS = (12, 24)
 
 # 每一級要經過哪幾關。業務處長、總經理在系統裡沒有帳號，這兩關指派給根節點的 IT 帳號
 LEVEL_STEPS = {"manager": ("manager",), "director": ("manager", "director"), "gm": ("manager", "director", "gm")}
