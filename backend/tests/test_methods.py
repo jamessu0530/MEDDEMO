@@ -68,6 +68,10 @@ def test_everyone_signed_in_sees_every_published_card_most_adopted_first(client,
     # 主管、IT、自建帳號看到的是同一份
     for user_id in ("M02", "A01"):
         assert titles(client, auth(user_id)) == [c["title"] for c in cards]
+    created = client.post(
+        "/api/auth/register", json={"name": "評審", "email": "judge.list@methods.test", "password": "judge-pass-1"}
+    ).json()
+    assert titles(client, {"Authorization": f"Bearer {created['token']}"}) == [c["title"] for c in cards]
     assert client.get("/api/methods").status_code == 401
 
 
@@ -100,6 +104,21 @@ def test_the_list_filters_by_tag_customer_type_and_keyword(client, auth):
     assert titles(client, rep, q="這句話沒有任何一張卡寫過") == []
     assert client.get("/api/methods", params={"tag": "unknown"}, headers=rep).status_code == 422
     assert client.get("/api/methods", params={"customer_type": "hospital"}, headers=rep).status_code == 422
+
+
+def test_keyword_wildcards_and_escape_characters_are_taken_literally(client, auth):
+    boss, rep = auth("M01"), auth("U01")
+    create(client, boss, title="測試：料號 A_B 的搭贈")
+    create(client, boss, title="測試：料號 AxB 的搭贈")
+    create(client, boss, title="測試：路徑", approach="報表放在 share\\sales 底下。")
+    create(client, boss, title="測試：比例", approach="買 10/送 2 換算成折扣。")
+    # _ 在 LIKE 裡是「任何一個字」：當成萬用字元的話 A_B 會連 AxB 一起找到
+    assert titles(client, rep, q="A_B") == ["測試：料號 A_B 的搭贈"]
+    # 反斜線是 Postgres LIKE 預設的跳脫字元、斜線是這裡指定的跳脫字元，兩個都要當一般的字
+    assert titles(client, rep, q="share\\sales") == ["測試：路徑"]
+    assert titles(client, rep, q="\\") == ["測試：路徑"]
+    assert titles(client, rep, q="10/送") == ["測試：比例"]
+    assert titles(client, rep, q="share_sales") == []
 
 
 def test_only_managers_and_it_write_cards(client, auth):
@@ -261,6 +280,27 @@ def test_a_demoted_authors_card_stays_up_and_only_it_can_change_it(client, auth)
     assert client.patch(path, json={"title": "測試：降調後改的"}, headers=auth("M04")).status_code == 403
     assert client.patch(path, json={"title": "測試：新主管改的"}, headers=auth("M03")).status_code == 403
     assert client.patch(path, json={"status": "retired"}, headers=it).status_code == 200
+
+
+def test_a_deactivated_authors_card_stays_up_and_it_can_change_it(client, auth):
+    it = auth("A01")
+    author = auth("M04")
+    mine = create(client, author).json()
+    path = f"/api/methods/{mine['id']}"
+    # 蔡宗翰停用（主管底下有在職的業務不能停用，先把李佳蓉換到許文彬底下）
+    client.put("/api/admin/users/U05/manager", json={"manager_id": "M03"}, headers=it)
+    assert client.post("/api/admin/users/M04/deactivate", json={}, headers=it).status_code == 200
+    # 卡片照舊上架，名字也還在；灌資料時他寫的那兩張也一樣
+    listed = {c["id"]: c for c in listing(client, auth("U05"))}
+    assert listed[mine["id"]]["author_name"] == "蔡宗翰"
+    assert {SMALL_LOT, "走出店門一分鐘內，把五件事講完"} <= {c["title"] for c in listed.values()}
+    assert press(client, auth("U05"), mine["id"], True).json()["adopted"] == 1
+    # 他自己登不進來了，之後只有 IT 改得了
+    assert client.patch(path, json={"title": "測試：停用後改的"}, headers=author).status_code == 401
+    assert client.patch(path, json={"title": "測試：別的主管改的"}, headers=auth("M03")).status_code == 403
+    edited = client.patch(path, json={"title": "測試：IT 代改的"}, headers=it)
+    assert (edited.status_code, edited.json()["title"], edited.json()["author_name"]) == (200, "測試：IT 代改的", "蔡宗翰")
+    assert mine["id"] in {c["id"] for c in client.get("/api/methods/mine", headers=it).json()}
 
 
 def test_the_service_hands_cards_to_other_features(tx):
