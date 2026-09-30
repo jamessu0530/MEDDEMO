@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="zh-Hant">
+<meta charset="utf-8">
+<title>熊熊滾 設定稿</title>
+<body style="margin:0;padding:28px 32px;background:#F4F3F7;font-family:-apple-system,'PingFang TC','Noto Sans TC',sans-serif">
+<style>h2{margin:0;font-size:24px;color:#1A1626}.subtitle{margin:6px 0 0;color:#6E6A78;font-size:15px}</style>
+<style>
+  .sheet { display:grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap:20px; margin-top:20px; }
+  @media (max-width: 900px) { .sheet { grid-template-columns:1fr; } }
+  .panel { background:#fff; border:1px solid #E6DEF2; border-radius:24px; padding:20px; }
+  .panel h3 { margin:0 0 4px; font-size:16px; color:#1A1626; }
+  .panel .hint { margin:0 0 14px; font-size:12.5px; color:#6E6A78; }
+  .hero { display:flex; align-items:flex-end; justify-content:center; height:320px; border-radius:18px; background:#F3ECFC; }
+  .hero svg { width:290px; height:290px; overflow:visible; }
+  .sizes { display:flex; align-items:flex-end; gap:16px; margin-top:16px; padding:14px; border-radius:16px; background:#F6F5F9; }
+  .sizes .s { display:flex; flex-direction:column; align-items:center; gap:4px; font-size:11px; color:#6E6A78; white-space:nowrap; }
+  .ava { display:inline-flex; flex:none; border-radius:50%; overflow:hidden; background:#EADBFD; }
+  .ava svg { display:block; overflow:hidden; }
+  .ava.fav { border-radius:9px; }
+  .states { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:12px; }
+  .state { border-radius:18px; background:#F3ECFC; padding:10px 8px 12px; text-align:center; }
+  .state svg { width:100%; max-width:150px; height:auto; overflow:visible; }
+  .state b { display:block; font-size:13.5px; color:#1A1626; margin-top:2px; }
+  .state span { display:block; font-size:11.5px; color:#6E6A78; margin-top:1px; }
+  .inapp { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:20px; }
+  @media (max-width: 900px) { .inapp { grid-template-columns:1fr; } }
+  .phone { border-radius:18px; background:#F6F5F9; padding:16px; }
+  .phone .cap { font-size:11.5px; color:#6E6A78; margin:0 0 10px; }
+  .row { display:flex; align-items:flex-end; gap:8px; }
+  .row .who { font-size:11px; color:#6E6A78; margin:0 0 3px 2px; }
+  .row .say { font-size:13px; line-height:1.5; color:#1A1626; background:#EDEAF3; border-radius:14px 14px 14px 4px; padding:8px 12px; }
+  .wait { display:flex; align-items:center; gap:14px; background:#fff; border:1px solid #E6DEF2; border-radius:16px; padding:10px 16px; }
+  .wait svg { width:84px; height:84px; flex:none; overflow:visible; }
+  .wait b { display:block; font-size:14px; color:#1A1626; }
+  .wait span { font-size:12px; color:#6E6A78; }
+
+  .bear .b-body, .bear .b-ear-l, .bear .b-ear-r, .bear .b-eyes, .bear .b-mouth, .bear .b-shadow, .bear .x-dot, .bear .x-wave, .bear .x-star, .bear .x-load { transform-box: fill-box; }
+  .bear .b-body { transform-origin: 50% 100%; }
+  .bear .b-ear-l { transform-origin: 70% 85%; }
+  .bear .b-ear-r { transform-origin: 30% 85%; }
+  .bear .b-eyes, .bear .b-shadow, .bear .x-dot, .bear .x-star, .bear .x-load { transform-origin: 50% 50%; }
+  .bear .b-mouth { transform-origin: 50% 0%; }
+
+  @keyframes b-blink { 0%, 42%, 47%, 52%, 100% { transform: scaleY(1); } 44.5%, 49.5% { transform: scaleY(.08); } }
+
+  /* 待機：呼吸、連眨兩下、右耳抖一下、左右看 */
+  .st-idle .b-body { animation: i-breathe 2.8s ease-in-out infinite; }
+  @keyframes i-breathe { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(1.022, .978); } }
+  .st-idle .b-eyes { animation: b-blink 5.6s infinite; }
+  .st-idle .b-ear-r { animation: i-ear 5.6s ease-in-out infinite; }
+  @keyframes i-ear { 0%, 62%, 78%, 100% { transform: rotate(0deg); } 66% { transform: rotate(18deg); } 70% { transform: rotate(-6deg); } 74% { transform: rotate(10deg); } }
+  .st-idle .b-face { animation: i-look 8.4s ease-in-out infinite; }
+  @keyframes i-look { 0%, 16%, 60%, 100% { transform: translateX(0); } 22%, 34% { transform: translateX(5px); } 40%, 54% { transform: translateX(-5px); } }
+
+  /* 打招呼：沒有手，用左右探頭加小跳，兩隻耳朵輪流擺 */
+  .st-hi .b-body { animation: h-lean 1.5s ease-in-out infinite; }
+  @keyframes h-lean {
+    0%, 100% { transform: rotate(0deg) translateY(0) scale(1.04, .96); }
+    25% { transform: rotate(-9deg) translateY(-8px) scale(.98, 1.03); }
+    50% { transform: rotate(0deg) translateY(0) scale(1.04, .96); }
+    75% { transform: rotate(9deg) translateY(-8px) scale(.98, 1.03); }
+  }
+  .st-hi .b-ear-l { animation: h-ear-l 1.5s ease-in-out infinite; }
+  .st-hi .b-ear-r { animation: h-ear-r 1.5s ease-in-out infinite; }
+  @keyframes h-ear-l { 0%, 50%, 100% { transform: rotate(0deg); } 25% { transform: rotate(-16deg); } }
+  @keyframes h-ear-r { 0%, 50%, 100% { transform: rotate(0deg); } 75% { transform: rotate(16deg); } }
+
+  /* 聆聽：歪頭、耳朵豎起來、聲波進來 */
+  .st-listen .b-body { animation: l-tilt 2.6s ease-in-out infinite; }
+  @keyframes l-tilt { 0%, 100% { transform: rotate(-8deg); } 50% { transform: rotate(-10deg) scale(1.015, .985); } }
+  .st-listen .b-ear-r { animation: l-ear 1.3s ease-in-out infinite; }
+  @keyframes l-ear { 0%, 100% { transform: scale(1.14); } 50% { transform: scale(1.28) rotate(6deg); } }
+  .st-listen .b-eyes { animation: b-blink 4.6s infinite; }
+  .st-listen .x-wave { opacity: 0; animation: l-wave 1.5s ease-out infinite; }
+  .st-listen .x-wave.w2 { animation-delay: .25s; }
+  @keyframes l-wave { 0% { opacity: 0; transform: translateX(14px); } 35% { opacity: 1; } 100% { opacity: 0; transform: translateX(-8px); } }
+
+  /* 思考：眼睛往上看、身體慢慢晃、想法泡泡一顆一顆冒 */
+  .st-think .b-body { animation: t-sway 3.2s ease-in-out infinite; }
+  @keyframes t-sway { 0%, 100% { transform: rotate(5deg); } 50% { transform: rotate(-3deg); } }
+  .st-think .x-dot { animation: t-dot 1.8s ease-in-out infinite; }
+  .st-think .x-dot.d2 { animation-delay: .25s; }
+  .st-think .x-dot.d3 { animation-delay: .5s; }
+  @keyframes t-dot { 0%, 100% { transform: scale(.35); opacity: .25; } 40%, 60% { transform: scale(1); opacity: 1; } }
+
+  /* 回答：嘴巴開合、身體跟著點 */
+  .st-talk .b-body { animation: k-nod .84s ease-in-out infinite; }
+  @keyframes k-nod { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(1.018, .982); } }
+  .st-talk .b-mouth { animation: k-mouth .42s ease-in-out infinite alternate; }
+  @keyframes k-mouth { from { transform: scale(.7, .25); } to { transform: scale(1, 1); } }
+  .st-talk .b-eyes { animation: b-blink 3.8s infinite; }
+
+  /* 等待：左右腳輪流踏步，頭上三顆點輪流亮 */
+  .st-wait .b-body { animation: w-step 1s ease-in-out infinite; }
+  @keyframes w-step {
+    0%, 100% { transform: rotate(-6deg) translateY(0); } 25% { transform: rotate(0deg) translateY(-5px); }
+    50% { transform: rotate(6deg) translateY(0); } 75% { transform: rotate(0deg) translateY(-5px); }
+  }
+  .st-wait .b-ear-l { animation: w-ear 1s ease-in-out infinite; }
+  .st-wait .b-ear-r { animation: w-ear 1s ease-in-out infinite reverse; }
+  @keyframes w-ear { 0%, 100% { transform: rotate(-8deg); } 50% { transform: rotate(8deg); } }
+  .st-wait .b-eyes { animation: b-blink 4.2s infinite; }
+  .st-wait .x-load { animation: w-load 1.2s ease-in-out infinite; }
+  .st-wait .x-load.p2 { animation-delay: .2s; }
+  .st-wait .x-load.p3 { animation-delay: .4s; }
+  @keyframes w-load { 0%, 60%, 100% { transform: translateY(0) scale(.75); opacity: .5; } 30% { transform: translateY(-9px) scale(1); opacity: 1; } }
+
+  /* 完成：蓄力下壓 → 跳起拉長 → 落地壓扁 → 回彈，星星彈出來 */
+  .st-yay .b-all { animation: y-jump 1.6s cubic-bezier(.4, 0, .25, 1) infinite; }
+  @keyframes y-jump { 0%, 22%, 62%, 100% { transform: translateY(0); } 40% { transform: translateY(-34px); } }
+  .st-yay .b-body { animation: y-squash 1.6s cubic-bezier(.4, 0, .25, 1) infinite; }
+  @keyframes y-squash {
+    0%, 100% { transform: scale(1, 1); } 16% { transform: scale(1.13, .86); } 40% { transform: scale(.92, 1.09); }
+    62% { transform: scale(1.15, .85); } 74% { transform: scale(.97, 1.04); } 86% { transform: scale(1.02, .985); }
+  }
+  .st-yay .b-shadow { animation: y-shadow 1.6s cubic-bezier(.4, 0, .25, 1) infinite; }
+  @keyframes y-shadow { 0%, 22%, 62%, 100% { transform: scale(1); opacity: .13; } 40% { transform: scale(.62); opacity: .06; } }
+  .st-yay .b-ear-l { animation: y-ear-l 1.6s ease-in-out infinite; }
+  .st-yay .b-ear-r { animation: y-ear-r 1.6s ease-in-out infinite; }
+  @keyframes y-ear-l { 0%, 30%, 90%, 100% { transform: rotate(0deg); } 44% { transform: rotate(18deg); } 66% { transform: rotate(-20deg); } 78% { transform: rotate(8deg); } }
+  @keyframes y-ear-r { 0%, 30%, 90%, 100% { transform: rotate(0deg); } 44% { transform: rotate(-18deg); } 66% { transform: rotate(20deg); } 78% { transform: rotate(-8deg); } }
+  .st-yay .x-star { animation: y-star 1.6s ease-out infinite; }
+  .st-yay .x-star.s2 { animation-delay: .08s; }
+  .st-yay .x-star.s3 { animation-delay: .16s; }
+  @keyframes y-star { 0%, 30% { transform: scale(0) rotate(-30deg); opacity: 0; } 46% { transform: scale(1.2) rotate(0deg); opacity: 1; } 70% { transform: scale(1) rotate(12deg); opacity: 1; } 100% { transform: scale(.4) rotate(30deg); opacity: 0; } }
+</style>
+
+<h2>熊熊滾　設定稿</h2>
+<p class="subtitle">整隻只用三個顏色、七個形狀。沒有手，所以每個狀態都靠身體的姿勢、耳朵、眼睛和嘴巴來表現。</p>
+
+<div class="sheet">
+  <div class="panel">
+    <h3>主視覺（待機）</h3>
+    <p class="hint">呼吸、連眨兩下、右耳抖一下、左右張望</p>
+    <div class="hero" id="hero"></div>
+    <div class="sizes">
+      <div class="s"><span class="ava" id="size-64"></span>頭像 64</div>
+      <div class="s"><span class="ava" id="size-40"></span>40</div>
+      <div class="s"><span class="ava" id="size-28"></span>28</div>
+      <div class="s"><span class="ava fav" id="size-fav"></span>網站圖示</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3>六個狀態</h3>
+    <p class="hint">對應 App 裡會用到的地方，每個都是循環動畫。</p>
+    <div class="states">
+      <div class="state"><span id="st-hi"></span><b>打招呼</b><span>登入頁、第一次使用的導覽</span></div>
+      <div class="state"><span id="st-listen"></span><b>聆聽</b><span>問答頁：你在說話</span></div>
+      <div class="state"><span id="st-think"></span><b>思考</b><span>問答頁：AI 在查資料</span></div>
+      <div class="state"><span id="st-talk"></span><b>回答</b><span>問答頁：AI 在講話</span></div>
+      <div class="state"><span id="st-wait"></span><b>等待</b><span>錄音轉文字、整理紀錄</span></div>
+      <div class="state"><span id="st-yay"></span><b>完成</b><span>回寫成功、任務做完</span></div>
+    </div>
+    <div class="inapp">
+      <div class="phone">
+        <p class="cap">放在頻道裡：AI 主理發言</p>
+        <div class="row"><span class="ava" id="app-ava"></span><div><p class="who">AI 主理</p><div class="say">北區這週有 3 件客訴，都跟補貨延遲有關，我整理在看板上了。</div></div></div>
+      </div>
+      <div class="phone">
+        <p class="cap">放在等待畫面：取代轉圈圈</p>
+        <div class="wait"><span id="app-wait"></span><div><b>正在整理拜訪紀錄</b><span>大約還要 20 秒</span></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var C = { base: "#9B51E0", light: "#EADBFD", hi: "#C9A2F5", ink: "#2B1B47", tongue: "#FF8FB3", star: "#FFC93C" }
+
+  function ear(cls, x) {
+    return '<g class="' + cls + '"><circle cx="' + x + '" cy="62" r="22" fill="' + C.base + '"/><circle cx="' + x + '" cy="62" r="10.5" fill="' + C.light + '"/></g>'
+  }
+  var EYES = {
+    open: '<ellipse cx="-29" cy="-12" rx="7.6" ry="9.6" fill="' + C.ink + '"/><ellipse cx="29" cy="-12" rx="7.6" ry="9.6" fill="' + C.ink + '"/>' +
+          '<circle cx="-26.4" cy="-15.6" r="2.7" fill="#fff"/><circle cx="31.6" cy="-15.6" r="2.7" fill="#fff"/>',
+    up: '<ellipse cx="-26" cy="-16" rx="7.6" ry="9.6" fill="' + C.ink + '"/><ellipse cx="32" cy="-16" rx="7.6" ry="9.6" fill="' + C.ink + '"/>' +
+        '<circle cx="-22.6" cy="-20.4" r="2.7" fill="#fff"/><circle cx="35.4" cy="-20.4" r="2.7" fill="#fff"/>',
+    happy: '<path d="M-38 -8 Q-29 -22 -20 -8" fill="none" stroke="' + C.ink + '" stroke-width="4.8" stroke-linecap="round"/>' +
+           '<path d="M20 -8 Q29 -22 38 -8" fill="none" stroke="' + C.ink + '" stroke-width="4.8" stroke-linecap="round"/>'
+  }
+  var MOUTH = {
+    smile: '<path d="M0 9 V12.5 M-7 13.5 Q-3.5 18.5 0 13.5 Q3.5 18.5 7 13.5" fill="none" stroke="' + C.ink + '" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>',
+    hmm: '<path d="M0 9 V12" fill="none" stroke="' + C.ink + '" stroke-width="2.8" stroke-linecap="round"/><ellipse cx="3.5" cy="17" rx="3.4" ry="3" fill="' + C.ink + '"/>',
+    open: '<g class="b-mouth"><path d="M-8.5 12 Q0 9.5 8.5 12 Q8 24 0 24 Q-8 24 -8.5 12 Z" fill="' + C.ink + '"/>' +
+          '<path d="M-4.6 20 Q0 16.4 4.6 20 Q2.6 24 0 24 Q-2.6 24 -4.6 20 Z" fill="' + C.tongue + '"/></g>'
+  }
+
+  function bear(o) {
+    o = o || {}
+    return '<svg class="bear ' + (o.cls || "") + '" viewBox="' + (o.bust ? "24 16 192 192" : "0 0 240 240") + '" xmlns="http://www.w3.org/2000/svg"' + (o.size ? ' width="' + o.size + '" height="' + o.size + '"' : "") + '>' +
+      (o.bust ? "" : '<ellipse class="b-shadow" cx="120" cy="222" rx="60" ry="7" fill="' + C.ink + '" opacity=".13"/>') +
+      '<g class="b-all"><g class="b-body">' +
+        ear("b-ear-l", 80) + ear("b-ear-r", 160) +
+        // 頭和身體是同一個形狀，底下分出兩條短腿
+        '<path d="M56 118 C56 80 84 56 120 56 C156 56 184 80 184 118 V188 C184 204 173 215 159 215 C147 215 139 209 135 200 H105 C101 209 93 215 81 215 C67 215 56 204 56 188 Z" fill="' + C.base + '"/>' +
+        '<g transform="translate(120 120)"><g class="b-face">' +
+          '<g class="b-eyes">' + EYES[o.eyes || "open"] + '</g>' +
+          '<ellipse cx="0" cy="9" rx="24" ry="17" fill="' + C.light + '"/>' +
+          '<path d="M-9 0 Q0 -4 9 0 Q10.5 5 0 10 Q-10.5 5 -9 0 Z" fill="' + C.ink + '"/>' +
+          MOUTH[o.mouth || "smile"] +
+        '</g></g>' +
+      '</g>' + (o.extra || "") + '</g>' +
+    '</svg>'
+  }
+
+  function star(x, y, r, cls) {
+    return '<path class="x-star ' + cls + '" fill="' + C.star + '" d="M' + x + ' ' + (y - r) + ' Q' + x + ' ' + y + ' ' + (x + r) + ' ' + y + ' Q' + x + ' ' + y + ' ' + x + ' ' + (y + r) + ' Q' + x + ' ' + y + ' ' + (x - r) + ' ' + y + ' Q' + x + ' ' + y + ' ' + x + ' ' + (y - r) + ' Z"/>'
+  }
+  var WAVES = '<path class="x-wave w1" d="M206 46 q9 12 0 24" fill="none" stroke="' + C.hi + '" stroke-width="5" stroke-linecap="round"/>' +
+              '<path class="x-wave w2" d="M218 38 q14 20 0 40" fill="none" stroke="' + C.hi + '" stroke-width="5" stroke-linecap="round"/>'
+  var DOTS = '<circle class="x-dot d1" cx="190" cy="40" r="6" fill="' + C.hi + '"/><circle class="x-dot d2" cx="208" cy="22" r="9" fill="' + C.hi + '"/><circle class="x-dot d3" cx="232" cy="4" r="12" fill="' + C.hi + '"/>'
+  var LOAD = '<circle class="x-load p1" cx="94" cy="20" r="9" fill="' + C.hi + '"/><circle class="x-load p2" cx="120" cy="20" r="9" fill="' + C.hi + '"/><circle class="x-load p3" cx="146" cy="20" r="9" fill="' + C.hi + '"/>'
+  var STARS = star(28, 50, 20, "s1") + star(214, 36, 16, "s2") + star(222, 110, 11, "s3") + star(20, 122, 10, "s2")
+
+  function put(id, html) { var el = document.getElementById(id); if (el) el.innerHTML = html }
+  put("hero", bear({ cls: "st-idle" }))
+  put("size-64", bear({ cls: "st-idle", bust: true, size: 64 }))
+  put("size-40", bear({ cls: "st-idle", bust: true, size: 40 }))
+  put("size-28", bear({ cls: "st-idle", bust: true, size: 28 }))
+  put("size-fav", bear({ bust: true, size: 32 }))
+  put("st-hi", bear({ cls: "st-hi", eyes: "happy", mouth: "open" }))
+  put("st-listen", bear({ cls: "st-listen", extra: WAVES }))
+  put("st-think", bear({ cls: "st-think", eyes: "up", mouth: "hmm", extra: DOTS }))
+  put("st-talk", bear({ cls: "st-talk", mouth: "open" }))
+  put("st-wait", bear({ cls: "st-wait", extra: LOAD }))
+  put("st-yay", bear({ cls: "st-yay", eyes: "happy", mouth: "open", extra: STARS }))
+  put("app-ava", bear({ cls: "st-talk", mouth: "open", bust: true, size: 36 }))
+  put("app-wait", bear({ cls: "st-wait", extra: LOAD }))
+})()
+</script>
+</body>
+</html>
