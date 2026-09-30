@@ -693,3 +693,57 @@ class SapEmployee(Base):
     hire_date: Mapped[dt.date]
     # 值是品項表的類別（Product.category）：保健品、慢性處方、一般用藥、醫材
     product_lines: Mapped[list[str]]
+
+
+# 方法卡的「情況」標籤，跟談判卡判斷客戶狀況的訊號同一組：談判卡與新人頁之後靠標籤帶出相關的卡
+# （docs/superpowers/specs/2026-09-30-method-cards-design.md）。畫面上的名稱放前端（lib/methods.ts）
+METHOD_TAGS = ("competitor", "interval_up", "contract_ending", "ar_overdue", "festival", "cost", "newcomer")
+# published：上架，全公司看得到；retired：下架，只有作者與 IT 在主管端看得到，可以重新上架
+METHOD_CARD_STATUSES = ("published", "retired")
+
+
+class MethodCard(Base):
+    """方法卡：主管把「遇到這種情況怎麼談」寫下來，全公司的業務都看得到。內容是人寫的，AI 不生成也不改寫。"""
+
+    __tablename__ = "method_card"
+    __table_args__ = (
+        one_of("status", METHOD_CARD_STATUSES, "status"),
+        # NULL 代表每種客戶都適用
+        one_of("customer_type", CUSTOMER_TYPES, "customer_type"),
+        # 標籤至少一個。值是不是那一組由服務層檢查（services/method_cards.py）：陣列的每個元素不好寫成 CHECK
+        CheckConstraint("cardinality(tags) > 0", name="tags"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    title: Mapped[str]
+    # 什麼時候用
+    situation: Mapped[str] = mapped_column(Text)
+    # 怎麼做、怎麼說
+    approach: Mapped[str] = mapped_column(Text)
+    customer_type: Mapped[str | None]
+    tags: Mapped[list[str]]
+    # 作者被停用或降成業務，卡片照舊上架，之後只有 IT 改得了
+    author_id: Mapped[str] = mapped_column(ForeignKey("app_user.id"))
+    status: Mapped[str] = mapped_column(server_default="published")
+    created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+
+
+class MethodCardFeedback(Base):
+    """業務按的「有幫上／沒幫上」。採用次數＝有幫上的筆數。記在實際登入的帳號上，不是代理的那位。"""
+
+    __tablename__ = "method_card_feedback"
+    __table_args__ = (
+        # 同一個人在同一家客戶對同一張卡只有一筆，再按一次是改答案。從方法卡清單按的沒有客戶，
+        # NULL 也要算相同（Postgres 15 起的 NULLS NOT DISTINCT），不然同一個人可以一直按、次數一直加
+        UniqueConstraint("card_id", "user_id", "customer_id", postgresql_nulls_not_distinct=True),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    card_id: Mapped[int] = mapped_column(ForeignKey("method_card.id", ondelete="CASCADE"), index=True)
+    # 自建帳號刪除時，他按的回饋一起刪（跟頻道訊息一樣）；公司帳號只能停用，不會被刪
+    user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"))
+    # 在哪一家客戶的談判卡上按的；從方法卡清單按的是 NULL
+    customer_id: Mapped[str | None] = mapped_column(ForeignKey("customer.id"))
+    helped: Mapped[bool]
+    created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
