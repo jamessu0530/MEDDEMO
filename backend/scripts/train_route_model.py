@@ -7,7 +7,6 @@
 """
 
 import json
-import math
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -18,14 +17,10 @@ from sqlalchemy import select  # noqa: E402
 
 from app.db import session_factory  # noqa: E402
 from app.models import Visit  # noqa: E402
-from app.services import route_model  # noqa: E402
+from app.services import logreg, route_model  # noqa: E402
 
 # 最後四分之一的拜訪當測試期。照時間切而不是隨機切，才貼近上線後「拿過去的資料預測以後」的情形
 TEST_RATIO = 0.25
-EPOCHS = 600
-LEARNING_RATE = 0.3
-# L2 正則化：資料只有五千多筆、正例約一成，不加的話權重容易被少數極端客戶帶著跑
-L2 = 0.001
 CONTENT_KEYS = ("competitor", "complaint", "intent", "commitment")
 
 
@@ -45,41 +40,6 @@ def load_rows(session):
     return rows
 
 
-def fit(rows):
-    names = list(route_model.FEATURES)
-    mean = {k: sum(f[k] for _, f, _ in rows) / len(rows) for k in names}
-    sd = {k: (sum((f[k] - mean[k]) ** 2 for _, f, _ in rows) / len(rows)) ** 0.5 or 1.0 for k in names}
-    x = [[(f[k] - mean[k]) / sd[k] for k in names] for _, f, _ in rows]
-    y = [label for _, _, label in rows]
-    w = [0.0] * len(names)
-    bias = 0.0
-    for _ in range(EPOCHS):
-        gw = [0.0] * len(names)
-        gb = 0.0
-        for xi, yi in zip(x, y):
-            p = 1 / (1 + math.exp(-(sum(wj * v for wj, v in zip(w, xi)) + bias)))
-            err = p - yi
-            gb += err
-            for j, v in enumerate(xi):
-                gw[j] += err * v
-        for j in range(len(names)):
-            w[j] -= LEARNING_RATE * (gw[j] / len(x) + L2 * w[j])
-        bias -= LEARNING_RATE * gb / len(x)
-    return {"mean": mean, "sd": sd, "weights": dict(zip(names, w)), "bias": bias}
-
-
-def auc(scored):
-    """scored 是 [(分數, 標籤)]。回傳隨機抓一個有收穫與一個沒收穫的拜訪，前者分數較高的機率。"""
-    pos = sorted(s for s, label in scored if label)
-    neg = sorted(s for s, label in scored if not label)
-    if not pos or not neg:
-        return float("nan")
-    import bisect
-
-    total = sum(bisect.bisect_left(neg, s) + (bisect.bisect_right(neg, s) - bisect.bisect_left(neg, s)) / 2 for s in pos)
-    return total / (len(pos) * len(neg))
-
-
 def quintile_hit_rates(scored):
     """按分數排序切五等分，每一等有收穫的比例。給決賽解釋模型有沒有用。"""
     ordered = sorted(scored, key=lambda sl: sl[0], reverse=True)
@@ -96,7 +56,8 @@ def main() -> None:
         rows.sort(key=lambda r: r[0])
         split = int(len(rows) * (1 - TEST_RATIO))
         train, test = rows[:split], rows[split:]
-        model = fit(train)
+        # 超參數用 logreg 的預設值（600 輪、學習率 0.3、L2 0.001），跟抽成共用之前一樣
+        model = logreg.fit([(f, label) for _, f, label in train], list(route_model.FEATURES))
 
         model_scored = [(route_model.score(f, model), label) for _, f, label in test]
         # 對照組：現行規則（距上次拜訪幾倍 × 等級權重），也就是不學習時的排法
@@ -105,8 +66,8 @@ def main() -> None:
             "trained_rows": len(train),
             "test_rows": len(test),
             "test_positive_rate": sum(label for _, _, label in test) / len(test),
-            "auc": auc(model_scored),
-            "rule_auc": auc(rule_scored),
+            "auc": logreg.auc(model_scored),
+            "rule_auc": logreg.auc(rule_scored),
             "quintile_hit_rates": quintile_hit_rates(model_scored),
             "train_period": [str(train[0][0]), str(train[-1][0])],
             "test_period": [str(test[0][0]), str(test[-1][0])],
