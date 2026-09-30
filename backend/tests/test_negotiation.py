@@ -157,17 +157,25 @@ def test_the_card_shows_our_margin_floor_and_quotes_company_documents(client, co
     card = card_of(client, "C001")
     margin = card["margin"]
     assert 0 < margin["net_margin_rate"] < 1 and margin["summary"].startswith("上架費")
-    # 有下一個節慶：先列檔期的兩段規定，再來才是這家的情況（近期提到競品）。內容是內部文件的原文
-    assert [tip["section"] for tip in card["tips"]] == ["檔期活動的申請期限", "檔期費用的上限與核准", "陳列位被調降或被競品取代"]
-    assert card["tips"][2]["reason"] == "近 90 天的拜訪提到競品"
-    assert "活動開始日前 21 天" in card["tips"][0]["content"] and "15%" in card["tips"][1]["content"]
+    # 有下一個節慶：檔期的規定只占一段（期限與上限的數字「檔期」那一區已經算好），
+    # 另外兩段留給這家自己的情況：近期提到競品、進貨間隔拉長。內容是內部文件的原文
+    assert [tip["section"] for tip in card["tips"]] == ["檔期費用的上限與核准", "陳列位被調降或被競品取代", "檔期活動的申請期限"]
+    assert [tip["reason"] for tip in card["tips"][1:]] == ["近 90 天的拜訪提到競品", "進貨間隔拉長"]
+    assert "由區處主管在 OA 核准" in card["tips"][0]["content"] and "活動開始日前 21 天" in card["tips"][2]["content"]
 
 
-def test_a_section_already_quoted_is_not_replaced_by_a_weaker_match(engine, company_docs):
-    # 「進貨間隔拉長」要找的也是申請期限那一段，節慶已經列了：這一組就跳過，不拿次相關的段落充數
+def test_a_section_already_quoted_is_not_replaced_by_a_weaker_match(engine, company_docs, tmp_path, monkeypatch):
+    # 兩筆要找的是同一段：後面那一筆就跳過，不拿次相關的段落充數
+    topics = [
+        {"signal": "festival", "reason": "第一筆", "keywords": ["檔期活動", "申請期限"]},
+        {"signal": "interval_up", "reason": "第二筆", "keywords": ["檔期活動", "申請期限"]},
+    ]
+    path = tmp_path / "topics.json"
+    path.write_text(json.dumps({"topics": topics}, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(negotiation, "TOPICS_FILE", path)
     with Session(engine) as session:
         tips = negotiation._tips(session, {"festival", "interval_up"})
-    assert [tip.section for tip in tips] == ["檔期活動的申請期限", "檔期費用的上限與核准"]
+    assert [(tip.reason, tip.section) for tip in tips] == [("第一筆", "檔期活動的申請期限")]
 
 
 # ── 獨立藥局與診所：成本導向 ─────────────────────────────────────────
@@ -277,7 +285,7 @@ def test_a_cost_card_opens_its_tips_with_discount_authority_and_channel_fees(cli
 @pytest.mark.parametrize(
     ("signal", "sections"),
     [
-        ("festival", ["檔期活動的申請期限", "檔期費用的上限與核准"]),
+        ("festival", ["檔期費用的上限與核准"]),
         ("cost", ["業務的折扣權限", "獨立藥局與診所的通路費用"]),
         ("competitor", ["陳列位被調降或被競品取代"]),
         ("interval_up", ["檔期活動的申請期限"]),
@@ -288,7 +296,7 @@ def test_a_cost_card_opens_its_tips_with_discount_authority_and_channel_fees(cli
 )
 def test_each_topic_in_the_settings_finds_its_intended_section(engine, company_docs, signal, sections):
     """negotiation_topics.json 的每組關鍵字都要找到想要的段落；改了文件或關鍵字，這裡會先發現。
-    festival 與 cost 各有兩筆，各找一段"""
+    cost 有兩筆，各找一段"""
     topics = json.loads(negotiation.TOPICS_FILE.read_text(encoding="utf-8"))["topics"]
     with Session(engine) as session:
         found = [negotiation._best_section(session, topic["keywords"]).section for topic in topics if topic["signal"] == signal]
@@ -298,5 +306,5 @@ def test_each_topic_in_the_settings_finds_its_intended_section(engine, company_d
 def test_the_festival_and_cost_topics_come_first_in_the_settings():
     topics = json.loads(negotiation.TOPICS_FILE.read_text(encoding="utf-8"))["topics"]
     assert [topic["signal"] for topic in topics] == [
-        "festival", "festival", "cost", "cost", "competitor", "interval_up", "contract_ending", "ar_overdue", "chain",
+        "festival", "cost", "cost", "competitor", "interval_up", "contract_ending", "ar_overdue", "chain",
     ]
