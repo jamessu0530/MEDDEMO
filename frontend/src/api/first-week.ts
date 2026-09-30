@@ -1,7 +1,8 @@
 import { request } from "@/api/client"
 import type { Customer } from "@/api/customers"
 
-// 第一週的一件事：to 是 App 裡的路徑，doc 是一份內部文件的檔名，擇一（文件不在索引裡時兩個都是 null）
+// 第一週的一件事：to 是 App 裡的路徑，doc 是一份內部文件的檔名，最多一個有值。
+// 兩個都是 null 的事沒有連結（在新人頁本身就做得完，或文件不在索引裡），照樣能打勾
 export type FirstWeekTask = { id: string; text: string; to: string | null; doc: string | null }
 
 export type FirstWeekDay = { day: number; title: string; tasks: FirstWeekTask[] }

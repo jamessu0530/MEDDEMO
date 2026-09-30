@@ -73,7 +73,7 @@ class KeyCustomer(BaseModel):
 class Task(BaseModel):
     id: str
     text: str
-    # App 裡的路徑或一份內部文件的檔名，擇一；文件不在索引裡時兩個都是 null
+    # App 裡的路徑或一份內部文件的檔名，最多一個有值。兩個都是 null：在新人頁本身就做得完的事，或文件不在索引裡
     to: str | None
     doc: str | None
 

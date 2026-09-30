@@ -230,8 +230,12 @@ def test_the_page_carries_the_plan_and_the_titles_of_the_required_documents(tx, 
     page = client.get("/api/first-week", headers=auth("U01")).json()
     assert [(day["day"], day["title"]) for day in page["days"]] == [(day["day"], day["title"]) for day in config["days"]]
     first = page["days"][0]["tasks"]
-    assert first[0] == {"id": "d1-customers", "text": config["days"][0]["tasks"][0]["text"], "to": "/customers", "doc": None}
+    # 第一件事就在這一頁上面（「先認識這五家」），不必連到別的地方：沒有連結的事照樣列、照樣能打勾
+    assert first[0] == {"id": "d1-customers", "text": config["days"][0]["tasks"][0]["text"], "to": None, "doc": None}
+    assert "先認識這五家" in first[0]["text"] and "客戶清單" not in first[0]["text"]
     assert (first[1]["to"], first[1]["doc"]) == (None, "09-拜訪紀錄.md")
+    tasks = {task["id"]: task for day in page["days"] for task in day["tasks"]}
+    assert (tasks["d2-promotions"]["to"], tasks["d2-promotions"]["doc"]) == ("/promotions", None)
     # 必讀文件附上標題，順序照設定檔
     assert [doc["source_name"] for doc in page["documents"]] == config["documents"]
     assert page["documents"][0] == {"source_name": "09-拜訪紀錄.md", "title": "拜訪紀錄填寫規範"}
@@ -259,8 +263,9 @@ def test_the_config_has_five_days_of_things_that_point_somewhere_real():
     tasks = [task for day in config["days"] for task in day["tasks"]]
     # 勾選進度用 id 記在手機裡：重複的話勾一件等於勾兩件
     assert len({task["id"] for task in tasks}) == len(tasks)
-    # 每件事連到一個地方：App 裡的頁面或一份內部文件，擇一
-    assert all(task["text"] and ("to" in task) != ("doc" in task) for task in tasks)
+    # 每件事最多連到一個地方：App 裡的頁面或一份內部文件。在新人頁本身就做得完的事可以沒有連結
+    assert all(task["text"] and not ("to" in task and "doc" in task) for task in tasks)
+    assert [task["id"] for task in tasks if "to" not in task and "doc" not in task] == ["d1-customers"]
     documents = {path.name for path in DOCUMENTS_DIR.glob("*.md")}
     assert {task["doc"] for task in tasks if "doc" in task} <= documents
     assert config["documents"] and set(config["documents"]) <= documents
