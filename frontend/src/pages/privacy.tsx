@@ -8,7 +8,7 @@ import { Link, useNavigate } from "react-router"
  * 改了做法要回來改這一頁。
  */
 
-const UPDATED = "2026 年 9 月 29 日"
+const UPDATED = "2026 年 9 月 30 日"
 
 function Section({ id, title, children }: { id?: string; title: string; children: React.ReactNode }) {
   return (
@@ -49,7 +49,7 @@ export function PrivacyPage() {
               <b>用 Google、GitHub 或 Facebook 登入時</b>：該服務提供的使用者編號、名字與 Email。我們只拿這幾項，不會讀取你在這些服務上的其他內容，也不會替你發文。
             </li>
             <li>
-              <b>你輸入或說出的內容</b>：問答的提問、語音問答的聲音、拜訪錄音、逐字稿與整理出來的拜訪紀錄、報價草稿、在頻道裡發的訊息。
+              <b>你輸入或說出的內容</b>：問答的提問、語音問答的聲音、拜訪錄音、逐字稿與整理出來的拜訪紀錄、報價草稿、在頻道裡發的訊息，以及對方法卡按的「有幫上／沒幫上」（畫面上只顯示每張卡累計的次數，不顯示是誰按的）。
             </li>
             <li>
               <b>連線資訊</b>：IP 位址。沒登入時用來計算用量上限，計數在該小時或該天結束後一小時自動清除；伺服器的連線紀錄裡也會出現。
@@ -93,7 +93,7 @@ export function PrivacyPage() {
               逐字稿：確認送出後 6 個月刪除。送出時會先遮掉 Email、電話、身分證字號、系統裡業務與主管的姓名，以及「王藥師」「陳小姐」這類稱呼；只講名字或客戶聯絡人的全名認不出來，不會遮。
             </li>
             <li>沒有送出的拜訪紀錄：建立後 60 天整筆刪除。</li>
-            <li>帳號、提問、頻道訊息與報價草稿：保留到你刪除帳號為止。</li>
+            <li>帳號、提問、頻道訊息、方法卡的回饋與報價草稿：保留到你刪除帳號為止。</li>
           </ul>
         </Section>
 
@@ -106,6 +106,7 @@ export function PrivacyPage() {
             <li>綁定的 Google／GitHub／Facebook 登入資訊</li>
             <li>你問過的問題，以及轉給主管的提問與回覆</li>
             <li>你在頻道發的訊息，以及頻道的已讀位置</li>
+            <li>你對方法卡按的「有幫上／沒幫上」，那張卡的次數會跟著減少</li>
           </ul>
           <p>
             你開的報價草稿是客戶的交易紀錄，會保留，但不再記錄是誰開的。用 Facebook 登入的，也可以在 Facebook 的「設定和隱私 → 應用程式和網站」移除這個應用程式，移除之後就無法再用 Facebook 登入這個帳號。
