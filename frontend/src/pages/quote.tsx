@@ -113,7 +113,8 @@ export function QuotePage() {
   return (
     <div className="flex min-h-svh flex-col">
       <PageHeader title="開報價" subtitle={state.status === "ready" ? state.customer.name : undefined} backTo={profilePath} />
-      <main className="flex flex-1 flex-col gap-3 px-4 pt-4 pb-44">
+      {/* 底部固定那一塊有折扣、合計與送出鈕；要寫理由時更高，清單最後一項才不會被蓋住 */}
+      <main className={cn("flex flex-1 flex-col gap-3 px-4 pt-4", needsApproval ? "pb-80" : "pb-56")}>
         {state.status === "loading" && <p className="py-10 text-center text-sm text-muted-foreground">載入常進品項中…</p>}
         {state.status === "error" && state.missing && (
           <Notice text={customerNotFoundText(user)} action={{ label: "回客戶清單", onClick: () => navigate("/customers") }} />
@@ -178,47 +179,47 @@ export function QuotePage() {
                 </li>
               ))}
             </ul>
-            <section className="flex flex-col gap-2 rounded-xl border bg-card px-4 py-3">
-              <div className="flex items-center gap-2">
-                <label htmlFor="quote-discount" className="text-sm font-medium">
-                  折扣
-                </label>
-                <Input
-                  id="quote-discount"
-                  type="number"
-                  inputMode="decimal"
-                  min={0}
-                  max={DISCOUNT_MAX}
-                  step={DISCOUNT_STEP}
-                  value={discountText}
-                  placeholder="0"
-                  onChange={(event) => setDiscountText(event.target.value)}
-                  aria-invalid={!route.valid}
-                  className="ml-auto h-11 w-24 bg-card tabular-nums"
-                />
-                <span className="text-sm text-muted-foreground">%</span>
-              </div>
-              {/* 填的時候就知道這個折扣要誰簽（《報價權限與折扣審核》） */}
-              <p className={cn("text-xs", route.valid ? "text-muted-foreground" : "text-destructive")}>
-                {route.valid && discount === 0 ? "整張報價一個折扣，套在供貨價上；3% 以內不用簽核。" : route.text}
-              </p>
-              {needsApproval && (
-                <Textarea
-                  value={reason}
-                  onChange={(event) => setReason(event.target.value)}
-                  placeholder="申請理由：客戶的進貨金額、競品開的條件"
-                  aria-label="申請理由"
-                  maxLength={REASON_MAX_LENGTH}
-                  rows={2}
-                />
-              )}
-            </section>
           </>
         )}
       </main>
 
       {items.length > 0 && (
         <div className="fixed inset-x-0 bottom-0 z-10 mx-auto flex max-w-md flex-col gap-2 border-t bg-card px-4 pt-3 pb-[max(env(safe-area-inset-bottom),0.75rem)]">
+          {/* 折扣跟合計、送出鈕放在一起：清單有十幾項，放在清單後面要捲到底才看得到 */}
+          <div className="flex items-center gap-2">
+            <label htmlFor="quote-discount" className="shrink-0 text-sm font-medium">
+              折扣
+            </label>
+            <Input
+              id="quote-discount"
+              type="number"
+              inputMode="decimal"
+              min={0}
+              max={DISCOUNT_MAX}
+              step={DISCOUNT_STEP}
+              value={discountText}
+              placeholder="0"
+              onChange={(event) => setDiscountText(event.target.value)}
+              aria-invalid={!route.valid}
+              className="h-11 w-20 bg-card tabular-nums"
+            />
+            <span className="shrink-0 text-sm text-muted-foreground">%</span>
+            {/* 填的時候就知道這個折扣要誰簽（《報價權限與折扣審核》） */}
+            <p className={cn("min-w-0 flex-1 text-xs leading-snug", route.valid ? "text-muted-foreground" : "text-destructive")}>
+              {route.valid && discount === 0 ? "3% 以內不用簽核" : route.text}
+            </p>
+          </div>
+          {needsApproval && (
+            <Textarea
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+              placeholder="申請理由：客戶的進貨金額、競品開的條件"
+              aria-label="申請理由"
+              maxLength={REASON_MAX_LENGTH}
+              rows={2}
+              className="bg-card"
+            />
+          )}
           <div className="flex items-baseline justify-between gap-3">
             <span className="text-sm text-muted-foreground">
               合計 {chosen.length} 項{route.valid && discount > 0 && `，折扣 ${discount}%`}
