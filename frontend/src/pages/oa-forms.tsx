@@ -53,6 +53,8 @@ export function OaFormsPage() {
                 key={item.id}
                 type="button"
                 onClick={() => {
+                  // 再點一次目前的篩選不必重抓：篩選沒變，抓資料的 effect 不會再跑，畫面會一直停在載入中
+                  if (active) return
                   setFilter(item.id)
                   setState({ status: "loading" })
                 }}
