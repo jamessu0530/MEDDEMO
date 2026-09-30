@@ -14,7 +14,9 @@ import { ChannelThreadsPage } from "@/pages/channel-threads"
 import { ChannelsPage } from "@/pages/channels"
 import { CustomerPage } from "@/pages/customer"
 import { CustomerPicker } from "@/pages/customer-picker"
+import { DocumentPage } from "@/pages/document"
 import { EscalationsPage } from "@/pages/escalations"
+import { FirstWeekPage } from "@/pages/first-week"
 import { OaFormPage } from "@/pages/oa-form"
 import { OaFormsPage } from "@/pages/oa-forms"
 import { GitHubCallbackPage } from "@/pages/github-callback"
@@ -166,6 +168,9 @@ export default function App() {
               }
             />
             <Route path="/settings" element={<SettingsPage />} />
+            {/* 新人第一週：業務帳號都打得開；必讀文件點開是 /documents/檔名 */}
+            <Route path="/first-week" element={<FirstWeekPage />} />
+            <Route path="/documents/:sourceName" element={<DocumentPage />} />
             <Route path="*" element={<NotFound />} />
           </Route>
         </Routes>
