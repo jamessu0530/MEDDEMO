@@ -16,16 +16,19 @@ export type VoiceSession = { sendText: (text: string) => void; noteActivity: () 
  */
 export default function VoiceDock({
   conversation,
+  polls,
   onClose,
   onSession,
   onNotice,
 }: {
   conversation: Conversation
+  // 查詢輪詢的中止訊號，登出時才會中止（ask/ask-session.ts）
+  polls: AbortSignal
   onClose: () => void
   onSession: (session: VoiceSession | null) => void
   onNotice: (notice: string | null) => void
 }) {
-  const voice = useVoiceSession(conversation)
+  const voice = useVoiceSession(conversation, polls)
   const live = voice.status === "listening" || voice.status === "speaking"
 
   // 按麥克風就是表達了要講話，載完直接開始，不讓人再按一次
