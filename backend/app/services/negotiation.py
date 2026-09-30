@@ -1,6 +1,8 @@
-"""談判卡（FR-3）。
+"""談判卡（FR-3）：每種客戶都有，圍繞下一個節慶。
 
-內容只來自資料庫的數字與內部文件的原文，不讓 AI 生成（NFR-1）：切入點是內部文件的原文段落。
+連鎖是顧客導向：顧客要買的時候架上有沒有（檔期、主推品類裡架上有什麼、缺什麼）、我方的毛利底線。
+內容只來自資料庫的數字、設定檔裡人寫的句子與內部文件的原文，不讓 AI 生成（NFR-1）：
+節慶那一句話寫在 resources/festivals.json，切入點是內部文件的原文段落。
 """
 
 import datetime as dt
@@ -13,6 +15,7 @@ from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import Session
 
 from app.models import Customer, DocumentChunk, Product, SalesTransaction
+from app.services import festivals
 from app.services.customer_profile import TOP_SKU_DAYS, Profile
 from app.services.retrieval import SIMPLE, keyword_tokens
 
@@ -22,14 +25,52 @@ TOPICS_FILE = Path(__file__).resolve().parents[1] / "resources" / "negotiation_t
 TURNOVER_DAYS = 90
 TOP_SKUS = 4
 MAX_TIPS = 3
+# 缺口最多列三個：進門談得完的量
+MAX_GAPS = 3
+# 《檔期活動申請與成效回報》：單一檔期的檔期費用以客戶前 3 個月平均月進貨金額的 15% 為上限
+CAMPAIGN_FEE_MONTHS = 3
+CAMPAIGN_FEE_CAP_RATE = 0.15
 
 
 @dataclass
-class Turnover:
+class FestivalBlock:
+    name: str
+    date: dt.date
+    days_left: int
+    categories: list[str]
+    note: str  # 連鎖是 customer_note，獨立藥局與診所是 cost_note
+
+
+@dataclass
+class Campaign:
+    festival_name: str  # 還來得及申請檔期的那個節慶
+    festival_date: dt.date
+    apply_by: dt.date
+    days_to_apply: int
+    fee_cap: float
+    missed: list[str]  # 排在它前面、申請期限已過的節慶名稱
+
+
+@dataclass
+class ShelfItem:
     sku: str
     name: str
     orders_per_month: float
     region_orders_per_month: float | None
+
+
+@dataclass
+class Shelf:
+    items: list[ShelfItem]
+    scoped: bool  # 是不是限定在節慶的主推品類
+
+
+@dataclass
+class Gap:
+    sku: str
+    name: str
+    peers_with: int  # 同區其他連鎖近 90 天有進的家數
+    peers_total: int
 
 
 @dataclass
@@ -52,20 +93,49 @@ class Tip:
 
 @dataclass
 class NegotiationCard:
-    turnover: list[Turnover]
+    orientation: str  # customer＝顧客導向（連鎖）
+    festival: FestivalBlock | None  # 行事曆裡沒有之後的節慶就是 None
+    campaign: Campaign | None
+    shelf: Shelf | None
+    gaps: list[Gap] | None
     margin: Margin | None
     tips: list[Tip]
 
 
-def _turnover(session: Session, customer: Customer, today: dt.date) -> list[Turnover]:
-    top = session.execute(
+def _campaign(coming: list[festivals.Festival], today: dt.date, amount_last_90d: float) -> Campaign | None:
+    """由近到遠找第一個還來得及申請檔期的節慶；申請期限當天還算來得及。"""
+    missed = []
+    for festival in coming:
+        if festival.apply_by >= today:
+            fee_cap = round(amount_last_90d / CAMPAIGN_FEE_MONTHS * CAMPAIGN_FEE_CAP_RATE)
+            return Campaign(festival.name, festival.date, festival.apply_by, (festival.apply_by - today).days, fee_cap, missed)
+        missed.append(festival.name)
+    return None
+
+
+def _top_skus(session: Session, customer: Customer, today: dt.date, categories: list[str] | None):
+    conditions = [SalesTransaction.customer_id == customer.id, SalesTransaction.date > today - dt.timedelta(days=TOP_SKU_DAYS)]
+    if categories:
+        conditions.append(Product.category.in_(categories))
+    return session.execute(
         select(SalesTransaction.sku, Product.name)
         .join(Product, Product.sku == SalesTransaction.sku)
-        .where(SalesTransaction.customer_id == customer.id, SalesTransaction.date > today - dt.timedelta(days=TOP_SKU_DAYS))
+        .where(*conditions)
         .group_by(SalesTransaction.sku, Product.name)
         .order_by(func.sum(SalesTransaction.amount).desc())
         .limit(TOP_SKUS)
     ).all()
+
+
+def _shelf(session: Session, customer: Customer, today: dt.date, categories: list[str] | None) -> Shelf:
+    """這家近半年進貨金額最高的幾個品項，近 90 天每月進貨幾次，對照同區同類型客戶的平均。
+
+    有節慶就只看主推品類；主推品類裡這家一項都沒進，退回不分品類（scoped 是 False，畫面上註明）。
+    """
+    top = _top_skus(session, customer, today, categories) if categories else []
+    scoped = bool(top)
+    if not top:
+        top = _top_skus(session, customer, today, None)
     skus = [row.sku for row in top]
     # 同區、同類型客戶每個品項近 90 天的進貨次數；同一張訂單算一次
     counts = session.execute(
@@ -85,8 +155,34 @@ def _turnover(session: Session, customer: Customer, today: dt.date) -> list[Turn
         mine = next((c.orders for c in counts if c.customer_id == customer.id and c.sku == row.sku), 0)
         # 區域平均只算同區同類型、近 90 天也有進這個品項的其他客戶，不含這家自己
         peers = [c.orders for c in counts if c.sku == row.sku and c.customer_id != customer.id]
-        result.append(Turnover(row.sku, row.name, round(mine / months, 1), round(mean(peers) / months, 1) if peers else None))
-    return result
+        result.append(ShelfItem(row.sku, row.name, round(mine / months, 1), round(mean(peers) / months, 1) if peers else None))
+    return Shelf(result, scoped)
+
+
+def _gaps(session: Session, customer: Customer, today: dt.date, categories: list[str]) -> list[Gap]:
+    """主推品類裡，同區其他連鎖近 90 天超過一半有進、這家近半年沒進過的品項，最多人進的排前面。"""
+    peers = (Customer.region == customer.region, Customer.type == customer.type, Customer.id != customer.id)
+    peers_total = session.scalar(select(func.count()).select_from(Customer).where(*peers))
+    stocked = select(SalesTransaction.sku).where(
+        SalesTransaction.customer_id == customer.id, SalesTransaction.date > today - dt.timedelta(days=TOP_SKU_DAYS)
+    )
+    peers_with = func.count(distinct(SalesTransaction.customer_id))
+    rows = session.execute(
+        select(Product.sku, Product.name, peers_with.label("peers_with"))
+        .join(SalesTransaction, SalesTransaction.sku == Product.sku)
+        .join(Customer, Customer.id == SalesTransaction.customer_id)
+        .where(
+            *peers,
+            Product.category.in_(categories),
+            SalesTransaction.date > today - dt.timedelta(days=TURNOVER_DAYS),
+            Product.sku.not_in(stocked),
+        )
+        .group_by(Product.sku, Product.name)
+        .having(peers_with * 2 > peers_total)
+        .order_by(peers_with.desc(), Product.sku)
+        .limit(MAX_GAPS)
+    ).all()
+    return [Gap(row.sku, row.name, row.peers_with, peers_total) for row in rows]
 
 
 def _margin(session: Session, customer: Customer, today: dt.date) -> Margin | None:
@@ -149,8 +245,18 @@ def _tips(session: Session, signals: set[str]) -> list[Tip]:
 
 
 def negotiation_card(session: Session, customer: Customer, profile: Profile) -> NegotiationCard:
+    today = profile.today
+    coming = festivals.upcoming(today)
+    festival = coming[0] if coming else None
+    categories = festival.categories if festival else None
     return NegotiationCard(
-        turnover=_turnover(session, customer, profile.today),
-        margin=_margin(session, customer, profile.today),
+        orientation="customer",
+        festival=FestivalBlock(festival.name, festival.date, (festival.date - today).days, festival.categories, festival.customer_note)
+        if festival
+        else None,
+        campaign=_campaign(coming, today, profile.stats.amount_last_90d),
+        shelf=_shelf(session, customer, today, categories),
+        gaps=_gaps(session, customer, today, categories) if categories else [],
+        margin=_margin(session, customer, today),
         tips=_tips(session, profile.signals),
     )

@@ -2,7 +2,7 @@
 
 import dataclasses
 from datetime import date, datetime, timedelta
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -94,11 +94,40 @@ class CustomerProfile(BaseModel):
     competitors: list[Competitor]
 
 
-class Turnover(BaseModel):
+class Festival(BaseModel):
+    name: str
+    date: date
+    days_left: int
+    categories: list[str]
+    note: str
+
+
+class Campaign(BaseModel):
+    festival_name: str
+    festival_date: date
+    apply_by: date
+    days_to_apply: int
+    fee_cap: float
+    missed: list[str]
+
+
+class ShelfItem(BaseModel):
     sku: str
     name: str
     orders_per_month: float
     region_orders_per_month: float | None
+
+
+class Shelf(BaseModel):
+    items: list[ShelfItem]
+    scoped: bool
+
+
+class Gap(BaseModel):
+    sku: str
+    name: str
+    peers_with: int
+    peers_total: int
 
 
 class Margin(BaseModel):
@@ -119,8 +148,15 @@ class Tip(BaseModel):
 
 class NegotiationCard(BaseModel):
     customer: CustomerItem
-    turnover: list[Turnover]
+    orientation: Literal["customer"]
+    festival: Festival | None
+    campaign: Campaign | None
+    shelf: Shelf | None
+    gaps: list[Gap] | None
     margin: Margin | None
+    # 成本導向（獨立藥局與診所）的兩區
+    deals: None = None
+    terms: None = None
     tips: list[Tip]
 
 
