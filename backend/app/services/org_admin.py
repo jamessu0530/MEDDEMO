@@ -1,7 +1,7 @@
 """組織管理（只有 IT 能用，見 api/admin.py）：換主管、主管調區、改角色、新增與停用帳號、移交客戶。
 
 每個操作依序做：檢查 → 改資料 → rebuild_org_paths（重算路徑與轄區，順便驗證整棵樹）→
-還沒簽的出差單跟著新主管 → 寫一筆異動紀錄。檢查不過丟 OrgError，訊息直接給 IT 看。
+還沒簽的申請單跟著新主管 → 寫一筆異動紀錄。檢查不過丟 OrgError，訊息直接給 IT 看。
 提交由呼叫端負責：中途任何一步失敗就整個回滾，不會留下改了一半的組織。
 
 幾條護欄：
@@ -224,7 +224,7 @@ def reactivate(session: Session, actor: AppUser, user_id: str) -> None:
 
 
 def reassign_customer(session: Session, actor: AppUser, customer_id: str, owner_id: str) -> None:
-    """換一家客戶的負責人。只改 owner_user_id：過去的拜訪、報價、出差單仍記在原本的人名下。"""
+    """換一家客戶的負責人。只改 owner_user_id：過去的拜訪、報價、申請單仍記在原本的人名下。"""
     customer = session.get(Customer, customer_id)
     if customer is None:
         raise NotFound("找不到這家客戶")
@@ -297,14 +297,15 @@ def _hand_over(session: Session, user: AppUser, successor_id: str | None) -> str
 
 
 def _follow_manager(session: Session, rep: AppUser) -> None:
-    """業務換了主管：他還沒簽完的出差單，「經辦人的主管」那一關改指派給新主管。已經簽過的是歷史，不動。"""
+    """業務換了主管：他還沒簽完的申請單（出差單、優惠、合約），「經辦人的主管」那一關改指派給新主管。
+    正在等簽的與還在排隊的都算；已經簽過的是歷史，不動。"""
     forms = select(OaExpenseForm.id).where(OaExpenseForm.applicant_id == rep.id)
     session.execute(
         update(OaApprovalStep)
         .where(
             OaApprovalStep.form_id.in_(forms),
             OaApprovalStep.role_label == MANAGER_STEP_LABEL,
-            OaApprovalStep.status == "pending",
+            OaApprovalStep.status.in_(("pending", "waiting")),
         )
         .values(user_id=rep.manager_id)
     )

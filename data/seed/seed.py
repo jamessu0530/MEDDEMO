@@ -162,7 +162,7 @@ def seed_approval_steps(session: Session) -> int:
         select(models.OaExpenseForm).where(models.OaExpenseForm.kind != "trip").order_by(models.OaExpenseForm.id)
     ).all()
     steps, activity = [], []
-    signers: dict[str, dict[str, models.AppUser]] = {}
+    signers: dict[tuple[str, str], dict[str, models.AppUser]] = {}
     for form in forms:
         at = form.created_at
         steps.append({
@@ -183,11 +183,12 @@ def seed_approval_steps(session: Session) -> int:
             detail = approvals.auto_detail(form.model_probability, threshold) if threshold is not None else "系統核准"
             activity.append({"form_id": form.id, "action": "auto_approved", "actor_id": None, "detail": detail, "created_at": at})
             continue
-        if form.applicant_id not in signers:
-            signers[form.applicant_id] = approvals.signers(session, session.get(models.AppUser, form.applicant_id))
+        key = (form.applicant_id, form.required_level)
+        if key not in signers:
+            signers[key] = approvals.signers(session, session.get(models.AppUser, form.applicant_id), form.required_level)
         chain = approvals.LEVEL_STEPS[form.required_level]
         for step_no, step in enumerate(chain, start=2):
-            signer = signers[form.applicant_id][step]
+            signer = signers[key][step]
             decided = form.status != "pending"
             # 每一關隔一小時，都在送單當天簽完（《報價權限與折扣審核》：1 個工作天內完成簽核）
             acted_at = at + timedelta(hours=step_no - 1)

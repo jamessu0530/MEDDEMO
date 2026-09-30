@@ -293,17 +293,21 @@ def pending_contract(session: Session, customer_id: str) -> int | None:
     )
 
 
-def signers(session: Session, applicant: AppUser) -> dict[str, AppUser]:
-    """每一級由誰簽：區處主管是申請人的直屬主管（跟出差單一樣），業務處長與總經理是根節點的 IT 帳號。"""
+def signers(session: Session, applicant: AppUser, level: str) -> dict[str, AppUser]:
+    """這一級的單每一關由誰簽：區處主管是申請人的直屬主管（跟出差單一樣），業務處長與總經理是根節點的 IT 帳號。
+    主管級的單用不到 IT，不查也不要求有在職的 IT 帳號。"""
     manager = session.get(AppUser, applicant.manager_id) if applicant.manager_id else None
     if manager is None:
         raise RuntimeError(f"{applicant.name} 沒有直屬主管，申請單送不出去")
+    chain = {"manager": manager}
+    if level == "manager":
+        return chain
     root = session.scalar(
         select(AppUser).where(AppUser.role == "it", AppUser.deactivated_at.is_(None)).order_by(AppUser.id).limit(1)
     )
     if root is None:
-        raise RuntimeError("找不到 IT 帳號，業務處長與總經理兩關沒有人可以代簽")
-    return {"manager": manager, "director": root, "gm": root}
+        raise HTTPException(503, "找不到在職的 IT 帳號，業務處長與總經理兩關沒有人可以代簽，請洽 IT")
+    return chain | {"director": root, "gm": root}
 
 
 def submit(session: Session, *, kind: str, applicant: AppUser, customer: Customer, payload: dict[str, Any]) -> OaExpenseForm:
@@ -316,7 +320,7 @@ def submit(session: Session, *, kind: str, applicant: AppUser, customer: Custome
     else:
         listing, reward = payload["listing_fee_rate"], payload["channel_reward_rate"]
         level = contract_level(listing["from"], listing["to"], reward["from"], reward["to"])
-    chain = signers(session, applicant)
+    chain = signers(session, applicant, level)
 
     state = customer_state(session, customer, today)
     features = discount_features(state, payload) if kind == "discount" else contract_features(state, payload)
@@ -453,14 +457,17 @@ def reason_lines(form: OaExpenseForm) -> list[dict[str, Any]]:
         if "margin_after" in features:
             lines.append({"text": f"折後毛利率 {features['margin_after']:.0%}", "alert": False})
     elif form.kind == "contract":
-        change = features.get("fee_change", 0.0)
         if form.required_level == "manager":
             lines.append({"text": f"照原費率續約 {payload['term_months']} 個月", "alert": False})
         else:
-            direction = "調高" if change > 0 else "調降" if change < 0 else "一升一降，增減"
-            lines.append({
-                "text": f"上架費率與通路獎勵合計{direction} {abs(change):g} 個百分點，要送業務處長", "alert": False,
-            })
+            # 兩個費率各自寫怎麼變：一升一降時合在一起寫會變成「增減 0 個百分點」
+            changes = []
+            for label, key in (("上架費率", "listing_fee_rate"), ("通路獎勵", "channel_reward_rate")):
+                rate = payload[key]
+                points = round((rate["to"] - rate["from"]) * 100, 2)
+                if points:
+                    changes.append(f"{label}{'調高' if points > 0 else '調降'} {abs(points):g} 個百分點")
+            lines.append({"text": f"{'、'.join(changes)}，要送業務處長", "alert": False})
         if "net_margin" in features:
             lines.append({"text": f"近 90 天淨毛利率 {features['net_margin']:.0%}", "alert": False})
     if "ar_age_days" in features:

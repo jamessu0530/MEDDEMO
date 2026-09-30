@@ -113,7 +113,7 @@ export function AdminPage() {
         </div>
 
         <p className="text-xs leading-relaxed text-muted-foreground">
-          改組織馬上生效：誰看得到誰的資料、風險通報與出差單送給誰，都跟著這棵樹走。
+          改組織馬上生效：誰看得到誰的資料、風險通報與申請單（出差單、優惠、合約）送給誰，都跟著這棵樹走。
         </p>
 
         {flash && (
@@ -494,7 +494,7 @@ function PersonDialog({
               <Field
                 label="新的直屬主管"
                 htmlFor="target"
-                hint="他還沒簽完的出差單會改送給新主管；轄區跟著新主管。"
+                hint="他還沒簽完的申請單（出差單、優惠、合約）會改送給新主管；轄區跟著新主管。"
               >
                 <PeoplePicker
                   id="target"
@@ -560,7 +560,7 @@ function PersonDialog({
               <Field
                 label={`誰接手他的 ${person.customer_count} 家客戶`}
                 htmlFor="successor"
-                hint="過去的拜訪、報價、出差單仍記在他名下。"
+                hint="過去的拜訪、報價、申請單仍記在他名下。"
               >
                 <PeoplePicker
                   id="successor"

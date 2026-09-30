@@ -372,7 +372,10 @@ def test_reasons_list_the_facts_a_manager_checks(tx, api, auth, model):
     assert approvals.reasons(deep)[-1] == "近 90 天的拜訪提到競品"
 
     renewal = submit_contract(tx, listing_to=0.09)
-    assert approvals.reasons(renewal)[0] == "上架費率與通路獎勵合計調高 1 個百分點，要送業務處長"
+    assert approvals.reasons(renewal)[0] == "上架費率調高 1 個百分點，要送業務處長"
+    # 一升一降就分開寫兩個費率各自怎麼變，不寫「合計增減 0 個百分點」
+    mixed = submit_contract(tx, listing_to=0.065, reward_to=0.035, customer_id="C007")  # 福安原本 6% 與 4%
+    assert approvals.reasons(mixed)[0] == "上架費率調高 0.5 個百分點、通路獎勵調降 0.5 個百分點，要送業務處長"
     assert approvals.reasons(renewal)[1].startswith("近 90 天淨毛利率 ")
     assert approvals.reasons(submit_contract(tx, customer_id="C003"))[0] == "照原費率續約 12 個月"
 
@@ -590,13 +593,35 @@ def test_the_inbox_shows_the_estimate_and_the_facts_behind_it(tx, api, auth):
 
 def test_a_pending_request_follows_the_rep_to_a_new_manager(tx, api, auth, model):
     # 跟出差單一樣：業務換了主管，區處主管那一關還沒簽就改送新主管（services/org_admin.py）
-    form = submit_discount(tx, 10.0, customer_id="C002")
-    assert [s.user_id for s in steps(tx, form)] == ["U02", "M01", "A01"]
+    discount = submit_discount(tx, 10.0, customer_id="C002")
+    renewal = submit_contract(tx, listing_to=0.065, customer_id="C098")
+    assert [s.user_id for s in steps(tx, discount)] == ["U02", "M01", "A01"]
+    assert [s.user_id for s in steps(tx, renewal)] == ["U02", "M01", "A01"]
+    # 還在排隊（waiting）的主管關卡也算：現在的規則下主管一定是第二關、一送出就等簽，這裡直接改狀態模擬
+    queued = submit_discount(tx, 6.0, customer_id="C002", quote_no="QTEST-0003")
+    steps(tx, queued)[1].status = "waiting"
+    # 已經簽過的是歷史，不動
+    signed = submit_discount(tx, 6.0, customer_id="C002", quote_no="QTEST-0004")
+    decide(api, auth, signed, "M01")
+    tx.commit()
+
     assert api.put("/api/admin/users/U02/manager", json={"manager_id": "M02"}, headers=auth("A01")).status_code == 200
     tx.expire_all()
-    assert [s.user_id for s in steps(tx, form)] == ["U02", "M02", "A01"]
-    assert api.get(f"/api/oa/forms/{form.id}", headers=auth("M02")).json()["can_decide"] is True
-    assert api.get(f"/api/oa/forms/{form.id}", headers=auth("M01")).status_code == 404
+    for form in (discount, renewal, queued):
+        assert [s.user_id for s in steps(tx, form)][1] == "M02", form.form_no
+    assert [s.user_id for s in steps(tx, signed)] == ["U02", "M01"]
+    assert api.get(f"/api/oa/forms/{discount.id}", headers=auth("M02")).json()["can_decide"] is True
+    assert api.get(f"/api/oa/forms/{discount.id}", headers=auth("M01")).status_code == 404
+
+
+def test_only_a_request_that_needs_the_director_needs_an_it_account(tx, model):
+    # 業務處長與總經理由 IT 代簽；主管級的單用不到 IT，IT 帳號停用了也送得出去
+    tx.get(AppUser, "A01").deactivated_at = dt.datetime.now(dt.UTC)
+    tx.flush()
+    assert submit_discount(tx, 6.0).status == "pending"
+    with pytest.raises(HTTPException) as refused:
+        submit_discount(tx, 10.0, quote_no="QTEST-0005")
+    assert refused.value.status_code == 503 and "IT" in refused.value.detail
 
 
 # ── 兩個請求重疊 ───────────────────────────────────────────────────
