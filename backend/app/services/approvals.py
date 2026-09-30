@@ -170,23 +170,46 @@ def load_model() -> dict[str, Any] | None:
     if not MODEL_FILE.exists():
         return None
     try:
-        return json.loads(MODEL_FILE.read_text(encoding="utf-8"))
+        model = json.loads(MODEL_FILE.read_text(encoding="utf-8"))
     except ValueError:
         log.warning("approval_model.json 讀不出來，當成沒有模型，所有申請照規則送人簽")
         return None
+    if not isinstance(model, dict):
+        log.warning("approval_model.json 的格式不對（最外層不是物件），當成沒有模型，所有申請照規則送人簽")
+        return None
+    return model
+
+
+def _is_threshold(value: Any) -> bool:
+    """門檻是 None（這一種不做系統核准）或 0～1 的數字。true／false 在 Python 也是數字，要另外擋"""
+    if value is None:
+        return True
+    return isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(value) and 0 <= value <= 1
 
 
 def estimate(kind: str, features: dict[str, float]) -> tuple[float | None, float | None]:
-    """（模型估計的核准機率, 這一種申請的門檻）。沒有模型、模型檔裡沒有這一種申請、或少了某個特徵，
-    機率就是 None；門檻是 None 代表這一種申請不做系統核准（訓練時達不到命中率的條件）。"""
-    model = (load_model() or {}).get(kind)
-    if not model:
+    """（模型估計的核准機率, 這一種申請的門檻）。門檻是 None 代表這一種申請不做系統核准（訓練時達不到命中率的條件）。
+
+    模型檔有任何不對——沒有這一種申請、少了某個特徵、門檻不是 0～1 的數字、算出來不是有限的機率（NaN）——
+    一律當成沒有模型，回 (None, None)：照規則送人簽，記一筆 log。NaN 不能存進資料庫，之後每個讀到它的畫面都會壞。
+    """
+    model = load_model()
+    one = model.get(kind) if isinstance(model, dict) else None
+    if one is None:
+        if model is not None:
+            log.warning("approval_model.json 裡沒有 %s 的模型，這張申請照規則送人簽", kind)
         return None, None
     try:
-        return logreg.predict(features, model, list(FEATURES[kind])), model.get("threshold")
-    except (KeyError, TypeError, ZeroDivisionError, OverflowError) as exc:
-        log.warning("approval_model.json 的 %s 模型算不出機率（%r），這張申請照規則送人簽", kind, exc)
+        threshold = one["threshold"] if "threshold" in one else None
+        if not _is_threshold(threshold):
+            raise ValueError(f"門檻 {threshold!r} 不是 0～1 的數字")
+        probability = logreg.predict(features, one, list(FEATURES[kind]))
+        if not math.isfinite(probability):
+            raise ValueError(f"算出來的機率是 {probability}")
+    except (KeyError, TypeError, ValueError, AttributeError, ZeroDivisionError, OverflowError) as exc:
+        log.warning("approval_model.json 的 %s 模型不能用（%r），當成沒有模型，這張申請照規則送人簽", kind, exc)
         return None, None
+    return probability, threshold
 
 
 def auto_detail(probability: float, threshold: float) -> str:

@@ -216,10 +216,50 @@ def test_a_model_missing_a_feature_counts_as_no_model(tx, model, caplog):
     assert "approval_model" in caplog.text
 
 
+def broken(change):
+    """訓練出來的模型檔被改壞的樣子：拿假模型改一處。"""
+    model = fake_model(0.99)
+    change(model)
+    return model
+
+
+@pytest.mark.parametrize("why, fake", [
+    ("整個檔是 list", [fake_model(0.99)]),
+    ("這一種申請不是物件", {"discount": "壞掉了", "contract": {}}),
+    ("門檻是字串", broken(lambda m: m["discount"].update(threshold="0.9"))),
+    ("門檻是 true", broken(lambda m: m["discount"].update(threshold=True))),
+    ("門檻超過 1", broken(lambda m: m["discount"].update(threshold=1.5))),
+    ("門檻是 NaN", broken(lambda m: m["discount"].update(threshold=float("nan")))),
+    ("截距是 NaN", broken(lambda m: m["discount"].update(bias=float("nan")))),
+    ("權重是 NaN", broken(lambda m: m["discount"]["weights"].update(margin_after=float("nan")))),
+    ("權重是字串", broken(lambda m: m["discount"]["weights"].update(margin_after="0.5"))),
+    ("標準差是 0", broken(lambda m: m["discount"]["sd"].update(margin_after=0))),
+    ("權重大到溢位", broken(lambda m: m["discount"].update(bias=-1e6))),
+])
+def test_a_broken_model_never_stops_a_request_or_stores_nan(tx, api, auth, model, caplog, why, fake):
+    # 模型檔壞掉就當成沒有模型：照規則送人簽、機率是空的，記一筆 log；不能 500，NaN 也不能存進資料庫
+    model(fake)
+    assert approvals.estimate("discount", {name: 1.0 for name in approvals.DISCOUNT_FEATURES}) == (None, None), why
+    created = api.post(
+        f"/api/customers/{GOOD}/quotes",
+        json={"items": [{"sku": "HS-FO30", "qty": 10}], "discount_pct": 5, "reason": "量大"}, headers=auth("U01"),
+    )
+    assert created.status_code == 201, why
+    approval = created.json()["approval"]
+    assert (approval["status"], approval["probability"]) == ("pending", None), why
+    assert tx.get(OaExpenseForm, approval["form_id"]).model_probability is None
+    assert "approval_model" in caplog.text
+    # 主管的簽核匣與那張單都打得開
+    assert api.get("/api/oa/inbox", headers=auth("M01")).status_code == 200
+    assert api.get(f"/api/oa/forms/{approval['form_id']}", headers=auth("M01")).status_code == 200
+
+
 def test_a_broken_model_file_counts_as_no_model(tmp_path, monkeypatch, caplog):
     monkeypatch.setattr(approvals, "MODEL_FILE", tmp_path / "approval_model.json")
     assert approvals.load_model() is None
     approvals.MODEL_FILE.write_text("{not json", encoding="utf-8")
+    assert approvals.load_model() is None
+    approvals.MODEL_FILE.write_text("[1, 2]", encoding="utf-8")
     assert approvals.load_model() is None
     assert "approval_model" in caplog.text
 
