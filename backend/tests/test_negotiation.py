@@ -282,6 +282,18 @@ def test_a_cost_card_opens_its_tips_with_discount_authority_and_channel_fees(cli
     assert len(tips) <= 3
 
 
+def test_a_cost_card_does_not_quote_the_chain_renewal_clause(client, company_docs):
+    # 恆安藥局（獨立藥局）的合約 2027-01-21 到期，在 90 天內：客戶檔案照舊提醒要談續約，
+    # 但續約那一段講的是連鎖的上架費率與通路獎勵比率，獨立藥局沒有上架費，卡上不引
+    highlights = client.get("/api/customers/C148/profile").json()["highlights"]
+    assert any("到期，要開始談續約" in line for line in highlights)
+    tips = card_of(client, "C148")["tips"]
+    assert "連鎖合約的續約與費率調整" not in [tip["section"] for tip in tips]
+    assert [tip["section"] for tip in tips[:2]] == ["業務的折扣權限", "獨立藥局與診所的通路費用"]
+    # 連鎖的卡照舊引：福安信義店的合約 2027-01-04 到期
+    assert "連鎖合約的續約與費率調整" in [tip["section"] for tip in card_of(client, "C010")["tips"]]
+
+
 @pytest.mark.parametrize(
     ("signal", "sections"),
     [

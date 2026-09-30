@@ -40,6 +40,9 @@ CHANNEL_REWARD_RATE = {"independent": 0.02, "clinic": None}
 PAYMENT_DAYS = {"independent": 30, "clinic": 30}
 # 《報價權限》：業務可在標準供貨價之外自行給予最多 3%（含）的折扣，超過要簽核
 FREE_DISCOUNT_PCT = 3
+# 只在連鎖的卡上找切入點的情況：續約那一段（《連鎖通路合約條件》）講的是連鎖的上架費率與通路獎勵比率，
+# 獨立藥局沒有上架費，引了對不上。客戶檔案的「進門前三分鐘」照舊提醒合約快到期
+CHAIN_ONLY_SIGNALS = {"contract_ending"}
 
 # 促銷品項讀語意層的 View：每個平均價（unit_deal_price）只在 View 裡算一次，
 # 卡片上的數字才跟促銷頁、問答查到的一樣
@@ -404,5 +407,5 @@ def negotiation_card(session: Session, customer: Customer, profile: Profile) -> 
         margin=None,
         deals=_deals(session, categories),
         terms=_terms(customer, profile),
-        tips=_tips(session, profile.signals | {"cost"}),
+        tips=_tips(session, (profile.signals - CHAIN_ONLY_SIGNALS) | {"cost"}),
     )
