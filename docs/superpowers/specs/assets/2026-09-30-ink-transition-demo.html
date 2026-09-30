@@ -1,0 +1,830 @@
+<!doctype html>
+<html lang="zh-Hant">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>油墨轉場試玩</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --page: #F3F2F6;
+    --surface: #FFFFFF;
+    --text: #1A1626;
+    --text-2: #6E6A78;
+    --line: #E3DFEA;
+    --chip: #ECE9F2;
+    --sel-bg: #1A1626;
+    --sel-fg: #FFFFFF;
+    --bezel: #1A1626;
+    --focus: #9B51E0;
+    --sans: 'IBM Plex Sans', 'PingFang TC', 'Noto Sans TC', 'Microsoft JhengHei', system-ui, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --page: #121016;
+      --surface: #1B1822;
+      --text: #F1EEF6;
+      --text-2: #A49FB1;
+      --line: #2F2A3A;
+      --chip: #282432;
+      --sel-bg: #F1EEF6;
+      --sel-fg: #1A1626;
+      --bezel: #322D3D;
+      --focus: #B98AF0;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #121016;
+    --surface: #1B1822;
+    --text: #F1EEF6;
+    --text-2: #A49FB1;
+    --line: #2F2A3A;
+    --chip: #282432;
+    --sel-bg: #F1EEF6;
+    --sel-fg: #1A1626;
+    --bezel: #322D3D;
+    --focus: #B98AF0;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap {
+    max-width: 1020px;
+    margin-inline: auto;
+    padding-inline: 16px;
+    padding-block: 28px 44px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+  .top .eyebrow { margin: 0; font-size: 12px; letter-spacing: .06em; color: var(--text-2); }
+  .top h1 { margin: 2px 0 6px; font-size: 26px; font-weight: 600; line-height: 1.2; text-wrap: balance; }
+  .top .lede { margin: 0; color: var(--text-2); max-width: 38em; }
+
+  .stage { display: grid; grid-template-columns: 376px minmax(0, 1fr); gap: 32px; align-items: start; }
+  @media (max-width: 820px) { .stage { grid-template-columns: minmax(0, 1fr); justify-items: center; } }
+
+  .phone {
+    width: 376px; max-width: 100%;
+    padding: 8px; border-radius: 40px; background: var(--bezel);
+    box-shadow: 0 18px 40px -18px rgba(26, 22, 38, .45);
+  }
+  .screen {
+    position: relative; width: 100%;
+    height: clamp(580px, calc(100svh - 190px), 720px);
+    border-radius: 32px; overflow: hidden; background: #F6F5F9; isolation: isolate;
+  }
+  #ink { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 3; pointer-events: none; }
+
+  /* 控制面板 */
+  .panel {
+    width: 100%; min-width: 0;
+    display: flex; flex-direction: column; gap: 20px;
+    padding: 20px; border-radius: 20px;
+    background: var(--surface); border: 1px solid var(--line);
+  }
+  fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+  legend, .lbl { padding: 0; margin: 0 0 8px; font-size: 12px; letter-spacing: .06em; color: var(--text-2); display: block; }
+  .seg { display: flex; flex-wrap: wrap; gap: 6px; }
+  .seg label { position: relative; }
+  .seg input { position: absolute; opacity: 0; pointer-events: none; }
+  .seg span {
+    display: flex; align-items: center; gap: 7px;
+    padding: 8px 14px; border-radius: 999px;
+    background: var(--chip); color: var(--text); font-weight: 500; cursor: pointer;
+  }
+  .seg input:checked + span { background: var(--sel-bg); color: var(--sel-fg); }
+  .seg input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .sw { width: 12px; height: 12px; border-radius: 50%; flex: none; border: 1px solid rgba(255, 255, 255, .45); }
+  .sw-purple { background: #9B51E0; }
+  .sw-mono { background: linear-gradient(90deg, #121212 0 34%, #8E8E8C 34% 67%, #F4F4F2 67%); }
+  .desc { margin: 10px 0 0; color: var(--text); max-width: 34em; }
+  .desc small { display: block; margin-top: 2px; font-size: 12.5px; color: var(--text-2); }
+  .chk { display: flex; align-items: center; gap: 8px; margin-top: 10px; cursor: pointer; }
+  .chk input { width: 16px; height: 16px; margin: 0; accent-color: var(--sel-bg); }
+  .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; }
+  input[type="range"] { width: 100%; margin: 0; accent-color: var(--sel-bg); }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .btn {
+    font: inherit; font-weight: 500; cursor: pointer;
+    padding: 9px 16px; border-radius: 10px;
+    border: 1px solid var(--line); background: transparent; color: var(--text);
+  }
+  .btn.primary { background: var(--sel-bg); color: var(--sel-fg); border-color: var(--sel-bg); }
+  .btn[aria-pressed="true"] { background: var(--chip); border-color: var(--text-2); }
+  .btn:focus-visible, input[type="range"]:focus-visible, .chk input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .notes { margin: 0; padding: 16px 0 0 18px; border-top: 1px solid var(--line); color: var(--text-2); font-size: 13px; }
+  .notes li + li { margin-top: 4px; }
+  #dbg { white-space: pre-wrap; font: 12px/1.5 ui-monospace, Menlo, monospace; color: var(--text); }
+
+  /* 手機裡的 App 畫面：照 frontend/src/index.css 的配色；data-skin 決定紫色或黑白灰 */
+  .layer {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    background: var(--bg); color: var(--fg); font-size: 14px; line-height: 1.45;
+    --bg: #F6F5F9; --fg: #1A1626; --card: #FFFFFF; --primary: #9B51E0; --primary-fg: #FFFFFF;
+    --secondary: #F1EEF6; --muted: #EDEAF3; --muted-fg: #6E6A78; --accent: #E2CDF7; --border: #E6E2EC;
+    --warning: #A97400; --destructive: #B04226;
+  }
+  .layer[data-skin="mono"] {
+    --bg: #F4F4F2; --fg: #121212; --card: #FFFFFF; --primary: #121212; --primary-fg: #FFFFFF;
+    --secondary: #ECECEA; --muted: #E7E7E4; --muted-fg: #6A6A68; --accent: #D6D6D3; --border: #DEDEDA;
+  }
+  :where(.layer) :where(button) { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0; cursor: pointer; text-align: inherit; }
+  .layer button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+  .m-head { display: flex; align-items: center; gap: 4px; min-height: 54px; padding: 6px 16px; border-bottom: 1px solid var(--border); }
+  .m-head.has-back { padding-left: 4px; }
+  .m-back { display: flex; width: 44px; height: 44px; align-items: center; justify-content: center; border-radius: 10px; color: var(--muted-fg); }
+  .m-head p { margin: 0; font-size: 12px; color: var(--muted-fg); }
+  .m-head h2 { margin: 0; font-size: 16px; font-weight: 600; }
+  .m-body { flex: 1; min-height: 0; overflow: hidden auto; padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 10px; }
+  .m-sec { margin: 6px 0 0; font-size: 12px; color: var(--muted-fg); }
+  .m-hero { display: flex; flex-direction: column; gap: 2px; padding: 16px; border-radius: 16px; background: var(--primary); color: var(--primary-fg); }
+  .m-hero .k { font-size: 12px; opacity: .85; }
+  .m-hero strong { font-size: 19px; font-weight: 600; }
+  .m-hero .s { font-size: 12.5px; opacity: .85; }
+  .m-hero .cta { align-self: flex-start; display: flex; align-items: center; gap: 4px; margin-top: 12px; padding: 8px 14px; border-radius: 10px; background: var(--primary-fg); color: var(--primary); font-weight: 600; }
+  .m-row { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 12px; border-radius: 12px; background: var(--card); border: 1px solid var(--border); }
+  .m-row .tx { flex: 1; min-width: 0; }
+  .m-row b { display: block; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .m-row small { display: block; font-size: 12px; color: var(--muted-fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .m-row .go { color: var(--muted-fg); flex: none; display: flex; }
+  .m-num, .m-ava, .m-tile { flex: none; display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; font-weight: 600; }
+  .m-num { border-radius: 50%; background: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .m-ava { border-radius: 50%; background: var(--accent); color: var(--fg); }
+  .m-tile { border-radius: 10px; background: var(--secondary); color: var(--primary); }
+  .m-tag { flex: none; font-size: 11.5px; padding: 2px 8px; border-radius: 999px; background: var(--secondary); color: var(--muted-fg); }
+  .m-tag.warn { color: var(--warning); font-weight: 600; }
+  .m-badge { flex: none; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--destructive); color: #fff; font-size: 11px; font-weight: 600; display: flex; align-items: center; justify-content: center; }
+  .m-search { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 12px; background: var(--muted); color: var(--muted-fg); }
+  .m-ask { flex: 1; display: flex; flex-direction: column; gap: 10px; }
+  .m-ask h3 { margin: 10px 0 4px; font-size: 20px; font-weight: 600; }
+  .m-q { width: 100%; padding: 12px 14px; border-radius: 12px; background: var(--card); border: 1px solid var(--border); }
+  .m-dock { margin-top: auto; display: flex; align-items: center; gap: 10px; }
+  .m-dock .in { flex: 1; padding: 12px 14px; border-radius: 999px; background: var(--card); border: 1px solid var(--border); color: var(--muted-fg); }
+  .m-mic { flex: none; width: 52px; height: 52px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--primary); color: var(--primary-fg); box-shadow: 0 0 0 6px var(--accent); }
+  .m-promo { display: flex; flex-direction: column; gap: 6px; padding: 14px; border-radius: 14px; background: var(--card); border: 1px solid var(--border); }
+  .m-promo .hd { display: flex; align-items: center; gap: 10px; }
+  .m-promo .off { flex: none; padding: 3px 9px; border-radius: 8px; background: var(--primary); color: var(--primary-fg); font-weight: 600; font-size: 13px; }
+  .m-promo b { font-weight: 600; }
+  .m-promo small { font-size: 12px; color: var(--muted-fg); font-variant-numeric: tabular-nums; }
+  .m-bar { height: 6px; border-radius: 3px; background: var(--muted); overflow: hidden; }
+  .m-bar i { display: block; height: 100%; border-radius: 3px; background: var(--primary); }
+  .m-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .m-stat { padding: 10px; border-radius: 12px; background: var(--card); border: 1px solid var(--border); }
+  .m-stat small { display: block; font-size: 11.5px; color: var(--muted-fg); }
+  .m-stat b { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .m-stat b.warn { color: var(--warning); }
+  .m-btn { display: flex; align-items: center; justify-content: center; gap: 6px; height: 46px; border-radius: 12px; font-weight: 600; background: var(--primary); color: var(--primary-fg); }
+  .m-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .m-btn.sec { background: var(--secondary); color: var(--fg); font-weight: 500; }
+  .m-nav { display: flex; border-top: 1px solid var(--border); background: var(--card); }
+  .m-nav button { flex: 1; height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 12px; color: var(--muted-fg); }
+  .m-nav button.on { color: var(--primary); font-weight: 500; }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <p class="eyebrow">中化裕民業務 AI 助理 · 頁面切換動畫</p>
+    <h1>油墨轉場試玩</h1>
+    <p class="lede">點手機裡的分頁或卡片就會換頁，墨從你點的位置出來。右邊換效果、換配色、調速度，也可以拖進度條一格一格看。</p>
+  </header>
+
+  <main class="stage">
+    <div class="phone">
+      <div class="screen" id="screen">
+        <div class="layer" id="layerA" data-skin="purple"></div>
+        <div class="layer" id="layerB" data-skin="purple" style="visibility:hidden"></div>
+        <canvas id="ink" aria-hidden="true"></canvas>
+      </div>
+    </div>
+
+    <section class="panel" aria-label="動畫設定">
+      <fieldset>
+        <legend>效果（點了會播一次）</legend>
+        <div class="seg">
+          <label><input type="radio" name="fx" id="fx-bleed" value="bleed" checked><span>墨暈</span></label>
+          <label><input type="radio" name="fx" id="fx-spray" value="spray"><span>噴漆</span></label>
+          <label><input type="radio" name="fx" id="fx-splat" value="splat"><span>潑墨</span></label>
+          <label><input type="radio" name="fx" id="fx-brush" value="brush"><span>刷痕</span></label>
+        </div>
+        <p class="desc" id="fxDesc"></p>
+      </fieldset>
+
+      <fieldset>
+        <legend>配色（點了會用墨把整個畫面換色）</legend>
+        <div class="seg">
+          <label><input type="radio" name="skin" id="skin-purple" value="purple" checked><span><i class="sw sw-purple"></i>紫色（現在）</span></label>
+          <label><input type="radio" name="skin" id="skin-mono" value="mono"><span><i class="sw sw-mono"></i>黑白灰</span></label>
+        </div>
+        <label class="chk"><input type="checkbox" id="alt"> 每次換頁順便換配色</label>
+      </fieldset>
+
+      <div class="two">
+        <fieldset>
+          <legend>墨的顏色</legend>
+          <div class="seg">
+            <label><input type="radio" name="inkc" id="ink-auto" value="auto" checked><span>跟著配色</span></label>
+            <label><input type="radio" name="inkc" id="ink-black" value="black"><span>固定黑</span></label>
+            <label><input type="radio" name="inkc" id="ink-purple" value="purple"><span>固定紫</span></label>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>速度</legend>
+          <div class="seg">
+            <label><input type="radio" name="spd" id="spd-half" value="0.5"><span>0.5×</span></label>
+            <label><input type="radio" name="spd" id="spd-one" value="1" checked><span>1×</span></label>
+            <label><input type="radio" name="spd" id="spd-fast" value="1.6"><span>1.6×</span></label>
+          </div>
+        </fieldset>
+      </div>
+
+      <div>
+        <label class="lbl" for="scrub">進度（拖著看每一格，放開會自己播完）</label>
+        <input type="range" id="scrub" min="0" max="1000" value="0">
+        <div class="row">
+          <button type="button" class="btn primary" id="play">播放一次</button>
+          <button type="button" class="btn" id="auto" aria-pressed="false">自動輪播</button>
+        </div>
+        <label class="chk"><input type="checkbox" id="reduce"> 模擬手機開了「減少動態效果」</label>
+      </div>
+
+      <ul class="notes">
+        <li>四種效果都是墨蓋滿整個畫面的那一刻才換頁。</li>
+        <li>這裡故意放慢讓大家看清楚；App 裡每種效果多長寫在上面的說明裡。</li>
+        <li>黑白灰只換主色、背景和邊框；帳齡的琥珀色、未讀的紅點照舊。</li>
+        <li>手機開了「減少動態效果」的人不會看到墨，直接換頁。</li>
+      </ul>
+      <div id="dbg"></div>
+    </section>
+  </main>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var screenEl = $('#screen'), canvas = $('#ink'), scrub = $('#scrub');
+  var layers = [$('#layerA'), $('#layerB')];
+
+  /* ---------- 手機裡的畫面 ---------- */
+  var ICON = {
+    calendar: '<rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M8 3v3M16 3v3M3 9.5h18"/>',
+    users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.5-3.5 3.2-5.5 6.5-5.5s6 2 6.5 5.5M16 4.7a3.5 3.5 0 0 1 0 6.6M18.5 14.8c1.7.9 2.7 2.6 3 5.2"/>',
+    messages: '<path d="M4 5h11a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H9l-4 3v-3H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/><path d="M20 10a2 2 0 0 1 2 2v4.5a2 2 0 0 1-2 2h-.5V21l-3.2-2.5H13"/>',
+    ask: '<path d="M12 3.5c4.7 0 8.5 3.4 8.5 7.7s-3.8 7.7-8.5 7.7c-1 0-2-.2-2.9-.5L4 20.5l1.3-3.9a7.3 7.3 0 0 1-1.8-5.4c0-4.3 3.8-7.7 8.5-7.7z"/><path d="M9.8 9.3a2.3 2.3 0 1 1 3.3 2.1c-.7.4-1.1.9-1.1 1.6M12 15.6v.1"/>',
+    percent: '<circle cx="12" cy="12" r="9"/><path d="M9 15l6-6"/><circle cx="9.2" cy="9.2" r="1"/><circle cx="14.8" cy="14.8" r="1"/>',
+    chev: '<path d="M9 5.5l6.5 6.5L9 18.5"/>',
+    back: '<path d="M15 5.5L8.5 12l6.5 6.5"/>',
+    mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3"/>',
+    search: '<circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/>',
+    hash: '<path d="M9.5 4L8 20M16 4l-1.5 16M4.5 9h16M3.5 15h16"/>'
+  };
+  function svg(name, size) {
+    size = size || 20;
+    return '<svg viewBox="0 0 24 24" width="' + size + '" height="' + size + '" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICON[name] + '</svg>';
+  }
+  var TABS = [
+    { id: 'today', label: '今日', icon: 'calendar' },
+    { id: 'customers', label: '客戶', icon: 'users' },
+    { id: 'channels', label: '頻道', icon: 'messages' },
+    { id: 'ask', label: '問答', icon: 'ask' },
+    { id: 'promos', label: '促銷', icon: 'percent' }
+  ];
+  function nav(active) {
+    return '<nav class="m-nav">' + TABS.map(function (t) {
+      return '<button type="button" data-go="' + t.id + '"' + (t.id === active ? ' class="on" aria-current="page"' : '') + '>' + svg(t.icon) + '<span>' + t.label + '</span></button>';
+    }).join('') + '</nav>';
+  }
+  function head(title, sub, back) {
+    return '<header class="m-head' + (back ? ' has-back' : '') + '">' +
+      (back ? '<button type="button" class="m-back" data-go="' + back + '" aria-label="返回">' + svg('back') + '</button>' : '') +
+      '<div>' + (sub ? '<p>' + sub + '</p>' : '') + '<h2>' + title + '</h2></div></header>';
+  }
+  function stop(n, name, time, tag, warn) {
+    return '<button type="button" class="m-row" data-go="detail"><span class="m-num">' + n + '</span><span class="tx"><b>' + name + '</b><small>' + time + '</small></span><span class="m-tag' + (warn ? ' warn' : '') + '">' + tag + '</span></button>';
+  }
+  function cust(name, note) {
+    return '<button type="button" class="m-row" data-go="detail"><span class="m-ava">' + name.charAt(0) + '</span><span class="tx"><b>' + name + '</b><small>' + note + '</small></span><span class="go">' + svg('chev', 16) + '</span></button>';
+  }
+  function chan(name, last, time, unread) {
+    return '<button type="button" class="m-row" data-go="detail"><span class="m-tile">' + svg('hash', 18) + '</span><span class="tx"><b>' + name + '</b><small>' + last + '</small></span>' +
+      (unread ? '<span class="m-badge">' + unread + '</span>' : '<span class="m-tag">' + time + '</span>') + '</button>';
+  }
+  function promo(off, title, period, done, total) {
+    return '<div class="m-promo"><div class="hd"><span class="off">' + off + '</span><b>' + title + '</b></div><small>' + period + ' · 已談 ' + done + ' / ' + total + ' 家</small><div class="m-bar"><i style="width:' + Math.round(done / total * 100) + '%"></i></div></div>';
+  }
+  var detailFrom = 'today';
+  var PAGES = {
+    today: function () {
+      return head('今日路線', '9 月 30 日 星期三') + '<div class="m-body">' +
+        '<button type="button" class="m-hero" data-go="detail"><span class="k">下一站 · 10:30</span><strong>康和藥局 永和店</strong><span class="s">距離 1.2 公里 · 上次拜訪 9/24</span><span class="cta">開始拜訪 ' + svg('chev', 16) + '</span></button>' +
+        '<p class="m-sec">接下來 4 家</p>' +
+        stop(2, '仁安藥局', '11:20', '帳齡 45 天', true) +
+        stop(3, '日安藥師藥局 中和店', '13:30', '魚油檔期 10/5 截止') +
+        stop(4, '德昌藥局', '14:40', '新品鋪貨') +
+        stop(5, '安心藥局 景安店', '16:00', '補樣品') +
+        '</div>' + nav('today');
+    },
+    customers: function () {
+      return head('客戶', '永和、中和 · 38 家') + '<div class="m-body">' +
+        '<div class="m-search">' + svg('search', 18) + '<span>找藥局名稱或地址</span></div>' +
+        cust('康和藥局 永和店', '9/24 拜訪 · 補魚油 30 入') +
+        cust('仁安藥局', '9/18 拜訪 · 帳齡 45 天') +
+        cust('日安藥師藥局 中和店', '9/12 拜訪 · 談秋季檔期') +
+        cust('德昌藥局', '9/05 拜訪 · 益生菌 30 包上架') +
+        cust('安心藥局 景安店', '8/29 拜訪 · 葡萄糖胺 60 入報價') +
+        cust('永春藥局', '8/21 拜訪 · 鈣片 60 入缺貨') +
+        '</div>' + nav('customers');
+    },
+    channels: function () {
+      return head('頻道') + '<div class="m-body">' +
+        chan('北二區業務', '陳主任：10 月檔期的陳列照片記得回傳', '', 3) +
+        chan('魚油 30 入 秋季檔', '目前已談 12 家，還差 26 家', '', 1) +
+        chan('客訴快報', '仁安藥局：外盒破損 2 盒，已換貨', '昨天') +
+        chan('報價權限', '葡萄糖胺 60 入低於 82 折要主管簽', '週一') +
+        chan('IT 公告', '週六凌晨 2 點到 4 點系統維護', '9/26') +
+        '</div>' + nav('channels');
+    },
+    ask: function () {
+      return head('問答', '用說的或打字都可以') + '<div class="m-body"><div class="m-ask">' +
+        '<h3>想問什麼？</h3>' +
+        '<button type="button" class="m-q" data-go="detail">康和藥局上個月進了多少益生菌？</button>' +
+        '<button type="button" class="m-q" data-go="detail">近效期退貨的流程是什麼？</button>' +
+        '<button type="button" class="m-q" data-go="detail">葡萄糖胺 60 入最低可以報到幾折？</button>' +
+        '<div class="m-dock"><span class="in">輸入問題…</span><span class="m-mic">' + svg('mic', 22) + '</span></div>' +
+        '</div></div>' + nav('ask');
+    },
+    promos: function () {
+      return head('促銷', '進行中 3 檔') + '<div class="m-body">' +
+        promo('85 折', '魚油 30 入 秋季檔', '10/1 – 10/31', 12, 38) +
+        promo('買 10 送 1', '益生菌 30 包', '9/15 – 10/15', 27, 38) +
+        promo('9 折', '鈣片 60 入 陳列獎勵', '10/1 – 12/31', 5, 38) +
+        '</div>' + nav('promos');
+    },
+    detail: function () {
+      return head('康和藥局 永和店', '客戶', detailFrom) + '<div class="m-body">' +
+        '<div class="m-stats"><div class="m-stat"><small>本月進貨</small><b>86,400</b></div><div class="m-stat"><small>帳齡</small><b class="warn">45 天</b></div><div class="m-stat"><small>上次拜訪</small><b>9/24</b></div></div>' +
+        '<button type="button" class="m-btn" data-go="' + detailFrom + '">' + svg('mic', 18) + '記錄拜訪</button>' +
+        '<div class="m-btns"><button type="button" class="m-btn sec" data-go="' + detailFrom + '">談判準備</button><button type="button" class="m-btn sec" data-go="' + detailFrom + '">報價</button></div>' +
+        '<p class="m-sec">最近的拜訪</p>' +
+        '<div class="m-row"><span class="tx"><b>9/24 · 補魚油 30 入 24 盒</b><small>店長問鈣片什麼時候有檔期</small></span></div>' +
+        '<div class="m-row"><span class="tx"><b>9/10 · 益生菌 30 包上架</b><small>陳列位在櫃台右邊第二層</small></span></div>' +
+        '<div class="m-row"><span class="tx"><b>8/27 · 對帳</b><small>7 月的發票少一張，已補寄</small></span></div>' +
+        '</div>';
+    }
+  };
+  function renderInto(layer, page, skin) {
+    layer.dataset.skin = skin;
+    layer.innerHTML = PAGES[page]();
+  }
+
+  /* ---------- 墨：WebGL ---------- */
+  var HEAD = [
+    '#ifdef GL_FRAGMENT_PRECISION_HIGH', 'precision highp float;', '#else', 'precision mediump float;', '#endif',
+    'uniform vec2 uRes; uniform float uDpr; uniform float uT; uniform vec2 uO; uniform float uMaxD; uniform vec2 uSeed;',
+    'uniform vec3 uColA; uniform vec3 uColB; uniform vec3 uWashA; uniform vec3 uWashB; uniform float uLead;',
+    'float hash21(vec2 p){ vec3 p3 = fract(vec3(p.xyx)*.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y)*p3.z); }',
+    'vec2 hash22(vec2 p){ vec3 p3 = fract(vec3(p.xyx)*vec3(.1031, .1030, .0973)); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.xx + p3.yz)*p3.zy); }',
+    'float vnoise(vec2 p){ vec2 i = floor(p), f = fract(p); vec2 u = f*f*(3. - 2.*f);',
+    '  return mix(mix(hash21(i), hash21(i + vec2(1., 0.)), u.x), mix(hash21(i + vec2(0., 1.)), hash21(i + vec2(1., 1.)), u.x), u.y); }',
+    'float fbm(vec2 p){ float a = .5, s = 0.; for(int i = 0; i < 5; i++){ s += a*vnoise(p); p = p*2.03 + vec2(17.1, 9.7); a *= .5; } return s; }',
+    // 格子裡的一顆墨點：回傳半徑，c 是圓心。大部分很小，少數大顆
+    'float cellDot(vec2 p, float g, float salt, out vec2 c){ vec2 id = floor(p/g); float rnd = hash21(id*1.7 + salt + 3.1);',
+    '  float r = g*.42*pow(rnd, 2.5); c = (id + .5 + (hash22(id + salt) - .5)*(1. - 2.*r/g))*g; return r; }'
+  ].join('\n');
+
+  var TAIL = [
+    'void main(){',
+    '  vec2 p = vec2(gl_FragCoord.x, uRes.y*uDpr - gl_FragCoord.y)/uDpr;',
+    '  vec4 c = ink(p);',
+    '  float g = hash21(floor(p*uDpr) + uSeed*91.) - .5;',
+    '  vec3 rgb = clamp(c.rgb + g*.03, 0., 1.);',
+    '  gl_FragColor = vec4(rgb*c.a, c.a);',
+    '}'
+  ].join('\n');
+
+  var FRAG = {};
+
+  // 墨暈：從點的位置往外滲。前緣 lead、後緣 lead - B，中間是墨；跟 App 裡的一樣，蓋滿那一刻（t = .5）才換頁
+  FRAG.bleed = [
+    'const float B = 1.5;',
+    'vec4 ink(vec2 p){',
+    '  vec2 q = p - uO; float l = length(q); float d = l/uMaxD;',
+    '  float fing = vnoise(q/(l + 1e-4)*2.6 + uSeed*9.) - .5;',
+    '  float n1 = fbm(p*.0065 + uSeed*7.) - .5;',
+    '  float n2 = fbm(p*.045 + uSeed*3.) - .5;',
+    '  float m = fbm(p*.009 + uSeed*13. + 5.) - .5;',
+    '  float grow = smoothstep(0., .25, d);',
+    '  float f = d + (fing*.16 + n1*.22)*grow + n2*.05;',
+    '  float f2 = d + fing*.12*grow + m*.22 + n2*.07;',
+    '  float lead = uLead, trail = uLead - B, w = 1.5/uMaxD;',
+    '  float a = (1. - smoothstep(lead - w, lead, f))*smoothstep(trail - w, trail, f2);',
+    '  float thin = 1. - smoothstep(trail, trail + .12, f2);',
+    '  float k = smoothstep(.10, .62, clamp((lead - f)/.7, 0., 1.));',
+    '  vec3 col = mix(uColA, uColB, k), wash = mix(uWashA, uWashB, k);',
+    '  col = mix(col, wash, smoothstep(.5, .85, fbm(p*.014 + uSeed*21.))*.28);',
+    '  col *= 1. - .22*smoothstep(lead - .045, lead, f);',
+    '  col = mix(col, wash, thin*.8);',
+    '  float alpha = a*(1. - thin*.5);',
+    '  vec2 c; float r = cellDot(p, 24., uSeed.x*50., c);',
+    '  float dc = length(c - uO)/uMaxD, h = hash21(c*.37 + 1.3);',
+    '  float on = smoothstep(0., .03, lead + .13*h - dc)*(1. - smoothstep(0., .04, trail - .10*h - dc))*step(.45, h);',
+    '  float dots = (1. - smoothstep(r*on - 1., r*on, length(p - c)))*step(.01, on);',
+    '  r = cellDot(p, 9., uSeed.y*50. + 7., c);',
+    '  dc = length(c - uO)/uMaxD; h = hash21(c*.53 + 2.1);',
+    '  on = smoothstep(0., .02, lead + .07*h - dc)*(1. - smoothstep(0., .03, trail - .06*h - dc))*step(.6, h);',
+    '  dots = max(dots, (1. - smoothstep(r*on - 1., r*on, length(p - c)))*step(.01, on));',
+    '  vec3 dcol = mix(uColA, uColB, smoothstep(.10, .62, clamp((lead - d)/.7, 0., 1.)));',
+    '  col = mix(dcol, col, step(.5, a));',
+    '  return vec4(col, max(alpha, dots));',
+    '}'
+  ].join('\n');
+
+  // 噴漆：噴頭來回六趟蓋滿（邊緣是顆粒），蓋滿後整片漆往下流走
+  FRAG.spray = [
+    'vec4 ink(vec2 p){',
+    '  float W = uRes.x, H = uRes.y, Hr = H/6., R = Hr*1.12;',
+    '  float c = clamp(uT/.47, 0., 1.);',
+    '  float sT = uT/.47/.9*6.15, s = min(sT, 6.15);',
+    '  float D = 0.;',
+    '  for(int i = 0; i < 6; i++){',
+    '    float fi = float(i);',
+    '    float a = mix(p.x, W - p.x, mod(fi, 2.));',
+    '    float an = mix(-R*1.3, W + R*1.3, clamp(s - fi, 0., 1.));',
+    '    float yc = (fi + .5)*Hr + sin(p.x*.011 + fi*1.7 + uSeed.x*6.)*Hr*.10 + (a/W - .5)*Hr*.18;',
+    '    float dens = (1. - smoothstep(R*.55, R*1.25, length(vec2(max(a - an, 0.), p.y - yc))))*step(fi, s);',
+    '    D = 1. - (1. - D)*(1. - dens);',
+    '  }',
+    '  D = max(D, smoothstep(.9, 1., c));',
+    '  float th = mix(hash21(floor(p*1.6) + uSeed*40.), vnoise(p*.5 + uSeed*9.), .4);',
+    '  float a = step(th*.98 + .004, D);',
+    '  vec2 cc; float r = cellDot(p, 11., uSeed.x*60., cc);',
+    '  a = max(a, (1. - smoothstep(r - 1., r, length(p - cc)))*step(hash21(cc*.71 + 4.4)*.75 + .06, D));',
+    '  float rv = pow(clamp((uT - .53)/.47, 0., 1.), 1.7);',
+    '  float lag = pow(vnoise(vec2(p.x*.16, 3.7 + uSeed.x*20.)), 3.)*.35 + vnoise(vec2(p.x*.03, uSeed.y*20.))*.22;',
+    '  float edge = rv*H*1.62 - lag*H;',
+    '  float keep = mix(1., smoothstep(edge - 1., edge + .5, p.y), step(.0001, rv));',
+    '  float k = smoothstep(.8, 4.5, sT - p.y/Hr - .5 + (fbm(p*.009 + uSeed*15.) - .5)*2.);',
+    '  vec3 col = mix(uColA, uColB, k), wash = mix(uWashA, uWashB, k);',
+    '  col = mix(wash, col, smoothstep(.15, .85, D));',
+    '  col *= .94 + .12*fbm(p*.02 + uSeed*3.);',
+    '  col = mix(col, wash, (1. - smoothstep(0., 12., p.y - edge))*.55*step(.0001, rv));',
+    '  return vec4(col, a*keep);',
+    '}'
+  ].join('\n');
+
+  // 潑墨：點的位置先炸一團，另外六團接著落下，蓋滿後縮成墨珠
+  FRAG.splat = [
+    'vec4 ink(vec2 p){',
+    '  float W = uRes.x, H = uRes.y;',
+    '  float c = clamp(uT/.47, 0., 1.);',
+    '  vec2 cc; float r = cellDot(p, 14., uSeed.x*70., cc);',
+    '  float blob = 1. + (fbm(p*.018 + uSeed*5.) - .5)*.5;',
+    '  float flood = smoothstep(.58, 1., c);',
+    '  float inside = 0., near = 0.;',
+    '  for(int k = 0; k < 7; k++){',
+    '    float fk = float(k);',
+    '    vec2 h = hash22(vec2(fk*5.3 + 1., 2.7) + uSeed*31.);',
+    '    float j = k == 1 ? 3. : k == 2 ? 0. : k == 3 ? 5. : k == 4 ? 1. : k == 5 ? 4. : 2.;',
+    '    vec2 ck = vec2((mod(j, 2.)*.5 + .12 + .26*h.x)*W, (floor(j*.5)/3. + .06 + .2*h.y)*H);',
+    '    float g = clamp((c - fk*.075)/.22, 0., 1.);',
+    '    float grow = 1. - pow(1. - g, 3.);',
+    '    float Rk = (60. + 55.*h.x)*grow*(1. + 1.4*flood);',
+    '    if(k == 0){ ck = uO; Rk = uMaxD*(.22*grow + 1.36*flood); }',
+    '    Rk = max(Rk, .001);',
+    '    vec2 q = p - ck; float l = length(q);',
+    '    float rr = l/(Rk*blob);',
+    '    float an = vnoise(q/(l + 1e-4)*9. + fk*13.7 + uSeed*11.);',
+    '    float core = 1. - smoothstep(1. - 2./Rk, 1., rr);',
+    '    float thr = mix(.35, .62, smoothstep(1., 1.15, rr)) + .4*smoothstep(1.15, 2.6, rr);',
+    '    float arm = smoothstep(thr, thr + .03, an)*step(rr, 2.6);',
+    '    inside = max(inside, max(core, arm)*step(.001, g));',
+    '    near = max(near, step(length(cc - ck)/Rk, 3.)*step(.35, grow));',
+    '  }',
+    '  float drop = (1. - smoothstep(r - 1., r, length(p - cc)))*near*step(.4, hash21(cc*.29 + 8.8));',
+    '  float rv = mix(-.15, 1.2, clamp((uT - .53)/.47, 0., 1.));',
+    '  float gf = fbm(p*.011 + uSeed*19.)*.75 + length(p - uO)/uMaxD*.35;',
+    '  float solid = smoothstep(rv + .10, rv + .112, gf);',
+    '  vec2 id = floor(p/16.);',
+    '  float rb = 16.*(.18 + .27*hash21(id*1.3 + 5.));',
+    '  vec2 cb = (id + .5 + (hash22(id + uSeed.y*70.) - .5)*(1. - 2.*rb/16.))*16.;',
+    '  float sc = smoothstep(rv - .09, rv + .10, fbm(cb*.011 + uSeed*19.)*.75 + length(cb - uO)/uMaxD*.35);',
+    '  float bead = (1. - smoothstep(rb*sc - 1., rb*sc, length(p - cb)))*step(.02, sc);',
+    '  float k = smoothstep(.28, .62, uT + (fbm(p*.008 + 3.) - .5)*.25);',
+    '  vec3 col = mix(uColA, uColB, k), wash = mix(uWashA, uWashB, k);',
+    '  col = mix(col, wash, (1. - solid)*.6 + smoothstep(.5, .85, fbm(p*.02 + uSeed*2.))*.18);',
+    '  return vec4(col, max(inside, drop)*max(solid, bead));',
+    '}'
+  ].join('\n');
+
+  // 刷痕：五道刷子左右交錯刷過，前後緣都是乾筆的毛邊
+  FRAG.brush = [
+    'vec4 ink(vec2 p){',
+    '  float W = uRes.x, H = uRes.y, Hb = H/5.;',
+    '  float alpha = 0., tone = 0., rowK = 0.;',
+    '  for(int i = 0; i < 5; i++){',
+    '    float fi = float(i);',
+    '    float a = mix(p.x, W - p.x, mod(fi, 2.));',
+    '    float yw = (vnoise(vec2(a*.012, fi*5.1 + uSeed.x*9.)) - .5)*14.;',
+    '    float y0 = fi*Hb - Hb*.14 + yw, y1 = (fi + 1.)*Hb + Hb*.14 + yw;',
+    '    float inRow = smoothstep(y0 - 1., y0, p.y)*(1. - smoothstep(y1, y1 + 1., p.y));',
+    '    float v = (p.y - y0)/(y1 - y0);',
+    '    float b1 = vnoise(vec2(a*.0045 + fi*3., v*34. + uSeed.y*30.));',
+    '    float b2 = vnoise(vec2(a*.02, v*90. + fi*11.));',
+    '    float b3 = vnoise(vec2(a*.0045 + fi*3. + 40., v*34. + uSeed.y*30. + 9.));',
+    '    float ti = fi*.035;',
+    '    float lp = 1. - pow(1. - clamp((uT - ti)/.33, 0., 1.), 2.2);',
+    '    float tp = pow(clamp((uT - .53 - ti)/.33, 0., 1.), 1.6);',
+    '    float lead = mix(-100., W + 100., lp), trail = mix(-100., W + 100., tp);',
+    '    float e1 = a + (b1 - .5)*150. + (b2 - .5)*40.;',
+    '    float e2 = a + (b3 - .5)*150. + (b2 - .5)*40.;',
+    '    float on = (1. - smoothstep(lead - 1.5, lead, e1))*smoothstep(trail - 1.5, trail, e2)*inRow;',
+    '    if(on >= alpha && on > 0.){',
+    '      tone = smoothstep(.5, .85, b1)*.45 + smoothstep(.62, .9, b2)*.25 + smoothstep(lead - 110., lead, e1)*.3;',
+    '      rowK = fi;',
+    '    }',
+    '    alpha = max(alpha, on);',
+    '  }',
+    '  float k = smoothstep(.2, .6, uT - rowK*.02);',
+    '  vec3 col = mix(uColA, uColB, k), wash = mix(uWashA, uWashB, k);',
+    '  col = mix(col, wash, clamp(tone, 0., 1.)*.6);',
+    '  return vec4(col, alpha);',
+    '}'
+  ].join('\n');
+
+  // 墨暈的時間表：進度 0、0.5、1 時前緣在哪裡（單位是起點到最遠角落的距離）
+  var BLEED = { L0: -.14, LC: 1.22, L1: 2.76 };
+  function bleedLead(t) {
+    return t <= .5 ? BLEED.L0 + (BLEED.LC - BLEED.L0) * (1 - Math.pow(1 - t * 2, 1.2)) : BLEED.LC + (BLEED.L1 - BLEED.LC) * (1 - Math.pow(2 - t * 2, 1.5));
+  }
+
+  var UNIFORMS = ['uRes', 'uDpr', 'uT', 'uO', 'uMaxD', 'uSeed', 'uColA', 'uColB', 'uWashA', 'uWashB', 'uLead'];
+  function initGL() {
+    var gl = canvas.getContext('webgl', { alpha: true, premultipliedAlpha: true, antialias: false, preserveDrawingBuffer: true });
+    if (!gl) return null;
+    function compile(type, src) {
+      var sh = gl.createShader(type);
+      gl.shaderSource(sh, src); gl.compileShader(sh);
+      if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(sh));
+      return sh;
+    }
+    var vs = compile(gl.VERTEX_SHADER, 'attribute vec2 a; void main(){ gl_Position = vec4(a, 0., 1.); }');
+    var progs = {};
+    Object.keys(FRAG).forEach(function (name) {
+      var prog = gl.createProgram();
+      gl.attachShader(prog, vs);
+      gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, HEAD + '\n' + FRAG[name] + '\n' + TAIL));
+      gl.bindAttribLocation(prog, 0, 'a');
+      gl.linkProgram(prog);
+      if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+      var u = {};
+      UNIFORMS.forEach(function (n) { u[n] = gl.getUniformLocation(prog, n); });
+      progs[name] = { prog: prog, u: u };
+    });
+    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+    gl.disable(gl.BLEND);
+    var dpr = 1;
+    return {
+      gl: gl,
+      resize: function () {
+        dpr = Math.min(window.devicePixelRatio || 1, 2);
+        var w = Math.round(screenEl.clientWidth * dpr), h = Math.round(screenEl.clientHeight * dpr);
+        if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+      },
+      clear: function () { gl.viewport(0, 0, canvas.width, canvas.height); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); },
+      draw: function (tr, t) {
+        var P = progs[tr.fx], u = P.u, c = tr.cols;
+        gl.viewport(0, 0, canvas.width, canvas.height);
+        gl.useProgram(P.prog);
+        gl.uniform2f(u.uRes, canvas.width / dpr, canvas.height / dpr);
+        gl.uniform1f(u.uDpr, dpr);
+        gl.uniform1f(u.uT, t);
+        gl.uniform2f(u.uO, tr.o[0], tr.o[1]);
+        gl.uniform1f(u.uMaxD, tr.maxD);
+        gl.uniform2f(u.uSeed, tr.seed[0], tr.seed[1]);
+        gl.uniform3fv(u.uColA, c.a); gl.uniform3fv(u.uColB, c.b);
+        gl.uniform3fv(u.uWashA, c.wa); gl.uniform3fv(u.uWashB, c.wb);
+        gl.uniform1f(u.uLead, bleedLead(t));
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+      }
+    };
+  }
+  var R = null;
+  try { R = initGL(); } catch (err) { console.error(err); R = null; }
+
+  /* ---------- 轉場 ---------- */
+  var FXD = {
+    bleed: { dur: 1050, app: '0.70', use: '底部分頁之間', desc: '墨從你點的位置往外滲，邊緣不規則，前面有飛出去的小墨點，後面淡成一圈水痕。' },
+    spray: { dur: 1500, app: '1.40', use: '設定頁換配色', desc: '噴頭來回六趟把畫面蓋滿，邊緣是一顆一顆的漆霧；蓋滿後整片漆往下流走，留下幾條慢一點的漆痕。' },
+    splat: { dur: 1250, app: '0.95', use: '登入、登出', desc: '墨從點的位置炸開，帶著放射的墨刺和飛濺的墨點，另外六團接著落下；蓋滿後縮成一顆顆墨珠消失。' },
+    brush: { dur: 1150, app: '0.78', use: '進入或返回內頁', desc: '五道刷子左右交錯刷過去，前緣是乾筆的毛邊、刷痕裡有淡色的筆觸；刷子離開後露出新的一頁。' },
+    // 減少動態效果：不播，直接換頁
+    fade: { dur: 1 }
+  };
+  function rgb(hex) { return [(hex >> 16 & 255) / 255, (hex >> 8 & 255) / 255, (hex & 255) / 255]; }
+  var INK = {
+    purple: { col: rgb(0x9B51E0), deep: rgb(0x6A2BBE), wash: rgb(0xC9A2F5) },
+    mono: { col: rgb(0x141414), deep: rgb(0x4A4A48), wash: rgb(0xA8A8A5) }
+  };
+  var S = { page: 'today', skin: 'purple', fx: 'bleed', speed: 1, ink: 'auto', alt: false, reduce: false, front: 0, tr: null, pending: null, auto: false, timer: 0 };
+
+  function inkColors(from, to) {
+    if (S.ink === 'black') return { a: INK.mono.col, b: INK.mono.deep, wa: INK.mono.wash, wb: INK.mono.wash };
+    if (S.ink === 'purple') return { a: INK.purple.col, b: INK.purple.deep, wa: INK.purple.wash, wb: INK.purple.wash };
+    return { a: INK[from].col, b: from === to ? INK[from].deep : INK[to].col, wa: INK[from].wash, wb: INK[to].wash };
+  }
+  function other(skin) { return skin === 'purple' ? 'mono' : 'purple'; }
+  function makeTr(fx, o, from, to) {
+    var W = screenEl.clientWidth, H = screenEl.clientHeight;
+    return {
+      fx: fx, o: o, t: 0, last: 0, held: false,
+      maxD: Math.max(Math.hypot(o[0], o[1]), Math.hypot(W - o[0], o[1]), Math.hypot(o[0], H - o[1]), Math.hypot(W - o[0], H - o[1])),
+      seed: [Math.random(), Math.random()], cols: inkColors(from, to)
+    };
+  }
+
+  function begin(page, skin, origin, held) {
+    var inc = layers[1 - S.front], out = layers[S.front];
+    if (page === 'detail' && S.page !== 'detail') detailFrom = S.page;
+    renderInto(inc, page, skin);
+    inc.style.zIndex = 2; out.style.zIndex = 1;
+    inc.style.visibility = 'hidden'; inc.style.opacity = ''; inc.style.clipPath = '';
+    if (R) R.resize();
+    var tr = makeTr(S.reduce || !R ? 'fade' : S.fx, origin || [screenEl.clientWidth / 2, screenEl.clientHeight * .42], S.skin, skin);
+    tr.page = page; tr.skin = skin; tr.held = !!held;
+    S.tr = tr;
+    apply(0);
+    if (!held) requestAnimationFrame(tick);
+  }
+  function apply(t) {
+    var tr = S.tr, inc = layers[1 - S.front];
+    scrub.value = Math.round(t * 1000);
+    if (tr.fx === 'fade') { inc.style.visibility = 'visible'; inc.style.opacity = t; return; }
+    R.draw(tr, t);
+    inc.style.visibility = t >= .5 ? 'visible' : 'hidden';
+  }
+  function tick(now) {
+    var tr = S.tr;
+    if (!tr || tr.held) return;
+    if (!tr.last) tr.last = now;
+    var dt = Math.min(now - tr.last, 50); tr.last = now;
+    tr.t = Math.min(1, tr.t + dt / (tr.fx === 'fade' ? FXD.fade.dur : FXD[tr.fx].dur / S.speed));
+    apply(tr.t);
+    if (tr.t >= 1) finish(); else requestAnimationFrame(tick);
+  }
+  function finish() {
+    var tr = S.tr, inc = layers[1 - S.front], out = layers[S.front];
+    inc.style.visibility = 'visible'; inc.style.clipPath = ''; inc.style.opacity = '';
+    out.style.visibility = 'hidden'; out.innerHTML = '';
+    S.front = 1 - S.front; S.page = tr.page; S.skin = tr.skin; S.tr = null;
+    if (R) R.clear();
+    scrub.value = 0;
+    $('#skin-' + S.skin).checked = true;
+    if (S.pending) { var p = S.pending; S.pending = null; go(p.page, p.opts); }
+    else if (S.auto) S.timer = setTimeout(playNext, 800);
+  }
+  function resume() {
+    var tr = S.tr;
+    if (!tr || !tr.held) return;
+    tr.held = false; tr.last = 0;
+    if (tr.t >= 1) finish(); else requestAnimationFrame(tick);
+  }
+  function go(page, opts) {
+    opts = opts || {};
+    if (S.tr) { S.pending = { page: page, opts: opts }; resume(); return; }
+    var skin = opts.skin || (S.alt ? other(S.skin) : S.skin);
+    if (page === S.page && skin === S.skin) return;
+    begin(page, skin, opts.origin, opts.held);
+  }
+  function tabOrigin(id) {
+    var b = $('.m-nav [data-go="' + id + '"]', layers[S.front]);
+    var sr = screenEl.getBoundingClientRect();
+    if (!b) return [sr.width / 2, sr.height - 28];
+    var r = b.getBoundingClientRect();
+    return [r.left + r.width / 2 - sr.left, r.top + r.height / 2 - sr.top];
+  }
+  function nextTab() {
+    var i = TABS.findIndex(function (t) { return t.id === S.page; });
+    return TABS[(i + 1) % TABS.length].id;
+  }
+  function playNext(held) {
+    var id = nextTab();
+    go(id, { origin: tabOrigin(id), held: held === true });
+  }
+  function stopAuto() {
+    S.auto = false; clearTimeout(S.timer);
+    $('#auto').setAttribute('aria-pressed', 'false');
+    $('#auto').textContent = '自動輪播';
+  }
+
+  /* ---------- 操作 ---------- */
+  screenEl.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-go]');
+    if (!b) return;
+    var sr = screenEl.getBoundingClientRect();
+    var x = e.clientX - sr.left, y = e.clientY - sr.top;
+    if (e.detail === 0) { var r = b.getBoundingClientRect(); x = r.left + r.width / 2 - sr.left; y = r.top + r.height / 2 - sr.top; }
+    go(b.dataset.go, { origin: [x, y] });
+  });
+  function showDesc() {
+    var d = FXD[S.fx];
+    $('#fxDesc').innerHTML = d.desc + '<small>App 裡用在' + d.use + '，整段 ' + d.app + ' 秒。這裡的 1× 放慢成 ' + (d.dur / 1000).toFixed(2) + ' 秒。</small>';
+  }
+  document.querySelectorAll('input[name="fx"]').forEach(function (el) {
+    el.addEventListener('change', function () { S.fx = el.value; showDesc(); playNext(); });
+  });
+  document.querySelectorAll('input[name="skin"]').forEach(function (el) {
+    el.addEventListener('change', function () { go(S.tr ? S.tr.page : S.page, { skin: el.value }); });
+  });
+  document.querySelectorAll('input[name="inkc"]').forEach(function (el) {
+    el.addEventListener('change', function () { S.ink = el.value; });
+  });
+  document.querySelectorAll('input[name="spd"]').forEach(function (el) {
+    el.addEventListener('change', function () { S.speed = parseFloat(el.value); });
+  });
+  $('#alt').addEventListener('change', function (e) { S.alt = e.target.checked; });
+  $('#reduce').addEventListener('change', function (e) { S.reduce = e.target.checked; });
+  $('#play').addEventListener('click', function () { playNext(); });
+  $('#auto').addEventListener('click', function () {
+    if (S.auto) { stopAuto(); return; }
+    S.auto = true;
+    this.setAttribute('aria-pressed', 'true'); this.textContent = '停止輪播';
+    if (!S.tr) playNext();
+  });
+  scrub.addEventListener('input', function () {
+    var t = scrub.value / 1000;
+    if (!S.tr) { stopAuto(); playNext(true); }
+    if (S.tr) { S.tr.held = true; S.tr.t = t; apply(t); }
+  });
+  scrub.addEventListener('change', resume);
+  if (R && window.ResizeObserver) new ResizeObserver(function () { if (!S.tr) { R.resize(); R.clear(); } }).observe(screenEl);
+
+  /* ---------- 開場 ---------- */
+  S.reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  $('#reduce').checked = S.reduce;
+  // 表單的值在重新發佈後會被保留，照目前勾選的狀態還原
+  S.fx = ($('input[name="fx"]:checked') || {}).value || 'bleed';
+  S.ink = ($('input[name="inkc"]:checked') || {}).value || 'auto';
+  S.speed = parseFloat(($('input[name="spd"]:checked') || {}).value || '1');
+  S.alt = $('#alt').checked;
+  S.skin = ($('input[name="skin"]:checked') || {}).value || 'purple';
+  renderInto(layers[0], S.page, S.skin);
+  showDesc();
+  if (R) { R.resize(); R.clear(); }
+  else $('#dbg').textContent = '這個瀏覽器開不了 WebGL，所以這裡看不到墨，只會直接換頁。';
+
+  /* ---------- 檢查用（網址加 ?sheet 或 ?fx=spray&t=0.4，發佈後不會用到） ---------- */
+  var Q = new URLSearchParams(location.search);
+  if (R && Q.has('fx')) {
+    S.fx = Q.get('fx'); S.alt = Q.get('to') === 'mono';
+    playNext(true);
+    S.tr.seed = [.37, .81]; S.tr.t = parseFloat(Q.get('t') || '.4'); apply(S.tr.t);
+  }
+  if (R && Q.has('sheet')) {
+    var gl = R.gl, times = [.08, .2, .32, .44, .5, .58, .7, .82, .94];
+    var W = screenEl.clientWidth, H = screenEl.clientHeight;
+    var sheet = document.createElement('div');
+    sheet.style.cssText = 'position:fixed;inset:0;z-index:99;background:#ddd;overflow:auto;padding:8px;display:grid;grid-template-columns:repeat(' + times.length + ',max-content);gap:4px;align-content:start';
+    var log = [], px = new Uint8Array(canvas.width * canvas.height * 4);
+    S.ink = 'auto';
+    Object.keys(FRAG).forEach(function (fx) {
+      times.forEach(function (t) {
+        var tr = makeTr(fx, [W * .7, H - 28], 'purple', 'mono');
+        tr.seed = [.37, .81];
+        R.draw(tr, t);
+        var cv = document.createElement('canvas'); cv.width = 118; cv.height = Math.round(118 * H / W);
+        var cx = cv.getContext('2d');
+        cx.fillStyle = t >= .5 ? '#FFFFFF' : '#E9DDF8'; cx.fillRect(0, 0, cv.width, cv.height);
+        cx.drawImage(canvas, 0, 0, cv.width, cv.height);
+        sheet.appendChild(cv);
+        // 換頁那一刻墨一定要是不透明的，不然會看到頁面跳一下
+        if (t === .5) {
+          gl.readPixels(0, 0, canvas.width, canvas.height, gl.RGBA, gl.UNSIGNED_BYTE, px);
+          var min = 255;
+          for (var j = 3; j < px.length; j += 4) min = Math.min(min, px[j]);
+          log.push(fx + ' t=' + t + ' 全畫面最小 alpha=' + min);
+        }
+      });
+    });
+    var pre = document.createElement('pre');
+    pre.style.cssText = 'grid-column:1/-1;margin:0;font:11px/1.35 Menlo,monospace;color:#000';
+    pre.textContent = log.join('\n');
+    sheet.appendChild(pre);
+    document.body.appendChild(sheet);
+    R.clear();
+  }
+})();
+</script>
+</html>
