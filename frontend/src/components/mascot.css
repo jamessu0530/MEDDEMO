@@ -1,0 +1,104 @@
+/*
+ * 熊熊滾的動畫（components/mascot.tsx）。每個狀態一組，掛在 svg 的 class 上（.mascot-idle、.mascot-think…）。
+ * 只有會動的那幾組用自己的外框當旋轉、縮放的基準；其餘維持畫布座標。
+ */
+.mascot { display: block; }
+.mascot-body, .mascot-ear-l, .mascot-ear-r, .mascot-eyes, .mascot-mouth, .mascot-shadow,
+.mascot-dot, .mascot-wave, .mascot-star, .mascot-load { transform-box: fill-box; }
+.mascot-body { transform-origin: 50% 100%; }
+.mascot-ear-l { transform-origin: 70% 85%; }
+.mascot-ear-r { transform-origin: 30% 85%; }
+.mascot-eyes, .mascot-shadow, .mascot-dot, .mascot-star, .mascot-load { transform-origin: 50% 50%; }
+.mascot-mouth { transform-origin: 50% 0%; }
+
+/* 連眨兩下 */
+@keyframes mascot-blink { 0%, 42%, 47%, 52%, 100% { transform: scaleY(1); } 44.5%, 49.5% { transform: scaleY(.08); } }
+
+/* 待機：呼吸、連眨兩下、右耳抖一下、左右看 */
+.mascot-idle .mascot-body { animation: mascot-breathe 2.8s ease-in-out infinite; }
+@keyframes mascot-breathe { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(1.022, .978); } }
+.mascot-idle .mascot-eyes { animation: mascot-blink 5.6s infinite; }
+.mascot-idle .mascot-ear-r { animation: mascot-idle-ear 5.6s ease-in-out infinite; }
+@keyframes mascot-idle-ear { 0%, 62%, 78%, 100% { transform: rotate(0deg); } 66% { transform: rotate(18deg); } 70% { transform: rotate(-6deg); } 74% { transform: rotate(10deg); } }
+.mascot-idle .mascot-face { animation: mascot-look 8.4s ease-in-out infinite; }
+@keyframes mascot-look { 0%, 16%, 60%, 100% { transform: translateX(0); } 22%, 34% { transform: translateX(5px); } 40%, 54% { transform: translateX(-5px); } }
+
+/* 打招呼：沒有手，用左右探頭加小跳，兩隻耳朵輪流擺 */
+.mascot-hi .mascot-body { animation: mascot-hi-lean 1.5s ease-in-out infinite; }
+@keyframes mascot-hi-lean {
+  0%, 50%, 100% { transform: rotate(0deg) translateY(0) scale(1.04, .96); }
+  25% { transform: rotate(-9deg) translateY(-8px) scale(.98, 1.03); }
+  75% { transform: rotate(9deg) translateY(-8px) scale(.98, 1.03); }
+}
+.mascot-hi .mascot-ear-l { animation: mascot-hi-ear-l 1.5s ease-in-out infinite; }
+.mascot-hi .mascot-ear-r { animation: mascot-hi-ear-r 1.5s ease-in-out infinite; }
+@keyframes mascot-hi-ear-l { 0%, 50%, 100% { transform: rotate(0deg); } 25% { transform: rotate(-16deg); } }
+@keyframes mascot-hi-ear-r { 0%, 50%, 100% { transform: rotate(0deg); } 75% { transform: rotate(16deg); } }
+
+/* 聆聽：歪頭、右耳豎起來、聲波進來 */
+.mascot-listen .mascot-body { animation: mascot-listen-tilt 2.6s ease-in-out infinite; }
+@keyframes mascot-listen-tilt { 0%, 100% { transform: rotate(-8deg); } 50% { transform: rotate(-10deg) scale(1.015, .985); } }
+.mascot-listen .mascot-ear-r { animation: mascot-listen-ear 1.3s ease-in-out infinite; }
+@keyframes mascot-listen-ear { 0%, 100% { transform: scale(1.14); } 50% { transform: scale(1.28) rotate(6deg); } }
+.mascot-listen .mascot-eyes { animation: mascot-blink 4.6s infinite; }
+.mascot-wave { opacity: 0; animation: mascot-listen-wave 1.5s ease-out infinite; }
+.mascot-wave[data-n="2"] { animation-delay: .25s; }
+@keyframes mascot-listen-wave { 0% { opacity: 0; transform: translateX(14px); } 35% { opacity: 1; } 100% { opacity: 0; transform: translateX(-8px); } }
+
+/* 思考：眼睛往上看、身體慢慢晃、想法泡泡一顆一顆冒 */
+.mascot-think .mascot-body { animation: mascot-think-sway 3.2s ease-in-out infinite; }
+@keyframes mascot-think-sway { 0%, 100% { transform: rotate(5deg); } 50% { transform: rotate(-3deg); } }
+.mascot-dot { animation: mascot-think-dot 1.8s ease-in-out infinite; }
+.mascot-dot[data-n="2"] { animation-delay: .25s; }
+.mascot-dot[data-n="3"] { animation-delay: .5s; }
+@keyframes mascot-think-dot { 0%, 100% { transform: scale(.35); opacity: .25; } 40%, 60% { transform: scale(1); opacity: 1; } }
+
+/* 回答：嘴巴開合、身體跟著點 */
+.mascot-talk .mascot-body { animation: mascot-talk-nod .84s ease-in-out infinite; }
+@keyframes mascot-talk-nod { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(1.018, .982); } }
+.mascot-talk .mascot-mouth { animation: mascot-talk-mouth .42s ease-in-out infinite alternate; }
+@keyframes mascot-talk-mouth { from { transform: scale(.7, .25); } to { transform: scale(1, 1); } }
+.mascot-talk .mascot-eyes { animation: mascot-blink 3.8s infinite; }
+
+/* 等待：左右腳輪流踏步，耳朵跟著擺，頭上三顆點輪流跳 */
+.mascot-wait .mascot-body { animation: mascot-wait-step 1s ease-in-out infinite; }
+@keyframes mascot-wait-step {
+  0%, 100% { transform: rotate(-6deg) translateY(0); } 25%, 75% { transform: rotate(0deg) translateY(-5px); }
+  50% { transform: rotate(6deg) translateY(0); }
+}
+.mascot-wait .mascot-ear-l { animation: mascot-wait-ear 1s ease-in-out infinite; }
+.mascot-wait .mascot-ear-r { animation: mascot-wait-ear 1s ease-in-out infinite reverse; }
+@keyframes mascot-wait-ear { 0%, 100% { transform: rotate(-8deg); } 50% { transform: rotate(8deg); } }
+.mascot-wait .mascot-eyes { animation: mascot-blink 4.2s infinite; }
+.mascot-load { animation: mascot-wait-load 1.2s ease-in-out infinite; }
+.mascot-load[data-n="2"] { animation-delay: .2s; }
+.mascot-load[data-n="3"] { animation-delay: .4s; }
+@keyframes mascot-wait-load { 0%, 60%, 100% { transform: translateY(0) scale(.75); opacity: .5; } 30% { transform: translateY(-9px) scale(1); opacity: 1; } }
+
+/* 完成：蓄力下壓 → 跳起拉長 → 落地壓扁 → 回彈；耳朵慢半拍；星星彈出來 */
+.mascot-yay .mascot-all { animation: mascot-yay-jump 1.6s cubic-bezier(.4, 0, .25, 1) infinite; }
+@keyframes mascot-yay-jump { 0%, 22%, 62%, 100% { transform: translateY(0); } 40% { transform: translateY(-34px); } }
+.mascot-yay .mascot-body { animation: mascot-yay-squash 1.6s cubic-bezier(.4, 0, .25, 1) infinite; }
+@keyframes mascot-yay-squash {
+  0%, 100% { transform: scale(1, 1); } 16% { transform: scale(1.13, .86); } 40% { transform: scale(.92, 1.09); }
+  62% { transform: scale(1.15, .85); } 74% { transform: scale(.97, 1.04); } 86% { transform: scale(1.02, .985); }
+}
+.mascot-yay .mascot-shadow { animation: mascot-yay-shadow 1.6s cubic-bezier(.4, 0, .25, 1) infinite; }
+@keyframes mascot-yay-shadow { 0%, 22%, 62%, 100% { transform: scale(1); opacity: .13; } 40% { transform: scale(.62); opacity: .06; } }
+.mascot-yay .mascot-ear-l { animation: mascot-yay-ear-l 1.6s ease-in-out infinite; }
+.mascot-yay .mascot-ear-r { animation: mascot-yay-ear-r 1.6s ease-in-out infinite; }
+@keyframes mascot-yay-ear-l { 0%, 30%, 90%, 100% { transform: rotate(0deg); } 44% { transform: rotate(18deg); } 66% { transform: rotate(-20deg); } 78% { transform: rotate(8deg); } }
+@keyframes mascot-yay-ear-r { 0%, 30%, 90%, 100% { transform: rotate(0deg); } 44% { transform: rotate(-18deg); } 66% { transform: rotate(20deg); } 78% { transform: rotate(-8deg); } }
+.mascot-star { animation: mascot-yay-star 1.6s ease-out infinite; }
+.mascot-star[data-n="2"], .mascot-star[data-n="4"] { animation-delay: .08s; }
+.mascot-star[data-n="3"] { animation-delay: .16s; }
+@keyframes mascot-yay-star {
+  0%, 30% { transform: scale(0) rotate(-30deg); opacity: 0; } 46% { transform: scale(1.2) rotate(0deg); opacity: 1; }
+  70% { transform: scale(1) rotate(12deg); opacity: 1; } 100% { transform: scale(.4) rotate(30deg); opacity: 0; }
+}
+
+/* 系統設定「減少動態效果」：停在該狀態的表情，不動。道具原本靠動畫才顯現，這時直接顯示 */
+@media (prefers-reduced-motion: reduce) {
+  .mascot, .mascot * { animation: none !important; }
+  .mascot-wave { opacity: 1; }
+}
