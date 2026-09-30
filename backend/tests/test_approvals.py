@@ -382,11 +382,11 @@ def test_reasons_list_the_facts_a_manager_checks(tx, api, auth, model):
 
 def test_the_generator_and_the_backend_compute_the_same_features(tx):
     # 產生器（data/seed/generate.py）自己算了一份特徵寫在歷史單上；後端在同一天算出來的要一樣，
-    # 不然模型訓練時看到的資料跟上線時算出來的不一樣。兩種申請各抽幾張，前後期都抽到
+    # 不然模型訓練時看到的資料跟上線時算出來的不一樣。兩種申請各平均抽 50 張，前後期都抽到（全部 1,205 張要十幾秒）
     for kind, build in (("discount", approvals.discount_features), ("contract", approvals.contract_features)):
         forms = tx.scalars(select(OaExpenseForm).where(OaExpenseForm.kind == kind).order_by(OaExpenseForm.id)).all()
-        sample = forms[:: len(forms) // 6][:6]
-        assert len(sample) == 6
+        sample = forms[:: len(forms) // 50][:50]
+        assert len(sample) == 50
         for form in sample:
             customer = tx.get(Customer, form.customer_id)
             computed = build(approvals.customer_state(tx, customer, form.request_date), form.payload)

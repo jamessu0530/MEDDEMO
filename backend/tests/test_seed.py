@@ -240,6 +240,23 @@ def generate_features(kind):
     return approvals.FEATURES[kind]
 
 
+def test_every_seeded_trip_form_has_two_signed_steps_and_two_log_lines(db):
+    # 出差單的關卡與日誌在 seed.py 用 SQL 補（只補 kind = 'trip' 的）：請求者與直屬主管兩關都簽完，
+    # 日誌是送出與核准兩筆。優惠與合約的單另外補，不能混進來
+    assert rows(db, """
+        SELECT count(*) FROM oa_expense_form o
+        JOIN app_user a ON a.id = o.applicant_id
+        WHERE o.kind = 'trip' AND (
+            (SELECT array_agg((s.role_label || '/' || s.user_id || '/' || s.status)::text ORDER BY s.step_no)
+             FROM oa_approval_step s WHERE s.form_id = o.id)
+            IS DISTINCT FROM ARRAY['請求者/' || o.applicant_id || '/done', '經辦人的主管/' || a.manager_id || '/done']
+         OR (SELECT array_agg(x.action::text ORDER BY x.id) FROM oa_activity x WHERE x.form_id = o.id)
+            IS DISTINCT FROM ARRAY['submitted', 'approved']
+        )
+    """)[0][0] == 0
+    assert rows(db, "SELECT count(*) FROM oa_expense_form WHERE kind = 'trip' AND status = 'approved'")[0][0] == 5223
+
+
 def test_approval_history_leaves_the_trip_forms_and_quotes_alone(db):
     # 既有的 5,223 張出差單照舊；歷史優惠單不建報價草稿（會影響今日路線的商機）
     assert rows(db, "SELECT count(*), count(visit_id), count(payload) FROM oa_expense_form WHERE kind = 'trip'")[0] == (5223, 5223, 0)
