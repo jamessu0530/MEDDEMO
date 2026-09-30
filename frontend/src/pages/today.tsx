@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Bell, Check, ChevronRight, CircleHelp, FileText, ListOrdered, Loader2, TriangleAlert } from "lucide-react"
+import { Bell, BookOpenText, Check, ChevronRight, CircleHelp, FileText, ListOrdered, Loader2, TriangleAlert } from "lucide-react"
 import { Link, useNavigate } from "react-router"
 
 import { signOutSession } from "@/api/auth"
@@ -114,6 +114,14 @@ export function TodayPage() {
             >
               <CircleHelp className="size-5" />
             </button>
+            {/* 方法卡：主管教的做法，出門前或進門前翻一下 */}
+            <Link
+              to="/methods"
+              aria-label="方法卡"
+              className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
+            >
+              <BookOpenText className="size-5" />
+            </Link>
             <Link
               to="/oa/forms"
               aria-label="我的申請單"
