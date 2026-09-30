@@ -258,7 +258,10 @@ function IntervalChart({ intervals, alert }: { intervals: CustomerProfile["inter
   )
 }
 
-/** 連鎖客戶的合約到期日與「申請續約」；3 個月內到期時標出來（《連鎖通路合約條件》：到期前 3 個月啟動續約協商） */
+/**
+ * 連鎖客戶的合約到期日；3 個月內到期時標出來，這時才有「申請續約」
+ * （《連鎖通路合約條件》：到期前 3 個月啟動續約協商，離到期還久的合約後端不收續約申請）
+ */
 function ContractRow({ customerId, contract }: { customerId: string; contract: Contract }) {
   if (!contract.contract_end_date) return null
   const left = contract.days_left ?? 0
@@ -276,7 +279,11 @@ function ContractRow({ customerId, contract }: { customerId: string; contract: C
           )}
         </p>
         <p className="mt-0.5 text-[11px] text-muted-foreground">
-          {contract.pending_form_id ? "續約申請簽核中" : contract.ending_soon ? "3 個月內到期，該開始談續約" : `還有 ${left} 天`}
+          {contract.pending_form_id
+            ? "續約申請簽核中"
+            : contract.ending_soon
+              ? "3 個月內到期，該開始談續約"
+              : `還有 ${left} 天，到期前 3 個月才能申請續約`}
         </p>
       </div>
       {contract.pending_form_id ? (
@@ -284,9 +291,11 @@ function ContractRow({ customerId, contract }: { customerId: string; contract: C
           <Link to={`/oa/forms/${contract.pending_form_id}`}>看申請單</Link>
         </Button>
       ) : (
-        <Button asChild variant="outline" className="h-11 shrink-0">
-          <Link to={`/customers/${customerId}/contract`}>申請續約</Link>
-        </Button>
+        contract.can_request && (
+          <Button asChild variant="outline" className="h-11 shrink-0">
+            <Link to={`/customers/${customerId}/contract`}>申請續約</Link>
+          </Button>
+        )
       )}
     </section>
   )

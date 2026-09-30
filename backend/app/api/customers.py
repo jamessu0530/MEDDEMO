@@ -422,6 +422,10 @@ class Contract(BaseModel):
     channel_reward_rate: float
     # 還沒簽完的續約申請；同一家客戶同時只能有一張
     pending_form_id: int | None
+    # 現在能不能送續約申請：要在到期前 3 個月內（或已經過期），而且沒有還沒簽完的申請
+    can_request: bool
+    # 離到期還太久時的說明；其他情況是 null
+    blocked_reason: str | None
 
 
 class ContractRequestInput(BaseModel):
@@ -439,11 +443,16 @@ def _load_chain(session: Session, customer_id: str, user: AppUser) -> Customer:
 
 
 def _contract(session: Session, customer: Customer) -> dict[str, Any]:
-    terms = approvals.contract_terms(session, customer, customer_profile.app_today(session))
+    today = customer_profile.app_today(session)
+    terms = approvals.contract_terms(session, customer, today)
     days_left = terms["days_left"]
+    pending = approvals.pending_contract(session, customer.id)
+    blocked = approvals.renewal_block(customer, today)
     return terms | {
         "ending_soon": days_left is not None and days_left <= customer_profile.CONTRACT_NOTICE_DAYS,
-        "pending_form_id": approvals.pending_contract(session, customer.id),
+        "pending_form_id": pending,
+        "can_request": pending is None and blocked is None,
+        "blocked_reason": blocked,
     }
 
 
@@ -459,9 +468,12 @@ def create_contract_request(session: SessionDep, customer_id: str, body: Contrac
     customer = _load_chain(session, customer_id, user)
     if approvals.pending_contract(session, customer.id):
         raise HTTPException(409, "這家客戶已經有一張還沒簽完的續約申請")
+    today = customer_profile.app_today(session)
+    if blocked := approvals.renewal_block(customer, today):
+        raise HTTPException(409, blocked)
     reason = body.reason.strip()
     payload = approvals.contract_payload(
-        session, customer, customer_profile.app_today(session), term_months=body.term_months,
+        session, customer, today, term_months=body.term_months,
         # 費率到 0.1 個百分點，跟帶出來的目前費率同一個精度，沒改的才比得出「沒改」
         listing_fee_rate=round(body.listing_fee_rate, 3), channel_reward_rate=round(body.channel_reward_rate, 3),
         reason=reason,

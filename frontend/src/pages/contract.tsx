@@ -142,6 +142,12 @@ export function ContractPage() {
                 action={{ label: "看申請單", onClick: () => navigate(`/oa/forms/${contract.pending_form_id}`) }}
                 secondary={{ label: "回客戶檔案", onClick: () => navigate(profilePath) }}
               />
+            ) : !contract.can_request ? (
+              // 直接打網址進來、而合約離到期還久：說明原因，不給表單
+              <Notice
+                text={contract.blocked_reason ?? "這家客戶現在還不能申請續約。"}
+                action={{ label: "回客戶檔案", onClick: () => navigate(profilePath) }}
+              />
             ) : (
               <>
                 <section className="flex flex-col gap-3 rounded-2xl border bg-card px-4 py-3">

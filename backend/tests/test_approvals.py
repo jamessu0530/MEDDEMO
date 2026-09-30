@@ -17,10 +17,13 @@ from sqlalchemy.orm import Session
 from app.main import app
 from app.models import AppUser, Customer, OaActivity, OaApprovalStep, OaExpenseForm, SapQuotationDraft
 from app.services import approvals, customer_profile, oa
+from app.services import auth as auth_service
 
 TODAY = dt.date(2026, 10, 28)
 # 林昱辰名下：忠孝店帳款正常（最久 23 天），鶯歌店有一筆拖了 93 天
 GOOD, LATE = "C001", "C099"
+# 內湖店的合約 2026-11-17 到期，剩 20 天：已經在「到期前 3 個月」裡，可以申請續約（忠孝店還有 338 天，不行）
+DUE = "C003"
 
 
 @pytest.fixture
@@ -399,7 +402,7 @@ def test_the_seeded_system_approvals_agree_with_the_trained_model(tx):
 # ── API：續約申請與系統核准的清單 ───────────────────────────────────
 
 
-def renew(api, auth, customer_id=GOOD, user="U01", **changes):
+def renew(api, auth, customer_id=DUE, user="U01", **changes):
     body = {"term_months": 12, "listing_fee_rate": 0.08, "channel_reward_rate": 0.05, "reason": "照去年條件"} | changes
     return api.post(f"/api/customers/{customer_id}/contract-requests", json=body, headers=auth(user))
 
@@ -407,14 +410,18 @@ def renew(api, auth, customer_id=GOOD, user="U01", **changes):
 def test_the_contract_page_shows_the_current_terms(tx, api, auth, model):
     contract = api.get(f"/api/customers/{GOOD}/contract", headers=auth("U01"))
     assert contract.status_code == 200
+    # 忠孝店的合約還有 338 天：看得到條件，但還不能申請續約
     assert contract.json() == {
         "contract_end_date": "2027-10-01", "days_left": 338, "ending_soon": False,
         "listing_fee_rate": 0.08, "channel_reward_rate": 0.05, "pending_form_id": None,
+        "can_request": False, "blocked_reason": "合約還有 338 天到期，到期前 3 個月才能申請續約",
     }
-    # 蘆洲店 12/7 到期，已經在 3 個月內；假資料裡它有一張還沒簽完的續約申請
+    due = api.get(f"/api/customers/{DUE}/contract", headers=auth("U01")).json()
+    assert (due["days_left"], due["ending_soon"], due["can_request"], due["blocked_reason"]) == (20, True, True, None)
+    # 蘆洲店 12/7 到期，已經在 3 個月內；假資料裡它有一張還沒簽完的續約申請，簽完才能再送
     soon = api.get("/api/customers/C087/contract", headers=auth("U01")).json()
     assert (soon["contract_end_date"], soon["ending_soon"]) == ("2026-12-07", True)
-    assert soon["pending_form_id"] is not None
+    assert soon["pending_form_id"] is not None and soon["can_request"] is False
     # 只有連鎖客戶有通路合約；別人的客戶跟不存在一樣
     assert api.get("/api/customers/C025/contract", headers=auth("U01")).status_code == 409
     assert api.get("/api/customers/C002/contract", headers=auth("U01")).status_code == 404
@@ -426,7 +433,7 @@ def test_a_renewal_request_goes_through_the_api(tx, api, auth, model):
     approval = sent.json()
     assert (approval["status"], approval["auto_approved"]) == ("pending", False)
     assert approval["form_no"].startswith("CT202610") and approval["waiting_for"] == {"step": "區處主管", "name": "陳建宏"}
-    assert api.get(f"/api/customers/{GOOD}/contract", headers=auth("U01")).json()["pending_form_id"] == approval["form_id"]
+    assert api.get(f"/api/customers/{DUE}/contract", headers=auth("U01")).json()["pending_form_id"] == approval["form_id"]
     # 同一家客戶同時只能有一張還沒簽完的合約申請
     assert renew(api, auth).status_code == 409
     assert renew(api, auth, "C087").status_code == 409
@@ -448,8 +455,46 @@ def test_bad_renewal_requests_are_rejected(tx, api, auth, model):
     assert renew(api, auth, reason="長" * 501).status_code == 422
     # 費率有調整要寫理由，照原費率續約可以不寫
     assert renew(api, auth, listing_fee_rate=0.09, reason="").status_code == 422
-    assert api.get(f"/api/customers/{GOOD}/contract", headers=auth("U01")).json()["pending_form_id"] is None
+    assert api.get(f"/api/customers/{DUE}/contract", headers=auth("U01")).json()["pending_form_id"] is None
     assert renew(api, auth, reason="").status_code == 201
+
+
+def test_a_renewal_can_only_be_filed_in_the_last_three_months(tx, api, auth, model):
+    # 《連鎖通路合約條件》：續約協商在到期前 3 個月啟動。離到期還久的合約不能送續約——
+    # 不然照原費率的續約可以一送再送、每次都由系統核准，到期日一路往後延，沒有人看過
+    early = renew(api, auth, GOOD)
+    assert early.status_code == 409
+    assert early.json()["detail"] == "合約還有 338 天到期，到期前 3 個月才能申請續約"
+    # 自建帳號代理林昱辰，一樣擋
+    guest = AppUser(id="XTEST08", name="評審", role="sales", region="北區", acts_as_user_id="U01")
+    tx.add(guest)
+    tx.commit()
+    headers = {"Authorization": f"Bearer {auth_service.create_token(guest)}"}
+    body = {"term_months": 24, "listing_fee_rate": 0.08, "channel_reward_rate": 0.05, "reason": ""}
+    assert api.post(f"/api/customers/{GOOD}/contract-requests", json=body, headers=headers).status_code == 409
+
+    # 剛好 90 天可以，91 天不行；已經過期的可以
+    customer = tx.get(Customer, GOOD)
+    for days_left, status in ((91, 409), (90, 201)):
+        customer.contract_end_date = TODAY + dt.timedelta(days=days_left)
+        tx.commit()
+        assert renew(api, auth, GOOD).status_code == status, days_left
+    expired = tx.get(Customer, "C005")
+    expired.contract_end_date = TODAY - dt.timedelta(days=30)
+    tx.commit()
+    assert api.get("/api/customers/C005/contract", headers=auth("U01")).json()["can_request"] is True
+    assert renew(api, auth, "C005").status_code == 201
+
+
+def test_an_approved_renewal_cannot_be_followed_by_another(tx, api, auth, model):
+    # 系統核准之後到期日往後延，離到期又超過 3 個月，自然就不能再送
+    model(fake_model(0.97))
+    first = renew(api, auth, term_months=24)
+    assert first.status_code == 201 and first.json()["auto_approved"] is True
+    assert tx.get(Customer, DUE, populate_existing=True).contract_end_date == dt.date(2028, 11, 17)
+    again = renew(api, auth, term_months=24)
+    assert again.status_code == 409 and "到期前 3 個月才能申請續約" in again.json()["detail"]
+    assert tx.get(Customer, DUE, populate_existing=True).contract_end_date == dt.date(2028, 11, 17)
 
 
 def test_no_renewal_is_filed_while_oa_is_down(tx, api, auth, model):
@@ -457,7 +502,7 @@ def test_no_renewal_is_filed_while_oa_is_down(tx, api, auth, model):
     try:
         response = renew(api, auth)
         assert response.status_code == 503 and "OA" in response.json()["detail"]
-        assert approvals.pending_contract(tx, GOOD) is None
+        assert approvals.pending_contract(tx, DUE) is None
     finally:
         api.put("/api/mock-systems/oa", json={"down": False})
 

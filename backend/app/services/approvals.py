@@ -222,6 +222,22 @@ def contract_terms(session: Session, customer: Customer, today: dt.date) -> dict
     }
 
 
+def renewal_block(customer: Customer, today: dt.date) -> str | None:
+    """現在為什麼還不能申請續約；可以申請就回 None。
+
+    《連鎖通路合約條件》：續約協商在到期前 3 個月啟動。離到期還久的合約不收續約申請——不擋的話，
+    照原費率的續約可以一送再送、每次都由系統核准，到期日一路往後延，沒有人看過。
+    已經過期的可以送；核准之後到期日往後延，自然就不能再送。
+    """
+    end = customer.contract_end_date
+    if end is None:
+        return None
+    days_left = (end - today).days
+    if days_left > customer_profile.CONTRACT_NOTICE_DAYS:
+        return f"合約還有 {days_left} 天到期，到期前 3 個月才能申請續約"
+    return None
+
+
 def contract_payload(
     session: Session, customer: Customer, today: dt.date, *,
     term_months: int, listing_fee_rate: float, channel_reward_rate: float, reason: str,

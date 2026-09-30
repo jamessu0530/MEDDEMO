@@ -287,6 +287,10 @@ def test_the_demo_requests_wait_in_the_managers_inbox(db):
         ("discount", "director", 10.0, "福安連鎖藥局 · 板橋店", ["done", "pending", "waiting"], ["U01", "M01", "A01"]),
         ("contract", "director", None, "康泰連鎖藥局 · 蘆洲店", ["done", "pending", "waiting"], ["U01", "M01", "A01"]),
     ]
+    # 續約要在到期前 3 個月內才能申請：展示用那張送單當下離到期 41 天
+    assert rows(db, """
+        SELECT (payload->>'old_end_date')::date - request_date FROM oa_expense_form WHERE kind = 'contract' AND status = 'pending'
+    """) == [(41,)]
     automatic = rows(db, """
         SELECT o.applicant_id, o.kind, o.status, array_agg(s.role_label ORDER BY s.step_no),
                array_agg(s.user_id ORDER BY s.step_no),

@@ -180,6 +180,10 @@ export type Contract = {
   channel_reward_rate: number
   // 還沒簽完的續約申請；同一家客戶同時只能有一張
   pending_form_id: number | null
+  // 現在能不能送續約申請：要在到期前 3 個月內（或已經過期），而且沒有還沒簽完的申請
+  can_request: boolean
+  // 離到期還太久時的說明（「合約還有 338 天到期，到期前 3 個月才能申請續約」）；其他情況是 null
+  blocked_reason: string | null
 }
 
 export type ContractRequest = {
