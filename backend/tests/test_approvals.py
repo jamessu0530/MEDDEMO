@@ -484,3 +484,14 @@ def test_the_inbox_shows_the_estimate_and_the_facts_behind_it(tx, api, auth):
         "折扣 6%，在區處主管的權限（8%）以內", "折後毛利率 30%", "帳款最久 92 天，超過 60 天", "近 90 天的拜訪沒有提到競品",
     ]
     assert [line["alert"] for line in late["model"]["reasons"]] == [False, False, True, False]
+
+
+def test_a_pending_request_follows_the_rep_to_a_new_manager(tx, api, auth, model):
+    # 跟出差單一樣：業務換了主管，區處主管那一關還沒簽就改送新主管（services/org_admin.py）
+    form = submit_discount(tx, 10.0, customer_id="C002")
+    assert [s.user_id for s in steps(tx, form)] == ["U02", "M01", "A01"]
+    assert api.put("/api/admin/users/U02/manager", json={"manager_id": "M02"}, headers=auth("A01")).status_code == 200
+    tx.expire_all()
+    assert [s.user_id for s in steps(tx, form)] == ["U02", "M02", "A01"]
+    assert api.get(f"/api/oa/forms/{form.id}", headers=auth("M02")).json()["can_decide"] is True
+    assert api.get(f"/api/oa/forms/{form.id}", headers=auth("M01")).status_code == 404
