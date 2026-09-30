@@ -4,12 +4,13 @@
 評測題庫的標準答案要用同一個 as_of 產生的資料計算。例外是促銷方案：照搬的那一期是真實方案，
 固定在 2026 年 8 月，換 as_of 只會改變模擬到哪個月。
 
-亂數分三條：原本 80 家客戶與交易、補的 170 家客戶與交易、拜訪各用一條。
+亂數分四條：原本 80 家客戶與交易、補的 170 家客戶與交易、拜訪、優惠與合約的歷史申請單各用一條。
 改其中一段不會連帶改到另一段，例如重排拜訪時，交易金額與帳款一筆都不會變。
 """
 
+import calendar
 import random
-from math import exp
+from math import exp, log1p
 from datetime import date, datetime, time, timedelta, timezone
 
 import catalog
@@ -540,10 +541,13 @@ def build_visits(rng, customers, baskets, products, as_of, transactions, receiva
                 "created_at": confirmed_at,
             })
         tables["oa_expense_form"].append({
-            "form_no": f"OA{d:%Y%m}{n:05d}",
+            "form_no": f"OA{d:%Y%m}{n:05d}", "kind": "trip", "required_level": "manager",
             "visit_id": visit_id, "applicant_id": c["owner_user_id"], "trip_date": d,
             "customer_id": c["id"], "purpose": "客戶拜訪", "unit_name": c["region"],
             "status": "approved", "created_at": confirmed_at, "submitted_at": confirmed_at,
+            # 優惠與合約申請單才有的欄位。同一張表的每一列要有同一組鍵，才能整批寫入
+            "request_date": None, "payload": None, "model_probability": None, "model_features": None,
+            "auto_approved": False,
         })
         for target in ("crm", "sap", "oa"):
             status = "skipped" if target == "sap" and not fields["intent"] else "success"
@@ -592,6 +596,292 @@ def build_promotions(as_of):
         start = end + timedelta(days=1)
         period += 1
     return promotions, items
+
+
+# ── 優惠與合約的申請單：簽核模型（backend/app/services/approvals.py）的訓練資料 ─────────────
+#
+# 規則與特徵的定義跟 approvals.py 是同一組，改了要兩邊一起改；
+# test_approvals.py 會抽歷史單，比對這裡算的特徵跟後端在那一天算出來的一樣。
+
+# 歷史申請單落在最近這麼多天裡。交易只有一年，申請當天要往回看 90 天的進貨金額，
+# 再早的申請看到的會是不完整的 90 天
+APPROVAL_HISTORY_DAYS = HISTORY_DAYS - 90
+DISCOUNT_FORMS = 900
+CONTRACT_FORMS = 300
+# 客戶狀態看近 90 天，跟客戶檔案同一個時間窗
+APPROVAL_STATE_DAYS = 90
+# 《報價權限與折扣審核》：業務自己 3%、區處主管 8%、業務處長 12%，再上去總經理，最多收到 20%
+DISCOUNT_BANDS = {"manager": (3.5, 8.0), "director": (8.5, 12.0), "gm": (12.5, 20.0)}
+# 大多落在主管權限內，少數到處長，很少到總經理
+DISCOUNT_BAND_WEIGHTS = {"manager": 72, "director": 22, "gm": 6}
+# 連鎖量大、議價多，來要折扣的比獨立藥局與診所多
+DISCOUNT_CUSTOMER_WEIGHT = {"chain": 3.0, "independent": 1.5, "clinic": 1.0}
+# 要折扣的通常是比平常大的單：每個品項是平常一次進貨量的幾倍
+DISCOUNT_QTY_SCALE = (1.0, 4.0)
+# 續約三分之二照原費率；有調整的大多是通路要求調高（百分點）
+CONTRACT_SAME_RATE = 2 / 3
+CONTRACT_LISTING_STEPS = (-0.5, 0.5, 0.5, 1.0, 1.0, 1.5, 2.0)
+CONTRACT_REWARD_STEPS = (0.0, 0.0, 0.5, 0.5, 1.0)
+CONTRACT_TERMS = (12, 12, 12, 24)
+# 簽核結果跟特徵的關聯，係數的單位是標準差（做法跟 CONTENT_SIGNALS 一樣）。沒有這層關聯，
+# 簽核模型學不到東西。方向照設計文件：折扣越深、折後毛利越低、帳款拖越久越容易被退；
+# 有競品壓力、進貨量大、等級高比較會過。合約則是費率調得越多越難過，淨毛利低、帳款久也難過。
+DISCOUNT_APPROVAL = {
+    "bias": 1.9,
+    "discount_pct": -2.4, "margin_after": 1.0, "ar_age_days": -1.0,
+    "competitor_recent": 0.5, "log_sales_90d": 0.6, "grade_weight": 0.4,
+}
+CONTRACT_APPROVAL = {
+    "bias": 2.2,
+    "fee_change": -2.2, "net_margin": 1.0, "ar_age_days": -1.0,
+    "log_sales_90d": 0.5, "grade_weight": 0.4, "term_years": -0.2,
+}
+# 同樣條件的單，換一位主管、換一天簽，結果不會完全一樣：分數上再加一點常態雜訊
+APPROVAL_NOISE_SD = 0.4
+# 沒過的單多數是駁回，其餘退回請業務補資料
+REFUSED_STATUSES = ("rejected", "rejected", "returned")
+DISCOUNT_REASONS = [
+    "競品開了更低的價格，客戶要求比照",
+    "客戶這次進貨量比平常大，要求量大折扣",
+    "客戶準備做檔期，要求進貨折扣",
+    "新分店開幕，希望首批進貨給優惠",
+    "庫存效期較近，客戶願意多進但要折扣",
+]
+CONTRACT_REASONS = [
+    "合約即將到期，照去年條件續約",
+    "客戶希望多簽一年換取穩定供貨",
+    "通路總部要求調整費率才願意續約",
+    "競品提出更高的通路獎勵，客戶要求比照",
+]
+
+# 給展示用的五張：陳建宏的簽核匣三張待簽，林昱辰名下兩張系統核准。都是林昱辰的客戶，前一天送的。
+# (種類, 客戶, 內容, 狀態, 是不是系統核准)。優惠的內容是 (折扣, [(品項, 數量)], 理由)；
+# 合約是 (月數, 上架費率調整幾個百分點, 通路獎勵調整幾個百分點, 理由)
+DEMO_REQUESTS = [
+    # 鶯歌店有帳款拖超過 60 天：規則上主管就能簽，但帳款這一條不交給模型，一定送人
+    ("discount", "福安連鎖藥局 · 鶯歌店", (6.0, [("HS-FO30", 80), ("HS-CA60", 40)], "康普樂開買十送一，店長要求比照"), "pending", False),
+    # 10% 超過區處主管的權限，主管簽完還要送業務處長
+    ("discount", "福安連鎖藥局 · 板橋店", (10.0, [("HS-FO30", 120)], "御松田要搶櫃檯旁的陳列位，店長要求魚油比照競品條件"), "pending", False),
+    ("contract", "康泰連鎖藥局 · 蘆洲店", (12, 0.5, 0.0, "總部要求上架費率調高半個百分點才願意續約"), "pending", False),
+    ("discount", "康泰連鎖藥局 · 忠孝店", (4.0, [("HS-FO30", 60), ("HS-PB30", 30)], "御松田條件比我們好，店長願意先進魚油但要折扣"), "approved", True),
+    ("discount", "康泰連鎖藥局 · 南港店", (5.0, [("HS-FO30", 50), ("HS-CA60", 30)], "這次進貨量比平常多一倍，要求量大折扣"), "approved", True),
+]
+
+
+def add_months(day, months):
+    """往後加幾個月；落在比較短的月份就取那個月的最後一天。"""
+    index = day.year * 12 + day.month - 1 + months
+    year, month = divmod(index, 12)
+    return date(year, month + 1, min(day.day, calendar.monthrange(year, month + 1)[1]))
+
+
+def approval_index(customers, transactions, receivables, visits):
+    """把交易、帳款、提到競品的拜訪整理成「每家客戶一份」，算申請當天的狀態時才不必每次重掃全表。"""
+    trades = {c["id"]: [] for c in customers}
+    invoices = {c["id"]: [] for c in customers}
+    competitor_days = {c["id"]: [] for c in customers}
+    for line in transactions:
+        trades[line["customer_id"]].append(line)
+    for row in receivables:
+        invoices[row["customer_id"]].append((row["invoice_date"], row["paid_date"]))
+    for visit in visits:
+        if visit["fields_final"]["competitor"]:
+            competitor_days[visit["customer_id"]].append(visit["visited_at"].date())
+    return trades, invoices, competitor_days
+
+
+def approval_state(customer, day, trades, invoices, competitor_days):
+    """申請當天早上這家客戶的狀態。定義跟後端的 approvals.customer_state 是同一組。"""
+    since = day - timedelta(days=APPROVAL_STATE_DAYS)
+    recent = [line for line in trades if since < line["date"] < day]
+    revenue = sum(line["amount"] for line in recent)
+    fees = sum(line["cost"] + line["listing_fee"] + line["channel_reward"] for line in recent)
+    # 進貨間隔的變化跟今日路線同一個算法（route_model 的 SQL）：每次進貨距離上一次幾天，算在這次進貨的日子上
+    dates = sorted({line["date"] for line in trades if line["date"] < day})
+    gaps = [(later, (later - earlier).days) for earlier, later in zip(dates, dates[1:])]
+    now = [gap for d, gap in gaps if d > since]
+    before = [gap for d, gap in gaps if day - timedelta(days=2 * APPROVAL_STATE_DAYS) < d <= since]
+    gap_now = sum(now) / len(now) if now else None
+    gap_before = sum(before) / len(before) if before else None
+    return {
+        "sales_90d": float(revenue),
+        "net_margin": (revenue - fees) / revenue if revenue else 0.0,
+        "interval_change": gap_now / gap_before - 1 if gap_now and gap_before else 0.0,
+        "ar_age_days": float(max(
+            ((day - invoice_date).days for invoice_date, paid_date in invoices
+             if invoice_date <= day and (paid_date is None or paid_date > day)),
+            default=0,
+        )),
+        # 申請當天的拜訪也算
+        "competitor_recent": 1.0 if any(since <= d <= day for d in competitor_days) else 0.0,
+        "grade_weight": float(VISIT_WEIGHT[customer["grade"]]),
+    }
+
+
+def discount_features(state, payload):
+    amount, cost = float(payload["amount"]), float(payload["cost"])
+    return {
+        "discount_pct": float(payload["discount_pct"]),
+        "margin_after": (amount - cost) / amount if amount else 0.0,
+        "log_amount": log1p(amount),
+        "log_sales_90d": log1p(state["sales_90d"]),
+        "ar_age_days": state["ar_age_days"],
+        "competitor_recent": state["competitor_recent"],
+        "grade_weight": state["grade_weight"],
+    }
+
+
+def contract_features(state, payload):
+    listing, reward = payload["listing_fee_rate"], payload["channel_reward_rate"]
+    return {
+        "fee_change": round(((listing["to"] - listing["from"]) + (reward["to"] - reward["from"])) * 100, 4),
+        "term_years": payload["term_months"] / 12,
+        "net_margin": state["net_margin"],
+        "log_sales_90d": log1p(state["sales_90d"]),
+        "interval_change": state["interval_change"],
+        "ar_age_days": state["ar_age_days"],
+        "grade_weight": state["grade_weight"],
+    }
+
+
+def discount_level(pct):
+    return next(level for level, (_, high) in DISCOUNT_BANDS.items() if pct <= high)
+
+
+def discount_payload(customer, products, items, pct, reason):
+    """一張報價折扣的申請內容。假資料不建報價草稿（會影響今日路線的商機），所以 quote_no 是 None。"""
+    factor = PRICE_FACTOR[customer["type"]]
+    list_amount = sum(qty * round(products[sku]["unit_price"] * factor) for sku, qty in items)
+    return {
+        "quote_no": None, "discount_pct": pct, "list_amount": list_amount,
+        "amount": round(list_amount * (1 - pct / 100)),
+        "cost": sum(qty * products[sku]["unit_cost"] for sku, qty in items), "reason": reason,
+    }
+
+
+def contract_payload(customer, old_end, term_months, listing_change, reward_change, reason):
+    """一張續約的申請內容。調整的單位是百分點。"""
+    listing, reward = CHAIN_FEES[customer["chain_group"]]
+    return {
+        "term_months": term_months,
+        "listing_fee_rate": {"from": listing, "to": round(listing + listing_change / 100, 4)},
+        "channel_reward_rate": {"from": reward, "to": round(reward + reward_change / 100, 4)},
+        "old_end_date": old_end.isoformat(), "new_end_date": add_months(old_end, term_months).isoformat(),
+        "reason": reason,
+    }
+
+
+def decide_requests(rng, requests, signals):
+    """照特徵決定每張單過不過：每個特徵換算成離平均幾個標準差，乘上係數加起來當分數，再加雜訊。"""
+    names = [name for name in signals if name != "bias"]
+    rows = [features for _, features in requests]
+    mean = {k: sum(r[k] for r in rows) / len(rows) for k in names}
+    sd = {k: (sum((r[k] - mean[k]) ** 2 for r in rows) / len(rows)) ** 0.5 or 1.0 for k in names}
+    statuses = []
+    for features in rows:
+        score = signals["bias"] + sum(signals[k] * (features[k] - mean[k]) / sd[k] for k in names)
+        score += rng.gauss(0, APPROVAL_NOISE_SD)
+        approved = rng.random() < 1 / (1 + exp(-score))
+        statuses.append("approved" if approved else rng.choice(REFUSED_STATUSES))
+    return statuses
+
+
+def request_row(kind, prefix, seq, customer, at, payload, level, features, status, auto_approved=False):
+    return {
+        "form_no": f"{prefix}{at:%Y%m}{seq:05d}", "kind": kind, "required_level": level,
+        "visit_id": None, "applicant_id": customer["owner_user_id"], "trip_date": None,
+        "customer_id": customer["id"], "purpose": "報價折扣" if kind == "discount" else "連鎖續約",
+        "unit_name": customer["region"], "status": status, "created_at": at, "submitted_at": at,
+        "request_date": at.date(), "payload": payload,
+        # 歷史單是人簽的，當時沒有模型；展示用的五張在灌資料時用訓練好的模型補上機率（seed.py）
+        "model_probability": None, "model_features": features, "auto_approved": auto_approved,
+    }
+
+
+def build_approval_history(rng, customers, baskets, products, as_of, transactions, receivables, visits):
+    """優惠與合約的歷史申請單（全部已經有結果），加上給展示用的五張。
+
+    每張單的關卡與活動日誌在 seed.py 補，做法跟歷史出差單一樣。
+    """
+    trades, invoices, competitor_days = approval_index(customers, transactions, receivables, visits)
+
+    def state(customer, day):
+        cid = customer["id"]
+        return approval_state(customer, day, trades[cid], invoices[cid], competitor_days[cid])
+
+    def moment(day):
+        return datetime.combine(day, time(rng.randint(9, 17), rng.randint(0, 59)), TAIPEI)
+
+    workdays = [d for d in (as_of - timedelta(days=n) for n in range(APPROVAL_HISTORY_DAYS, 0, -1)) if d.weekday() < 5]
+    weights = [DISCOUNT_CUSTOMER_WEIGHT[c["type"]] for c in customers]
+    chains = [c for c in customers if c["type"] == "chain"]
+
+    discounts = []
+    for _ in range(DISCOUNT_FORMS):
+        customer = rng.choices(customers, weights=weights)[0]
+        at = moment(rng.choice(workdays))
+        band = rng.choices(list(DISCOUNT_BAND_WEIGHTS), weights=list(DISCOUNT_BAND_WEIGHTS.values()))[0]
+        low, high = DISCOUNT_BANDS[band]
+        # 每 0.5% 一格；同一級裡淺的折扣比深的常見
+        steps = [low + 0.5 * i for i in range(int((high - low) * 2) + 1)]
+        pct = rng.choices(steps, weights=[len(steps) - i / 2 for i in range(len(steps))])[0]
+        basket = baskets[customer["id"]]
+        items = [
+            (sku, max(1, round(basket[sku] * rng.uniform(*DISCOUNT_QTY_SCALE))))
+            for sku in rng.sample(sorted(basket), rng.choice([1, 1, 2, 2, 3]))
+        ]
+        payload = discount_payload(customer, products, items, pct, rng.choice(DISCOUNT_REASONS))
+        discounts.append(((customer, at, payload, band), discount_features(state(customer, at.date()), payload)))
+
+    contracts = []
+    for _ in range(CONTRACT_FORMS):
+        customer = rng.choice(chains)
+        at = moment(rng.choice(workdays))
+        # 續約協商在到期前 3 個月內啟動（《連鎖通路合約條件》）
+        old_end = at.date() + timedelta(days=rng.randint(15, 90))
+        if rng.random() < CONTRACT_SAME_RATE:
+            listing_change, reward_change, reason = 0.0, 0.0, rng.choice(CONTRACT_REASONS[:2])
+        else:
+            listing_change, reward_change = rng.choice(CONTRACT_LISTING_STEPS), rng.choice(CONTRACT_REWARD_STEPS)
+            reason = rng.choice(CONTRACT_REASONS[2:])
+        payload = contract_payload(customer, old_end, rng.choice(CONTRACT_TERMS), listing_change, reward_change, reason)
+        level = "manager" if (listing_change, reward_change) == (0.0, 0.0) else "director"
+        contracts.append(((customer, at, payload, level), contract_features(state(customer, at.date()), payload)))
+
+    rows = []
+    numbering = {}
+
+    def add(kind, prefix, customer, at, payload, level, features, status, auto_approved=False):
+        seq = numbering[prefix, at.year, at.month] = numbering.get((prefix, at.year, at.month), 0) + 1
+        rows.append(request_row(kind, prefix, seq, customer, at, payload, level, features, status, auto_approved))
+
+    for kind, prefix, requests, signals in (
+        ("discount", "DC", discounts, DISCOUNT_APPROVAL), ("contract", "CT", contracts, CONTRACT_APPROVAL),
+    ):
+        statuses = decide_requests(rng, requests, signals)
+        # 照送單時間排，同一個月的單號才是先送的在前面
+        for ((customer, at, payload, level), features), status in sorted(
+            zip(requests, statuses), key=lambda item: (item[0][0][1], item[0][0][0]["id"])
+        ):
+            add(kind, prefix, customer, at, payload, level, features, status)
+
+    # 展示用的五張：前一天下午送的，每張隔十分鐘
+    by_name = {c["name"]: c for c in customers}
+    yesterday = as_of - timedelta(days=1)
+    for n, (kind, name, spec, status, auto_approved) in enumerate(DEMO_REQUESTS):
+        customer = by_name[name]
+        at = datetime.combine(yesterday, time(14, 10 * n), TAIPEI)
+        if kind == "discount":
+            pct, items, reason = spec
+            payload = discount_payload(customer, products, items, pct, reason)
+            level, features = discount_level(pct), discount_features(state(customer, yesterday), payload)
+        else:
+            term_months, listing_change, reward_change, reason = spec
+            payload = contract_payload(customer, customer["contract_end_date"], term_months, listing_change, reward_change, reason)
+            level = "manager" if (listing_change, reward_change) == (0.0, 0.0) else "director"
+            features = contract_features(state(customer, yesterday), payload)
+        add(kind, "DC" if kind == "discount" else "CT", customer, at, payload, level, features, status, auto_approved)
+    return rows
 
 
 # 方法卡是幾天前寫的。回饋落在寫好之後、灌資料之前
@@ -685,7 +975,7 @@ def generate(as_of: date, seed: int = SEED) -> dict[str, list[dict]]:
     ]
     promotions, promotion_items = build_promotions(as_of)
 
-    return {
+    data = {
         "org_unit": org_units,
         "place": places,
         "app_user": users,
@@ -705,3 +995,9 @@ def generate(as_of: date, seed: int = SEED) -> dict[str, list[dict]]:
         # 方法卡放最後、用自己的亂數（seed + 101）：上面每一張表的產出都跟沒有方法卡時一模一樣
         **build_method_cards(customers, seed),
     }
+    # 優惠與合約的申請單加在最後、用自己的亂數（seed + 102）：上面每一張表都跟加這一段之前一模一樣，
+    # 也不新增任何報價草稿
+    data["oa_expense_form"] += build_approval_history(
+        random.Random(seed + 102), customers, baskets, products, as_of, transactions, receivables, data["visit"],
+    )
+    return data

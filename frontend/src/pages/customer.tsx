@@ -1,13 +1,21 @@
 import { useEffect, useState } from "react"
 import { FileText, Handshake, MessagesSquare, Mic } from "lucide-react"
-import { useLocation, useNavigate, useParams } from "react-router"
+import { Link, useLocation, useNavigate, useParams } from "react-router"
 
 import { openCustomerThread } from "@/api/channels"
 import { ApiError } from "@/api/client"
-import { CUSTOMER_TYPE_LABEL, getCustomerProfile, type CustomerProfile, type ProfileStats } from "@/api/customers"
+import {
+  CUSTOMER_TYPE_LABEL,
+  getContract,
+  getCustomerProfile,
+  type Contract,
+  type CustomerProfile,
+  type ProfileStats,
+} from "@/api/customers"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
 import { ReassignOwner } from "@/components/reassign-owner"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/lib/auth"
 import { formatDate, formatMoney } from "@/lib/format"
@@ -20,7 +28,7 @@ type LoadState =
   | { status: "error"; missing: boolean }
   | { status: "ready"; profile: CustomerProfile }
 
-// 別的頁面帶過來的：flash 是開報價送出後的提示（pages/quote.tsx）；backTo 是返回鍵要回哪裡（主管從風險通報點進來）
+// 別的頁面帶過來的：flash 是開報價、送續約申請之後的提示（pages/quote.tsx、contract.tsx）；backTo 是返回鍵要回哪裡（主管從風險通報點進來）
 export type CustomerLocationState = { flash?: string; backTo?: string }
 type Tone = "alert" | "warn" | undefined
 
@@ -40,6 +48,8 @@ export function CustomerPage() {
   const [attempt, setAttempt] = useState(0)
   const [threadError, setThreadError] = useState<string | null>(null)
   const [opening, setOpening] = useState(false)
+  // 連鎖客戶的合約條件；記下是哪一家的，換客戶時不會閃一下上一家的合約
+  const [contract, setContract] = useState<{ customerId: string; data: Contract } | null>(null)
 
   async function openThread() {
     // 雙擊按鈕不要開兩次討論串、多推兩筆瀏覽紀錄
@@ -66,6 +76,19 @@ export function CustomerPage() {
       })
     return () => controller.abort()
   }, [customerId, attempt])
+
+  // 合約那一列只有連鎖客戶有。另外問一次，問不到就不顯示：不擋客戶檔案的其他內容
+  const isChain = state.status === "ready" && state.profile.customer.type === "chain"
+  useEffect(() => {
+    if (!isChain) return
+    const controller = new AbortController()
+    getContract(customerId, controller.signal)
+      .then((data) => setContract({ customerId, data }))
+      .catch(() => {
+        // 連不上就少這一列，續約照樣可以從 OA 送
+      })
+    return () => controller.abort()
+  }, [customerId, isChain, attempt])
 
   if (state.status !== "ready") {
     return (
@@ -156,6 +179,7 @@ export function CustomerPage() {
         </section>
 
         <IntervalChart intervals={profile.intervals} alert={stats.interval_alert} />
+        {contract?.customerId === customer.id && <ContractRow customerId={customer.id} contract={contract.data} />}
         <PendingItems profile={profile} />
         <Competitors competitors={profile.competitors} />
       </main>
@@ -233,9 +257,52 @@ function IntervalChart({ intervals, alert }: { intervals: CustomerProfile["inter
   )
 }
 
+/**
+ * 連鎖客戶的合約到期日；3 個月內到期時標出來，這時才有「申請續約」
+ * （《連鎖通路合約條件》：到期前 3 個月啟動續約協商，離到期還久的合約後端不收續約申請）
+ */
+function ContractRow({ customerId, contract }: { customerId: string; contract: Contract }) {
+  if (!contract.contract_end_date) return null
+  const left = contract.days_left ?? 0
+  return (
+    <section
+      className={cn("flex items-center gap-3 rounded-2xl border bg-card px-4 py-3", contract.ending_soon && "border-warning/60")}
+    >
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-semibold">
+          合約 {contract.contract_end_date.replaceAll("-", "/")} 到期
+          {contract.ending_soon && (
+            <Badge variant="outline" className="ml-2 border-warning/60 text-warning">
+              {left >= 0 ? `剩 ${left} 天` : "已過期"}
+            </Badge>
+          )}
+        </p>
+        <p className="mt-0.5 text-[11px] text-muted-foreground">
+          {contract.pending_form_id
+            ? "續約申請簽核中"
+            : contract.ending_soon
+              ? "3 個月內到期，該開始談續約"
+              : `還有 ${left} 天，到期前 3 個月才能申請續約`}
+        </p>
+      </div>
+      {contract.pending_form_id ? (
+        <Button asChild variant="outline" className="h-11 shrink-0">
+          <Link to={`/oa/forms/${contract.pending_form_id}`}>看申請單</Link>
+        </Button>
+      ) : (
+        contract.can_request && (
+          <Button asChild variant="outline" className="h-11 shrink-0">
+            <Link to={`/customers/${customerId}/contract`}>申請續約</Link>
+          </Button>
+        )
+      )}
+    </section>
+  )
+}
+
 /** FR-2.2：未結案報價、客訴、逾期承諾 */
 function PendingItems({ profile }: { profile: CustomerProfile }) {
-  const rows = [
+  const rows: { key: string; tone: Tone; title: string; meta: string; tag?: string }[] = [
     ...profile.commitments.map((item) => ({
       key: `commitment-${item.visit_id}`,
       tone: (item.overdue ? "alert" : "warn") as Tone,
@@ -248,12 +315,13 @@ function PendingItems({ profile }: { profile: CustomerProfile }) {
       title: `客訴：${item.text}`,
       meta: formatDate(item.visit_date),
     })),
-    // 直接開的報價沒有 visit_id，用報價單號分辨
+    // 直接開的報價沒有 visit_id，用報價單號分辨。折扣還在等簽核的標出來：核准之前不能送給客戶
     ...profile.open_quotes.map((item) => ({
       key: `quote-${item.quote_no}`,
       tone: undefined as Tone,
       title: `報價草稿 ${item.quote_no}：${item.items}`,
       meta: formatMoney(item.amount),
+      tag: item.status === "pending_approval" ? "待簽核" : undefined,
     })),
   ]
   return (
@@ -268,7 +336,14 @@ function PendingItems({ profile }: { profile: CustomerProfile }) {
               row.tone === "alert" ? "bg-destructive" : row.tone === "warn" ? "bg-warning" : "bg-muted-foreground/40"
             )}
           />
-          <p className="flex-1 text-sm">{row.title}</p>
+          <p className="flex-1 text-sm">
+            {row.title}
+            {row.tag && (
+              <Badge variant="outline" className="ml-2 align-middle">
+                {row.tag}
+              </Badge>
+            )}
+          </p>
           <span className={cn("shrink-0 text-xs", row.tone === "alert" ? "text-destructive" : "text-muted-foreground")}>{row.meta}</span>
         </div>
       ))}

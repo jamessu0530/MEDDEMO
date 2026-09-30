@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.models import METHOD_TAGS, AppUser, Customer, DocumentChunk, Product, SalesTransaction
 from app.pricing import SUPPLY_PRICE_FACTOR
-from app.services import festivals, method_cards
+from app.services import approvals, festivals, method_cards
 from app.services.customer_profile import TOP_SKU_DAYS, Profile
 from app.services.retrieval import SIMPLE, keyword_tokens
 
@@ -41,8 +41,9 @@ MAX_DEALS = 5
 CHANNEL_REWARD_RATE = {"independent": 0.02, "clinic": None}
 # 《付款條件與帳齡管理》：獨立藥局與診所的付款條件為 30 天
 PAYMENT_DAYS = {"independent": 30, "clinic": 30}
-# 《報價權限》：業務可在標準供貨價之外自行給予最多 3%（含）的折扣，超過要簽核
-FREE_DISCOUNT_PCT = 3
+# 《報價權限》：業務可在標準供貨價之外自行給予最多 3%（含）的折扣，超過要簽核。
+# 跟開報價的簽核規則是同一個數字，只留一份（services/approvals.py）
+FREE_DISCOUNT_PCT = approvals.DISCOUNT_FREE
 # 只在連鎖的卡上找切入點的情況：續約那一段（《連鎖通路合約條件》）講的是連鎖的上架費率與通路獎勵比率，
 # 獨立藥局沒有上架費，引了對不上。客戶檔案的「進門前三分鐘」照舊提醒合約快到期
 CHAIN_ONLY_SIGNALS = {"contract_ending"}

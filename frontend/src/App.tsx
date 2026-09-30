@@ -12,6 +12,7 @@ import { AskPage } from "@/pages/ask"
 import { ChannelPage } from "@/pages/channel"
 import { ChannelThreadsPage } from "@/pages/channel-threads"
 import { ChannelsPage } from "@/pages/channels"
+import { ContractPage } from "@/pages/contract"
 import { CustomerPage } from "@/pages/customer"
 import { CustomerPicker } from "@/pages/customer-picker"
 import { DocumentPage } from "@/pages/document"
@@ -149,6 +150,8 @@ export default function App() {
             <Route path="/customers/:customerId" element={<CustomerPage />} />
             <Route path="/customers/:customerId/negotiation" element={<NegotiationPage />} />
             <Route path="/customers/:customerId/quote" element={<QuotePage />} />
+            {/* 連鎖續約：送合約申請單，跟開報價一樣只有負責人與他的主管進得去（後端擋） */}
+            <Route path="/customers/:customerId/contract" element={<ContractPage />} />
             <Route path="/customers/:customerId/record" element={<RecordVisit />} />
             <Route path="/visits/:visitId" element={<VisitPage />} />
             <Route path="/escalations" element={<EscalationsPage />} />

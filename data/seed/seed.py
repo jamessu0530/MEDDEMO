@@ -25,6 +25,7 @@ import generate
 from app import models
 from app.db import make_engine, reset_schema, schema_version
 from app.embeddings import optional_embedder
+from app.services import approvals
 from app.services.auth import EXTERNAL_ACCOUNT_ACTS_AS
 from app.services.channels import ensure_channels
 from app.services.documents import index_documents
@@ -152,6 +153,64 @@ def seed_conversations(session: Session) -> int:
     return count
 
 
+def seed_approval_steps(session: Session) -> int:
+    """優惠與合約申請單的關卡與活動日誌，關卡的名稱與指派照 App 開新單時的做法（services/approvals.py）。
+
+    人簽過的歷史單每一關都簽完，最後一關的結果就是整張單的結果；展示用的五張裡，等簽的停在區處主管那一關，
+    系統核准的第二關沒有簽核人。展示用的五張順便用訓練好的模型補上機率：假資料產生時還沒有模型。
+    """
+    forms = session.scalars(
+        select(models.OaExpenseForm).where(models.OaExpenseForm.kind != "trip").order_by(models.OaExpenseForm.id)
+    ).all()
+    steps, activity = [], []
+    signers: dict[tuple[str, str], dict[str, models.AppUser]] = {}
+    for form in forms:
+        at = form.created_at
+        steps.append({
+            "form_id": form.id, "step_no": 1, "role_label": "請求者", "user_id": form.applicant_id, "title": "業務",
+            "status": "done", "acted_at": at,
+        })
+        activity.append({
+            "form_id": form.id, "action": "submitted", "actor_id": form.applicant_id, "detail": "經辦人送出", "created_at": at,
+        })
+        if form.auto_approved or form.status == "pending":
+            form.model_probability, threshold = approvals.estimate(form.kind, form.model_features)
+        if form.auto_approved:
+            steps.append({
+                "form_id": form.id, "step_no": 2, "role_label": approvals.AUTO_STEP_LABEL, "user_id": None, "title": "模型",
+                "status": "done", "acted_at": at,
+            })
+            # 還沒訓練過模型（第一次灌資料）就沒有機率可寫；訓練完重灌一次才有
+            detail = approvals.auto_detail(form.model_probability, threshold) if threshold is not None else "系統核准"
+            activity.append({"form_id": form.id, "action": "auto_approved", "actor_id": None, "detail": detail, "created_at": at})
+            continue
+        key = (form.applicant_id, form.required_level)
+        if key not in signers:
+            signers[key] = approvals.signers(session, session.get(models.AppUser, form.applicant_id), form.required_level)
+        chain = approvals.LEVEL_STEPS[form.required_level]
+        for step_no, step in enumerate(chain, start=2):
+            signer = signers[key][step]
+            decided = form.status != "pending"
+            # 每一關隔一小時，都在送單當天簽完（《報價權限與折扣審核》：1 個工作天內完成簽核）
+            acted_at = at + timedelta(hours=step_no - 1)
+            steps.append({
+                "form_id": form.id, "step_no": step_no, "role_label": approvals.STEP_ROLE_LABEL[step], "user_id": signer.id,
+                "title": approvals.STEP_TITLE[step],
+                "status": "done" if decided else "pending" if step_no == 2 else "waiting",
+                "acted_at": acted_at if decided else None,
+            })
+            if not decided:
+                continue
+            # 前面幾關都是核准；整張單的結果記在最後一關
+            last = step == chain[-1]
+            action = form.status if last else "approved"
+            detail = {"approved": f"{approvals.STEP_TITLE[step]}核准", "rejected": "已駁回", "returned": "已退回"}[action]
+            activity.append({"form_id": form.id, "action": action, "actor_id": signer.id, "detail": detail, "created_at": acted_at})
+    session.execute(insert(models.OaApprovalStep), steps)
+    session.execute(insert(models.OaActivity), activity)
+    return len(forms)
+
+
 def seed_method_cards(session: Session, cards: list[dict[str, Any]], feedback: list[dict[str, Any]]) -> tuple[int, int]:
     """方法卡與回饋（generate.build_method_cards），回傳（卡片數, 回饋數）。不放進 TABLES：卡片的 id 是資料庫
     自己編的（GENERATED ALWAYS），不能指定，所以先寫卡片、再用標題查回 id 寫回饋。
@@ -214,6 +273,7 @@ def seed(url: str | None, as_of: date) -> dict[str, int]:
             INSERT INTO oa_approval_step (form_id, step_no, role_label, user_id, title, status, acted_at)
             SELECT o.id, 1, '請求者', o.applicant_id, '業務', 'done', o.created_at
             FROM oa_expense_form o
+            WHERE o.kind = 'trip'
         """))
         session.execute(text("""
             INSERT INTO oa_approval_step (form_id, step_no, role_label, user_id, title, status, acted_at)
@@ -221,11 +281,13 @@ def seed(url: str | None, as_of: date) -> dict[str, int]:
             FROM oa_expense_form o
             -- 簽核的是申請人的直屬主管，跟 App 開新單時一樣（services/oa.py）
             JOIN app_user m ON m.id = (SELECT manager_id FROM app_user WHERE id = o.applicant_id)
+            WHERE o.kind = 'trip'
         """))
         session.execute(text("""
             INSERT INTO oa_activity (form_id, action, actor_id, detail, created_at)
             SELECT o.id, 'submitted', o.applicant_id, '經辦人送出', o.created_at
             FROM oa_expense_form o
+            WHERE o.kind = 'trip'
         """))
         session.execute(text("""
             INSERT INTO oa_activity (form_id, action, actor_id, detail, created_at)
@@ -233,7 +295,10 @@ def seed(url: str | None, as_of: date) -> dict[str, int]:
             FROM oa_expense_form o
             -- 簽核的是申請人的直屬主管，跟 App 開新單時一樣（services/oa.py）
             JOIN app_user m ON m.id = (SELECT manager_id FROM app_user WHERE id = o.applicant_id)
+            WHERE o.kind = 'trip'
         """))
+        # 優惠與合約的申請單：歷史單的關卡與日誌，加上展示用五張的機率
+        seed_approval_steps(session)
         # 全國、整區、地點與小組頻道（客戶討論串第一次有人打開才建）
         ensure_channels(session)
         messages = seed_conversations(session)

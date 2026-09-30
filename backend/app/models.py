@@ -394,12 +394,17 @@ class CrmVisitRecord(Base):
     created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
 
 
+# draft：可以送給客戶；pending_approval：折扣超過業務的權限，等簽核；rejected：簽核被駁回或退回
+QUOTE_STATUSES = ("draft", "pending_approval", "rejected")
+
+
 class SapQuotationDraft(Base):
     __tablename__ = "sap_quotation_draft"
     __table_args__ = (
         UniqueConstraint("visit_id", "line_no"),
         UniqueConstraint("quote_no", "line_no"),
         CheckConstraint("qty > 0", name="qty_positive"),
+        one_of("status", QUOTE_STATUSES, "status"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
@@ -412,30 +417,68 @@ class SapQuotationDraft(Base):
     customer_id: Mapped[str] = mapped_column(ForeignKey("customer.id"))
     sku: Mapped[str] = mapped_column(ForeignKey("product.sku"))
     qty: Mapped[int]
+    # 折扣後的單價；折扣是整張報價一個百分比，每一列記同一個值
     unit_price: Mapped[Decimal] = mapped_column(Numeric(10, 2))
+    discount_pct: Mapped[Decimal] = mapped_column(Numeric(4, 1), server_default="0")
     status: Mapped[str] = mapped_column(server_default="draft")
     created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
 
 
 OA_FORM_STATUSES = ("draft", "pending", "returned", "rejected", "approved")
 OA_STEP_STATUSES = ("waiting", "pending", "done")
-OA_ACTIVITY_ACTIONS = ("submitted", "approved", "rejected", "returned", "commented")
+# auto_approved：模型有把握，系統直接核准（services/approvals.py）
+OA_ACTIVITY_ACTIONS = ("submitted", "approved", "rejected", "returned", "commented", "auto_approved")
+# trip：出差單，拜訪確認後自動開；discount：優惠（報價折扣）；contract：合約（連鎖續約與費率）
+OA_FORM_KINDS = ("trip", "discount", "contract")
+# 規則算出來最高要簽到哪一級：區處主管、業務處長、總經理
+OA_REQUIRED_LEVELS = ("manager", "director", "gm")
+PENDING_CONTRACT_INDEX = "uq_oa_expense_form_pending_contract"
 
 
 class OaExpenseForm(Base):
-    """模擬 OA 出差單。拜訪確認後自動開單，主管在申請匣簽核。"""
+    """模擬 OA 申請單：出差單、優惠申請單、合約申請單共用申請匣、簽核匣與流程。
+
+    表名沿用出差單時期的名字：改了要動灌資料的 SQL 與一整排程式。
+    """
 
     __tablename__ = "oa_expense_form"
-    __table_args__ = (one_of("status", OA_FORM_STATUSES, "oa_status"),)
+    __table_args__ = (
+        one_of("status", OA_FORM_STATUSES, "oa_status"),
+        one_of("kind", OA_FORM_KINDS, "kind"),
+        one_of("required_level", OA_REQUIRED_LEVELS, "required_level"),
+        # 出差單跟著一次拜訪；優惠與合約是業務自己送的，內容記在 payload
+        CheckConstraint(
+            "(kind = 'trip' AND visit_id IS NOT NULL AND trip_date IS NOT NULL AND payload IS NULL)"
+            " OR (kind IN ('discount', 'contract') AND visit_id IS NULL AND trip_date IS NULL"
+            "     AND payload IS NOT NULL AND request_date IS NOT NULL)",
+            name="kind_fields",
+        ),
+        # 同一家客戶同時只能有一張還沒簽完的續約申請。由資料庫守：兩個請求同時送，先查「有沒有」兩邊都看不到對方
+        Index(
+            PENDING_CONTRACT_INDEX, "customer_id", unique=True,
+            postgresql_where=text("kind = 'contract' AND status = 'pending'"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     form_no: Mapped[str] = mapped_column(String(24), unique=True)
-    visit_id: Mapped[str] = mapped_column(ForeignKey("visit.id", ondelete="CASCADE"), unique=True)
+    kind: Mapped[str] = mapped_column(server_default="trip")
+    visit_id: Mapped[str | None] = mapped_column(ForeignKey("visit.id", ondelete="CASCADE"), unique=True)
     applicant_id: Mapped[str] = mapped_column(ForeignKey("app_user.id"))
-    trip_date: Mapped[dt.date]
+    trip_date: Mapped[dt.date | None]
+    # 送單當下的系統日（app_today()），特徵就是照這一天算的。出差單沒有
+    request_date: Mapped[dt.date | None]
     customer_id: Mapped[str] = mapped_column(ForeignKey("customer.id"))
     purpose: Mapped[str]
     unit_name: Mapped[str]
+    # 申請內容。優惠：quote_no、discount_pct、list_amount、amount、cost、reason；
+    # 合約：term_months、listing_fee_rate{from,to}、channel_reward_rate{from,to}、old_end_date、new_end_date、reason
+    payload: Mapped[dict[str, Any] | None]
+    required_level: Mapped[str] = mapped_column(server_default="manager")
+    # 送單當下模型估計的核准機率與算機率用的特徵，之後不回頭改：重新訓練時讀的就是這一份
+    model_probability: Mapped[float | None]
+    model_features: Mapped[dict[str, Any] | None]
+    auto_approved: Mapped[bool] = mapped_column(server_default=text("false"))
     status: Mapped[str] = mapped_column(server_default="pending")
     created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
     submitted_at: Mapped[dt.datetime | None]
@@ -452,7 +495,8 @@ class OaApprovalStep(Base):
     form_id: Mapped[int] = mapped_column(ForeignKey("oa_expense_form.id", ondelete="CASCADE"), index=True)
     step_no: Mapped[int]
     role_label: Mapped[str]
-    user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id"))
+    # NULL 代表系統：模型有把握、由系統核准的那一關沒有簽核人
+    user_id: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
     title: Mapped[str]
     status: Mapped[str]
     acted_at: Mapped[dt.datetime | None]
@@ -485,7 +529,8 @@ class OaActivity(Base):
     id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     form_id: Mapped[int] = mapped_column(ForeignKey("oa_expense_form.id", ondelete="CASCADE"), index=True)
     action: Mapped[str]
-    actor_id: Mapped[str] = mapped_column(ForeignKey("app_user.id"))
+    # NULL 代表系統（系統核准那一筆）
+    actor_id: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
     detail: Mapped[str]
     created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
 

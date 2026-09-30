@@ -4,7 +4,9 @@ import { Link, useNavigate } from "react-router"
 import { listMyForms, type OaFormItem, type OaList, type OaStatus } from "@/api/oa"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
-import { formatDate, formatDateTime } from "@/lib/format"
+import { Badge } from "@/components/ui/badge"
+import { oaDateText } from "@/lib/approval"
+import { formatDateTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
 const STATUSES: { id: OaStatus; label: string }[] = [
@@ -19,7 +21,7 @@ const STATUS_LABEL: Record<OaStatus, string> = Object.fromEntries(STATUSES.map((
 
 type LoadState = { status: "loading" } | { status: "error" } | { status: "ready"; data: OaList }
 
-/** 業務看自己開出去的出差單，對齊 OA「我的申請單」 */
+/** 業務看自己開出去的申請單（出差單、優惠、合約），對齊 OA「我的申請單」 */
 export function OaFormsPage() {
   const navigate = useNavigate()
   const [filter, setFilter] = useState<OaStatus>("approved")
@@ -40,7 +42,7 @@ export function OaFormsPage() {
 
   return (
     <div className="flex min-h-svh flex-col">
-      <PageHeader title="我的申請單" subtitle="寫入 OA 的出差單" backTo="/" />
+      <PageHeader title="我的申請單" subtitle="出差單、優惠與合約申請" backTo="/" />
       <main className="flex flex-1 flex-col gap-3 px-4 pt-3 pb-10">
         <div className="grid grid-cols-5 gap-1">
           {STATUSES.map((item) => {
@@ -92,7 +94,15 @@ function FormCard({ item }: { item: OaFormItem }) {
   return (
     <Link to={`/oa/forms/${item.id}`} className="rounded-2xl border bg-card p-4">
       <div className="flex items-start justify-between gap-2">
-        <p className="text-sm font-medium">{item.kind}</p>
+        <p className="text-sm font-medium">
+          {item.kind_label}
+          {/* 沒有人簽、模型有把握直接核准的單 */}
+          {item.model?.auto_approved && (
+            <Badge variant="outline" className="ml-2 align-middle">
+              系統核准
+            </Badge>
+          )}
+        </p>
         <span
           className={cn(
             "shrink-0 rounded-md px-2 py-0.5 text-[11px]",
@@ -105,12 +115,14 @@ function FormCard({ item }: { item: OaFormItem }) {
           {STATUS_LABEL[item.status]}
         </span>
       </div>
+      {/* 出差單的摘要就是客戶與拜訪日，下面兩行已經有了；優惠與合約寫出申請的內容 */}
+      {item.kind !== "trip" && <p className="mt-1 text-sm">{item.summary}</p>}
       <p className="mt-1 text-xs text-muted-foreground">
         {item.form_no} · {item.customer_name}
       </p>
       <p className="mt-1 text-[11px] text-muted-foreground">
-        {formatDate(item.trip_date)} 拜訪 · {formatDateTime(item.submitted_at)} 送出
-        {item.approver_name ? ` · ${item.approver_name}` : ""}
+        {oaDateText(item)} · {formatDateTime(item.submitted_at)} 送出
+        {item.approver_name ? ` · 等${item.approver_name}簽核` : ""}
       </p>
     </Link>
   )
