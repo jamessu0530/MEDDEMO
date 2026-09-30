@@ -1,8 +1,10 @@
 import { useEffect } from "react"
-import { AudioLines, Hand, Loader2, Mic, PhoneOff, Volume2, VolumeX } from "lucide-react"
+import { Hand, Loader2, Mic, PhoneOff, Volume2, VolumeX } from "lucide-react"
 
 import type { Conversation } from "@/ask/conversation"
+import { Mascot } from "@/components/mascot"
 import { Button } from "@/components/ui/button"
+import { voiceMascotState } from "@/lib/mascot"
 import { useVoiceSession } from "@/voice/use-voice-session"
 
 /** 交給頁面的介面：會話活著時打字也能送進同一個會話，並讓輸入框告訴閒置計時器「人還在」 */
@@ -76,8 +78,9 @@ export default function VoiceDock({
           className="absolute inset-0 rounded-full bg-primary/25 transition-transform duration-100"
           style={{ transform: `scale(${1 + Math.min(voice.level * 6, 0.7)})` }}
         />
-        <span className="relative flex size-12 items-center justify-center rounded-full bg-primary text-primary-foreground">
-          {speaking ? <AudioLines className="size-5" /> : <Mic className="size-5" />}
+        {/* 熊熊滾的半身：AI 在講話、在查、在聽各有動作，一眼看得出現在輪到誰 */}
+        <span className="relative flex size-12 items-center justify-center overflow-hidden rounded-full bg-accent">
+          <Mascot state={voiceMascotState(speaking ? "speaking" : "listening", voice.pending)} size={48} bust />
         </span>
       </span>
       <p className="flex-1 text-sm font-medium" aria-live="polite">

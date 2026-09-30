@@ -1,8 +1,7 @@
-import { Loader2 } from "lucide-react"
-
 import { isFinished, type Ask } from "@/api/asks"
 import type { Entry, ToolRun } from "@/ask/conversation"
 import { AskAnswer, TracePanel } from "@/components/ask/ask-result"
+import { Mascot } from "@/components/mascot"
 
 const TOOL_LABEL = { data: "查數字", knowledge: "查規定" }
 
@@ -49,7 +48,7 @@ function ToolCard({
         <AskAnswer ask={run.ask} onChange={(ask) => onAskChange(run.id, { ask })} />
       ) : (
         <p className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Loader2 className="size-4 animate-spin" />
+          <Mascot state="think" size={28} bust className="shrink-0 rounded-full bg-accent" />
           送出查詢…
         </p>
       )}

@@ -9,6 +9,7 @@ import { EntryView } from "@/components/ask/entry-view"
 // type-only：只拿型別，不會把 VoiceDock（跟著它的 src/voice）拉進主 chunk
 import type { VoiceSession } from "@/components/ask/voice-dock"
 import { BottomNav } from "@/components/bottom-nav"
+import { Mascot } from "@/components/mascot"
 import { Notice } from "@/components/notice"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -145,6 +146,7 @@ export function AskPage() {
       <main className="flex flex-1 flex-col gap-4 px-4 pt-4 pb-52">
         {entries.length === 0 && !voiceOn && (
           <div className="flex flex-col gap-2">
+            <Mascot state="hi" size={96} className="self-center" />
             <p className="text-sm text-muted-foreground">可以這樣問，或按右下角的麥克風用說的：</p>
             {mode.examples.map((example) => (
               <button

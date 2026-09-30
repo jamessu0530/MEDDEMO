@@ -1,8 +1,9 @@
 import { useState } from "react"
-import { CalendarPlus, Check, ChevronDown, Loader2 } from "lucide-react"
+import { CalendarPlus, Check, ChevronDown } from "lucide-react"
 import { Link } from "react-router"
 
 import { escalateAsk, isFinished, type Ask, type TraceItem } from "@/api/asks"
+import { Mascot } from "@/components/mascot"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/lib/auth"
 import { pinCustomers, readFeedback } from "@/lib/route-feedback"
@@ -23,7 +24,7 @@ export function AskAnswer({ ask, onChange }: { ask: Ask; onChange: (ask: Ask) =>
     const last = ask.trace.at(-1)
     return (
       <p className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Loader2 className="size-4 animate-spin" />
+        <Mascot state="think" size={28} bust className="shrink-0 rounded-full bg-accent" />
         {last ? `第 ${last.round} 輪${STEP_LABEL[last.step]}：${last.decision}` : "思考要怎麼查…"}
       </p>
     )
