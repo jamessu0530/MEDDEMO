@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import re
 from collections import Counter
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -279,6 +280,27 @@ def test_a_taipei_customer_without_a_district_fails_loudly():
     assert generate.place_of("德安藥局 · 逢甲", "independent", "台中市", "逢甲") == "TXG"
 
 
+def test_the_sap_employee_master_covers_reps_and_managers_but_not_it(db):
+    # 模擬 SAP 的人員主檔：五位業務與四位主管各一列，IT 沒有
+    numbers = dict(rows(db, "SELECT u.id, e.employee_no FROM app_user u LEFT JOIN sap_employee e ON e.user_id = u.id"))
+    reps = ["U01", "U02", "U03", "U04", "U05"]
+    assert {user for user, number in numbers.items() if number} == {*reps, "M01", "M02", "M03", "M04"}
+    assert numbers["A01"] is None
+    # 人員編號是 E 加五碼。唯一由資料表的限制保證；IT 開新帳號時接著最大號編，所以格式要固定
+    assert all(re.fullmatch(r"E\d{5}", number) for number in numbers.values() if number)
+    # 到職日都在一年以前：這九個人在假資料裡有一整年的拜訪紀錄，沒有一個是新人
+    assert rows(db, "SELECT count(*) FROM sap_employee WHERE hire_date > app_today() - 365")[0][0] == 0
+    # 產品線的值是品項表的類別。業務四條都負責——他們名下的客戶四類都在進
+    categories = {r[0] for r in rows(db, "SELECT DISTINCT category FROM product")}
+    lines = dict(rows(db, "SELECT user_id, product_lines FROM sap_employee"))
+    assert all(lines[user] and set(lines[user]) <= categories for user in lines)
+    assert all(set(lines[rep]) == categories for rep in reps) and len(categories) == 4
+    assert dict(rows(db, """
+        SELECT c.owner_user_id, count(DISTINCT p.category) FROM sales_transaction t
+        JOIN customer c ON c.id = t.customer_id JOIN product p ON p.sku = t.sku GROUP BY 1
+    """)) == dict.fromkeys(reps, 4)
+
+
 def test_seeded_conversations_sit_in_their_channels(db):
     found = dict(rows(db, """
         SELECT CASE ch.kind WHEN 'team' THEN m.name || '小組' WHEN 'place' THEN p.name ELSE cu.name END, count(*)
@@ -369,6 +391,8 @@ def test_a_reseed_keeps_self_created_accounts_and_sign_in_bindings(used_database
         # 假資料照常灌好：十個公司帳號加上留下來的那一個
         assert rows(conn, "SELECT count(*) FROM app_user")[0][0] == 11
         assert rows(conn, "SELECT count(*) FROM customer")[0][0] == 250
+        # 人員主檔只有公司的業務與主管；留下來的自建帳號沒有（新人第一週頁把他當新人）
+        assert rows(conn, "SELECT count(*), count(*) FILTER (WHERE user_id = 'XKEEP001') FROM sap_employee") == [(9, 0)]
     engine.dispose()
     assert (counts["kept_account"], counts["kept_identity"]) == (1, 2)
 

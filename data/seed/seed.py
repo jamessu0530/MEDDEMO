@@ -49,6 +49,7 @@ TABLES = [
     ("sap_quotation_draft", models.SapQuotationDraft),
     ("oa_expense_form", models.OaExpenseForm),
     ("writeback_log", models.WritebackLog),
+    ("sap_employee", models.SapEmployee),
 ]
 
 

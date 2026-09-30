@@ -674,3 +674,22 @@ class ChannelRead(Base):
     user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), primary_key=True)
     channel_id: Mapped[int] = mapped_column(ForeignKey("channel.id", ondelete="CASCADE"), primary_key=True)
     last_read_id: Mapped[int] = mapped_column(BigInteger)
+
+
+class SapEmployee(Base):
+    """模擬 SAP 的人員主檔：一個公司帳號一列，存到職日與負責的產品線（新人第一週頁的「你賣什麼」）。
+
+    哪一區、主管是誰不存這裡，照舊看組織樹（AppUser.manager_id、unit_id）：再存一份，
+    IT 在組織管理頁調動之後兩邊就會對不上。
+    IT 帳號、自建與第三方登入的帳號沒有這一列；沒有人員主檔的業務帳號一律當新人（services/first_week.py）。
+    """
+
+    __tablename__ = "sap_employee"
+
+    user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), primary_key=True)
+    # SAP 人員編號：E 加五碼。IT 開新帳號時接著最大號編（services/org_admin.py）
+    employee_no: Mapped[str] = mapped_column(String(6), unique=True)
+    # 到職第幾天、是不是新人都拿它跟系統日 app_today() 比，不跟真實時間比
+    hire_date: Mapped[dt.date]
+    # 值是品項表的類別（Product.category）：保健品、慢性處方、一般用藥、醫材
+    product_lines: Mapped[list[str]]

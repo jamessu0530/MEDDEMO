@@ -664,4 +664,9 @@ def generate(as_of: date, seed: int = SEED) -> dict[str, list[dict]]:
         "receivable": receivables,
         # 拜訪用第三條亂數：改排程或內容機率，不會動到客戶與交易
         **build_visits(random.Random(seed + 2), customers, baskets, products, as_of, transactions, receivables),
+        # 模擬 SAP 的人員主檔：固定的清單，不抽亂數，上面每一張表都不受影響
+        "sap_employee": [
+            {"user_id": user_id, "employee_no": number, "hire_date": hired, "product_lines": list(lines)}
+            for user_id, number, hired, lines in catalog.SAP_EMPLOYEES
+        ],
     }
