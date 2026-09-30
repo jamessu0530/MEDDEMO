@@ -3,9 +3,11 @@ import { ChevronRight, Network, Settings, TriangleAlert } from "lucide-react"
 import { Link, useNavigate, useSearchParams } from "react-router"
 
 import { listEscalations, replyEscalation, type Escalation } from "@/api/escalations"
+import { customerTypeLabel, listMyMethods, updateMethod, type MethodCard } from "@/api/methods"
 import { getUnseenNoticeCount, listNotices, markNoticeSeen, type ManagerNotice } from "@/api/notices"
 import { listAutoApproved, listOaInbox, type OaFormItem } from "@/api/oa"
 import { ChannelsLink } from "@/components/channels-link"
+import { MethodCardForm } from "@/components/method-card-form"
 import { Notice } from "@/components/notice"
 import { OaModelNote } from "@/components/oa-model"
 import { PageHeader } from "@/components/page-header"
@@ -15,11 +17,16 @@ import { Textarea } from "@/components/ui/textarea"
 import { useAuth, type AuthUser } from "@/lib/auth"
 import { formatProbability, oaDateText } from "@/lib/approval"
 import { formatDateTime } from "@/lib/format"
+import { tagLabel } from "@/lib/methods"
 import { cn } from "@/lib/utils"
 import type { CustomerLocationState } from "@/pages/customer"
 
-// 主管端兩個分頁：業務轉來的提問、拜訪提到競品或客訴的風險通報。記在網址上，從客戶檔案回來還停在同一頁
-type View = "asks" | "notices" | "oa"
+// 主管端的分頁：業務轉來的提問、拜訪提到競品或客訴的風險通報、簽核、自己寫的方法卡。
+// 記在網址上，從客戶檔案回來還停在同一頁
+const VIEWS = ["asks", "notices", "oa", "methods"] as const
+type View = (typeof VIEWS)[number]
+const VIEW_TITLE: Record<View, string> = { asks: "待回覆的提問", notices: "風險通報", oa: "OA 簽核", methods: "方法卡" }
+const VIEW_TAB: Record<View, string> = { asks: "提問", notices: "風險通報", oa: "簽核", methods: "方法卡" }
 type Tab = "open" | "answered"
 type LoadState = { status: "loading" } | { status: "error" } | { status: "ready"; items: Escalation[] }
 type NoticeState = { status: "loading" } | { status: "error" } | { status: "ready"; items: ManagerNotice[] }
@@ -32,11 +39,11 @@ function whose(user: AuthUser) {
   return user.role === "it" ? "全公司" : "你團隊"
 }
 
-/** 主管端（FR-8.4 延伸）：回覆業務轉過來的提問、看風險通報、簽申請單（出差單、優惠、合約）。主管看自己底下的人，IT 看全公司 */
+/** 主管端（FR-8.4 延伸）：回覆業務轉過來的提問、看風險通報、簽申請單（出差單、優惠、合約）、寫方法卡。主管看自己底下的人，IT 看全公司 */
 export function ManagerPage() {
   const user = useAuth()?.user
   const [params, setParams] = useSearchParams()
-  const view: View = params.get("view") === "notices" ? "notices" : params.get("view") === "oa" ? "oa" : "asks"
+  const view: View = VIEWS.find((value) => value === params.get("view")) ?? "asks"
   const [unseenNotices, setUnseenNotices] = useState(0)
   const [pendingOa, setPendingOa] = useState(0)
 
@@ -64,7 +71,7 @@ export function ManagerPage() {
   return (
     <div className="flex min-h-svh flex-col">
       <PageHeader
-        title={view === "notices" ? "風險通報" : view === "oa" ? "OA 簽核" : "待回覆的提問"}
+        title={VIEW_TITLE[view]}
         subtitle="主管端"
         trailing={
           <>
@@ -81,7 +88,7 @@ export function ManagerPage() {
         }
       />
       <div className="flex border-b bg-background px-4" role="tablist">
-        {(["asks", "notices", "oa"] as const).map((value) => (
+        {VIEWS.map((value) => (
           <button
             key={value}
             type="button"
@@ -93,7 +100,7 @@ export function ManagerPage() {
               view === value ? "border-primary font-medium text-primary" : "border-transparent text-muted-foreground"
             )}
           >
-            {value === "asks" ? "提問" : value === "notices" ? "風險通報" : "簽核"}
+            {VIEW_TAB[value]}
             {value === "notices" && unseenNotices > 0 && (
               <span
                 aria-label={`未讀 ${unseenNotices} 則`}
@@ -118,8 +125,10 @@ export function ManagerPage() {
           <EscalationsPanel />
         ) : view === "notices" ? (
           <NoticesPanel onSeen={() => setUnseenNotices((count) => Math.max(0, count - 1))} />
-        ) : (
+        ) : view === "oa" ? (
           <OaInboxPanel />
+        ) : (
+          <MethodsPanel />
         )}
       </main>
     </div>
@@ -471,5 +480,163 @@ function OaInboxCard({ item }: { item: OaFormItem }) {
       <p className="mt-1 text-[11px] text-muted-foreground">{oaDateText(item)}</p>
       {item.model && <OaModelNote model={item.model} className="mt-2" />}
     </Link>
+  )
+}
+
+type MethodsState = { status: "loading" } | { status: "error" } | { status: "ready"; cards: MethodCard[] }
+// 表單開著的時候是在新增，還是在改哪一張
+type Editing = { mode: "new" } | { mode: "edit"; card: MethodCard } | null
+
+/** 方法卡：主管把「遇到這種情況怎麼談」寫下來，全公司的業務都看得到。這裡列自己寫的（IT 看全部），可以新增、修改、下架 */
+function MethodsPanel() {
+  const navigate = useNavigate()
+  const user = useAuth()?.user
+  const [state, setState] = useState<MethodsState>({ status: "loading" })
+  const [attempt, setAttempt] = useState(0)
+  const [editing, setEditing] = useState<Editing>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    listMyMethods(controller.signal)
+      .then((cards) => setState({ status: "ready", cards }))
+      .catch(() => {
+        if (!controller.signal.aborted) setState({ status: "error" })
+      })
+    return () => controller.abort()
+  }, [attempt])
+
+  // 新增的放最前面（後端也是最近改過的在前）；修改、下架只換掉那一張，位置不動
+  function saved(next: MethodCard, message: string) {
+    setState((current) => {
+      if (current.status !== "ready") return current
+      const known = current.cards.some((card) => card.id === next.id)
+      return {
+        status: "ready",
+        cards: known ? current.cards.map((card) => (card.id === next.id ? next : card)) : [next, ...current.cards],
+      }
+    })
+    setNotice(message)
+    setEditing(null)
+  }
+
+  return (
+    <>
+      {user && (
+        <p className="text-xs text-muted-foreground">
+          {user.role === "it"
+            ? "全公司主管寫的方法卡都在這裡，IT 可以修改或下架"
+            : `以 ${user.name} 的名字寫給全公司的業務看，不分區`}
+        </p>
+      )}
+      <Button className="h-11" disabled={state.status !== "ready"} onClick={() => setEditing({ mode: "new" })}>
+        新增方法卡
+      </Button>
+      {notice && <p className="rounded-lg bg-primary/10 px-3 py-2 text-sm text-primary">{notice}</p>}
+      {state.status === "loading" && <p className="py-10 text-center text-sm text-muted-foreground">載入中…</p>}
+      {state.status === "error" && (
+        <Notice
+          text="連不上伺服器，方法卡沒有載入。"
+          action={{
+            label: "重新載入",
+            onClick: () => {
+              setState({ status: "loading" })
+              setAttempt((n) => n + 1)
+            },
+          }}
+          secondary={{ label: "回提問", onClick: () => navigate("/manager") }}
+        />
+      )}
+      {state.status === "ready" && state.cards.length === 0 && (
+        <p className="py-10 text-center text-sm text-muted-foreground">
+          還沒有寫過方法卡。把你平常教業務的做法寫下來，人調走了也還留著。
+        </p>
+      )}
+      {state.status === "ready" &&
+        state.cards.map((card) => (
+          <MyMethodCard
+            key={card.id}
+            card={card}
+            onEdit={() => setEditing({ mode: "edit", card })}
+            onChanged={(next) =>
+              saved(next, next.status === "retired" ? `「${next.title}」已下架，業務看不到了。` : `「${next.title}」重新上架了。`)
+            }
+          />
+        ))}
+      {editing && (
+        <MethodCardForm
+          card={editing.mode === "edit" ? editing.card : undefined}
+          onClose={() => setEditing(null)}
+          onSaved={(next) =>
+            saved(next, editing.mode === "edit" ? `「${next.title}」改好了。` : `「${next.title}」已上架，全公司的業務都看得到。`)
+          }
+        />
+      )}
+    </>
+  )
+}
+
+/** 主管端的一張方法卡：看得到沒幫上的次數（業務那邊只顯示採用次數），並可以修改、下架、重新上架 */
+function MyMethodCard({
+  card,
+  onEdit,
+  onChanged,
+}: {
+  card: MethodCard
+  onEdit: () => void
+  onChanged: (card: MethodCard) => void
+}) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const retired = card.status === "retired"
+
+  async function setStatus(status: MethodCard["status"]) {
+    setBusy(true)
+    setError(null)
+    try {
+      onChanged(await updateMethod(card.id, { status }))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "沒有改成功，請再試一次")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <article className={cn("rounded-2xl border bg-card p-4", retired && "bg-muted/50")}>
+      <div className="flex items-start justify-between gap-3">
+        <p className={cn("leading-snug font-medium", retired && "text-muted-foreground")}>{card.title}</p>
+        {retired && <Badge variant="outline">已下架</Badge>}
+      </div>
+      <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">{card.situation}</p>
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        <Badge variant="secondary">{customerTypeLabel(card.customer_type)}</Badge>
+        {card.tags.map((tag) => (
+          <Badge key={tag} variant="outline">
+            {tagLabel(tag)}
+          </Badge>
+        ))}
+      </div>
+      <details className="mt-2">
+        <summary className="flex min-h-9 cursor-pointer items-center text-xs text-primary">看做法全文</summary>
+        <p className="mt-1 rounded-lg bg-muted px-3 py-2 text-xs leading-relaxed whitespace-pre-line">{card.approach}</p>
+      </details>
+      <p className="mt-2 text-xs">
+        採用 <span className="font-semibold tabular-nums">{card.adopted}</span> 次 · 沒幫上{" "}
+        <span className="font-semibold tabular-nums">{card.not_helped}</span> 次
+      </p>
+      <p className="mt-1 text-[11px] text-muted-foreground">
+        {card.author_name} · {formatDateTime(card.updated_at)} 更新
+      </p>
+      {error && <p className="mt-2 text-xs text-destructive">{error}</p>}
+      <div className="mt-3 flex gap-2">
+        <Button variant="outline" className="h-11 flex-1" disabled={busy} onClick={onEdit}>
+          修改
+        </Button>
+        <Button variant="outline" className="h-11 flex-1" disabled={busy} onClick={() => setStatus(retired ? "published" : "retired")}>
+          {retired ? "重新上架" : "下架"}
+        </Button>
+      </div>
+    </article>
   )
 }

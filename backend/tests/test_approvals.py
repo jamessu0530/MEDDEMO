@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.main import app
 from app.models import AppUser, Customer, OaActivity, OaApprovalStep, OaExpenseForm, SapQuotationDraft
-from app.services import approvals, customer_profile, oa
+from app.services import approvals, customer_profile, negotiation, oa
 from app.services import auth as auth_service
 
 TODAY = dt.date(2026, 10, 28)
@@ -343,7 +343,8 @@ def test_customer_state_agrees_with_the_customer_profile(tx):
         assert state["sales_90d"] == profile.stats.amount_last_90d
         assert state["ar_age_days"] == (profile.stats.ar_max_age_days or 0)
         assert bool(state["competitor_recent"]) == ("competitor" in profile.signals)
-        margin = customer_profile.negotiation_card(tx, customer, profile).margin
+        # 淨毛利跟談判卡的毛利結構同一個算法（services/negotiation.py）
+        margin = negotiation._margin(tx, customer, profile.today)
         assert state["net_margin"] == pytest.approx(margin.net_margin_rate, abs=1e-4)
     # 板橋店是刻意設計「進貨間隔拉長」的客戶，近期拜訪提到御松田
     assert state["interval_change"] > 0.2 and state["competitor_recent"] == 1.0

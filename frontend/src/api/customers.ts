@@ -1,4 +1,5 @@
 import { jsonBody, request } from "@/api/client"
+import type { MethodCard } from "@/api/methods"
 import { readUser } from "@/lib/auth"
 
 export type Customer = {
@@ -102,10 +103,29 @@ export type CustomerProfile = {
   competitors: { name: string; mentions: number; last_date: string; detail: string | null }[]
 }
 
-// 談判卡（FR-3）：只有連鎖客戶有
+// 談判卡（FR-3）：每種客戶都有，圍繞下一個節慶。
+// orientation 是 customer（連鎖，顧客導向）時有 campaign、shelf、gaps、margin；
+// 是 cost（獨立藥局與診所，成本導向）時有 deals、terms。不屬於這個導向的欄位是 null
 export type NegotiationCard = {
   customer: Customer
-  turnover: { sku: string; name: string; orders_per_month: number; region_orders_per_month: number | null }[]
+  orientation: "customer" | "cost"
+  // 行事曆裡沒有之後的節慶就是 null。note 是設定檔裡人寫的一句話，連鎖與其他客戶看到的不同
+  festival: { name: string; date: string; days_left: number; categories: string[]; note: string } | null
+  // 還來得及申請檔期的那個節慶；missed 是排在它前面、申請期限已過的節慶名稱
+  campaign: {
+    festival_name: string
+    festival_date: string
+    apply_by: string
+    days_to_apply: number
+    fee_cap: number
+    missed: string[]
+  } | null
+  // scoped：是不是限定在節慶的主推品類；主推品類裡沒有東西可列時退回全部品類
+  shelf: {
+    items: { sku: string; name: string; orders_per_month: number; region_orders_per_month: number | null }[]
+    scoped: boolean
+  } | null
+  gaps: { sku: string; name: string; peers_with: number; peers_total: number }[] | null
   margin: {
     listing_fee_rate: number
     channel_reward_rate: number
@@ -113,7 +133,35 @@ export type NegotiationCard = {
     region_net_margin_rate: number | null
     summary: string
   } | null
+  // 進行中那一期促銷，一個料號一列（搭贈後每個最便宜的那一口）；沒有進行中的促銷時 promotion_name 是 null
+  deals: {
+    items: {
+      sku: string
+      name: string
+      group_name: string
+      deal: string
+      deal_price: number
+      unit_deal_price: number
+      list_price: number
+      unit_profit: number
+      profit_rate: number
+      smallest_deal_price: number
+    }[]
+    scoped: boolean
+    promotion_name: string | null
+  } | null
+  terms: {
+    supply_rate: number
+    channel_reward_rate: number | null
+    payment_days: number
+    ar_max_age_days: number | null
+    free_discount_pct: number
+    amount_last_90d: number
+    avg_order_amount: number | null
+  } | null
   tips: { reason: string; doc_title: string; section: string; content: string; source_name: string }[]
+  // 主管教的做法：照這家的情況帶出來的方法卡，最多兩張；my_feedback 是我在這家客戶按過什麼。沒有相關的就是空的
+  methods: MethodCard[]
 }
 
 export function getCustomerProfile(id: string, signal?: AbortSignal) {

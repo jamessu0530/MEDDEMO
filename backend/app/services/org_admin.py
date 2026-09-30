@@ -18,7 +18,7 @@ from typing import Any
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-from app.models import AppUser, Customer, OaApprovalStep, OaExpenseForm, OrgChangeLog, OrgUnit
+from app.models import AppUser, Customer, OaApprovalStep, OaExpenseForm, OrgChangeLog, OrgUnit, Product, SapEmployee
 from app.services import auth
 from app.services.channels import ensure_channels
 from app.services.oa import MANAGER_STEP_LABEL
@@ -29,6 +29,8 @@ ASSIGNABLE_ROLES = ("sales", "manager")
 ROLE_LABEL = {"sales": "業務", "manager": "主管", "it": "IT"}
 # 新帳號的工號前綴，號碼接著目前最大的編
 ID_PREFIX = {"sales": "U", "manager": "M"}
+# 模擬 SAP 人員編號的前綴，後面接五碼
+EMPLOYEE_NO_PREFIX = "E"
 LOG_LIMIT = 50
 # 組織管理頁上區的順序：由北到南。地理節點只有灌資料時建的這幾個（新增區不在這次範圍），
 # 表上沒有排序欄位，照 id 排會變成中、北、南
@@ -165,7 +167,8 @@ def create_user(
     unit_id: str | None = None,
 ) -> AppUser:
     """開公司帳號。業務要選直屬主管，主管要選一區；工號接著目前最大號編。
-    初始密碼由 IT 自己告訴對方（沒有寄信服務），對方登入後可以在帳號設定改。"""
+    初始密碼由 IT 自己告訴對方（沒有寄信服務），對方登入後可以在帳號設定改。
+    同時在模擬 SAP 的人員主檔建一列，到職日是系統日：新開的業務帳號登入就是「到職第 1 天」的新人。"""
     if role not in ASSIGNABLE_ROLES:
         raise OrgError("新帳號只能是業務或主管")
     try:
@@ -191,6 +194,11 @@ def create_user(
     )
     session.add(user)
     _rebuild(session)
+    # 放在 _rebuild 之後：那裡才把帳號寫進資料庫，人員主檔的外鍵才成立
+    session.add(SapEmployee(
+        user_id=user.id, employee_no=_next_employee_no(session),
+        hire_date=session.scalar(select(func.app_today())), product_lines=_product_lines(session, user),
+    ))
     _log(session, actor, "create", f"新增{ROLE_LABEL[role]}{user.name}（{user.id}，{user.region}）")
     return user
 
@@ -331,6 +339,30 @@ def _next_id(session: Session, role: str) -> str:
     ids = session.scalars(select(AppUser.id).where(AppUser.id.startswith(prefix))).all()
     numbers = [int(i[len(prefix):]) for i in ids if i[len(prefix):].isdigit()]
     return f"{prefix}{max(numbers, default=0) + 1:02d}"
+
+
+def _next_employee_no(session: Session) -> str:
+    """SAP 人員編號：E 加五碼，接著目前最大號編。不照這個格式編的跳過，跟 _next_id 對工號的做法一樣。"""
+    prefix = EMPLOYEE_NO_PREFIX
+    existing = session.scalars(select(SapEmployee.employee_no).where(SapEmployee.employee_no.startswith(prefix))).all()
+    numbers = [int(no[len(prefix):]) for no in existing if no[len(prefix):].isdigit()]
+    return f"{prefix}{max(numbers, default=0) + 1:05d}"
+
+
+def _product_lines(session: Session, user: AppUser) -> list[str]:
+    """新帳號負責的產品線：同一位主管底下其他業務的聯集。主管底下還沒有人（新主管自己也是），
+    就是品項表的全部類別。"""
+    teammates = []
+    if user.manager_id is not None:
+        teammates = session.scalars(
+            select(SapEmployee.product_lines)
+            .join(AppUser, AppUser.id == SapEmployee.user_id)
+            .where(AppUser.manager_id == user.manager_id, AppUser.id != user.id)
+            .order_by(AppUser.id)
+        ).all()
+    # dict.fromkeys：去掉重複，順序照同組的人原本的寫法
+    lines = list(dict.fromkeys(line for lines in teammates for line in lines))
+    return lines or sorted(session.scalars(select(Product.category).distinct()))
 
 
 def _log(session: Session, actor: AppUser, action: str, detail: str) -> None:

@@ -2,10 +2,12 @@
 
 import hashlib
 import json
+import re
 from collections import Counter
 from datetime import datetime, timedelta
 from pathlib import Path
 
+import catalog
 import conftest
 import generate
 import psycopg
@@ -13,7 +15,7 @@ import pytest
 import seed
 from jsonschema import Draft202012Validator
 from sqlalchemy import create_engine, func, select, text
-from sqlalchemy.exc import ProgrammingError
+from sqlalchemy.exc import IntegrityError, ProgrammingError
 from sqlalchemy.orm import Session
 
 from app import models
@@ -398,6 +400,27 @@ def test_a_taipei_customer_without_a_district_fails_loudly():
     assert generate.place_of("德安藥局 · 逢甲", "independent", "台中市", "逢甲") == "TXG"
 
 
+def test_the_sap_employee_master_covers_reps_and_managers_but_not_it(db):
+    # 模擬 SAP 的人員主檔：五位業務與四位主管各一列，IT 沒有
+    numbers = dict(rows(db, "SELECT u.id, e.employee_no FROM app_user u LEFT JOIN sap_employee e ON e.user_id = u.id"))
+    reps = ["U01", "U02", "U03", "U04", "U05"]
+    assert {user for user, number in numbers.items() if number} == {*reps, "M01", "M02", "M03", "M04"}
+    assert numbers["A01"] is None
+    # 人員編號是 E 加五碼。唯一由資料表的限制保證；IT 開新帳號時接著最大號編，所以格式要固定
+    assert all(re.fullmatch(r"E\d{5}", number) for number in numbers.values() if number)
+    # 到職日都在一年以前：這九個人在假資料裡有一整年的拜訪紀錄，沒有一個是新人
+    assert rows(db, "SELECT count(*) FROM sap_employee WHERE hire_date > app_today() - 365")[0][0] == 0
+    # 產品線的值是品項表的類別。業務四條都負責——他們名下的客戶四類都在進
+    categories = {r[0] for r in rows(db, "SELECT DISTINCT category FROM product")}
+    lines = dict(rows(db, "SELECT user_id, product_lines FROM sap_employee"))
+    assert all(lines[user] and set(lines[user]) <= categories for user in lines)
+    assert all(set(lines[rep]) == categories for rep in reps) and len(categories) == 4
+    assert dict(rows(db, """
+        SELECT c.owner_user_id, count(DISTINCT p.category) FROM sales_transaction t
+        JOIN customer c ON c.id = t.customer_id JOIN product p ON p.sku = t.sku GROUP BY 1
+    """)) == dict.fromkeys(reps, 4)
+
+
 def test_seeded_conversations_sit_in_their_channels(db):
     found = dict(rows(db, """
         SELECT CASE ch.kind WHEN 'team' THEN m.name || '小組' WHEN 'place' THEN p.name ELSE cu.name END, count(*)
@@ -419,6 +442,73 @@ def test_seeded_conversations_sit_in_their_channels(db):
         SELECT count(*) FROM channel_message a JOIN channel_message b
           ON a.channel_id = b.channel_id AND a.id < b.id AND a.created_at > b.created_at
     """)[0][0] == 0
+
+
+def test_method_cards_cover_every_tag_and_are_written_by_managers(db):
+    assert rows(db, "SELECT count(*) FROM method_card WHERE status = 'published'")[0][0] == len(catalog.METHOD_CARDS)
+    tags = Counter(tag for (card_tags,) in rows(db, "SELECT tags FROM method_card WHERE status = 'published'") for tag in card_tags)
+    # 談判卡與新人頁之後靠標籤帶出相關的卡：每個標籤都要有卡可帶，新人頁一次帶三張
+    assert set(tags) == set(models.METHOD_TAGS)
+    assert tags["newcomer"] >= 3
+    authors = rows(db, "SELECT u.id, u.role FROM method_card c JOIN app_user u ON u.id = c.author_id GROUP BY 1, 2")
+    assert {role for _, role in authors} == {"manager"}
+    # 四位主管都有寫，不是只有一區在教
+    assert {author for author, _ in authors} == {"M01", "M02", "M03", "M04"}
+
+
+def test_method_card_feedback_comes_from_reps_on_their_own_customers(db):
+    # 回饋的人都是業務，按的地方是自己名下、而且是這張卡適用的那種客戶
+    assert rows(db, """
+        SELECT count(*) FROM method_card_feedback f
+        JOIN method_card m ON m.id = f.card_id
+        JOIN app_user u ON u.id = f.user_id
+        LEFT JOIN customer c ON c.id = f.customer_id
+        WHERE u.role <> 'sales'
+           OR c.owner_user_id IS DISTINCT FROM f.user_id
+           OR (m.customer_type IS NOT NULL AND c.type <> m.customer_type)
+    """)[0][0] == 0
+    assert {r[0] for r in rows(db, "SELECT DISTINCT user_id FROM method_card_feedback")} == {"U01", "U02", "U03", "U04", "U05"}
+    # 每張卡的採用與沒幫上次數照 catalog 寫的目標
+    found = {title: (adopted, not_helped) for title, adopted, not_helped in rows(db, """
+        SELECT m.title, count(*) FILTER (WHERE f.helped), count(*) FILTER (WHERE NOT f.helped)
+        FROM method_card m LEFT JOIN method_card_feedback f ON f.card_id = m.id GROUP BY m.id
+    """)}
+    assert found == {card[0]: card[-2:] for card in catalog.METHOD_CARDS}
+    # 時間都在灌資料之前，而且在卡片寫好之後
+    assert rows(db, """
+        SELECT count(*) FROM method_card_feedback f JOIN method_card m ON m.id = f.card_id
+        WHERE f.created_at > now() OR f.created_at < m.created_at
+    """)[0][0] == 0
+
+
+def test_generated_method_card_feedback_never_repeats_a_card_rep_and_customer():
+    data = generate.generate(AS_OF)
+    keys = [(f["card_title"], f["user_id"], f["customer_id"]) for f in data["method_card_feedback"]]
+    assert keys and len(set(keys)) == len(keys)
+    # 標題是灌資料時把回饋對回卡片的依據，不能重複
+    titles = [card["title"] for card in data["method_card"]]
+    assert len(set(titles)) == len(titles)
+    assert {f["card_title"] for f in data["method_card_feedback"]} <= set(titles)
+
+
+def test_one_account_has_one_answer_per_card_and_customer_even_without_a_customer(tx):
+    card_id = tx.scalar(select(models.MethodCard.id).limit(1))
+
+    def press(customer_id):
+        with tx.begin_nested():
+            tx.add(models.MethodCardFeedback(card_id=card_id, user_id="A01", customer_id=customer_id, helped=True))
+
+    press(None)
+    press("C001")
+    # 從方法卡清單按的沒有客戶：NULL 也算同一筆，不然同一個人可以一直按、次數一直加
+    for customer_id in (None, "C001"):
+        with pytest.raises(IntegrityError):
+            press(customer_id)
+
+
+def test_a_method_card_needs_at_least_one_tag(tx):
+    with pytest.raises(IntegrityError), tx.begin_nested():
+        tx.add(models.MethodCard(title="沒有標籤的卡", situation="什麼時候用", approach="怎麼做", tags=[], author_id="M01"))
 
 
 @pytest.fixture
@@ -488,6 +578,8 @@ def test_a_reseed_keeps_self_created_accounts_and_sign_in_bindings(used_database
         # 假資料照常灌好：十個公司帳號加上留下來的那一個
         assert rows(conn, "SELECT count(*) FROM app_user")[0][0] == 11
         assert rows(conn, "SELECT count(*) FROM customer")[0][0] == 250
+        # 人員主檔只有公司的業務與主管；留下來的自建帳號沒有（新人第一週頁把他當新人）
+        assert rows(conn, "SELECT count(*), count(*) FILTER (WHERE user_id = 'XKEEP001') FROM sap_employee") == [(9, 0)]
     engine.dispose()
     assert (counts["kept_account"], counts["kept_identity"]) == (1, 2)
 

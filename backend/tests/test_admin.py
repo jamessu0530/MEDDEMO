@@ -8,13 +8,14 @@ IT 坐在組織樹的根節點上，路徑就是 TW：截到任何共享層級�
 """
 
 import pytest
+import seed
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.main import app
-from app.models import AppUser, AskRecord, Escalation, OaApprovalStep, OaExpenseForm, OrgChangeLog, Visit
+from app.models import AppUser, AskRecord, Escalation, OaApprovalStep, OaExpenseForm, OrgChangeLog, SapEmployee, Visit
 from app.services import risk
 from app.services.org import paths_from_reports
 from app.services.scope import SELF, Scope
@@ -262,6 +263,49 @@ def test_a_new_account_gets_the_next_number_and_can_sign_in(tx, client, auth):
     login = client.post("/api/auth/login", json={"email": "new.rep@meddemo.tw", "password": "abcd1234"})
     assert login.status_code == 200
     assert login.json()["user"]["role"] == "sales"
+
+
+def test_a_new_account_gets_a_sap_employee_record_dated_today(tx, client, auth):
+    # 同組業務負責的產品線不一樣時，新人拿到的是聯集，順序照同組的人原本的寫法
+    tx.get(SapEmployee, "U01").product_lines = ["保健品", "一般用藥"]
+    tx.get(SapEmployee, "U02").product_lines = ["保健品", "醫材"]
+    tx.commit()
+    last = int(tx.scalar(select(func.max(SapEmployee.employee_no)))[1:])
+
+    def create(**account):
+        body = {"name": "測試新人", "password": "abcd1234"} | account
+        assert client.post("/api/admin/users", json=body, headers=auth("A01")).status_code == 201
+
+    create(email="rookie1@meddemo.tw", role="sales", manager_id="M01")
+    rookie = tx.get(SapEmployee, "U06")
+    # 人員編號接著最大號；到職日是系統日（決賽日），不是真實時間——這個帳號登入就是到職第 1 天的新人
+    assert rookie.employee_no == f"E{last + 1:05d}"
+    assert rookie.hire_date == seed.DEFAULT_AS_OF
+    assert rookie.product_lines == ["保健品", "一般用藥", "醫材"]
+
+    # 主管也是公司的人，一樣有人員主檔。底下還沒有人，產品線就是品項表的全部類別；他帶的第一位業務也是
+    create(email="boss5@meddemo.tw", role="manager", unit_id="TW.S")
+    create(email="rookie2@meddemo.tw", role="sales", manager_id="M05")
+    boss, first = tx.get(SapEmployee, "M05"), tx.get(SapEmployee, "U07")
+    assert (boss.employee_no, first.employee_no) == (f"E{last + 2:05d}", f"E{last + 3:05d}")
+    assert set(boss.product_lines) == set(first.product_lines) == {"保健品", "慢性處方", "一般用藥", "醫材"}
+    assert len(first.product_lines) == 4
+
+
+def test_a_malformed_employee_number_does_not_block_new_accounts(tx, client, auth):
+    # 人員主檔裡混進一筆不照「E 加五碼」編的（手動補的、別的系統匯進來的）：跟工號一樣跳過它，接著認得的最大號編
+    last = int(tx.scalar(select(func.max(SapEmployee.employee_no)))[1:])
+    tx.add_all([
+        SapEmployee(user_id="A01", employee_no="TEMP-1", hire_date=seed.DEFAULT_AS_OF, product_lines=["醫材"]),
+        AppUser(id="XTEST03", name="自建", role="sales", region="北區", acts_as_user_id="U01"),
+    ])
+    tx.flush()
+    tx.add(SapEmployee(user_id="XTEST03", employee_no="E12X", hire_date=seed.DEFAULT_AS_OF, product_lines=["醫材"]))
+    tx.commit()
+
+    account = {"name": "測試新人", "email": "rookie3@meddemo.tw", "password": "abcd1234", "role": "sales", "manager_id": "M02"}
+    assert client.post("/api/admin/users", json=account, headers=auth("A01")).status_code == 201
+    assert tx.get(SapEmployee, "U06").employee_no == f"E{last + 1:05d}"
 
 
 def test_it_can_hand_one_customer_to_another_rep(tx, client, auth):
