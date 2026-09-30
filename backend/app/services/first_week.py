@@ -1,7 +1,8 @@
 """新人第一週：你在哪一區、主管是誰、賣什麼、先認識哪幾家客戶、第一週每天做什麼。
 
 頁面上的內容不讓 AI 生成（NFR-1）：「你是誰、賣什麼」來自模擬 SAP 的人員主檔（SapEmployee），
-哪一區、主管是誰看組織樹，客戶與進貨金額現查，每天做什麼是 resources/first_week.json 裡人寫的句子。
+哪一區、主管是誰看組織樹，客戶與進貨金額現查，每天做什麼是 resources/first_week.json 裡人寫的句子，
+「主管教的做法」是主管寫的方法卡原文。
 
 範圍照 services/scope.py：名下客戶是代理之後的那位業務的（自建與第三方登入的帳號看示範業務林昱辰的）；
 「同一區賣最好的品項」是業績數字，看得到整個轄區（SHARING_LEVEL["sales_figures"]），
@@ -18,6 +19,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.models import CUSTOMER_TYPES, AppUser, Customer, DocumentChunk, Product, SalesTransaction, SapEmployee
+from app.services import method_cards
 from app.services.customer_profile import RECENT_DAYS, app_today
 from app.services.scope import SHARING_LEVEL, Scope
 
@@ -33,6 +35,8 @@ KEY_CUSTOMERS = 5
 # 先認識 A 級的，不足五家才用 B 級補；C 級不列
 KEY_GRADES = ("A", "B")
 GRADES = ("A", "B", "C")
+# 方法卡列掛「新人必看」的前三張，其餘到方法卡頁看
+NEWCOMER_METHODS = 3
 
 
 def load_config() -> dict[str, Any]:
@@ -99,6 +103,10 @@ def page(session: Session, user: AppUser) -> dict[str, Any]:
         "product_lines": _product_lines(session, scope, employee, since),
         "promotion": _running_promotion(session),
         "key_customers": _key_customers(session, own, since),
+        # 不篩客戶類型：新人三種客戶都會遇到。這一頁不是在哪一家客戶看的，回饋跟方法卡頁按的是同一筆
+        "methods": method_cards.related(
+            session, user, tags={"newcomer"}, customer_type=None, customer_id=None, limit=NEWCOMER_METHODS
+        ),
         "days": [
             {
                 "day": day["day"], "title": day["title"],

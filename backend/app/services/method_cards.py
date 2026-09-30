@@ -7,6 +7,7 @@
 - 內容是人寫的，這裡不呼叫任何模型。
 
 卡片只有幾十張，次數整批算好在 Python 裡排序，不寫成一條大 SQL。
+談判卡與新人第一週頁用 related 照標籤帶出相關的卡，回饋走同一支 API。
 """
 
 from __future__ import annotations
@@ -162,6 +163,20 @@ def list_published(
         )))
     cards = _out(session, list(session.scalars(stmt)), user, customer_id)
     return sorted(cards, key=lambda card: (card["adopted"], card["updated_at"], card["id"]), reverse=True)
+
+
+def related(
+    session: Session, user: AppUser, *, tags: set[str], customer_type: str | None, customer_id: str | None, limit: int
+) -> list[dict[str, Any]]:
+    """談判卡與新人頁帶出來的卡：上架的卡裡標籤跟 tags 有交集、適用這種客戶的，照清單的次序取前 limit 張。
+
+    customer_type 是 None 就不篩類型（新人頁）。customer_id 是在哪一家客戶的談判卡上看，my_feedback 看那一家的。
+    tags 裡不是方法卡標籤的（談判卡的 chain 訊號）對不到任何卡，不算錯。"""
+    if not tags:
+        return []
+    # 直接拿清單來挑：次數、排序、看不看得到都只有那一份規則
+    cards = list_published(session, user, customer_type=customer_type, customer_id=customer_id)
+    return [card for card in cards if tags.intersection(card["tags"])][:limit]
 
 
 def list_mine(session: Session, user: AppUser) -> list[dict[str, Any]]:

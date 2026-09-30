@@ -3,7 +3,7 @@
 連鎖是顧客導向：顧客要買的時候架上有沒有（檔期、主推品類裡架上有什麼、缺什麼）、我方的毛利底線。
 獨立藥局與診所是成本導向：這一檔進貨成本多少、賣一個賺多少（當期促銷）、這家的供貨與付款條件。
 內容只來自資料庫的數字、設定檔裡人寫的句子與內部文件的原文，不讓 AI 生成（NFR-1）：
-節慶那一句話寫在 resources/festivals.json，切入點是內部文件的原文段落。
+節慶那一句話寫在 resources/festivals.json，切入點是內部文件的原文段落，「主管教的做法」是主管寫的方法卡原文。
 """
 
 import datetime as dt
@@ -11,13 +11,14 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 from statistics import mean
+from typing import Any
 
 from sqlalchemy import column, distinct, func, select, table
 from sqlalchemy.orm import Session
 
-from app.models import Customer, DocumentChunk, Product, SalesTransaction
+from app.models import METHOD_TAGS, AppUser, Customer, DocumentChunk, Product, SalesTransaction
 from app.pricing import SUPPLY_PRICE_FACTOR
-from app.services import festivals
+from app.services import festivals, method_cards
 from app.services.customer_profile import TOP_SKU_DAYS, Profile
 from app.services.retrieval import SIMPLE, keyword_tokens
 
@@ -27,6 +28,8 @@ TOPICS_FILE = Path(__file__).resolve().parents[1] / "resources" / "negotiation_t
 TURNOVER_DAYS = 90
 TOP_SKUS = 4
 MAX_TIPS = 3
+# 方法卡最多帶兩張：切入點已經有三段，再多進門前看不完
+MAX_METHODS = 2
 # 缺口最多列三個：進門談得完的量
 MAX_GAPS = 3
 # 《檔期活動申請與成效回報》：單一檔期的檔期費用以客戶前 3 個月平均月進貨金額的 15% 為上限
@@ -167,6 +170,8 @@ class NegotiationCard:
     deals: Deals | None
     terms: Terms | None
     tips: list[Tip]
+    # 主管教的做法：照這家的情況帶出來的方法卡，每張是 method_cards.card_out 的樣子；沒有相關的就是空的
+    methods: list[dict[str, Any]]
 
 
 def _campaign(coming: list[festivals.Festival], today: dt.date, amount_last_90d: float) -> Campaign | None:
@@ -373,7 +378,16 @@ def _tips(session: Session, signals: set[str]) -> list[Tip]:
     return tips
 
 
-def negotiation_card(session: Session, customer: Customer, profile: Profile) -> NegotiationCard:
+def _methods(session: Session, user: AppUser, customer: Customer, signals: set[str]) -> list[dict[str, Any]]:
+    """切入點用的那一組情況直接當標籤（訊號與方法卡的標籤同一組名字；chain 不是標籤，不帶）。
+    回饋記在這家客戶上，所以 my_feedback 也看這一家的。"""
+    return method_cards.related(
+        session, user, tags=signals & set(METHOD_TAGS), customer_type=customer.type, customer_id=customer.id, limit=MAX_METHODS
+    )
+
+
+def negotiation_card(session: Session, customer: Customer, profile: Profile, user: AppUser) -> NegotiationCard:
+    """user 是打開這張卡的人：方法卡上「我按過什麼」看的是他。"""
     today = profile.today
     coming = festivals.upcoming(today)
     festival = coming[0] if coming else None
@@ -398,7 +412,9 @@ def negotiation_card(session: Session, customer: Customer, profile: Profile) -> 
             deals=None,
             terms=None,
             tips=_tips(session, signals),
+            methods=_methods(session, user, customer, signals),
         )
+    signals = (profile.signals - CHAIN_ONLY_SIGNALS) | {"cost"}
     return NegotiationCard(
         orientation="cost",
         festival=block,
@@ -408,5 +424,6 @@ def negotiation_card(session: Session, customer: Customer, profile: Profile) -> 
         margin=None,
         deals=_deals(session, categories),
         terms=_terms(customer, profile),
-        tips=_tips(session, (profile.signals - CHAIN_ONLY_SIGNALS) | {"cost"}),
+        tips=_tips(session, signals),
+        methods=_methods(session, user, customer, signals),
     )

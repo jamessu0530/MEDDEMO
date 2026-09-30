@@ -25,6 +25,12 @@ from app.services.documents import DOCUMENTS_DIR, index_documents
 
 ROOT = Path(__file__).resolve().parents[2]
 CATEGORIES = {"保健品", "慢性處方", "一般用藥", "醫材"}
+# 掛「新人必看」標籤的三張方法卡（catalog.METHOD_CARDS），照採用次數
+NEWCOMER_CARDS = [
+    ("新人第一次拜訪：先說接誰的，再問一件店裡的事", 43),
+    ("走出店門一分鐘內，把五件事講完", 12),
+    ("客戶開口要折扣：先問量，超過 3% 不要當場答應", 7),
+]
 
 
 @pytest.fixture
@@ -256,6 +262,39 @@ def test_a_document_missing_from_the_index_is_left_out_and_logged(tx, client, au
     assert "04-報價權限.md" in caplog.text
 
 
+def methods_of(client, headers) -> list[dict]:
+    return client.get("/api/first-week", headers=headers).json()["methods"]
+
+
+def test_the_page_brings_the_three_most_adopted_newcomer_method_cards(tx, client, auth):
+    rep = auth("U01")
+    methods = methods_of(client, rep)
+    assert [(card["title"], card["adopted"]) for card in methods] == NEWCOMER_CARDS
+    assert all("newcomer" in card["tags"] and card["my_feedback"] is None for card in methods)
+    # 自建帳號（評審）看到的是同樣三張
+    assert [card["title"] for card in methods_of(client, headers_for(self_created(tx)))] == [title for title, _ in NEWCOMER_CARDS]
+
+    # 第四張新人卡還沒有人採用，排不進前三張
+    new = {"title": "測試：連鎖的新人卡", "situation": "第一次進連鎖店。", "approach": "先找店長。", "customer_type": "chain", "tags": ["newcomer"]}
+    assert client.post("/api/methods", json=new, headers=auth("M01")).status_code == 201
+    assert methods_of(client, rep) == methods
+    # 第三張下架，它就補上來。不篩客戶類型：新人什麼客戶都會遇到，只適用連鎖的卡也列
+    assert client.patch(f"/api/methods/{methods[2]['id']}", json={"status": "retired"}, headers=auth("M02")).status_code == 200
+    assert [card["title"] for card in methods_of(client, rep)] == [NEWCOMER_CARDS[0][0], NEWCOMER_CARDS[1][0], "測試：連鎖的新人卡"]
+
+
+def test_feedback_pressed_on_the_first_week_page_is_the_same_one_as_on_the_method_card_page(tx, client, auth):
+    rep = auth("U03")
+    first = methods_of(client, rep)[0]
+    # 這一頁不是在哪一家客戶按的，不帶客戶：跟在方法卡頁按的是同一筆
+    pressed = client.post(f"/api/methods/{first['id']}/feedback", json={"helped": True}, headers=rep)
+    assert pressed.status_code == 200
+    after = methods_of(client, rep)[0]
+    assert (after["id"], after["adopted"], after["my_feedback"]) == (first["id"], 44, True)
+    listed = client.get("/api/methods", headers=rep).json()
+    assert next(card for card in listed if card["id"] == first["id"])["my_feedback"] is True
+
+
 def test_the_config_has_five_days_of_things_that_point_somewhere_real():
     config = first_week.load_config()
     assert [day["day"] for day in config["days"]] == [1, 2, 3, 4, 5]
@@ -270,6 +309,6 @@ def test_the_config_has_five_days_of_things_that_point_somewhere_real():
     assert {task["doc"] for task in tasks if "doc" in task} <= documents
     assert config["documents"] and set(config["documents"]) <= documents
     assert len(set(config["documents"])) == len(config["documents"])
-    # App 裡的路徑要是真的路由。/methods 由方法卡那一項提供，四項合併之後才在 App.tsx 裡
+    # App 裡的路徑要是真的路由
     routes = set(re.findall(r'<Route\s+path="([^"]+)"', (ROOT / "frontend/src/App.tsx").read_text(encoding="utf-8")))
-    assert {task["to"] for task in tasks if "to" in task} <= routes | {"/methods"}
+    assert {task["to"] for task in tasks if "to" in task} <= routes

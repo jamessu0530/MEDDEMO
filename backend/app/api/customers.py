@@ -11,6 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.auth import CurrentUser
+from app.api.methods import MethodCardOut
 from app.db import get_session
 from app.models import AppUser, Customer, Product, SalesTransaction, SapQuotationDraft, Visit
 from app.pricing import supply_price
@@ -188,6 +189,8 @@ class NegotiationCard(BaseModel):
     deals: Deals | None
     terms: Terms | None
     tips: list[Tip]
+    # 主管教的做法：照這家的情況帶出來的方法卡，最多兩張；my_feedback 是登入者在這家客戶按過什麼
+    methods: list[MethodCardOut]
 
 
 def _customer_query(scope: Scope):
@@ -261,11 +264,11 @@ def get_profile(session: SessionDep, customer_id: str, user: CurrentUser):
 def get_negotiation_card(session: SessionDep, customer_id: str, user: CurrentUser):
     """談判卡：每種客戶都有，圍繞下一個節慶（FR-3）。連鎖是顧客導向，獨立藥局與診所是成本導向。
 
-    數字來自交易資料與當期促銷，節慶那一句話是設定檔裡人寫的，切入點是內部文件的原文段落。
+    數字來自交易資料與當期促銷，節慶那一句話是設定檔裡人寫的，切入點是內部文件的原文段落，方法卡是主管寫的原文。
     """
     customer, item = _load(session, customer_id, user, SHARING_LEVEL["customer_profile"])
     profile = customer_profile.build_profile(session, customer)
-    card = negotiation.negotiation_card(session, customer, profile)
+    card = negotiation.negotiation_card(session, customer, profile, user)
     return NegotiationCard(customer=item, **dataclasses.asdict(card))
 
 
