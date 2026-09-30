@@ -14,7 +14,7 @@ from app.api.auth import CurrentUser
 from app.db import get_session
 from app.models import AppUser, Customer, Product, SalesTransaction, SapQuotationDraft, Visit
 from app.pricing import supply_price
-from app.services import customer_profile, writeback
+from app.services import customer_profile, negotiation, writeback
 from app.services.scope import SHARING_LEVEL, Scope
 
 router = APIRouter(prefix="/api/customers", tags=["customers"])
@@ -198,7 +198,7 @@ def get_negotiation_card(session: SessionDep, customer_id: str, user: CurrentUse
     if customer.type != "chain":
         raise HTTPException(409, "只有連鎖客戶有談判卡")
     profile = customer_profile.build_profile(session, customer)
-    card = customer_profile.negotiation_card(session, customer, profile)
+    card = negotiation.negotiation_card(session, customer, profile)
     return NegotiationCard(customer=item, **dataclasses.asdict(card))
 
 

@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.main import app
-from app.services import customer_profile
+from app.services import negotiation
 from app.services.documents import index_documents
 
 
@@ -80,6 +80,6 @@ def test_only_chain_customers_have_a_negotiation_card(client):
 )
 def test_each_topic_in_the_settings_finds_its_intended_section(engine, company_docs, signal, section):
     """negotiation_topics.json 的每組關鍵字都要找到想要的段落；改了文件或關鍵字，這裡會先發現"""
-    topics = {topic["signal"]: topic for topic in json.loads(customer_profile.TOPICS_FILE.read_text(encoding="utf-8"))["topics"]}
+    topics = {topic["signal"]: topic for topic in json.loads(negotiation.TOPICS_FILE.read_text(encoding="utf-8"))["topics"]}
     with Session(engine) as session:
-        assert customer_profile._best_section(session, topics[signal]["keywords"], set()).section == section
+        assert negotiation._best_section(session, topics[signal]["keywords"], set()).section == section
