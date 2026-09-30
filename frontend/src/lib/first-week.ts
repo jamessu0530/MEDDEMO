@@ -42,3 +42,12 @@ export function setDone(userId: string, current: string[], taskId: string, check
 export function countDone(taskIds: string[], done: string[]): number {
   return taskIds.filter((id) => done.includes(id)).length
 }
+
+/**
+ * 「到職第 N 天」這幾個字，不該寫的時候是 null。只有新人寫：過了新人期的老員工打開這一頁，
+ * 「到職第 2068 天」讀起來很怪，畫面只留到職日。沒有人員主檔的帳號（day_no 是 null）、
+ * 到職日還沒到（day_no 不到 1）也不寫。後端的 day_no 照實回，要不要顯示由這裡決定。
+ */
+export function dayLabel({ is_newcomer, day_no }: { is_newcomer: boolean; day_no: number | null }): string | null {
+  return is_newcomer && day_no !== null && day_no >= 1 ? `到職第 ${day_no} 天` : null
+}

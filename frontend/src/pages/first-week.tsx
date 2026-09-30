@@ -9,7 +9,7 @@ import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
 import { Badge } from "@/components/ui/badge"
 import { useAuth } from "@/lib/auth"
-import { countDone, readDone, setDone } from "@/lib/first-week"
+import { countDone, dayLabel, readDone, setDone } from "@/lib/first-week"
 import { formatMoney } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
@@ -58,7 +58,7 @@ export function FirstWeekPage() {
 
   return (
     <div className="flex min-h-svh flex-col">
-      <PageHeader title="新人第一週" subtitle={data?.day_no ? `到職第 ${data.day_no} 天` : undefined} backTo="/" />
+      <PageHeader title="新人第一週" subtitle={(data && dayLabel(data)) ?? undefined} backTo="/" />
       <main className="flex flex-1 flex-col gap-6 px-4 pt-4 pb-10">
         {state.status === "loading" && <p className="py-10 text-center text-sm text-muted-foreground">載入中…</p>}
         {state.status === "error" && state.denied && (
@@ -145,6 +145,7 @@ function Row({ label, value }: { label: string; value: string }) {
 /** 你的資料：人員編號與到職日來自 SAP 人員主檔，哪一區與主管來自組織樹，客戶數現查 */
 function ProfileSection({ data }: { data: FirstWeek }) {
   const { employee, customers } = data
+  const day = dayLabel(data)
   return (
     <section className="rounded-2xl border bg-card p-4">
       <div className="flex items-baseline justify-between gap-3">
@@ -159,8 +160,9 @@ function ProfileSection({ data }: { data: FirstWeek }) {
       )}
       <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
         {employee.employee_no && <Row label="人員編號" value={employee.employee_no} />}
+        {/* 第幾天只有新人寫；老員工只留到職日 */}
         {employee.hire_date && (
-          <Row label="到職日" value={`${employee.hire_date.replaceAll("-", "/")}（到職第 ${data.day_no} 天）`} />
+          <Row label="到職日" value={`${employee.hire_date.replaceAll("-", "/")}${day ? `（${day}）` : ""}`} />
         )}
         <Row label="營業所" value={employee.region} />
         <Row label="直屬主管" value={employee.manager_name ?? "—"} />
@@ -302,14 +304,14 @@ function TaskRow({ task, checked, onToggle }: { task: FirstWeekTask; checked: bo
  * 問不到 status（沒訊號、伺服器出錯）就不顯示，今日路線照常，不另外提示。
  */
 export function FirstWeekEntry({ userId }: { userId: string }) {
-  const [card, setCard] = useState<{ dayNo: number | null; done: number; total: number } | null>(null)
+  const [card, setCard] = useState<{ day: string | null; done: number; total: number } | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
     getFirstWeekStatus(controller.signal)
       .then((status) => {
         if (!status.is_newcomer) return
-        setCard({ dayNo: status.day_no, done: countDone(status.task_ids, readDone(userId)), total: status.task_ids.length })
+        setCard({ day: dayLabel(status), done: countDone(status.task_ids, readDone(userId)), total: status.task_ids.length })
       })
       .catch(() => {
         // 這張卡只是入口，載不到就算了
@@ -327,7 +329,7 @@ export function FirstWeekEntry({ userId }: { userId: string }) {
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium">新人第一週</p>
         <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
-          {card.dayNo !== null && `到職第 ${card.dayNo} 天 · `}完成 {card.done}／{card.total}
+          {card.day && `${card.day} · `}完成 {card.done}／{card.total}
         </p>
       </div>
       <ChevronRight className="size-4 shrink-0 text-primary" />

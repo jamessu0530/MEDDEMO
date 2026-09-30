@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-import { countDone, readDone, setDone } from "@/lib/first-week"
+import { countDone, dayLabel, readDone, setDone } from "@/lib/first-week"
 
 // vite.config.ts 的測試環境是 node，沒有 localStorage：補一個最小的假物件，測完用 vi.unstubAllGlobals 拆掉
 function fakeStorage() {
@@ -80,5 +80,23 @@ describe("countDone", () => {
   it("設定檔換了 id 等於新的一件事，舊的勾選不算", () => {
     expect(countDone(taskIds, ["d1-customers", "d1-old-task"])).toBe(1)
     expect(countDone([], ["d1-customers"])).toBe(0)
+  })
+})
+
+describe("dayLabel", () => {
+  it("新人寫到職第幾天，到職日當天是第 1 天", () => {
+    expect(dayLabel({ is_newcomer: true, day_no: 1 })).toBe("到職第 1 天")
+    expect(dayLabel({ is_newcomer: true, day_no: 30 })).toBe("到職第 30 天")
+  })
+
+  it("過了新人期的老員工不寫第幾天（到職第 2068 天讀起來很怪），畫面只留到職日", () => {
+    expect(dayLabel({ is_newcomer: false, day_no: 31 })).toBeNull()
+    expect(dayLabel({ is_newcomer: false, day_no: 2068 })).toBeNull()
+  })
+
+  it("沒有人員主檔（自建帳號）或到職日還沒到，也不寫第幾天", () => {
+    expect(dayLabel({ is_newcomer: true, day_no: null })).toBeNull()
+    expect(dayLabel({ is_newcomer: true, day_no: 0 })).toBeNull()
+    expect(dayLabel({ is_newcomer: true, day_no: -6 })).toBeNull()
   })
 })
