@@ -292,6 +292,22 @@ def test_a_new_account_gets_a_sap_employee_record_dated_today(tx, client, auth):
     assert len(first.product_lines) == 4
 
 
+def test_a_malformed_employee_number_does_not_block_new_accounts(tx, client, auth):
+    # 人員主檔裡混進一筆不照「E 加五碼」編的（手動補的、別的系統匯進來的）：跟工號一樣跳過它，接著認得的最大號編
+    last = int(tx.scalar(select(func.max(SapEmployee.employee_no)))[1:])
+    tx.add_all([
+        SapEmployee(user_id="A01", employee_no="TEMP-1", hire_date=seed.DEFAULT_AS_OF, product_lines=["醫材"]),
+        AppUser(id="XTEST03", name="自建", role="sales", region="北區", acts_as_user_id="U01"),
+    ])
+    tx.flush()
+    tx.add(SapEmployee(user_id="XTEST03", employee_no="E12X", hire_date=seed.DEFAULT_AS_OF, product_lines=["醫材"]))
+    tx.commit()
+
+    account = {"name": "測試新人", "email": "rookie3@meddemo.tw", "password": "abcd1234", "role": "sales", "manager_id": "M02"}
+    assert client.post("/api/admin/users", json=account, headers=auth("A01")).status_code == 201
+    assert tx.get(SapEmployee, "U06").employee_no == f"E{last + 1:05d}"
+
+
 def test_it_can_hand_one_customer_to_another_rep(tx, client, auth):
     chart = client.put("/api/admin/customers/C002/owner", json={"owner_id": "U03"}, headers=auth("A01")).json()
     assert chart["log"][0]["detail"].endswith("的負責人從王冠宇改成黃怡君")

@@ -29,6 +29,8 @@ ASSIGNABLE_ROLES = ("sales", "manager")
 ROLE_LABEL = {"sales": "業務", "manager": "主管", "it": "IT"}
 # 新帳號的工號前綴，號碼接著目前最大的編
 ID_PREFIX = {"sales": "U", "manager": "M"}
+# 模擬 SAP 人員編號的前綴，後面接五碼
+EMPLOYEE_NO_PREFIX = "E"
 LOG_LIMIT = 50
 # 組織管理頁上區的順序：由北到南。地理節點只有灌資料時建的這幾個（新增區不在這次範圍），
 # 表上沒有排序欄位，照 id 排會變成中、北、南
@@ -339,9 +341,11 @@ def _next_id(session: Session, role: str) -> str:
 
 
 def _next_employee_no(session: Session) -> str:
-    """SAP 人員編號：E 加五碼，接著目前最大號編。"""
-    numbers = [int(number[1:]) for number in session.scalars(select(SapEmployee.employee_no))]
-    return f"E{max(numbers, default=0) + 1:05d}"
+    """SAP 人員編號：E 加五碼，接著目前最大號編。不照這個格式編的跳過，跟 _next_id 對工號的做法一樣。"""
+    prefix = EMPLOYEE_NO_PREFIX
+    existing = session.scalars(select(SapEmployee.employee_no).where(SapEmployee.employee_no.startswith(prefix))).all()
+    numbers = [int(no[len(prefix):]) for no in existing if no[len(prefix):].isdigit()]
+    return f"{prefix}{max(numbers, default=0) + 1:05d}"
 
 
 def _product_lines(session: Session, user: AppUser) -> list[str]:
