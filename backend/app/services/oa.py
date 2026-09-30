@@ -149,7 +149,14 @@ def _model(form: OaExpenseForm) -> dict[str, Any] | None:
     """模型對這張單的估計，簽核頁給主管參考。出差單不經過模型。"""
     if form.kind == "trip":
         return None
-    return {"probability": form.model_probability, "auto_approved": form.auto_approved}
+    # approvals 要用這裡的 next_form_no，整個檔案互相引用會繞成一圈，所以在用到的地方才引用
+    from app.services import approvals
+
+    return {
+        "probability": form.model_probability,
+        "auto_approved": form.auto_approved,
+        "reasons": approvals.reason_lines(form),
+    }
 
 
 def _item(session: Session, form: OaExpenseForm) -> dict[str, Any]:
@@ -302,4 +309,10 @@ def decide(session: Session, form: OaExpenseForm, user: AppUser, action: Literal
     else:
         form.status = "returned"
         session.add(OaActivity(form_id=form.id, action="returned", actor_id=user.id, detail="已退回"))
+    if form.kind != "trip":
+        # 優惠與合約有結果之後要生效（報價可以送出、合約延長），中途的關卡不做事
+        from app.services import approvals
+
+        session.flush()
+        approvals.apply_outcome(session, form)
     return form
