@@ -1,0 +1,162 @@
+{
+  "discount": {
+    "features": [
+      "discount_pct",
+      "margin_after",
+      "log_amount",
+      "log_sales_90d",
+      "ar_age_days",
+      "competitor_recent",
+      "grade_weight"
+    ],
+    "mean": {
+      "discount_pct": 7.122222222222222,
+      "margin_after": 0.3610516318092466,
+      "log_amount": 9.177273960448822,
+      "log_sales_90d": 11.923333320295091,
+      "ar_age_days": 32.19851851851852,
+      "competitor_recent": 0.06518518518518518,
+      "grade_weight": 2.1422222222222222
+    },
+    "sd": {
+      "discount_pct": 3.198302018645071,
+      "margin_after": 0.05979124283492824,
+      "log_amount": 0.8665204679356601,
+      "log_sales_90d": 0.7105018499432199,
+      "ar_age_days": 21.011933065249995,
+      "competitor_recent": 0.24685233808404225,
+      "grade_weight": 0.7079931645063068
+    },
+    "weights": {
+      "discount_pct": -2.323039489505569,
+      "margin_after": 0.6988565841396039,
+      "log_amount": -0.1311650454583657,
+      "log_sales_90d": 0.36491360596225314,
+      "ar_age_days": -1.046314296619512,
+      "competitor_recent": 0.470627952048632,
+      "grade_weight": 0.412408593068978
+    },
+    "bias": 1.6968096667947248,
+    "threshold": 0.85,
+    "metrics": {
+      "auc": 0.9208579881656804,
+      "precision_at_threshold": 0.9512195121951219,
+      "approved_at_threshold": 123,
+      "auto_share": 0.7784810126582279,
+      "train_rows": 675,
+      "test_rows": 225,
+      "test_approval_rate": 0.7511111111111111,
+      "test_manager_rows": 158,
+      "thresholds": [
+        {
+          "threshold": 0.8,
+          "approved": 130,
+          "precision": 0.9461538461538461
+        },
+        {
+          "threshold": 0.85,
+          "approved": 123,
+          "precision": 0.9512195121951219
+        },
+        {
+          "threshold": 0.9,
+          "approved": 111,
+          "precision": 0.963963963963964
+        },
+        {
+          "threshold": 0.95,
+          "approved": 83,
+          "precision": 0.9879518072289156
+        }
+      ],
+      "train_period": [
+        "2026-01-26",
+        "2026-08-20"
+      ],
+      "test_period": [
+        "2026-08-21",
+        "2026-10-27"
+      ]
+    }
+  },
+  "contract": {
+    "features": [
+      "fee_change",
+      "term_years",
+      "net_margin",
+      "log_sales_90d",
+      "interval_change",
+      "ar_age_days",
+      "grade_weight"
+    ],
+    "mean": {
+      "fee_change": 0.38666666666666666,
+      "term_years": 1.2622222222222221,
+      "net_margin": 0.25517006113166685,
+      "log_sales_90d": 12.585771999016675,
+      "interval_change": 0.004303791902959846,
+      "ar_age_days": 49.888888888888886,
+      "grade_weight": 2.528888888888889
+    },
+    "sd": {
+      "fee_change": 0.741949384317346,
+      "term_years": 0.4398428451106846,
+      "net_margin": 0.014409606983520435,
+      "log_sales_90d": 0.3623731582722932,
+      "interval_change": 0.07509947343005727,
+      "ar_age_days": 13.129817164204233,
+      "grade_weight": 0.4991647344301933
+    },
+    "weights": {
+      "fee_change": -2.325730737012776,
+      "term_years": -0.15208064568753574,
+      "net_margin": 0.938137168398101,
+      "log_sales_90d": 1.108875549455931,
+      "interval_change": 0.172787973583229,
+      "ar_age_days": -0.7498359815702574,
+      "grade_weight": 0.29707038564755006
+    },
+    "bias": 2.3590900182961874,
+    "threshold": 0.8,
+    "metrics": {
+      "auc": 0.9539473684210527,
+      "precision_at_threshold": 0.9512195121951219,
+      "approved_at_threshold": 41,
+      "auto_share": 0.803921568627451,
+      "train_rows": 225,
+      "test_rows": 75,
+      "test_approval_rate": 0.7466666666666667,
+      "test_manager_rows": 51,
+      "thresholds": [
+        {
+          "threshold": 0.8,
+          "approved": 41,
+          "precision": 0.9512195121951219
+        },
+        {
+          "threshold": 0.85,
+          "approved": 37,
+          "precision": 1.0
+        },
+        {
+          "threshold": 0.9,
+          "approved": 37,
+          "precision": 1.0
+        },
+        {
+          "threshold": 0.95,
+          "approved": 33,
+          "precision": 1.0
+        }
+      ],
+      "train_period": [
+        "2026-01-26",
+        "2026-08-25"
+      ],
+      "test_period": [
+        "2026-08-25",
+        "2026-10-27"
+      ]
+    }
+  }
+}

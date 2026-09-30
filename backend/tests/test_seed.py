@@ -199,6 +199,104 @@ def test_every_synced_visit_landed_in_all_three_targets(db):
     assert skipped == no_intent > 0
 
 
+def test_approval_history_has_both_outcomes_and_complete_features(db):
+    # 簽核模型的訓練資料：優惠 900 張、合約 300 張，全部已經有結果，過與不過都有
+    outcomes = {(kind, status): n for kind, status, n in rows(db, """
+        SELECT kind, status, count(*) FROM oa_expense_form
+        WHERE kind <> 'trip' AND status <> 'pending' AND NOT auto_approved GROUP BY 1, 2
+    """)}
+    for kind, total in (("discount", 900), ("contract", 300)):
+        counts = {status: outcomes.get((kind, status), 0) for status in ("approved", "rejected", "returned")}
+        assert sum(counts.values()) == total
+        # 大多數會過，但被退的也夠多，模型才有東西學
+        assert 0.6 < counts["approved"] / total < 0.9 and counts["rejected"] > 20 and counts["returned"] > 10
+    # 折扣大多落在主管權限內，少數到處長，很少到總經理；合約約三分之二照原費率
+    levels = {(kind, level): n for kind, level, n in rows(db, """
+        SELECT kind, required_level, count(*) FROM oa_expense_form WHERE kind <> 'trip' AND status <> 'pending'
+        AND NOT auto_approved GROUP BY 1, 2
+    """)}
+    assert levels["discount", "manager"] > 600 > 250 > levels["discount", "director"] > 100 > levels["discount", "gm"] > 20
+    assert 180 < levels["contract", "manager"] < 220 and ("contract", "gm") not in levels
+    # 特徵在送單當下就存在單上，每一張都齊全
+    assert rows(db, """
+        SELECT kind, array_agg(DISTINCT k ORDER BY k) FROM oa_expense_form, jsonb_object_keys(model_features) k
+        WHERE kind <> 'trip' GROUP BY 1 ORDER BY 1
+    """) == [
+        ("contract", sorted(generate_features("contract"))),
+        ("discount", sorted(generate_features("discount"))),
+    ]
+    assert rows(db, "SELECT count(*) FROM oa_expense_form WHERE kind <> 'trip' AND model_features IS NULL")[0][0] == 0
+    # 申請日都在有完整 90 天進貨紀錄的期間，而且是平日
+    first, last, weekend = rows(db, """
+        SELECT min(request_date), max(request_date), count(*) FILTER (WHERE extract(isodow FROM request_date) > 5)
+        FROM oa_expense_form WHERE kind <> 'trip'
+    """)[0]
+    assert first >= AS_OF - timedelta(days=generate.APPROVAL_HISTORY_DAYS) and last < AS_OF and weekend == 0
+
+
+def generate_features(kind):
+    from app.services import approvals
+
+    return approvals.FEATURES[kind]
+
+
+def test_approval_history_leaves_the_trip_forms_and_quotes_alone(db):
+    # 既有的 5,223 張出差單照舊；歷史優惠單不建報價草稿（會影響今日路線的商機）
+    assert rows(db, "SELECT count(*), count(visit_id), count(payload) FROM oa_expense_form WHERE kind = 'trip'")[0] == (5223, 5223, 0)
+    assert rows(db, "SELECT count(*) FROM sap_quotation_draft")[0][0] == 295
+    assert rows(db, "SELECT count(*) FROM oa_expense_form WHERE kind = 'discount' AND payload->>'quote_no' IS NOT NULL")[0][0] == 0
+    # 單號各自編號，不重複
+    assert rows(db, "SELECT DISTINCT left(form_no, 2) FROM oa_expense_form WHERE kind = 'discount'") == [("DC",)]
+    assert rows(db, "SELECT DISTINCT left(form_no, 2) FROM oa_expense_form WHERE kind = 'contract'") == [("CT",)]
+
+
+def test_every_decided_request_has_its_whole_chain_of_signers(db):
+    # 關卡與活動日誌在 seed.py 補：人簽過的單每一關都簽完，最後一關的結果就是整張單的結果
+    chains = rows(db, """
+        SELECT o.required_level, o.status,
+               array_agg(s.title ORDER BY s.step_no), array_agg(s.user_id ORDER BY s.step_no),
+               bool_and(s.status = 'done' AND s.acted_at IS NOT NULL)
+        FROM oa_expense_form o JOIN oa_approval_step s ON s.form_id = o.id
+        WHERE o.kind <> 'trip' AND o.status <> 'pending' AND NOT o.auto_approved
+        GROUP BY o.id
+    """)
+    assert len(chains) == 1200
+    titles = {"manager": ["業務", "區處主管"], "director": ["業務", "區處主管", "業務處長"], "gm": ["業務", "區處主管", "業務處長", "總經理"]}
+    for level, _, chain, signers, all_done in chains:
+        assert chain == titles[level] and all_done
+        # 業務處長、總經理由根節點的 IT 帳號代簽
+        assert signers[0].startswith("U") and signers[1].startswith("M") and set(signers[2:]) <= {"A01"}
+    last_actions = dict(rows(db, """
+        SELECT DISTINCT o.status, a.action FROM oa_expense_form o
+        JOIN oa_activity a ON a.id = (SELECT max(id) FROM oa_activity WHERE form_id = o.id)
+        WHERE o.kind <> 'trip' AND o.status <> 'pending' AND NOT o.auto_approved
+    """))
+    assert last_actions == {"approved": "approved", "rejected": "rejected", "returned": "returned"}
+
+
+def test_the_demo_requests_wait_in_the_managers_inbox(db):
+    # 給展示用：陳建宏的簽核匣兩張優惠（6% 與要再送處長的 10%）與一張合約，林昱辰名下兩張系統核准的
+    waiting = rows(db, """
+        SELECT o.kind, o.required_level, (o.payload->>'discount_pct')::float, c.name,
+               array_agg(s.status ORDER BY s.step_no), array_agg(s.user_id ORDER BY s.step_no)
+        FROM oa_expense_form o JOIN customer c ON c.id = o.customer_id JOIN oa_approval_step s ON s.form_id = o.id
+        WHERE o.status = 'pending' GROUP BY o.id, c.name ORDER BY o.created_at
+    """)
+    assert waiting == [
+        ("discount", "manager", 6.0, "福安連鎖藥局 · 鶯歌店", ["done", "pending"], ["U01", "M01"]),
+        ("discount", "director", 10.0, "福安連鎖藥局 · 板橋店", ["done", "pending", "waiting"], ["U01", "M01", "A01"]),
+        ("contract", "director", None, "康泰連鎖藥局 · 蘆洲店", ["done", "pending", "waiting"], ["U01", "M01", "A01"]),
+    ]
+    automatic = rows(db, """
+        SELECT o.applicant_id, o.kind, o.status, array_agg(s.role_label ORDER BY s.step_no),
+               array_agg(s.user_id ORDER BY s.step_no),
+               (SELECT array_agg(a.action ORDER BY a.id) FROM oa_activity a WHERE a.form_id = o.id)
+        FROM oa_expense_form o JOIN oa_approval_step s ON s.form_id = o.id
+        WHERE o.auto_approved GROUP BY o.id ORDER BY o.created_at
+    """)
+    assert automatic == [("U01", "discount", "approved", ["請求者", "系統核准"], ["U01", None], ["submitted", "auto_approved"])] * 2
+
+
 def test_promotions_run_monthly_up_to_the_as_of_month(db):
     # 202608 是照搬的那一期，之後每月模擬一期，決賽日那一期是進行中
     assert rows(db, "SELECT promotion_name, start_date, end_date, status FROM v_promotion ORDER BY start_date") == [

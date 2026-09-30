@@ -101,7 +101,10 @@ def test_seeded_forms_are_approved_and_only_visible_to_the_owner(client, auth):
     first = client.get(f"/api/oa/forms/{mine['items'][0]['id']}").json()
     assert first["steps"][-1]["status"] == "done"
     assert client.get(f"/api/oa/forms/{mine['items'][0]['id']}", headers=auth("U02")).status_code == 404
-    assert client.get("/api/oa/inbox", headers=auth("M01")).json()["counts"]["pending"] == 0
+    # 歷史出差單都簽完了；主管的簽核匣裡只有展示用的三張優惠與合約申請
+    inbox = client.get("/api/oa/inbox", headers=auth("M01")).json()
+    assert inbox["counts"]["pending"] == 3
+    assert [item["kind"] for item in inbox["items"]] == ["contract", "discount", "discount"]
 
 
 # ── 三種申請單共用同一套（優惠、合約的規則與模型在 test_approvals.py）────────────────

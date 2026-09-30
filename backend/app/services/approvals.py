@@ -178,15 +178,22 @@ def load_model() -> dict[str, Any] | None:
         return None
 
 
-def _probability(kind: str, features: dict[str, float], model: dict[str, Any] | None) -> float | None:
-    """模型估計的核准機率。模型檔少了這一種申請或少了某個特徵，就當成沒有模型。"""
+def estimate(kind: str, features: dict[str, float]) -> tuple[float | None, float | None]:
+    """（模型估計的核准機率, 這一種申請的門檻）。沒有模型、模型檔裡沒有這一種申請、或少了某個特徵，
+    機率就是 None；門檻是 None 代表這一種申請不做系統核准（訓練時達不到命中率的條件）。"""
+    model = (load_model() or {}).get(kind)
     if not model:
-        return None
+        return None, None
     try:
-        return logreg.predict(features, model, list(FEATURES[kind]))
+        return logreg.predict(features, model, list(FEATURES[kind])), model.get("threshold")
     except (KeyError, TypeError, ZeroDivisionError, OverflowError) as exc:
         log.warning("approval_model.json 的 %s 模型算不出機率（%r），這張申請照規則送人簽", kind, exc)
-        return None
+        return None, None
+
+
+def auto_detail(probability: float, threshold: float) -> str:
+    """系統核准那一筆活動日誌的內容。機率最多寫到 99%：模型估的是機率，四捨五入成 100% 會像是在保證。"""
+    return f"模型估計核准機率 {min(probability, 0.99):.0%}，高於門檻 {threshold:.0%}，系統核准"
 
 
 # ── 送單 ───────────────────────────────────────────────────────────
@@ -239,13 +246,14 @@ def contract_payload(
 def pending_contract(session: Session, customer_id: str) -> int | None:
     """這家客戶還沒簽完的合約申請。同一家同時只能有一張。"""
     return session.scalar(
-        select(OaExpenseForm.id).where(
-            OaExpenseForm.kind == "contract", OaExpenseForm.customer_id == customer_id, OaExpenseForm.status == "pending"
-        )
+        select(OaExpenseForm.id)
+        .where(OaExpenseForm.kind == "contract", OaExpenseForm.customer_id == customer_id, OaExpenseForm.status == "pending")
+        .order_by(OaExpenseForm.id)
+        .limit(1)
     )
 
 
-def _signers(session: Session, applicant: AppUser) -> dict[str, AppUser]:
+def signers(session: Session, applicant: AppUser) -> dict[str, AppUser]:
     """每一級由誰簽：區處主管是申請人的直屬主管（跟出差單一樣），業務處長與總經理是根節點的 IT 帳號。"""
     manager = session.get(AppUser, applicant.manager_id) if applicant.manager_id else None
     if manager is None:
@@ -268,13 +276,11 @@ def submit(session: Session, *, kind: str, applicant: AppUser, customer: Custome
     else:
         listing, reward = payload["listing_fee_rate"], payload["channel_reward_rate"]
         level = contract_level(listing["from"], listing["to"], reward["from"], reward["to"])
-    signers = _signers(session, applicant)
+    chain = signers(session, applicant)
 
     state = customer_state(session, customer, today)
     features = discount_features(state, payload) if kind == "discount" else contract_features(state, payload)
-    model = (load_model() or {}).get(kind)
-    probability = _probability(kind, features, model)
-    threshold = model.get("threshold") if model and probability is not None else None
+    probability, threshold = estimate(kind, features)
     # 四個條件都成立才由系統核准：規則上最高只到區處主管、這一種申請有訂出門檻、機率過門檻、
     # 客戶沒有超過 60 天的帳款。最後一條不交給模型：帳款出問題的客戶再給優惠，應該有人看過
     auto = (
@@ -312,8 +318,7 @@ def submit(session: Session, *, kind: str, applicant: AppUser, customer: Custome
             form_id=form.id, step_no=2, role_label=AUTO_STEP_LABEL, user_id=None, title="模型", status="done", acted_at=now,
         ))
         session.add(OaActivity(
-            form_id=form.id, action="auto_approved", actor_id=None,
-            detail=f"模型估計核准機率 {probability:.0%}，高於門檻 {threshold:.0%}，系統核准",
+            form_id=form.id, action="auto_approved", actor_id=None, detail=auto_detail(probability, threshold),
         ))
         session.flush()
         apply_outcome(session, form)
@@ -321,7 +326,7 @@ def submit(session: Session, *, kind: str, applicant: AppUser, customer: Custome
     # 關卡照規則一次建好：第二關等簽，後面的排隊
     for step_no, step in enumerate(LEVEL_STEPS[level], start=2):
         session.add(OaApprovalStep(
-            form_id=form.id, step_no=step_no, role_label=STEP_ROLE_LABEL[step], user_id=signers[step].id,
+            form_id=form.id, step_no=step_no, role_label=STEP_ROLE_LABEL[step], user_id=chain[step].id,
             title=STEP_TITLE[step], status="pending" if step_no == 2 else "waiting",
         ))
     session.flush()

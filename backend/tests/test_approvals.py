@@ -329,3 +329,65 @@ def test_reasons_list_the_facts_a_manager_checks(tx, api, auth, model):
     assert approvals.reasons(renewal)[0] == "上架費率與通路獎勵合計調高 1 個百分點，要送業務處長"
     assert approvals.reasons(renewal)[1].startswith("近 90 天淨毛利率 ")
     assert approvals.reasons(submit_contract(tx, customer_id="C003"))[0] == "照原費率續約 12 個月"
+
+
+# ── 歷史申請單與訓練出來的模型 ───────────────────────────────────────
+
+
+def test_the_generator_and_the_backend_compute_the_same_features(tx):
+    # 產生器（data/seed/generate.py）自己算了一份特徵寫在歷史單上；後端在同一天算出來的要一樣，
+    # 不然模型訓練時看到的資料跟上線時算出來的不一樣。兩種申請各抽幾張，前後期都抽到
+    for kind, build in (("discount", approvals.discount_features), ("contract", approvals.contract_features)):
+        forms = tx.scalars(select(OaExpenseForm).where(OaExpenseForm.kind == kind).order_by(OaExpenseForm.id)).all()
+        sample = forms[:: len(forms) // 6][:6]
+        assert len(sample) == 6
+        for form in sample:
+            customer = tx.get(Customer, form.customer_id)
+            computed = build(approvals.customer_state(tx, customer, form.request_date), form.payload)
+            assert computed == pytest.approx(form.model_features, abs=1e-6), form.form_no
+
+
+def test_the_trained_model_file_has_both_kinds_and_honest_metrics():
+    model = approvals.load_model()
+    assert set(model) == {"discount", "contract"}
+    for kind, one in model.items():
+        names = list(approvals.FEATURES[kind])
+        assert one["features"] == names
+        assert set(one["mean"]) == set(one["sd"]) == set(one["weights"]) == set(names)
+        assert one["threshold"] in (None, 0.8, 0.85, 0.9, 0.95)
+        metrics = one["metrics"]
+        assert set(metrics) >= {"auc", "precision_at_threshold", "auto_share", "train_rows", "test_rows"}
+        # 照時間切，最後四分之一當測試期
+        assert metrics["train_rows"] + metrics["test_rows"] == {"discount": 900, "contract": 300}[kind]
+        assert metrics["test_rows"] == {"discount": 225, "contract": 75}[kind]
+        assert metrics["auc"] > 0.8
+        if one["threshold"] is None:
+            assert metrics["precision_at_threshold"] is None and metrics["auto_share"] == 0
+        else:
+            # 門檻的條件：模型說會過的真的有過至少 95%，而且至少 20 張
+            assert metrics["precision_at_threshold"] >= 0.95 and metrics["approved_at_threshold"] >= 20
+            # 主管級的申請有一部分由系統核准，不是全部
+            assert 0 < metrics["auto_share"] < 1
+    # 方向照假資料設計的關聯：折扣越深、帳款拖越久越難過；費率調越多越難過
+    assert model["discount"]["weights"]["discount_pct"] < 0 and model["discount"]["weights"]["ar_age_days"] < 0
+    assert model["contract"]["weights"]["fee_change"] < 0
+
+
+def test_the_seeded_system_approvals_agree_with_the_trained_model(tx):
+    # 展示用那兩張「系統核准」是假資料寫死的；訓練出來的模型也要同意，畫面上的機率才不會自相矛盾
+    forms = tx.scalars(select(OaExpenseForm).where(OaExpenseForm.auto_approved)).all()
+    assert len(forms) == 2
+    for form in forms:
+        probability, threshold = approvals.estimate(form.kind, form.model_features)
+        assert form.model_probability == pytest.approx(probability)
+        assert probability >= threshold and form.model_features["ar_age_days"] <= customer_profile.AR_WATCH_DAYS
+        activity = tx.scalars(select(OaActivity).where(OaActivity.form_id == form.id).order_by(OaActivity.id)).all()
+        assert activity[-1].detail == approvals.auto_detail(probability, threshold)
+    # 等人簽的那三張也記了機率，簽核頁給主管參考
+    waiting = tx.scalars(select(OaExpenseForm).where(OaExpenseForm.status == "pending")).all()
+    assert len(waiting) == 3 and all(0 < form.model_probability < 1 for form in waiting)
+    # 歷史單是人簽的，當時沒有模型
+    assert tx.scalar(select(OaExpenseForm.id).where(
+        OaExpenseForm.kind != "trip", OaExpenseForm.status != "pending", OaExpenseForm.auto_approved.is_(False),
+        OaExpenseForm.model_probability.is_not(None),
+    ).limit(1)) is None
