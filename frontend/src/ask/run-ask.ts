@@ -4,6 +4,7 @@
  */
 
 import { createAsk, getAsk, isFinished, type Ask, type AskKind } from "@/api/asks"
+import { ApiError } from "@/api/client"
 import type { Conversation } from "@/ask/conversation"
 
 // 還沒答完的提問每半秒問一次進度，查到第幾輪會即時出現在畫面上。
@@ -25,7 +26,7 @@ function sleep(ms: number, signal: AbortSignal) {
   })
 }
 
-/** 回傳查完的 Ask；中途被 abort 會丟出，呼叫端自行忽略 */
+/** 回傳查完的 Ask；中途被 abort、或後端明確說不行（4xx）會丟出，呼叫端決定怎麼顯示 */
 export async function runAsk(
   conversation: Conversation,
   entryId: number,
@@ -40,8 +41,10 @@ export async function runAsk(
     try {
       ask = await getAsk(ask.id, signal)
     } catch (error) {
-      if (signal.aborted) throw error
-      continue // 網路一時不通就等下一輪
+      // 4xx 是後端明確說不行（提問不存在、登入失效）：再問幾次答案都一樣。
+      // 輪詢不跟著問答頁卸載而停（ask/ask-session.ts），這種情況不自己停就會每半秒問到關掉網頁為止
+      if (signal.aborted || (error instanceof ApiError && error.status < 500)) throw error
+      continue // 網路一時不通、後端暫時出錯就等下一輪
     }
     conversation.replace(entryId, { ask })
   }

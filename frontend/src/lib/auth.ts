@@ -130,6 +130,9 @@ function subscribe(listener: () => void) {
   }
 }
 
+/** 畫面以外要跟著登入、登出動作的東西用（例如問答的對話要在換人時清掉，ask/ask-session.ts） */
+export const onAuthChange = subscribe
+
 export function useAuth() {
   return useSyncExternalStore(subscribe, () => current)
 }

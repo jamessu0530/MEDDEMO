@@ -1,9 +1,8 @@
-import { Component, lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react"
+import { Component, lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react"
 import { Loader2, Mic, Send } from "lucide-react"
 
 import { type Ask, type AskKind } from "@/api/asks"
-import { createConversation } from "@/ask/conversation"
-import { runAsk } from "@/ask/run-ask"
+import { askSessionFor } from "@/ask/ask-session"
 import { useConversation } from "@/ask/use-conversation"
 import { EntryView } from "@/components/ask/entry-view"
 // type-only：只拿型別，不會把 VoiceDock（跟著它的 src/voice）拉進主 chunk
@@ -38,10 +37,12 @@ const MODES: { kind: AskKind; label: string; placeholder: string; examples: stri
 /** 問答（原型 S-07）：打字與語音在同一條對話裡，兩種問法共用同一套查詢與查詢軌跡 */
 export function AskPage() {
   const user = useAuth()?.user
-  const [conversation] = useState(() => createConversation())
+  // 對話與還在跑的查詢不放在這個頁面的 state：切去促銷、客戶再回來，要看得到原本的對話，查到一半的也要查完
+  const asking = askSessionFor(user?.id ?? "")
+  const conversation = asking.conversation
+  const sending = useSyncExternalStore(asking.subscribe, asking.isBusy)
   const [kind, setKind] = useState<AskKind>("data")
   const [question, setQuestion] = useState("")
-  const [sending, setSending] = useState(false)
   const [voiceOn, setVoiceOn] = useState(false)
   const [session, setSession] = useState<VoiceSession | null>(null)
   // React 的 lazy 會把失敗的那一次記在元件身上，之後只會再丟同一個錯；要讓「請稍後再試」是真的，重試就得換一顆新的
@@ -51,47 +52,25 @@ export function AskPage() {
   // 同一個網址再 import 會直接失敗而不重抓，所以唯一真的能再試一次的方法是重新整理
   const [notice, setNotice] = useState<{ text: string; retryByReload?: boolean } | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
-  const polls = useRef(new AbortController())
   const mode = MODES.find((m) => m.kind === kind)!
   // 模型還在講、逐字稿還沒出來的那一格先不顯示
   const entries = useConversation(conversation).filter((entry) => entry.kind === "tool" || entry.text.trim())
-
-  // 離開頁面時停掉所有還在跑的輪詢。React 開發模式會先卸載再掛上一次，
-  // 所以卸載時中止掉的 controller 要能換一個新的，否則重新掛上之後每一次查詢都會立刻被 abort
-  useEffect(() => {
-    if (polls.current.signal.aborted) polls.current = new AbortController()
-    const controller = polls.current
-    return () => controller.abort()
-  }, [])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [entries.length])
 
-  async function submit(text: string) {
+  function submit(text: string) {
     const trimmed = text.trim()
     if (!trimmed || sending) return
-    // 抓住這一次要用的 signal：卸載後重新掛上會換掉 polls.current，catch 裡再讀一次會讀到另一個還沒被 abort 的
-    const signal = polls.current.signal
+    setQuestion("")
     // 語音會話開著就送進同一個會話，模型保有上下文並用講的回答；entry 由 controller 加
     if (session) {
       session.sendText(trimmed)
-      setQuestion("")
       return
     }
-    setSending(true)
-    conversation.addUtterance("user", "typed", trimmed)
-    const entryId = conversation.addToolRun(kind, trimmed)
-    setQuestion("")
-    try {
-      await runAsk(conversation, entryId, kind, trimmed, signal)
-    } catch (err) {
-      if (signal.aborted) return
-      // 錯誤寫在那一格卡片上就好。輸入框上面的橫幅要等下一次送出才清掉，會一路留到語音會話裡，跟當下的畫面對不上
-      conversation.replace(entryId, { error: err instanceof Error ? err.message : "送出失敗，請再試一次" })
-    } finally {
-      setSending(false)
-    }
+    // 送出與輪詢都在 asking 裡跑：這一頁卸載了也照樣查完，錯誤寫在那一格卡片上
+    void asking.ask(kind, trimmed)
   }
 
   const replaceAsk = (id: number, patch: { ask: Ask }) => conversation.replace(id, patch)
@@ -187,7 +166,7 @@ export function AskPage() {
                 </Button>
               }
             >
-              <VoiceDock conversation={conversation} onClose={closeVoice} onSession={setSession} onNotice={(text) => setNotice(text ? { text } : null)} />
+              <VoiceDock conversation={conversation} polls={asking.polls} onClose={closeVoice} onSession={setSession} onNotice={(text) => setNotice(text ? { text } : null)} />
             </Suspense>
           </VoiceBoundary>
         )}
@@ -195,7 +174,7 @@ export function AskPage() {
         <form
           onSubmit={(event) => {
             event.preventDefault()
-            void submit(question)
+            submit(question)
           }}
           className="flex flex-col gap-1.5"
         >

@@ -99,14 +99,16 @@ function describeStartError(error: unknown) {
 export class VoiceController {
   private view: VoiceView = { status: "idle", notice: null, level: 0, pending: 0, muted: false }
   private readonly listeners = new Set<() => void>()
-  // 離開頁面時停止所有輪詢；對話結束但查詢還沒完成的，卡片照樣更新到查完
-  private polls = new AbortController()
   private conn: Connection | null = null
   private readonly conversation: Conversation
+  // 查詢輪詢的中止訊號，登出時才中止（ask/ask-session.ts）。掛斷或離開頁面都不中止：
+  // 查詢還沒完成的，卡片照樣更新到查完
+  private readonly polls: AbortSignal
 
   // tsconfig 開了 erasableSyntaxOnly，建構子參數屬性語法會編不過，所以拆成欄位＋指定
-  constructor(conversation: Conversation) {
+  constructor(conversation: Conversation, polls: AbortSignal) {
     this.conversation = conversation
+    this.polls = polls
   }
 
   subscribe = (listener: () => void) => {
@@ -236,17 +238,6 @@ export class VoiceController {
     this.update({ muted })
   }
 
-  /** 頁面掛上時呼叫。React 開發模式會先卸載再掛上一次，所以卸載時停掉的輪詢要能重新開始 */
-  attach = () => {
-    if (this.polls.signal.aborted) this.polls = new AbortController()
-  }
-
-  /** 離開頁面：掛斷、關麥克風、停止輪詢 */
-  detach = () => {
-    this.polls.abort()
-    this.stop()
-  }
-
   private update(patch: Partial<VoiceView>) {
     this.view = { ...this.view, ...patch }
     for (const listener of this.listeners) listener()
@@ -347,7 +338,7 @@ export class VoiceController {
       if (!conn.player.playing) conn.cue.start()
     }
 
-    const signal = this.polls.signal
+    const signal = this.polls
     let response: Record<string, unknown>
     try {
       if (!askKind) throw new Error(`沒有這個查詢工具：${call.name}`)
