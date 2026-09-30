@@ -100,9 +100,12 @@ export function TodayPage() {
         <div className="-mr-2 flex items-center justify-between gap-2">
           {/* 點自己的名字進帳號設定：改密碼、登出 */}
           <Link to="/settings" className="flex h-11 min-w-0 items-center gap-1 text-xs text-muted-foreground">
-            <span className="truncate">
-              {user.region} · {user.name}
-              {user.acting_as && `（示範：${user.acting_as.name}的客戶）`}
+            {/* 示範說明另起一行：標頭右邊有四顆圖示，接在名字後面的話手機上整句會被截掉 */}
+            <span className="flex min-w-0 flex-col leading-tight">
+              <span className="truncate">
+                {user.region} · {user.name}
+              </span>
+              {user.acting_as && <span className="truncate">示範：{user.acting_as.name}的客戶</span>}
             </span>
             <ChevronRight className="size-3.5 shrink-0" />
           </Link>

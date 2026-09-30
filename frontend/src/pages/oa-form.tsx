@@ -256,7 +256,8 @@ function ActivityTab({ form }: { form: OaFormDetail }) {
             <p className="text-[11px] text-muted-foreground">{formatDateTime(item.created_at)}</p>
             <p className="text-sm font-medium">{item.detail}</p>
             <p className="text-xs text-muted-foreground">
-              {item.actor_name} · {item.actor_unit}
+              {/* 系統核准的那一筆沒有單位，不留一個多出來的「·」 */}
+              {[item.actor_name, item.actor_unit].filter(Boolean).join(" · ")}
             </p>
           </div>
         </li>

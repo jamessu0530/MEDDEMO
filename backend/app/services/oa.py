@@ -188,6 +188,16 @@ def _item(session: Session, form: OaExpenseForm) -> dict[str, Any]:
     }
 
 
+# 清單照單據上的日期排（出差日；優惠與合約是送單當下的系統日），同一天再看建立時間。
+# 不直接照建立時間：假資料的單建立在決賽日前兩週，決賽日之前試用時，剛送出的優惠、合約照建立時間排
+# 會沉到假資料後面、掉出前 50 張。剛送出的出差單日期是真實的拜訪日，決賽日之前一樣排在假資料後面
+LIST_ORDER = (
+    func.coalesce(OaExpenseForm.trip_date, OaExpenseForm.request_date).desc(),
+    OaExpenseForm.created_at.desc(),
+    OaExpenseForm.id.desc(),
+)
+
+
 def list_mine(session: Session, user: AppUser, status: str | None) -> dict[str, Any]:
     owner = Scope.for_user(user).acting_user_id
     if owner is None:
@@ -196,7 +206,7 @@ def list_mine(session: Session, user: AppUser, status: str | None) -> dict[str, 
     counts = _counts(session, *where)
     if status:
         where.append(OaExpenseForm.status == status)
-    forms = session.scalars(select(OaExpenseForm).where(*where).order_by(OaExpenseForm.created_at.desc(), OaExpenseForm.id.desc()).limit(50)).all()
+    forms = session.scalars(select(OaExpenseForm).where(*where).order_by(*LIST_ORDER).limit(50)).all()
     return {"items": [_item(session, form) for form in forms], "counts": counts}
 
 
@@ -208,7 +218,7 @@ def list_inbox(session: Session, user: AppUser) -> dict[str, Any]:
     if user.role != "it":
         pending_ids = pending_ids.where(OaApprovalStep.user_id == user.id)
     forms = session.scalars(
-        select(OaExpenseForm).where(OaExpenseForm.id.in_(pending_ids)).order_by(OaExpenseForm.created_at.desc(), OaExpenseForm.id.desc()).limit(50)
+        select(OaExpenseForm).where(OaExpenseForm.id.in_(pending_ids)).order_by(*LIST_ORDER).limit(50)
     ).all()
     return {"items": [_item(session, form) for form in forms], "counts": {"pending": len(forms)}}
 
@@ -225,7 +235,7 @@ def list_auto_approved(session: Session, user: AppUser) -> dict[str, Any]:
     forms = session.scalars(
         select(OaExpenseForm)
         .where(OaExpenseForm.auto_approved, scope.includes(SHARING_LEVEL["manager_inbox"], OaExpenseForm.applicant_id))
-        .order_by(OaExpenseForm.created_at.desc(), OaExpenseForm.id.desc())
+        .order_by(*LIST_ORDER)
         .limit(AUTO_APPROVED_LIMIT)
     ).all()
     return {"items": [_item(session, form) for form in forms]}

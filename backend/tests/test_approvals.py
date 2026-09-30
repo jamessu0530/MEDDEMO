@@ -773,3 +773,18 @@ def test_the_database_keeps_one_pending_renewal_per_customer(engine, committed):
         assert session.scalar(select(func.count()).select_from(OaExpenseForm).where(
             OaExpenseForm.kind == "contract", OaExpenseForm.customer_id == "C003", OaExpenseForm.status == "pending",
         )) == 1
+
+
+def test_a_request_filed_today_heads_my_list_even_before_the_final(tx, api, auth, model):
+    # 假資料的單建立在決賽日前兩週。照建立時間排的話，決賽日之前剛送出的單會沉到假資料後面、掉出前 50 張；
+    # 照單據上的日期（送單當下的系統日）排，就一定在最前面
+    model(fake_model(0.99))
+    created = api.post(
+        f"/api/customers/{GOOD}/quotes",
+        json={"items": [{"sku": "HS-FO30", "qty": 10}], "discount_pct": 5, "reason": "量大"}, headers=auth("U01"),
+    )
+    assert created.json()["approval"]["status"] == "approved"
+    listed = api.get("/api/oa/forms", params={"status": "approved"}, headers=auth("U01")).json()["items"]
+    assert listed[0]["form_no"] == created.json()["approval"]["form_no"]
+    auto = api.get("/api/oa/auto-approved", headers=auth("M01")).json()["items"]
+    assert auto[0]["form_no"] == created.json()["approval"]["form_no"]
