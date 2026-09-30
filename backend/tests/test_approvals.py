@@ -6,14 +6,17 @@
 
 import datetime as dt
 import math
+import threading
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import delete, func, select
+from sqlalchemy.orm import Session
 
 from app.main import app
 from app.models import AppUser, Customer, OaActivity, OaApprovalStep, OaExpenseForm, SapQuotationDraft
-from app.services import approvals, customer_profile
+from app.services import approvals, customer_profile, oa
 
 TODAY = dt.date(2026, 10, 28)
 # 林昱辰名下：忠孝店帳款正常（最久 23 天），鶯歌店有一筆拖了 93 天
@@ -495,3 +498,119 @@ def test_a_pending_request_follows_the_rep_to_a_new_manager(tx, api, auth, model
     assert [s.user_id for s in steps(tx, form)] == ["U02", "M02", "A01"]
     assert api.get(f"/api/oa/forms/{form.id}", headers=auth("M02")).json()["can_decide"] is True
     assert api.get(f"/api/oa/forms/{form.id}", headers=auth("M01")).status_code == 404
+
+
+# ── 兩個請求重疊 ───────────────────────────────────────────────────
+# tx 是單一連線，測不出重疊：這一段用兩條真的連線，資料真的寫進資料庫，測完把這個測試建的刪掉
+
+
+@pytest.fixture
+def committed(engine, monkeypatch):
+    monkeypatch.setattr(approvals, "load_model", lambda: None)
+    with Session(engine) as session:
+        last = session.scalar(select(func.max(OaExpenseForm.id)))
+        ends = dict(session.execute(select(Customer.id, Customer.contract_end_date)).all())
+    yield
+    with Session(engine) as session, session.begin():
+        # 關卡、意見、日誌跟著申請單一起刪（ON DELETE CASCADE）
+        session.execute(delete(OaExpenseForm).where(OaExpenseForm.id > last))
+        session.execute(delete(SapQuotationDraft).where(SapQuotationDraft.quote_no.like("QRACE-%")))
+        for customer in session.scalars(select(Customer)):
+            customer.contract_end_date = ends[customer.id]
+
+
+def overlap(engine, first, second) -> dict:
+    """first 在自己的交易裡做完、還沒提交時，second 從另一條連線進來。
+    回傳 second 有沒有被擋著等（blocked），以及它最後的結果（value）或丟出來的錯誤（error）。"""
+    outcome: dict = {}
+    with Session(engine) as a, Session(engine) as b:
+        first(a)
+
+        def run():
+            try:
+                outcome["value"] = second(b)
+                b.commit()
+            except HTTPException as exc:
+                b.rollback()
+                outcome["error"] = exc.status_code
+
+        thread = threading.Thread(target=run)
+        thread.start()
+        thread.join(timeout=0.5)
+        outcome["blocked"] = thread.is_alive()
+        a.commit()
+        thread.join(timeout=10)
+        assert not thread.is_alive()
+    return outcome
+
+
+def signing(form_id: int, user_id: str, action: str = "approve", step_no: int | None = None):
+    """一個請求裡的簽核：照 API 的做法先讀單、再簽。"""
+
+    def act(session: Session):
+        user = session.get(AppUser, user_id)
+        return oa.decide(session, oa.load_form(session, form_id, user), user, action, None, step_no).status
+
+    return act
+
+
+def committed_discount(engine, discount_pct: float, quote_no: str) -> int:
+    with Session(engine) as session:
+        form = submit_discount(session, discount_pct, quote_no=quote_no)
+        return form.id
+
+
+def snapshot(engine, form_id: int, quote_no: str | None = None):
+    with Session(engine) as session:
+        form = session.get(OaExpenseForm, form_id)
+        return form.status, [s.status for s in steps(session, form)], quote_no and quote_status(session, quote_no)
+
+
+def test_a_double_click_does_not_sign_the_next_step_too(engine, committed):
+    # 10% 折扣：區處主管連按兩次核准，第二次不能把業務處長那一關也放行
+    form_id = committed_discount(engine, 10.0, "QRACE-0001")
+    second = overlap(engine, signing(form_id, "M01"), signing(form_id, "M01"))
+    assert second == {"blocked": True, "error": 403}
+    assert snapshot(engine, form_id, "QRACE-0001") == ("pending", ["done", "done", "pending"], "pending_approval")
+
+    # IT 任何一關都能代簽，連點兩次會連簽兩關：畫面送出時帶著它看到的那一關，對不上就不簽
+    form_id = committed_discount(engine, 10.0, "QRACE-0002")
+    second = overlap(engine, signing(form_id, "A01", step_no=2), signing(form_id, "A01", step_no=2))
+    assert second == {"blocked": True, "error": 409}
+    assert snapshot(engine, form_id, "QRACE-0002") == ("pending", ["done", "done", "pending"], "pending_approval")
+
+
+def test_a_refusal_and_an_approval_at_the_same_moment_do_not_both_win(engine, committed):
+    # 6% 折扣：主管駁回的同時 IT 代簽核准。先到的算數，後到的不能把單翻成已核准
+    form_id = committed_discount(engine, 6.0, "QRACE-0003")
+    second = overlap(engine, signing(form_id, "M01", "reject"), signing(form_id, "A01"))
+    assert second == {"blocked": True, "error": 409}
+    assert snapshot(engine, form_id, "QRACE-0003") == ("rejected", ["done", "done"], "rejected")
+
+    # 續約也一樣：被駁回的續約不能同時被核准而延長合約
+    with Session(engine) as session:
+        form_id = submit_contract(session, customer_id="C003").id
+    second = overlap(engine, signing(form_id, "M01", "reject"), signing(form_id, "A01"))
+    assert second == {"blocked": True, "error": 409}
+    assert snapshot(engine, form_id)[0] == "rejected"
+    with Session(engine) as session:
+        assert session.get(Customer, "C003").contract_end_date == dt.date(2026, 11, 17)
+
+
+def test_signing_names_the_step_it_saw(tx, api, auth, model):
+    form = submit_discount(tx, 10.0)
+
+    def sign(user, **body):
+        return api.post(f"/api/oa/forms/{form.id}/decide", json={"action": "approve"} | body, headers=auth(user))
+
+    # 畫面上看到的是第 2 關，現在等簽的也是第 2 關：照簽
+    assert sign("A01", step_no=2).json()["steps"][1]["status"] == "done"
+    # 同一個畫面再送一次：第 2 關已經簽過了，不會順手把第 3 關也簽掉
+    stale = sign("A01", step_no=2)
+    assert stale.status_code == 409 and "重新整理" in stale.json()["detail"]
+    assert [s.status for s in steps(tx, form)] == ["done", "done", "pending"]
+    # 不帶就照舊簽現在等簽的那一關
+    assert sign("A01").json()["status"] == "approved"
+    # 整張單已經有結果了
+    done = sign("A01")
+    assert done.status_code == 409 and "已經" in done.json()["detail"]

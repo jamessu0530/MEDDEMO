@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { CheckCircle2, Circle } from "lucide-react"
 import { useNavigate, useParams } from "react-router"
 
+import { ApiError } from "@/api/client"
 import {
   decideOaForm,
   getOaForm,
@@ -43,6 +44,8 @@ export function OaFormPage() {
   const [tab, setTab] = useState<Tab>("表單")
   const [state, setState] = useState<LoadState>({ status: "loading" })
   const [attempt, setAttempt] = useState(0)
+  // 簽核時發現這張單已經被別人簽過：說明一下，並重新載入成最新的樣子
+  const [stale, setStale] = useState<string | null>(null)
 
   useEffect(() => {
     if (!Number.isInteger(id)) return
@@ -91,6 +94,7 @@ export function OaFormPage() {
             secondary={{ label: "返回", onClick: () => navigate(backTo) }}
           />
         )}
+        {stale && <p className="rounded-xl bg-destructive/10 px-3 py-2 text-sm text-destructive">{stale}</p>}
         {form && tab === "表單" && <FormTab form={form} />}
         {form && tab === "附件" && <EmptyTab empty={form.attachments.length === 0} items={form.attachments} />}
         {form && tab === "意見" && (
@@ -110,7 +114,14 @@ export function OaFormPage() {
         {form && canDecide && tab === "表單" && (
           <DecideBar
             form={form}
-            onDecided={(next) => setState({ status: "ready", form: next })}
+            onDecided={(next) => {
+              setStale(null)
+              setState({ status: "ready", form: next })
+            }}
+            onStale={(message) => {
+              setStale(message)
+              setAttempt((n) => n + 1)
+            }}
           />
         )}
       </main>
@@ -254,7 +265,15 @@ function ActivityTab({ form }: { form: OaFormDetail }) {
   )
 }
 
-function DecideBar({ form, onDecided }: { form: OaFormDetail; onDecided: (form: OaFormDetail) => void }) {
+function DecideBar({
+  form,
+  onDecided,
+  onStale,
+}: {
+  form: OaFormDetail
+  onDecided: (form: OaFormDetail) => void
+  onStale: (message: string) => void
+}) {
   const [comment, setComment] = useState("")
   const [busy, setBusy] = useState<"approve" | "reject" | "return" | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -263,9 +282,13 @@ function DecideBar({ form, onDecided }: { form: OaFormDetail; onDecided: (form: 
     setBusy(action)
     setError(null)
     try {
-      onDecided(await decideOaForm(form.id, action, comment.trim() || undefined))
+      // 帶上畫面上正在等簽的那一關：連點兩次、或別人剛簽過，後端不會往下多簽一關
+      const stepNo = form.steps.find((step) => step.status === "pending")?.step_no
+      onDecided(await decideOaForm(form.id, action, comment.trim() || undefined, stepNo))
     } catch (err) {
-      setError(err instanceof Error ? err.message : "簽核失敗，請再試一次")
+      // 409：這張單在你按下去之前已經被簽過了，畫面換成最新的
+      if (err instanceof ApiError && err.status === 409) onStale(err.message)
+      else setError(err instanceof Error ? err.message : "簽核失敗，請再試一次")
     } finally {
       setBusy(null)
     }

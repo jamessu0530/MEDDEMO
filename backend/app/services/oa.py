@@ -97,12 +97,16 @@ def _visible(session: Session, user: AppUser, form: OaExpenseForm) -> bool:
     return Scope.for_user(user).can_see(SHARING_LEVEL["oa_form"], applicant.org_path)
 
 
-def _step_to_decide(session: Session, form: OaExpenseForm, user: AppUser) -> OaApprovalStep | None:
-    """這張單現在等這個人簽的那一關：指派給他、還沒簽的。IT 可以代簽任何一關還沒簽的。"""
+def _step_to_decide(session: Session, form: OaExpenseForm, user: AppUser, *, fresh: bool = False) -> OaApprovalStep | None:
+    """這張單現在等這個人簽的那一關：指派給他、還沒簽的。IT 可以代簽任何一關還沒簽的。
+
+    fresh：不用這個 session 先前讀過的舊值，重新從資料庫讀（簽核時，鎖到單之後別人可能剛簽完）。
+    """
     stmt = select(OaApprovalStep).where(OaApprovalStep.form_id == form.id, OaApprovalStep.status == "pending")
     if user.role != "it":
         stmt = stmt.where(OaApprovalStep.user_id == user.id)
-    return session.scalar(stmt.order_by(OaApprovalStep.step_no))
+    stmt = stmt.order_by(OaApprovalStep.step_no)
+    return session.scalar(stmt.execution_options(populate_existing=True) if fresh else stmt)
 
 
 def load_form(session: Session, form_id: int, user: AppUser) -> OaExpenseForm:
@@ -296,8 +300,27 @@ def detail(session: Session, form: OaExpenseForm, user: AppUser | None = None) -
     }
 
 
-def decide(session: Session, form: OaExpenseForm, user: AppUser, action: Literal["approve", "reject", "return"], comment: str | None) -> OaExpenseForm:
-    step = _step_to_decide(session, form, user)
+def decide(
+    session: Session, form: OaExpenseForm, user: AppUser, action: Literal["approve", "reject", "return"],
+    comment: str | None, step_no: int | None = None,
+) -> OaExpenseForm:
+    """簽現在等簽的那一關。step_no 是送出的人畫面上看到的那一關，有帶就要對得上。
+
+    先鎖住這張單再看狀態與關卡：兩個請求重疊時（連點兩次、主管與代簽的 IT 同時按），後到的要等先到的提交，
+    然後看到的是簽完之後的樣子。不鎖的話兩邊都以為自己簽的是同一關，會跳關，或是駁回與核准同時成立。
+    """
+    session.refresh(form, with_for_update=True)
+    if form.status != "pending":
+        raise HTTPException(409, "這張單已經有結果了，請重新整理")
+    current = session.scalar(
+        select(OaApprovalStep)
+        .where(OaApprovalStep.form_id == form.id, OaApprovalStep.status == "pending")
+        .order_by(OaApprovalStep.step_no)
+        .execution_options(populate_existing=True)
+    )
+    if step_no is not None and (current is None or current.step_no != step_no):
+        raise HTTPException(409, "這一關已經有人簽過了，請重新整理")
+    step = _step_to_decide(session, form, user, fresh=True)
     if step is None:
         raise HTTPException(403, "這張單現在不是等你簽核")
     # IT 代簽時，這一關記實際簽的人，流程圖上才不會顯示成原本指派的主管簽的

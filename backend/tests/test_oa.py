@@ -225,9 +225,9 @@ def test_a_rejection_midway_ends_the_whole_form(tx, api, auth, action, status):
     form = discount_form(tx)
     ended = decide(api, auth, form.id, "M01", action).json()
     assert ended["status"] == status
-    # 後面的關卡不會再輪到
+    # 後面的關卡不會再輪到：整張單已經有結果，再簽會被擋下來
     assert [s["status"] for s in ended["steps"]] == ["done", "done", "waiting"]
-    assert decide(api, auth, form.id, "A01").status_code == 403
+    assert decide(api, auth, form.id, "A01").status_code == 409
     assert form.id not in inbox_ids(api, auth, "A01")
 
 

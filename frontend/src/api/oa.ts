@@ -116,6 +116,13 @@ export function getOaForm(id: number, signal?: AbortSignal) {
   return request<OaFormDetail>(`/api/oa/forms/${id}`, { signal })
 }
 
-export function decideOaForm(id: number, action: "approve" | "reject" | "return", comment?: string) {
-  return request<OaFormDetail>(`/api/oa/forms/${id}/decide`, jsonBody("POST", { action, comment: comment || null }))
+/**
+ * 簽核。stepNo 是畫面上顯示、正在等簽的那一關：後端發現現在等簽的不是這一關（別人剛簽過、或自己連點了兩次）就回 409，
+ * 不會往下多簽一關
+ */
+export function decideOaForm(id: number, action: "approve" | "reject" | "return", comment?: string, stepNo?: number) {
+  return request<OaFormDetail>(
+    `/api/oa/forms/${id}/decide`,
+    jsonBody("POST", { action, comment: comment || null, step_no: stepNo ?? null })
+  )
 }

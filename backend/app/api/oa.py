@@ -18,6 +18,8 @@ SessionDep = Annotated[Session, Depends(get_session)]
 class DecideInput(BaseModel):
     action: Literal["approve", "reject", "return"]
     comment: str | None = Field(default=None, max_length=2000)
+    # 畫面上顯示的那一關。有帶而且不是現在等簽的那一關就不簽（409）：IT 連點兩次才不會連簽兩關
+    step_no: int | None = None
 
 
 @router.get("/forms")
@@ -50,6 +52,6 @@ def get_form(session: SessionDep, form_id: int, user: CurrentUser):
 @router.post("/forms/{form_id}/decide")
 def decide_form(session: SessionDep, form_id: int, body: DecideInput, user: CurrentUser):
     form = oa.load_form(session, form_id, user)
-    oa.decide(session, form, user, body.action, body.comment.strip() if body.comment else None)
+    oa.decide(session, form, user, body.action, body.comment.strip() if body.comment else None, body.step_no)
     session.commit()
     return oa.detail(session, form, user)
