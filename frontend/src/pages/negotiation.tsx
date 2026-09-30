@@ -3,12 +3,15 @@ import { useNavigate, useParams } from "react-router"
 
 import { ApiError } from "@/api/client"
 import { getNegotiationCard, type NegotiationCard } from "@/api/customers"
+import type { MethodCard } from "@/api/methods"
+import { MethodCardItem } from "@/components/method-card"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/lib/auth"
 import { formatMoney, formatUnitPrice } from "@/lib/format"
+import { replaceCard } from "@/lib/methods"
 import { applyCountdown, festivalCountdown, formatFullDate, formatRate, missedText } from "@/lib/negotiation"
 import { customerNotFoundText } from "@/lib/scope"
 import { cn } from "@/lib/utils"
@@ -31,7 +34,7 @@ const ORIENTATION_LABEL: Record<NegotiationCard["orientation"], string> = { cust
 /**
  * 談判卡（原型 S-04，FR-3）：每種客戶都有，圍繞下一個節慶。
  * 連鎖是顧客導向（檔期、架上有什麼、缺什麼、我方底線），獨立藥局與診所是成本導向（這一檔的進價、這家的條件）。
- * 數字來自交易資料與當期促銷，節慶那一句話是設定檔裡人寫的，切入點是內部文件的原文段落
+ * 數字來自交易資料與當期促銷，節慶那一句話是設定檔裡人寫的，切入點是內部文件的原文段落，最下面是主管寫的方法卡
  */
 export function NegotiationPage() {
   const { customerId = "" } = useParams()
@@ -53,6 +56,16 @@ export function NegotiationPage() {
   }, [customerId, attempt])
 
   const card = state.status === "ready" ? state.card : null
+
+  // 方法卡按完回饋，換掉那一張；談判卡其餘的內容不必重新載入
+  function methodChanged(next: MethodCard) {
+    setState((current) =>
+      current.status === "ready"
+        ? { status: "ready", card: { ...current.card, methods: replaceCard(current.card.methods, next) } }
+        : current
+    )
+  }
+
   return (
     <div className="flex min-h-svh flex-col">
       <PageHeader
@@ -95,6 +108,19 @@ export function NegotiationPage() {
             {card.deals && <DealsBlock deals={card.deals} festival={card.festival} />}
             {card.terms && <TermsBlock terms={card.terms} />}
             <Tips tips={card.tips} />
+            {/* 沒有相關的方法卡就不顯示這一區 */}
+            {card.methods.length > 0 && (
+              <section className="flex flex-col gap-2">
+                <div className="flex items-baseline justify-between gap-2">
+                  <h2 className="text-sm font-semibold">主管教的做法</h2>
+                  <p className="text-[11px] text-muted-foreground">用過之後點開，按一下有沒有幫上</p>
+                </div>
+                {/* 回饋帶這家客戶：記的是「在這一家用了有沒有幫上」 */}
+                {card.methods.map((method) => (
+                  <MethodCardItem key={method.id} card={method} customerId={card.customer.id} onChanged={methodChanged} />
+                ))}
+              </section>
+            )}
           </>
         )}
       </main>

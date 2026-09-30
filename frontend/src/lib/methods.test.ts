@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import type { MethodCard } from "@/api/methods"
-import { filterCards, tagLabel, TAG_LABELS, TAGS } from "@/lib/methods"
+import { filterCards, replaceCard, tagLabel, TAG_LABELS, TAGS } from "@/lib/methods"
 
 const card = (id: number, customer_type: MethodCard["customer_type"], tags: string[], extra: Partial<MethodCard> = {}) =>
   ({ id, title: `第 ${id} 張`, situation: "", approach: "", customer_type, tags, ...extra }) as MethodCard
@@ -56,5 +56,19 @@ describe("filterCards", () => {
   it("三個條件一起用是都要符合", () => {
     expect(ids(filterCards(cards, { tag: "cost", customerType: "independent", keyword: "" }))).toEqual([4, 5])
     expect(ids(filterCards(cards, { tag: "cost", customerType: "independent", keyword: "庫存" }))).toEqual([5])
+  })
+})
+
+describe("replaceCard", () => {
+  it("按完回饋只換掉那一張，其餘與先後都不動", () => {
+    const pressed = { ...cards[1], adopted: 18, my_feedback: true }
+    const after = replaceCard(cards, pressed)
+    expect(ids(after)).toEqual([1, 2, 3, 4, 5])
+    expect(after[1]).toBe(pressed)
+    expect(after.filter((c, index) => c === cards[index])).toHaveLength(4)
+  })
+
+  it("清單裡沒有這張卡就照原樣", () => {
+    expect(replaceCard(cards, card(9, null, ["cost"]))).toEqual(cards)
   })
 })
