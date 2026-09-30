@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router"
 
 import { linkProvider, oauthLogin } from "@/api/auth"
 import { Button } from "@/components/ui/button"
+import { playInk } from "@/ink/ink"
 import { readToken, refreshUser, signIn, useAuth } from "@/lib/auth"
 import { clearGitHubPending, readGitHubPending, type OAuthMode } from "@/lib/oauth"
 
@@ -82,8 +83,11 @@ export function GitHubCallbackPage() {
     if (outcome.mode === "login") {
       oauthLogin(credential)
         .then((result) => {
-          signIn(result)
-          navigate("/", { replace: true })
+          // 等墨蓋滿才登入，理由同登入頁（pages/login.tsx 的 enter）
+          playInk("splat", () => {
+            signIn(result)
+            navigate("/", { replace: true })
+          })
         })
         .catch(fail)
     } else {

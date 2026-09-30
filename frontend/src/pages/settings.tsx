@@ -25,8 +25,11 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { changeSkin, playInk } from "@/ink/ink"
 import { canManage, homePath, refreshUser, signIn, useAuth, type AuthUser } from "@/lib/auth"
 import { PROVIDER_LABEL, useProviders, type OAuthProvider } from "@/lib/oauth"
+import { useSkin, type Skin } from "@/lib/skin"
+import { cn } from "@/lib/utils"
 
 const ROLE_LABEL = { sales: "業務", manager: "主管", it: "IT" } as const
 // 後端要求至少 8 碼；這裡先擋一次，免得為了太短的密碼白跑一趟伺服器
@@ -36,6 +39,40 @@ const PROVIDERS: OAuthProvider[] = ["google", "github", "facebook"]
 // 跟後端 services/auth.py 的名字規則一致；這裡先擋，錯誤訊息不必等伺服器
 const NAME_MIN = 2
 const NAME_MAX = 32
+
+// 色票是固定的顏色，不跟著目前的配色變：要讓人看得出另一個選項長什麼樣子
+const SKINS: { id: Skin; label: string; swatch: string }[] = [
+  { id: "purple", label: "紫色", swatch: "#9B51E0" },
+  { id: "mono", label: "黑白灰", swatch: "linear-gradient(90deg, #121212 0 34%, #8E8E8C 34% 67%, #F4F4F2 67%)" },
+]
+
+/** 配色：紫色或黑白灰，記在這支手機裡。換的時候用噴漆把整個畫面染成新的顏色（ink/ink.ts 的 changeSkin） */
+function SkinPicker() {
+  const skin = useSkin()
+  return (
+    <section className="flex flex-col gap-3">
+      <h2 className="text-sm font-semibold">配色</h2>
+      <div role="radiogroup" aria-label="配色" className="grid grid-cols-2 gap-2">
+        {SKINS.map(({ id, label, swatch }) => (
+          <button
+            key={id}
+            type="button"
+            role="radio"
+            aria-checked={skin === id}
+            onClick={() => changeSkin(id)}
+            className={cn(
+              "flex h-12 items-center justify-center gap-2 rounded-xl border bg-card text-sm font-medium",
+              skin === id && "border-primary ring-1 ring-primary"
+            )}
+          >
+            <span aria-hidden className="size-4 rounded-full border" style={{ background: swatch }} />
+            {label}
+          </button>
+        ))}
+      </div>
+    </section>
+  )
+}
 
 /** 名字：自己開的帳號可以改（照 flutterproject4 的改暱稱）；公司帳號只顯示 */
 function NameEditor({ user }: { user: AuthUser }) {
@@ -422,6 +459,8 @@ export function SettingsPage() {
           <ChevronRight className="size-4 text-muted-foreground" />
         </Link>
 
+        <SkinPicker />
+
         {providers && <LinkedAccounts user={user} providers={providers} />}
 
         {user.has_password === false ? (
@@ -489,7 +528,8 @@ export function SettingsPage() {
         </section>
         )}
 
-        <Button variant="outline" className="h-12 w-full gap-2 text-base" onClick={() => void signOutSession()}>
+        {/* 等墨蓋滿才登出：先登出的話這一頁會先空掉，墨蓋上來的是一片空白 */}
+        <Button variant="outline" className="h-12 w-full gap-2 text-base" onClick={() => playInk("splat", signOutSession)}>
           <LogOut className="size-5" />
           登出
         </Button>

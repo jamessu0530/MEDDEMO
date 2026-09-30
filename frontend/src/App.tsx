@@ -1,7 +1,8 @@
 import { useEffect, type ReactNode } from "react"
-import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from "react-router"
+import { BrowserRouter, Navigate, Outlet, Route, useLocation, useNavigate } from "react-router"
 
 import { fetchMe } from "@/api/auth"
+import { InkOverlay, InkRoutes } from "@/components/ink-transition"
 import { Mascot } from "@/components/mascot"
 import { Notice } from "@/components/notice"
 import { Onboarding } from "@/components/onboarding"
@@ -122,7 +123,8 @@ export default function App() {
     <BrowserRouter>
       {/* 以手機為主：在寬螢幕上置中，維持手機的寬度 */}
       <div className="mx-auto min-h-svh max-w-md bg-background">
-        <Routes>
+        {/* 換頁時用墨蓋過去再露出來（components/ink-transition.tsx）；路由的寫法跟 <Routes> 一樣 */}
+        <InkRoutes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           {/* 隱私權政策不用登入就要看得到：Google 與 Facebook 審核時會直接打開這個網址 */}
@@ -168,8 +170,9 @@ export default function App() {
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="*" element={<NotFound />} />
           </Route>
-        </Routes>
+        </InkRoutes>
       </div>
+      <InkOverlay />
     </BrowserRouter>
   )
 }

@@ -8,6 +8,7 @@ import { FacebookButton, GitHubButton, GoogleButton, NotReadyButton } from "@/co
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { playInk } from "@/ink/ink"
 import { homePath, readSignedOutReason, signIn, useAuth, type Session } from "@/lib/auth"
 import { useProviders } from "@/lib/oauth"
 
@@ -57,11 +58,14 @@ export function LoginPage() {
     }
   }
 
-  // 剛才是被擋下來的那一頁就回去那一頁，否則照身分回首頁
+  // 剛才是被擋下來的那一頁就回去那一頁，否則照身分回首頁。
+  // 等墨蓋滿才登入：signIn 之後這一頁會變成轉址（畫面空掉），先做的話墨蓋上來的是一片空白
   function enter(result: Session) {
-    signIn(result)
-    const from = (location.state as { from?: string } | null)?.from
-    navigate(from ?? homePath(result.user.role), { replace: true })
+    playInk("splat", () => {
+      signIn(result)
+      const from = (location.state as { from?: string } | null)?.from
+      navigate(from ?? homePath(result.user.role), { replace: true })
+    })
   }
 
   /**

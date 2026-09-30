@@ -295,6 +295,16 @@ uv run --project backend python backend/scripts/eval_ask.py
 
 第一次打開 App 時蓋一層說明，一次一個，講三個主要操作：進門前先看客戶檔案、走出店門講一分鐘、想到就問。看過就記在手機裡（瀏覽器的 localStorage），之後從首頁右上的「使用說明」再打開。主管端不顯示。
 
+## 換頁動畫與配色
+
+換頁時用墨把畫面蓋過去，蓋滿的那一刻才換頁，再露出新的一頁。墨從手指按的位置出來，四種效果依換頁的類型分配：底部分頁之間是墨暈，進入或返回內頁是刷痕，登入與登出是潑墨，設定頁換配色是噴漆。用 WebGL 著色器畫，不放圖檔、不加套件。
+
+不播、直接換頁的情況：轉址（沒登入被送去登入頁這一類）、同一頁裡只換查詢參數、系統開了「減少動態效果」、瀏覽器開不了 WebGL。播得卡會自動降解析度，降到底還是卡，這次打開就不再播。
+
+設定頁可以把配色從紫色換成黑白灰，選了什麼記在手機裡（瀏覽器的 localStorage）。黑白灰只換主色、背景和邊框；警示、錯誤、成功的顏色照舊。
+
+哪種換頁播哪一種、每種多長，都在 `frontend/src/ink/effects.ts`。設計與可以點著玩的試玩頁見 [docs/superpowers/specs/2026-09-30-ink-transitions-design.md](docs/superpowers/specs/2026-09-30-ink-transitions-design.md)。
+
 ## 轉給主管與主管回覆（FR-8.4 延伸）
 
 - 問答查無依據時，業務按「轉給主管回答」。
@@ -465,6 +475,7 @@ backend/tests                       測試
 frontend/                           React + Vite + Tailwind + shadcn/ui
 frontend/src/voice                  語音問答：收音與播放、Gemini Live 連線
 frontend/src/ask                    對話 store（打字與語音共用）、查詢輪詢
+frontend/src/ink                    換頁的油墨動畫：哪種換頁播哪一種、轉場流程、著色器
 frontend/nginx.conf                 Nginx：放打包好的網頁，/api 轉給 FastAPI
 data/seed                           假資料產生器
 data/documents                      內部文件（知識查詢的唯一依據，展示用虛構內容）

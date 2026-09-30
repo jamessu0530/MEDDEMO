@@ -93,6 +93,41 @@
     --sidebar-ring: #A96FE6;
 }
 
+/*
+ * 黑白灰配色：設定頁切換，掛在 <html data-skin="mono">（lib/skin.ts）。只換主色、背景、邊框這些；
+ * 警示（--warning）、錯誤（--destructive）、成功（--success）照舊，該注意的東西一樣一眼看得到。
+ */
+:root[data-skin="mono"] {
+    --background: #F4F4F2;
+    --foreground: #121212;
+    --card: #FFFFFF;
+    --card-foreground: #121212;
+    --popover: #FFFFFF;
+    --popover-foreground: #121212;
+    --primary: #121212;
+    --primary-foreground: #FFFFFF;
+    --secondary: #ECECEA;
+    --secondary-foreground: #454543;
+    --muted: #E7E7E4;
+    --muted-foreground: #6A6A68;
+    --accent: #D6D6D3;
+    --accent-foreground: #121212;
+    --border: #DEDEDA;
+    --input: #D8D8D4;
+    --ring: #6A6A68;
+    --chart-1: #121212;
+    --chart-2: #6A6A68;
+    --chart-3: #BDBDB9;
+    --sidebar: #FFFFFF;
+    --sidebar-foreground: #121212;
+    --sidebar-primary: #121212;
+    --sidebar-primary-foreground: #FFFFFF;
+    --sidebar-accent: #ECECEA;
+    --sidebar-accent-foreground: #121212;
+    --sidebar-border: #DEDEDA;
+    --sidebar-ring: #6A6A68;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
