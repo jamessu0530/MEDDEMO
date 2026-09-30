@@ -140,6 +140,45 @@ def test_gaps_stop_at_three(client):
     assert {CATEGORY[gap["sku"]] for gap in gaps} <= set(card["festival"]["categories"])
 
 
+def add_order(tx, customer_id, sku, days_ago):
+    """在測試的交易裡補一筆進貨（測完回滾）。金額隨意，缺口只看有沒有進"""
+    tx.execute(text(
+        "INSERT INTO sales_transaction (order_no, customer_id, date, sku, qty, amount, cost) "
+        "VALUES (:order_no, :customer_id, app_today() - :days_ago, :sku, 10, 4000, 2500)"
+    ), {"order_no": f"SO-TEST-{customer_id}-{days_ago}", "customer_id": customer_id, "sku": sku, "days_ago": days_ago})
+    tx.flush()
+
+
+def gap_skus(client, customer_id):
+    return [gap["sku"] for gap in card_of(client, customer_id)["gaps"]]
+
+
+@pytest.mark.parametrize(("days_ago", "still_a_gap"), [(100, False), (200, True)])
+def test_this_customer_stocks_an_item_if_it_bought_it_within_half_a_year(client, tx, days_ago, still_a_gap):
+    # 「這家沒進過」看近 180 天：忠孝店 100 天前進過葉黃素就不算缺口，200 天前進的不算數
+    assert "HS-LT30" in gap_skus(client, "C001")
+    add_order(tx, "C001", "HS-LT30", days_ago)
+    assert ("HS-LT30" in gap_skus(client, "C001")) is still_a_gap
+
+
+@pytest.mark.parametrize(("days_ago", "becomes_a_gap"), [(100, False), (80, True)])
+def test_peers_stock_an_item_only_if_they_bought_it_in_the_last_90_days(client, tx, days_ago, becomes_a_gap):
+    # 口罩：北區其他 31 家連鎖近 90 天只有 12 家進，不到一半。給沒進的那 19 家各補一筆進貨：
+    # 補在 80 天前，31 家都有進，口罩變成缺口；補在 100 天前，半年內看是都進過，但「同區有進」只看近 90 天，不算
+    assert "MD-MASK50" not in gap_skus(client, "C001")
+    without = tx.execute(text(
+        "SELECT id FROM customer WHERE type = 'chain' AND region = '北區' AND id <> 'C001' AND id NOT IN "
+        "(SELECT customer_id FROM sales_transaction WHERE sku = 'MD-MASK50' AND date > app_today() - 90)"
+    )).scalars().all()
+    assert len(without) == 19
+    for customer_id in without:
+        add_order(tx, customer_id, "MD-MASK50", days_ago)
+    gaps = card_of(client, "C001")["gaps"]
+    assert ("MD-MASK50" in [gap["sku"] for gap in gaps]) is becomes_a_gap
+    if becomes_a_gap:
+        assert gaps[0] == {"sku": "MD-MASK50", "name": "醫用口罩 50 入", "peers_with": 31, "peers_total": 31}
+
+
 def test_without_a_festival_the_rest_of_the_card_still_shows(client, company_docs, tmp_path, monkeypatch):
     monkeypatch.setattr(festivals, "FESTIVALS_FILE", tmp_path / "missing.json")
     card = card_of(client, "C001")
