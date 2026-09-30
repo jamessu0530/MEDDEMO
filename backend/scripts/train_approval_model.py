@@ -73,11 +73,22 @@ def train(rows, kind):
     train_rows, test_rows = rows[:split], rows[split:]
     model = logreg.fit([(features, label) for _, features, label, _, _ in train_rows], names)
     scored = [(logreg.predict(features, model, names), label, eligible, level) for _, features, label, eligible, level in test_rows]
-    threshold, table = pick_threshold([(p, label) for p, label, eligible, _ in scored if eligible])
+    eligible = [(p, label) for p, label, allowed, _ in scored if allowed]
+    threshold, table = pick_threshold(eligible)
     chosen = next((row for row in table if row["threshold"] == threshold), None)
     manager_level = [item for item in scored if item[3] == "manager"]
+    # 門檻以下、改送人簽的單（沒有門檻就是全部），以及其中主管本來會核准的
+    deferred = [label for p, label in eligible if threshold is None or p < threshold]
     metrics = {
+        # 全部測試單的 AUC。裡面有一大塊是規則本身就分得開的（深折扣、帳款拖很久），所以會比模型真正在用的那一群高
         "auc": logreg.auc([(p, label) for p, label, _, _ in scored]),
+        # 模型真正在作用的那一群：規則允許系統核准的（主管級、帳款沒超過 60 天）
+        "eligible_rows": len(eligible),
+        "eligible_auc": logreg.auc(eligible),
+        # 不用模型、規則允許的全部核准時，有過的比例：模型的命中率要跟這個比
+        "baseline_precision": sum(label for _, label in eligible) / len(eligible) if eligible else None,
+        "deferred": len(deferred),
+        "deferred_approved": sum(deferred),
         # 門檻上「模型說會過的真的有過」的比例，以及那是幾張
         "precision_at_threshold": chosen["precision"] if chosen else None,
         "approved_at_threshold": chosen["approved"] if chosen else 0,
@@ -98,8 +109,10 @@ def report(kind, model):
     metrics = model["metrics"]
     print(f"【{KIND_LABEL[kind]}】訓練 {metrics['train_rows']} 張（{metrics['train_period'][0]}～{metrics['train_period'][1]}），"
           f"測試 {metrics['test_rows']} 張（{metrics['test_period'][0]}～{metrics['test_period'][1]}）")
-    print(f"  測試期核准的比例 {metrics['test_approval_rate']:.1%}，AUC {metrics['auc']:.3f}")
-    print(f"  測試期主管級的申請 {metrics['test_manager_rows']} 張；各門檻上模型說會過的張數與真的有過的比例（只算帳款沒有超過 60 天的）：")
+    print(f"  測試期核准的比例 {metrics['test_approval_rate']:.1%}，AUC {metrics['auc']:.3f}（全部測試單）")
+    print(f"  測試期主管級的申請 {metrics['test_manager_rows']} 張，其中規則允許系統核准的（帳款沒有超過 60 天）"
+          f" {metrics['eligible_rows']} 張：AUC {metrics['eligible_auc']:.3f}；不用模型、全部核准的話有過的比例 {metrics['baseline_precision']:.1%}")
+    print("  各門檻上模型說會過的張數與真的有過的比例（只算規則允許系統核准的）：")
     for row in metrics["thresholds"]:
         precision = "—" if row["precision"] is None else f"{row['precision']:.1%}"
         print(f"    {row['threshold']:.2f}：{row['approved']:3d} 張，{precision}")
@@ -108,6 +121,7 @@ def report(kind, model):
     else:
         print(f"  門檻 {model['threshold']:.2f}：命中率 {metrics['precision_at_threshold']:.1%}（{metrics['approved_at_threshold']} 張），"
               f"主管級的申請有 {metrics['auto_share']:.1%} 會由系統核准")
+        print(f"  代價：門檻以下改送人簽的 {metrics['deferred']} 張裡，{metrics['deferred_approved']} 張主管本來會核准")
     for name, value in sorted(model["weights"].items(), key=lambda kv: -abs(kv[1])):
         print(f"  {name:20s} {value:+.3f}")
 

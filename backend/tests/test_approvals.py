@@ -407,13 +407,27 @@ def test_the_trained_model_file_has_both_kinds_and_honest_metrics():
         assert metrics["train_rows"] + metrics["test_rows"] == {"discount": 900, "contract": 300}[kind]
         assert metrics["test_rows"] == {"discount": 225, "contract": 75}[kind]
         assert metrics["auc"] > 0.8
+        # 模型真正在作用的那一群：規則允許系統核准的（主管級、帳款沒超過 60 天）。
+        # 不用模型、這一群全部核准時有過的比例；門檻以下改送人的有幾張、其中幾張主管本來會核准
+        assert 0 < metrics["eligible_rows"] <= metrics["test_manager_rows"] and 0 <= metrics["eligible_auc"] <= 1
+        assert metrics["approved_at_threshold"] + metrics["deferred"] == metrics["eligible_rows"]
+        assert 0 <= metrics["deferred_approved"] <= metrics["deferred"]
+        if one["threshold"] is not None:
+            # 門檻以上真的有過的，加上改送人裡主管核准的，就是這一群全部有過的張數
+            chosen = next(row for row in metrics["thresholds"] if row["threshold"] == one["threshold"])
+            approved = round(chosen["precision"] * chosen["approved"]) + metrics["deferred_approved"]
+            assert approved == round(metrics["baseline_precision"] * metrics["eligible_rows"])
         if one["threshold"] is None:
             assert metrics["precision_at_threshold"] is None and metrics["auto_share"] == 0
         else:
             # 門檻的條件：模型說會過的真的有過至少 95%，而且至少 20 張
             assert metrics["precision_at_threshold"] >= 0.95 and metrics["approved_at_threshold"] >= 20
+            # 模型至少不能比「規則允許的全部核准」差
+            assert metrics["precision_at_threshold"] >= metrics["baseline_precision"]
             # 主管級的申請有一部分由系統核准，不是全部
             assert 0 < metrics["auto_share"] < 1
+    # 優惠的全部測試單 AUC 0.92，模型真正在用的那一群只有 0.78：全部的單裡有一大塊是規則本身就分得開的
+    assert model["discount"]["metrics"]["eligible_auc"] < model["discount"]["metrics"]["auc"]
     # 方向照假資料設計的關聯：折扣越深、帳款拖越久越難過；費率調越多越難過
     assert model["discount"]["weights"]["discount_pct"] < 0 and model["discount"]["weights"]["ar_age_days"] < 0
     assert model["contract"]["weights"]["fee_change"] < 0

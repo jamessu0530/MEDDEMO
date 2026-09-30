@@ -40,6 +40,11 @@
     "threshold": 0.85,
     "metrics": {
       "auc": 0.9208579881656804,
+      "eligible_rows": 147,
+      "eligible_auc": 0.782608695652174,
+      "baseline_precision": 0.9387755102040817,
+      "deferred": 24,
+      "deferred_approved": 21,
       "precision_at_threshold": 0.9512195121951219,
       "approved_at_threshold": 123,
       "auto_share": 0.7784810126582279,
@@ -120,6 +125,11 @@
     "threshold": 0.8,
     "metrics": {
       "auc": 0.9539473684210527,
+      "eligible_rows": 41,
+      "eligible_auc": 0.9871794871794872,
+      "baseline_precision": 0.9512195121951219,
+      "deferred": 0,
+      "deferred_approved": 0,
       "precision_at_threshold": 0.9512195121951219,
       "approved_at_threshold": 41,
       "auto_share": 0.803921568627451,
