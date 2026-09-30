@@ -2,13 +2,22 @@ import { useEffect, useState } from "react"
 import { CheckCircle2, Circle } from "lucide-react"
 import { useNavigate, useParams } from "react-router"
 
-import { decideOaForm, getOaForm, type OaFormDetail, type OaStatus } from "@/api/oa"
+import {
+  decideOaForm,
+  getOaForm,
+  type ContractPayload,
+  type DiscountPayload,
+  type OaFormDetail,
+  type OaStatus,
+} from "@/api/oa"
 import { Notice } from "@/components/notice"
+import { OaModelNote } from "@/components/oa-model"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
+import { formatRate } from "@/lib/approval"
 import { canManage, useAuth } from "@/lib/auth"
-import { formatDate, formatDateTime } from "@/lib/format"
+import { formatDate, formatDateTime, formatMoney } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
 const TABS = ["表單", "附件", "意見", "簽核流程", "活動日誌"] as const
@@ -24,7 +33,7 @@ const STATUS_LABEL: Record<OaStatus, string> = {
 
 type LoadState = { status: "loading" } | { status: "error" } | { status: "ready"; form: OaFormDetail }
 
-/** 一張出差單：表單、附件、意見、簽核流程、活動日誌 */
+/** 一張申請單（出差單、優惠、合約）：表單、附件、意見、簽核流程、活動日誌 */
 export function OaFormPage() {
   const { formId } = useParams()
   const id = Number(formId)
@@ -121,12 +130,46 @@ function FormTab({ form }: { form: OaFormDetail }) {
           員工編號 {form.applicant_id} · {form.unit_name}
         </p>
       </div>
-      <p className="text-xs text-muted-foreground">申請日期：{formatDate(form.trip_date)}</p>
+      <p className="text-xs text-muted-foreground">申請日期：{formatDate(form.trip_date ?? form.request_date ?? "")}</p>
       <Field label="文號" value={form.form_no} />
       <Field label="申請種類" value={form.kind_label} />
       <Field label="客戶" value={form.customer_name} />
       <Field label="用途說明" value={form.purpose} />
-      <p className="text-xs text-muted-foreground">狀態：{STATUS_LABEL[form.status]}</p>
+      {form.kind === "discount" && form.payload && <DiscountFields payload={form.payload as DiscountPayload} />}
+      {form.kind === "contract" && form.payload && <ContractFields payload={form.payload as ContractPayload} />}
+      {form.model && <OaModelNote model={form.model} />}
+      <p className="text-xs text-muted-foreground">
+        狀態：{STATUS_LABEL[form.status]}
+        {form.model?.auto_approved && "（系統核准）"}
+      </p>
+    </>
+  )
+}
+
+/** 優惠申請單的內容：哪一張報價、折扣多少、折前折後的金額、理由 */
+function DiscountFields({ payload }: { payload: DiscountPayload }) {
+  return (
+    <>
+      {payload.quote_no && <Field label="報價單號" value={payload.quote_no} />}
+      <Field label="折扣" value={`${payload.discount_pct}%`} />
+      <Field label="報價金額" value={`${formatMoney(payload.amount)}（折扣前 ${formatMoney(payload.list_amount)}）`} />
+      <Field label="申請理由" value={payload.reason || "—"} />
+    </>
+  )
+}
+
+/** 合約申請單的內容：續約多久、兩個費率的調整、到期日、理由。新費率只記在申請單上 */
+function ContractFields({ payload }: { payload: ContractPayload }) {
+  const rate = (value: { from: number; to: number }) =>
+    value.from === value.to ? `${formatRate(value.from)}（不變）` : `${formatRate(value.from)} → ${formatRate(value.to)}`
+  const day = (iso: string | null) => iso?.replaceAll("-", "/") ?? "—"
+  return (
+    <>
+      <Field label="續約" value={`${payload.term_months} 個月`} />
+      <Field label="上架費率" value={rate(payload.listing_fee_rate)} />
+      <Field label="通路獎勵比率" value={rate(payload.channel_reward_rate)} />
+      <Field label="合約到期日" value={`${day(payload.old_end_date)} → ${day(payload.new_end_date)}`} />
+      <Field label="申請理由" value={payload.reason || "—"} />
     </>
   )
 }

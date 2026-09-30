@@ -4,14 +4,17 @@ import { Link, useNavigate, useSearchParams } from "react-router"
 
 import { listEscalations, replyEscalation, type Escalation } from "@/api/escalations"
 import { getUnseenNoticeCount, listNotices, markNoticeSeen, type ManagerNotice } from "@/api/notices"
-import { listOaInbox, type OaFormItem } from "@/api/oa"
+import { listAutoApproved, listOaInbox, type OaFormItem } from "@/api/oa"
 import { ChannelsLink } from "@/components/channels-link"
 import { Notice } from "@/components/notice"
+import { OaModelNote } from "@/components/oa-model"
 import { PageHeader } from "@/components/page-header"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { useAuth, type AuthUser } from "@/lib/auth"
-import { formatDate, formatDateTime } from "@/lib/format"
+import { formatProbability, oaDateText } from "@/lib/approval"
+import { formatDateTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type { CustomerLocationState } from "@/pages/customer"
 
@@ -29,7 +32,7 @@ function whose(user: AuthUser) {
   return user.role === "it" ? "全公司" : "你團隊"
 }
 
-/** 主管端（FR-8.4 延伸）：回覆業務轉過來的提問、看風險通報、簽出差單。主管看自己底下的人，IT 看全公司 */
+/** 主管端（FR-8.4 延伸）：回覆業務轉過來的提問、看風險通報、簽申請單（出差單、優惠、合約）。主管看自己底下的人，IT 看全公司 */
 export function ManagerPage() {
   const user = useAuth()?.user
   const [params, setParams] = useSearchParams()
@@ -374,12 +377,14 @@ function NoticeCard({ item, onSeen }: { item: ManagerNotice; onSeen: (item: Mana
   )
 }
 
+/** 簽核匣：等簽的出差單、優惠與合約申請；下面另外列模型有把握、系統已經核准的單，給主管事後查 */
 function OaInboxPanel() {
   const navigate = useNavigate()
   const user = useAuth()?.user
   const [state, setState] = useState<{ status: "loading" } | { status: "error" } | { status: "ready"; items: OaFormItem[] }>({
     status: "loading",
   })
+  const [automatic, setAutomatic] = useState<OaFormItem[]>([])
   const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
@@ -389,6 +394,11 @@ function OaInboxPanel() {
       .catch(() => {
         if (!controller.signal.aborted) setState({ status: "error" })
       })
+    listAutoApproved(controller.signal)
+      .then((data) => setAutomatic(data.items))
+      .catch(() => {
+        // 這一區是事後查的，連不上就先不顯示；上面的簽核匣有自己的錯誤訊息
+      })
     return () => controller.abort()
   }, [attempt])
 
@@ -396,7 +406,9 @@ function OaInboxPanel() {
     <>
       {user && (
         <p className="text-xs text-muted-foreground">
-          {user.role === "it" ? "全公司還沒簽的出差單都在這裡，IT 可以代簽" : "你團隊業務確認拜訪後開的出差單，會送到這裡簽核"}
+          {user.role === "it"
+            ? "全公司還沒簽的出差單、優惠與合約申請都在這裡，IT 可以代簽"
+            : "你團隊業務的出差單、優惠與合約申請，會送到這裡簽核"}
         </p>
       )}
       {state.status === "loading" && <p className="py-10 text-center text-sm text-muted-foreground">載入中…</p>}
@@ -414,18 +426,50 @@ function OaInboxPanel() {
         />
       )}
       {state.status === "ready" && state.items.length === 0 && (
-        <p className="py-10 text-center text-sm text-muted-foreground">目前沒有待簽核的出差單。</p>
+        <p className="py-10 text-center text-sm text-muted-foreground">目前沒有待簽核的申請單。</p>
       )}
-      {state.status === "ready" &&
-        state.items.map((item) => (
-          <Link key={item.id} to={`/oa/forms/${item.id}`} className="rounded-2xl border bg-card p-4">
-            <p className="text-sm font-medium">{item.kind_label}</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {item.form_no} · {item.applicant_name} · {item.customer_name}
-            </p>
-            <p className="mt-1 text-[11px] text-muted-foreground">{formatDate(item.trip_date)} 拜訪</p>
-          </Link>
-        ))}
+      {state.status === "ready" && state.items.map((item) => <OaInboxCard key={item.id} item={item} />)}
+      {automatic.length > 0 && (
+        <section className="mt-2 flex flex-col gap-2">
+          <p className="text-sm font-semibold">系統已核准</p>
+          <p className="text-xs text-muted-foreground">
+            規則上區處主管就能簽、模型有把握會過的申請，由系統直接核准，列在這裡給你事後查（最近 {automatic.length} 張）。
+          </p>
+          {automatic.map((item) => (
+            <Link key={item.id} to={`/oa/forms/${item.id}`} className="rounded-xl border bg-card px-4 py-3">
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-sm">{item.summary}</p>
+                {item.model?.probability != null && (
+                  <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{formatProbability(item.model.probability)}</span>
+                )}
+              </div>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                {item.form_no} · {item.applicant_name} · {item.customer_name} · {oaDateText(item)}
+              </p>
+            </Link>
+          ))}
+        </section>
+      )}
     </>
+  )
+}
+
+/** 簽核匣的一張單：種類標籤、一句摘要；優惠與合約多一塊模型的估計與理由 */
+function OaInboxCard({ item }: { item: OaFormItem }) {
+  return (
+    <Link to={`/oa/forms/${item.id}`} className="rounded-2xl border bg-card p-4">
+      <div className="flex items-start gap-2">
+        <Badge variant={item.kind === "trip" ? "secondary" : "default"} className="mt-0.5">
+          {item.kind_label}
+        </Badge>
+        <p className="min-w-0 flex-1 text-sm font-medium">{item.summary}</p>
+      </div>
+      <p className="mt-1.5 text-xs text-muted-foreground">
+        {item.form_no} · {item.applicant_name}
+        {item.kind !== "trip" && ` · ${item.customer_name}`}
+      </p>
+      <p className="mt-1 text-[11px] text-muted-foreground">{oaDateText(item)}</p>
+      {item.model && <OaModelNote model={item.model} className="mt-2" />}
+    </Link>
   )
 }

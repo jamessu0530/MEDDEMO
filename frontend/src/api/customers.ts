@@ -81,8 +81,15 @@ export type CustomerProfile = {
   highlights: string[]
   stats: ProfileStats
   intervals: { month: string; gap_days: number | null }[]
-  // 在客戶檔案直接開的報價沒有拜訪，visit_id 是 null
-  open_quotes: { quote_no: string; visit_id: string | null; date: string; items: string; amount: number }[]
+  // 在客戶檔案直接開的報價沒有拜訪，visit_id 是 null。折扣還在等簽核的也列出來（pending_approval），被駁回的不列
+  open_quotes: {
+    quote_no: string
+    visit_id: string | null
+    date: string
+    items: string
+    amount: number
+    status: "draft" | "pending_approval"
+  }[]
   commitments: {
     visit_id: string
     visit_date: string
@@ -127,11 +134,27 @@ export type QuoteItem = {
   usual_qty: number
 }
 
+// 送出優惠或續約之後的簽核結果：系統核准了（auto_approved），或是現在等誰簽（waiting_for）
+export type Approval = {
+  form_id: number
+  form_no: string
+  status: "approved" | "pending"
+  auto_approved: boolean
+  // 模型估計的核准機率；沒有模型是 null
+  probability: number | null
+  waiting_for: { step: string; name: string } | null
+}
+
 export type Quote = {
   quote_no: string
   customer_id: string
   items: { sku: string; name: string; qty: number; unit_price: number; amount: number }[]
   amount: number
+  discount_pct: number
+  // draft：可以送給客戶；pending_approval：折扣超過業務的權限，等簽核
+  status: "draft" | "pending_approval"
+  // 折扣在業務的權限（3%）內就沒有申請單
+  approval: Approval | null
   created_at: string
 }
 
@@ -139,7 +162,38 @@ export function getQuoteItems(id: string, signal?: AbortSignal) {
   return request<QuoteItem[]>(`/api/customers/${encodeURIComponent(id)}/quote-items`, { signal })
 }
 
-/** 開 SAP 報價草稿；數量 0 的品項不要送（後端對沒有品項或數量 ≤ 0 回 422） */
-export function createQuote(id: string, items: { sku: string; qty: number }[]) {
-  return request<Quote>(`/api/customers/${encodeURIComponent(id)}/quotes`, jsonBody("POST", { items }))
+/** 開 SAP 報價草稿；數量 0 的品項不要送（後端對沒有品項或數量 ≤ 0 回 422）。折扣超過 3% 要附理由，後端會開優惠申請單 */
+export function createQuote(id: string, items: { sku: string; qty: number }[], discountPct = 0, reason = "") {
+  return request<Quote>(
+    `/api/customers/${encodeURIComponent(id)}/quotes`,
+    jsonBody("POST", { items, discount_pct: discountPct, reason: reason || null })
+  )
+}
+
+// 連鎖客戶目前的合約條件。系統沒有合約表：到期日在客戶主檔，費率從近 90 天的交易算出來
+export type Contract = {
+  contract_end_date: string | null
+  days_left: number | null
+  // 3 個月內到期，該開始談續約了
+  ending_soon: boolean
+  listing_fee_rate: number
+  channel_reward_rate: number
+  // 還沒簽完的續約申請；同一家客戶同時只能有一張
+  pending_form_id: number | null
+}
+
+export type ContractRequest = {
+  term_months: 12 | 24
+  listing_fee_rate: number
+  channel_reward_rate: number
+  reason: string
+}
+
+/** 不是連鎖客戶回 409 */
+export function getContract(id: string, signal?: AbortSignal) {
+  return request<Contract>(`/api/customers/${encodeURIComponent(id)}/contract`, { signal })
+}
+
+export function createContractRequest(id: string, body: ContractRequest) {
+  return request<Approval>(`/api/customers/${encodeURIComponent(id)}/contract-requests`, jsonBody("POST", body))
 }
