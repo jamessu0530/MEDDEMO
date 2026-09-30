@@ -185,7 +185,7 @@ def create(session: Session, author: AppUser, values: dict[str, Any]) -> MethodC
 
 
 def update(session: Session, user: AppUser, card_id: int, changes: dict[str, Any]) -> MethodCard:
-    """改內容、標籤、適用類型，或下架、重新上架。只有作者本人或 IT。
+    """改內容、標籤、適用類型，或下架、重新上架。只有作者本人或 IT。沒有欄位真的變了就什麼都不寫。
 
     作者本人指的是還在當主管的作者：被降成業務之後進不了主管端（API 先擋掉），卡片照舊上架，之後只有 IT 改得了。
     這裡不用「當事人在不在自己底下」那個式子：那樣降調後的新主管也改得到別人寫的卡。"""
@@ -195,7 +195,12 @@ def update(session: Session, user: AppUser, card_id: int, changes: dict[str, Any
     if user.role != "it" and card.author_id != user.id:
         raise Forbidden
     cleaned = _clean({key: value for key, value in changes.items() if key in EDITABLE})
-    for key, value in cleaned.items():
+    # 只算值真的變了的欄位（整理過再比：頭尾空白、重複的標籤不算）。表單打開沒改就按儲存不該更新時間：
+    # 採用次數相同的卡照最近修改排，時間一跳，清單上的先後就跟著變
+    changed = {key: value for key, value in cleaned.items() if getattr(card, key) != value}
+    if not changed:
+        return card
+    for key, value in changed.items():
         setattr(card, key, value)
     card.updated_at = dt.datetime.now(dt.UTC)
     session.flush()

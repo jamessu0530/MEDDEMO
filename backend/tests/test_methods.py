@@ -158,6 +158,40 @@ def test_a_card_is_edited_by_its_author_or_it_only(client, auth):
     assert client.patch("/api/methods/999999", json={"title": "測試：不存在"}, headers=auth("A01")).status_code == 404
 
 
+def test_saving_without_a_real_change_keeps_the_cards_place_in_the_list(client, auth):
+    boss, rep = auth("M02"), auth("U03")
+    first = create(client, boss, title="測試：先寫的", tags=["newcomer", "cost"]).json()
+    create(client, boss, title="測試：後寫的")
+    path = f"/api/methods/{first['id']}"
+
+    def untouched(changes):
+        response = client.patch(path, json=changes, headers=boss)
+        assert response.status_code == 200, changes
+        # 採用次數相同的卡照最近修改排：時間沒動，先後就不會變
+        return response.json()["updated_at"] == first["updated_at"] and titles(client, rep)[-2:] == ["測試：後寫的", "測試：先寫的"]
+
+    # 表單打開沒改就按儲存、或只送一樣的值，都不算改過
+    assert untouched({})
+    assert untouched({"title": first["title"], "situation": first["situation"], "approach": first["approach"]})
+    assert untouched({"customer_type": None, "tags": ["newcomer", "cost"], "status": "published"})
+    # 整理之後跟原本一樣的也不算：頭尾的空白、重複的標籤
+    assert untouched({"title": f"  {first['title']}  ", "tags": ["newcomer", "cost", "newcomer"]})
+    # IT 存了一樣的內容也一樣
+    assert client.patch(path, json={"title": first["title"]}, headers=auth("A01")).json()["updated_at"] == first["updated_at"]
+
+    # 真的改了才往前排；下架、重新上架也算有變
+    edited = client.patch(path, json={"title": first["title"], "situation": "改過了"}, headers=boss).json()
+    assert edited["updated_at"] > first["updated_at"]
+    assert titles(client, rep)[-2:] == ["測試：先寫的", "測試：後寫的"]
+    retired = client.patch(path, json={"status": "retired"}, headers=boss).json()
+    assert retired["updated_at"] > edited["updated_at"]
+    assert client.patch(path, json={"status": "retired"}, headers=boss).json()["updated_at"] == retired["updated_at"]
+    assert client.patch(path, json={"status": "published"}, headers=boss).json()["updated_at"] > retired["updated_at"]
+    # 標籤換了順序是改了內容（卡片上照這個順序顯示）
+    reordered = client.patch(path, json={"tags": ["cost", "newcomer"]}, headers=boss).json()
+    assert reordered["tags"] == ["cost", "newcomer"] and reordered["updated_at"] > retired["updated_at"]
+
+
 def test_a_retired_card_disappears_for_reps_but_stays_with_its_author(client, auth):
     mine = create(client, auth("M03")).json()
     path = f"/api/methods/{mine['id']}"
