@@ -10,7 +10,7 @@
 
 ```bash
 docker compose up -d --wait db redis                # Postgres 16 + pgvector（5433）、Redis（6379）
-uv run --project backend python data/seed/seed.py   # 重建 schema 並灌假資料，會清掉整個資料庫
+uv run --project backend python data/seed/seed.py   # 重建 schema 並灌假資料，會清掉整個資料庫（只留自己開的帳號與第三方登入的綁定）
 uv run --project backend pytest backend/tests       # 測試另建 meddemo_test、用 Redis 第 15 號庫，不動開發環境
 
 uv run --project backend uvicorn app.main:app --app-dir backend --reload                  # API：http://127.0.0.1:8000
@@ -385,7 +385,7 @@ uv run --project backend python backend/scripts/eval_voice.py
 2. 建 `api` 和 `web` 兩個映像檔，推到 GHCR。
 3. VM 上 MEDDEMO 專用的 GitHub Actions runner 把映像拉進 K3s，用 Helm 部署 `deploy/helm/meddemo`（`helm upgrade --install`，等所有服務就緒才算成功）。做法跟 CARE 一樣，兩個 repo 各有自己的 runner。
 
-以下情況部署時會自動重灌假資料（VM 上的資料庫會清空）：
+以下情況部署時會自動重灌假資料。VM 上的資料庫會清空重建，只有兩樣會留下來：自己開的帳號（含第三方登入自動開的），以及第三方登入的綁定——不留的話，綁過 Google 的人下次登入會被當成新來的、另開一個帳號。他們的提問、頻道訊息這些內容不留（`data/seed/seed.py` 的 `KeptAccounts`）。
 
 - 第一次部署
 - `models.py` 或 `semantic_layer.sql` 有改動

@@ -3,17 +3,21 @@
     uv run --project backend python data/seed/seed.py [--as-of 2026-10-28]
 
 會清掉整個 public schema，依 SQLAlchemy models 重建資料表與語意層 View，再重新產生資料。
+只有兩樣東西會留下來：自己開的帳號（含第三方登入自動開的），以及第三方登入的綁定。
 """
 
 import argparse
 import sys
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 # macOS 上 .venv 會被標成隱藏，Python 就略過可編輯安裝的 .pth、找不到 app；直接把 backend 加進搜尋路徑
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 
-from sqlalchemy import insert, select, text  # noqa: E402
+from sqlalchemy import Connection, insert, select, text  # noqa: E402
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 import catalog
@@ -21,6 +25,7 @@ import generate
 from app import models
 from app.db import make_engine, reset_schema, schema_version
 from app.embeddings import optional_embedder
+from app.services.auth import EXTERNAL_ACCOUNT_ACTS_AS
 from app.services.channels import ensure_channels
 from app.services.documents import index_documents
 from app.services.org import paths_from_reports, rebuild_org_paths, region_of
@@ -45,6 +50,81 @@ TABLES = [
     ("oa_expense_form", models.OaExpenseForm),
     ("writeback_log", models.WritebackLog),
 ]
+
+
+@dataclass
+class KeptAccounts:
+    """重灌前先讀出來、灌完再放回去的東西。資料表一改部署就會重灌（.github/workflows/ci-cd.yml），
+    這兩樣不留的話，綁過 Google 的人下次登入會被當成新來的、另開一個帳號，自己開的帳號則整個消失。
+    他們的提問、頻道訊息這些內容不留：那些跟著假資料一起重來。"""
+
+    # app_user 裡自己開的帳號（有 acts_as_user_id 的列），欄位照舊資料表的樣子
+    users: list[dict[str, Any]]
+    # user_identity 的每一列，公司帳號綁的也算
+    identities: list[dict[str, Any]]
+
+
+def saved_accounts(conn: Connection) -> KeptAccounts:
+    """重建之前讀。全新的資料庫、或舊到還沒有這些表與欄位的資料庫，就是沒有東西要留。"""
+    # 直接問系統目錄，不用 SQLAlchemy 的反射：反射會去認每個欄位的型別，遇到 ltree 就印警告
+    ready = conn.execute(text("""
+        SELECT to_regclass('public.user_identity') IS NOT NULL AND EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'app_user' AND column_name = 'acts_as_user_id'
+        )
+    """)).scalar()
+    if not ready:
+        return KeptAccounts([], [])
+    users = conn.execute(text("SELECT * FROM app_user WHERE acts_as_user_id IS NOT NULL ORDER BY id")).mappings()
+    identities = conn.execute(text("SELECT * FROM user_identity ORDER BY id")).mappings()
+    return KeptAccounts([dict(row) for row in users], [dict(row) for row in identities])
+
+
+def restore_accounts(session: Session, kept: KeptAccounts) -> tuple[int, int]:
+    """把留下來的帳號與綁定放回剛灌好的資料庫，回傳（帳號數, 綁定數）。
+
+    只放得回去的才放：工號或信箱跟新的公司帳號撞了的帳號跳過；綁定掛的帳號已經不在了
+    （公司帳號改了工號、或那個自建帳號剛好被跳過）也跳過。
+    舊資料表有、新資料表沒有的欄位直接丟掉；新欄位用資料表的預設值。"""
+    demo = session.get(models.AppUser, EXTERNAL_ACCOUNT_ACTS_AS)
+    ids = set(session.scalars(select(models.AppUser.id)))
+    emails = set(session.scalars(select(models.AppUser.email).where(models.AppUser.email.is_not(None))))
+    user_columns = {column.key for column in models.AppUser.__table__.columns}
+    accounts = 0
+    for row in kept.users:
+        # 沒有示範業務就沒有人可以代理，自建帳號在組織約束下站不住
+        if demo is None or row["id"] in ids or (row.get("email") and row["email"] in emails):
+            continue
+        values = {key: value for key, value in row.items() if key in user_columns}
+        # 位置照自建帳號的形狀重填：不在組織樹上、代理示範業務；轄區隨後由 rebuild_org_paths 再算一次
+        values |= {
+            "role": "sales", "acts_as_user_id": demo.id, "region": demo.region,
+            "manager_id": None, "unit_id": None, "org_path": None,
+        }
+        session.execute(insert(models.AppUser), [values])
+        ids.add(row["id"])
+        emails.add(row.get("email"))
+        accounts += 1
+    # id 是資料庫自己編的（GENERATED ALWAYS），不能指定
+    identity_columns = {column.key for column in models.UserIdentity.__table__.columns} - {"id"}
+    bindings = 0
+    for row in kept.identities:
+        if row["user_id"] not in ids:
+            continue
+        session.execute(insert(models.UserIdentity), [{key: value for key, value in row.items() if key in identity_columns}])
+        bindings += 1
+    return accounts, bindings
+
+
+def restore_or_skip(session: Session, kept: KeptAccounts) -> tuple[int, int]:
+    """放不回去就整批放棄，灌資料照常往下走。走到這裡資料庫已經清空重建了，
+    為了幾筆舊帳號讓整次重灌失敗，線上會剩下一個空的資料庫；少了這些帳號，頂多是那些人重新登入一次。"""
+    try:
+        with session.begin_nested():
+            return restore_accounts(session, kept)
+    except SQLAlchemyError as exc:
+        print(f"自己開的帳號與第三方登入的綁定沒有留下來：{exc}", file=sys.stderr)
+        return 0, 0
 
 
 def seed_conversations(session: Session) -> int:
@@ -74,6 +154,8 @@ def seed_conversations(session: Session) -> int:
 def seed(url: str | None, as_of: date) -> dict[str, int]:
     data = generate.generate(as_of)
     engine = make_engine(url)
+    with engine.connect() as conn:
+        kept = saved_accounts(conn)
     reset_schema(engine)
     with Session(engine) as session, session.begin():
         session.add_all([
@@ -96,6 +178,8 @@ def seed(url: str | None, as_of: date) -> dict[str, int]:
                 # manager_id 指向同一張表：經理要先寫進去，業務那幾列的外鍵才成立
                 rows.sort(key=lambda u: u["manager_id"] is not None)
             session.execute(insert(model), rows)
+        # 重灌前的自建帳號與第三方登入綁定放回來；放在重算組織之前，轄區才會跟著示範業務一起算
+        kept_accounts, kept_identities = restore_or_skip(session, kept)
         # 跟 services/org.py 的演算法核對一次：組織管理頁改組織時，也是呼叫這個函式重算
         rebuild_org_paths(session)
         # 歷史出差單當已核准：請求者與區處主管兩關都過，申請匣才不會被幾千張舊單塞滿
@@ -132,7 +216,10 @@ def seed(url: str | None, as_of: date) -> dict[str, int]:
         embedder = optional_embedder()
         chunks = index_documents(session, embed=embedder.embed_documents if embedder else None)
     engine.dispose()
-    return {name: len(data[name]) for name, _ in TABLES} | {"document_chunk": chunks, "channel_message": messages}
+    return {name: len(data[name]) for name, _ in TABLES} | {
+        "document_chunk": chunks, "channel_message": messages,
+        "kept_account": kept_accounts, "kept_identity": kept_identities,
+    }
 
 
 def main():

@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
     inputs:
       reseed:
-        description: 重灌假資料（會清掉 VM 上資料庫的全部內容）
+        description: 重灌假資料（會清掉 VM 上的資料，只留自己開的帳號與第三方登入的綁定）
         type: boolean
         default: false
 
@@ -223,7 +223,8 @@ jobs:
 
       # 資料表定義一改，VM 上的舊資料庫就對不上新程式，所以指紋不同時自動重灌。
       # 假資料的產生程式也算進指紋：題庫答案與測試照新資料寫，VM 上的資料要跟著換。
-      # 目前全是假資料，清掉沒有損失；之後要保留資料就改用 Alembic。
+      # 假資料清掉沒有損失；自己開的帳號與第三方登入的綁定由 seed.py 先讀出來、灌完放回去。
+      # 之後要保留更多資料就改用 Alembic。
       - name: 灌假資料（第一次部署、資料表定義或假資料有改，或手動勾選重灌）
         env:
           RESEED: ${{ inputs.reseed }}

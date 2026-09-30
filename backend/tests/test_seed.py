@@ -6,17 +6,18 @@ from collections import Counter
 from datetime import datetime, timedelta
 from pathlib import Path
 
+import conftest
 import generate
 import psycopg
 import pytest
 import seed
 from jsonschema import Draft202012Validator
-from sqlalchemy import text
+from sqlalchemy import create_engine, func, select, text
 from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import Session
 
 from app import models
-from app.db import schema_version
+from app.db import reset_schema, schema_version
 
 ROOT = Path(__file__).resolve().parents[2]
 AS_OF = seed.DEFAULT_AS_OF
@@ -299,3 +300,90 @@ def test_seeded_conversations_sit_in_their_channels(db):
         SELECT count(*) FROM channel_message a JOIN channel_message b
           ON a.channel_id = b.channel_id AND a.id < b.id AND a.created_at > b.created_at
     """)[0][0] == 0
+
+
+@pytest.fixture
+def used_database():
+    """一個已經有人在用的資料庫：除了公司帳號，有人自己開了帳號，也有人綁了第三方登入。
+    另外建一個庫來重灌，不動其他測試共用的那一個。"""
+    name = f"{conftest.TEST_DB}_reseed"
+    url = conftest.BASE_URL.set(database=name).render_as_string(hide_password=False)
+    admin = create_engine(conftest.ADMIN_URL, isolation_level="AUTOCOMMIT")
+    with admin.connect() as conn:
+        conn.exec_driver_sql(f"DROP DATABASE IF EXISTS {name} WITH (FORCE)")
+        conn.exec_driver_sql(f"CREATE DATABASE {name}")
+    engine = create_engine(url)
+    reset_schema(engine)
+    with Session(engine) as session, session.begin():
+        session.add_all([
+            models.OrgUnit(id="TW", name="全國", kind="root"),
+            models.OrgUnit(id="TW.N", name="北區", kind="region", parent_id="TW"),
+        ])
+        session.flush()
+        session.add_all([
+            models.AppUser(id="A01", name="James", role="it", region="全國", unit_id="TW", org_path="TW"),
+            models.AppUser(id="M01", name="陳建宏", role="manager", region="北區", unit_id="TW.N", org_path="TW.N.M01"),
+            # 舊的組織裡有、新的假資料裡沒有的主管：他的綁定沒有帳號可以掛，放不回去
+            models.AppUser(id="M09", name="舊主管", role="manager", region="北區", unit_id="TW.N", org_path="TW.N.M09"),
+        ])
+        session.flush()
+        session.add(models.AppUser(
+            id="U01", name="林昱辰", role="sales", region="北區", manager_id="M01", org_path="TW.N.M01.U01",
+        ))
+        session.flush()
+        session.add(models.AppUser(
+            id="XKEEP001", name="評審", role="sales", region="北區", email="keep@reseed.test",
+            password_hash="hash-kept", acts_as_user_id="U01", session_version=3,
+        ))
+        session.flush()
+        session.add_all([
+            models.UserIdentity(user_id="A01", provider="google", subject="g-it", email="jamessu2026@gmail.com"),
+            models.UserIdentity(user_id="XKEEP001", provider="github", subject="gh-keep"),
+            models.UserIdentity(user_id="M09", provider="google", subject="g-old"),
+        ])
+    engine.dispose()
+    yield url
+    with admin.connect() as conn:
+        conn.exec_driver_sql(f"DROP DATABASE IF EXISTS {name} WITH (FORCE)")
+    admin.dispose()
+
+
+def test_a_reseed_keeps_self_created_accounts_and_sign_in_bindings(used_database):
+    # 部署時資料表一改就會重灌（.github/workflows/ci-cd.yml）。重灌不能把人擋在門外：
+    # 自己開的帳號要還在，綁過的 Google／GitHub 要還認得，不然下次登入會被當成新來的、另開一個帳號
+    counts = seed.seed(used_database, AS_OF)
+    engine = create_engine(used_database)
+    with engine.connect() as conn:
+        kept = rows(conn, """
+            SELECT name, role, region, email, password_hash, acts_as_user_id, session_version, org_path::text
+            FROM app_user WHERE id = 'XKEEP001'
+        """)
+        # 密碼與登入版號原樣留著：重灌之後不必重設密碼，手機上的登入狀態也還有效
+        assert [tuple(r) for r in kept] == [("評審", "sales", "北區", "keep@reseed.test", "hash-kept", "U01", 3, None)]
+        bindings = {tuple(r) for r in rows(conn, "SELECT user_id, provider, subject, email FROM user_identity")}
+        # M09 在新的假資料裡不存在，他的綁定跟著消失
+        assert bindings == {
+            ("A01", "google", "g-it", "jamessu2026@gmail.com"),
+            ("XKEEP001", "github", "gh-keep", None),
+        }
+        # 假資料照常灌好：十個公司帳號加上留下來的那一個
+        assert rows(conn, "SELECT count(*) FROM app_user")[0][0] == 11
+        assert rows(conn, "SELECT count(*) FROM customer")[0][0] == 250
+    engine.dispose()
+    assert (counts["kept_account"], counts["kept_identity"]) == (1, 2)
+
+
+def test_accounts_that_cannot_go_back_do_not_fail_the_seed(tx):
+    account = {
+        "id": "XDUP0001", "name": "撞信箱", "role": "sales", "region": "北區", "email": "u01@meddemo.tw",
+        "password_hash": "h", "acts_as_user_id": "U01", "session_version": 1,
+    }
+    binding = {"user_id": "A01", "provider": "google", "subject": "g-it", "email": None}
+    # 信箱跟新的公司帳號撞了：這個帳號放不回去，其他的照放
+    assert seed.restore_accounts(tx, seed.KeptAccounts(users=[account], identities=[binding])) == (0, 1)
+    # 舊資料不合新的資料表（這裡是一種已經不支援的登入方式）：整批放棄，灌資料照常往下走。
+    # 這時資料庫已經清空重建了，為了幾筆舊帳號讓整次重灌失敗，線上會剩下一個空的資料庫
+    outdated = seed.KeptAccounts(users=[], identities=[binding | {"user_id": "M01", "provider": "myspace"}])
+    assert seed.restore_or_skip(tx, outdated) == (0, 0)
+    assert tx.scalar(select(func.count()).select_from(models.AppUser)) == 10
+    assert tx.scalar(select(func.count()).select_from(models.UserIdentity)) == 1
