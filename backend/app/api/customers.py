@@ -2,7 +2,7 @@
 
 import dataclasses
 from datetime import date, datetime, timedelta
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -14,7 +14,7 @@ from app.api.auth import CurrentUser
 from app.db import get_session
 from app.models import AppUser, Customer, Product, SalesTransaction, SapQuotationDraft, Visit
 from app.pricing import supply_price
-from app.services import customer_profile, writeback
+from app.services import customer_profile, negotiation, writeback
 from app.services.scope import SHARING_LEVEL, Scope
 
 router = APIRouter(prefix="/api/customers", tags=["customers"])
@@ -94,11 +94,40 @@ class CustomerProfile(BaseModel):
     competitors: list[Competitor]
 
 
-class Turnover(BaseModel):
+class Festival(BaseModel):
+    name: str
+    date: date
+    days_left: int
+    categories: list[str]
+    note: str
+
+
+class Campaign(BaseModel):
+    festival_name: str
+    festival_date: date
+    apply_by: date
+    days_to_apply: int
+    fee_cap: float
+    missed: list[str]
+
+
+class ShelfItem(BaseModel):
     sku: str
     name: str
     orders_per_month: float
     region_orders_per_month: float | None
+
+
+class Shelf(BaseModel):
+    items: list[ShelfItem]
+    scoped: bool
+
+
+class Gap(BaseModel):
+    sku: str
+    name: str
+    peers_with: int
+    peers_total: int
 
 
 class Margin(BaseModel):
@@ -117,10 +146,47 @@ class Tip(BaseModel):
     source_name: str
 
 
+class Deal(BaseModel):
+    sku: str
+    name: str
+    group_name: str
+    deal: str
+    deal_price: float
+    unit_deal_price: float
+    list_price: float
+    unit_profit: float
+    profit_rate: float
+    smallest_deal_price: float
+
+
+class Deals(BaseModel):
+    items: list[Deal]
+    scoped: bool
+    promotion_name: str | None
+
+
+class Terms(BaseModel):
+    supply_rate: float
+    channel_reward_rate: float | None
+    payment_days: int
+    ar_max_age_days: int | None
+    free_discount_pct: float
+    amount_last_90d: float
+    avg_order_amount: float | None
+
+
 class NegotiationCard(BaseModel):
     customer: CustomerItem
-    turnover: list[Turnover]
+    # customer＝顧客導向（連鎖）：campaign、shelf、gaps、margin；cost＝成本導向（獨立藥局與診所）：deals、terms。
+    # 不屬於這個導向的欄位是 null
+    orientation: Literal["customer", "cost"]
+    festival: Festival | None
+    campaign: Campaign | None
+    shelf: Shelf | None
+    gaps: list[Gap] | None
     margin: Margin | None
+    deals: Deals | None
+    terms: Terms | None
     tips: list[Tip]
 
 
@@ -193,12 +259,13 @@ def get_profile(session: SessionDep, customer_id: str, user: CurrentUser):
 
 @router.get("/{customer_id}/negotiation", response_model=NegotiationCard)
 def get_negotiation_card(session: SessionDep, customer_id: str, user: CurrentUser):
-    """談判卡：只有連鎖客戶有（FR-3）。對照數據來自交易資料，切入點是內部文件的原文段落。"""
+    """談判卡：每種客戶都有，圍繞下一個節慶（FR-3）。連鎖是顧客導向，獨立藥局與診所是成本導向。
+
+    數字來自交易資料與當期促銷，節慶那一句話是設定檔裡人寫的，切入點是內部文件的原文段落。
+    """
     customer, item = _load(session, customer_id, user, SHARING_LEVEL["customer_profile"])
-    if customer.type != "chain":
-        raise HTTPException(409, "只有連鎖客戶有談判卡")
     profile = customer_profile.build_profile(session, customer)
-    card = customer_profile.negotiation_card(session, customer, profile)
+    card = negotiation.negotiation_card(session, customer, profile)
     return NegotiationCard(customer=item, **dataclasses.asdict(card))
 
 

@@ -1,6 +1,9 @@
 {
-  "說明": "談判卡的「建議切入點」（FR-3.2）：客戶符合哪個情況，就用那組關鍵字到內部文件找最相關的一段，照順序最多列三段。改這個檔就能調整，不必改程式（NFR-10）；改了關鍵字要跑 tests/test_customer_profile.py，確認每組都找到想要的段落。signal 可用 competitor、interval_up、contract_ending、ar_overdue、chain。",
+  "說明": "談判卡的「建議切入點」（FR-3.2）：客戶符合哪個情況，就用那組關鍵字到內部文件找最相關的一段，照順序最多列三段；要找的那一段前面已經列過，這一筆就跳過。改這個檔就能調整，不必改程式（NFR-10）；改了關鍵字要跑 tests/test_negotiation.py，確認每組都找到想要的段落。signal 可用 festival（連鎖而且有下一個節慶）、cost（獨立藥局與診所）、competitor、interval_up、contract_ending（只在連鎖的卡上找：續約那一段講的是連鎖的費率）、ar_overdue、chain。同一個 signal 可以寫不只一筆，一筆找一段：cost 有兩筆。festival 只有一筆，找檔期費用怎麼算、誰核准那一段：申請期限與費用上限的數字卡片上「檔期」那一區已經算好，切入點留兩段給這家自己的情況；申請期限那一段由 interval_up 去找。",
   "topics": [
+    { "signal": "festival", "reason": "下一個節慶要談檔期", "keywords": ["檔期費用的上限", "15%"] },
+    { "signal": "cost", "reason": "這家自己算進貨成本，先知道能直接給多少折扣", "keywords": ["業務自行給予", "折扣"] },
+    { "signal": "cost", "reason": "單店的通路費用跟連鎖不同", "keywords": ["獨立藥局", "診所", "通路費用"] },
     { "signal": "competitor", "reason": "近 90 天的拜訪提到競品", "keywords": ["陳列位被調降", "競品取代"] },
     { "signal": "interval_up", "reason": "進貨間隔拉長", "keywords": ["檔期活動", "申請期限"] },
     { "signal": "contract_ending", "reason": "合約 3 個月內到期", "keywords": ["續約", "費率"] },
