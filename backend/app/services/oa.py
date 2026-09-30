@@ -209,6 +209,24 @@ def list_inbox(session: Session, user: AppUser) -> dict[str, Any]:
     return {"items": [_item(session, form) for form in forms], "counts": {"pending": len(forms)}}
 
 
+# 「系統已核准」那一區列最近幾張，給主管事後查
+AUTO_APPROVED_LIMIT = 30
+
+
+def list_auto_approved(session: Session, user: AppUser) -> dict[str, Any]:
+    """模型有把握、由系統核准的單：主管看自己底下的人的，IT 看全公司的。"""
+    if user.role not in INBOX_ROLES:
+        raise HTTPException(403, "只有主管可以看系統核准的單")
+    scope = Scope.for_user(user)
+    forms = session.scalars(
+        select(OaExpenseForm)
+        .where(OaExpenseForm.auto_approved, scope.includes(SHARING_LEVEL["manager_inbox"], OaExpenseForm.applicant_id))
+        .order_by(OaExpenseForm.created_at.desc(), OaExpenseForm.id.desc())
+        .limit(AUTO_APPROVED_LIMIT)
+    ).all()
+    return {"items": [_item(session, form) for form in forms]}
+
+
 def detail(session: Session, form: OaExpenseForm, user: AppUser | None = None) -> dict[str, Any]:
     applicant = session.get(AppUser, form.applicant_id)
     customer = session.get(Customer, form.customer_id)

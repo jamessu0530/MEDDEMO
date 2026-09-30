@@ -391,3 +391,96 @@ def test_the_seeded_system_approvals_agree_with_the_trained_model(tx):
         OaExpenseForm.kind != "trip", OaExpenseForm.status != "pending", OaExpenseForm.auto_approved.is_(False),
         OaExpenseForm.model_probability.is_not(None),
     ).limit(1)) is None
+
+
+# ── API：續約申請與系統核准的清單 ───────────────────────────────────
+
+
+def renew(api, auth, customer_id=GOOD, user="U01", **changes):
+    body = {"term_months": 12, "listing_fee_rate": 0.08, "channel_reward_rate": 0.05, "reason": "照去年條件"} | changes
+    return api.post(f"/api/customers/{customer_id}/contract-requests", json=body, headers=auth(user))
+
+
+def test_the_contract_page_shows_the_current_terms(tx, api, auth, model):
+    contract = api.get(f"/api/customers/{GOOD}/contract", headers=auth("U01"))
+    assert contract.status_code == 200
+    assert contract.json() == {
+        "contract_end_date": "2027-10-01", "days_left": 338, "ending_soon": False,
+        "listing_fee_rate": 0.08, "channel_reward_rate": 0.05, "pending_form_id": None,
+    }
+    # 蘆洲店 12/7 到期，已經在 3 個月內；假資料裡它有一張還沒簽完的續約申請
+    soon = api.get("/api/customers/C087/contract", headers=auth("U01")).json()
+    assert (soon["contract_end_date"], soon["ending_soon"]) == ("2026-12-07", True)
+    assert soon["pending_form_id"] is not None
+    # 只有連鎖客戶有通路合約；別人的客戶跟不存在一樣
+    assert api.get("/api/customers/C025/contract", headers=auth("U01")).status_code == 409
+    assert api.get("/api/customers/C002/contract", headers=auth("U01")).status_code == 404
+
+
+def test_a_renewal_request_goes_through_the_api(tx, api, auth, model):
+    sent = renew(api, auth)
+    assert sent.status_code == 201
+    approval = sent.json()
+    assert (approval["status"], approval["auto_approved"]) == ("pending", False)
+    assert approval["form_no"].startswith("CT202610") and approval["waiting_for"] == {"step": "區處主管", "name": "陳建宏"}
+    assert api.get(f"/api/customers/{GOOD}/contract", headers=auth("U01")).json()["pending_form_id"] == approval["form_id"]
+    # 同一家客戶同時只能有一張還沒簽完的合約申請
+    assert renew(api, auth).status_code == 409
+    assert renew(api, auth, "C087").status_code == 409
+    # 簽完（不管結果）就可以再送
+    api.post(f"/api/oa/forms/{approval['form_id']}/decide", json={"action": "return"}, headers=auth("M01"))
+    changed = renew(api, auth, listing_fee_rate=0.085, reason="總部要求調高")
+    assert changed.status_code == 201
+    detail = api.get(f"/api/oa/forms/{changed.json()['form_id']}", headers=auth("M01")).json()
+    assert detail["summary"] == "續約 12 個月，上架費率 8% → 8.5%"
+    assert [s["title"] for s in detail["steps"]] == ["業務", "區處主管", "業務處長"]
+
+
+def test_bad_renewal_requests_are_rejected(tx, api, auth, model):
+    assert renew(api, auth, "C025").status_code == 409  # 獨立藥局
+    assert renew(api, auth, "C002").status_code == 404  # 王冠宇的客戶
+    assert renew(api, auth, term_months=18).status_code == 422
+    assert renew(api, auth, listing_fee_rate=0.5).status_code == 422
+    assert renew(api, auth, channel_reward_rate=-0.01).status_code == 422
+    assert renew(api, auth, reason="長" * 501).status_code == 422
+    # 費率有調整要寫理由，照原費率續約可以不寫
+    assert renew(api, auth, listing_fee_rate=0.09, reason="").status_code == 422
+    assert api.get(f"/api/customers/{GOOD}/contract", headers=auth("U01")).json()["pending_form_id"] is None
+    assert renew(api, auth, reason="").status_code == 201
+
+
+def test_no_renewal_is_filed_while_oa_is_down(tx, api, auth, model):
+    api.put("/api/mock-systems/oa", json={"down": True})
+    try:
+        response = renew(api, auth)
+        assert response.status_code == 503 and "OA" in response.json()["detail"]
+        assert approvals.pending_contract(tx, GOOD) is None
+    finally:
+        api.put("/api/mock-systems/oa", json={"down": False})
+
+
+def test_managers_can_review_what_the_system_approved(tx, api, auth, model):
+    # 假資料裡林昱辰名下有兩張系統核准的優惠申請
+    seeded = api.get("/api/oa/auto-approved", headers=auth("M01")).json()["items"]
+    assert [(i["kind"], i["status"], i["applicant_name"], i["model"]["auto_approved"]) for i in seeded] == [
+        ("discount", "approved", "林昱辰", True)
+    ] * 2
+    assert seeded[0]["summary"].startswith("折扣 5%，報價 NT$ ") and seeded[1]["summary"].startswith("折扣 4%，報價 NT$ ")
+    # 再多一張：主管看得到自己底下的，別區的主管看不到，IT 看全公司，業務進不來
+    model(fake_model(0.97))
+    form = submit_contract(tx)
+    assert form.id in {i["id"] for i in api.get("/api/oa/auto-approved", headers=auth("M01")).json()["items"]}
+    assert api.get("/api/oa/auto-approved", headers=auth("M02")).json()["items"] == []
+    assert len(api.get("/api/oa/auto-approved", headers=auth("A01")).json()["items"]) == 3
+    assert api.get("/api/oa/auto-approved", headers=auth("U01")).status_code == 403
+
+
+def test_the_inbox_shows_the_estimate_and_the_facts_behind_it(tx, api, auth):
+    items = api.get("/api/oa/inbox", headers=auth("M01")).json()["items"]
+    late = next(i for i in items if i["kind"] == "discount" and i["customer_name"] == "福安連鎖藥局 · 鶯歌店")
+    assert late["kind_label"] == "優惠申請單" and late["summary"] == "折扣 6%，報價 NT$ 43,315"
+    assert 0 < late["model"]["probability"] < 0.5 and late["model"]["auto_approved"] is False
+    assert [line["text"] for line in late["model"]["reasons"]] == [
+        "折扣 6%，在區處主管的權限（8%）以內", "折後毛利率 30%", "帳款最久 92 天，超過 60 天", "近 90 天的拜訪沒有提到競品",
+    ]
+    assert [line["alert"] for line in late["model"]["reasons"]] == [False, False, True, False]

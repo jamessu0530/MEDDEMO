@@ -1,4 +1,4 @@
-"""OA 出差單申請匣與簽核。"""
+"""OA 申請單（出差單、優惠、合約）的申請匣與簽核。"""
 
 from typing import Annotated, Literal
 
@@ -34,6 +34,12 @@ def list_forms(
 @router.get("/inbox")
 def inbox(session: SessionDep, user: ManagerUser):
     return oa.list_inbox(session, user)
+
+
+@router.get("/auto-approved")
+def auto_approved(session: SessionDep, user: ManagerUser):
+    """模型有把握、由系統核准的單，給主管事後查。"""
+    return oa.list_auto_approved(session, user)
 
 
 @router.get("/forms/{form_id}")

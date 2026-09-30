@@ -42,6 +42,8 @@ TOP_SKUS = 4
 MAX_TIPS = 3
 # 跟客戶清單的「上次拜訪」一樣，只算已確認的拜訪
 CONFIRMED = ("confirmed", "synced")
+# 待處理事項列哪些報價：可以送出的草稿與還在等簽核的
+OPEN_QUOTE_STATUSES = ("draft", "pending_approval")
 
 customer_summary = table(
     "v_customer_summary",
@@ -86,6 +88,7 @@ class OpenQuote:
     date: dt.date
     items: str
     amount: float
+    status: str  # draft＝可以送給客戶，pending_approval＝折扣還在等簽核
 
 
 @dataclass
@@ -203,21 +206,24 @@ def _monthly_intervals(session: Session, customer_id: str, today: dt.date) -> li
 
 
 def _open_quotes(session: Session, customer_id: str) -> list[OpenQuote]:
-    """還沒結案的報價草稿。拜訪回寫開的與客戶檔案直接開的都算，同一個單號併成一張。"""
+    """還沒結案的報價草稿。拜訪回寫開的與客戶檔案直接開的都算，同一個單號併成一張。
+
+    折扣還在等簽核的也列出來（畫面上標「待簽核」），被駁回或退回的不列。
+    """
     rows = session.execute(
         select(
             SapQuotationDraft.quote_no, SapQuotationDraft.visit_id, SapQuotationDraft.qty, SapQuotationDraft.unit_price,
-            SapQuotationDraft.created_at, Product.name, Visit.visited_at,
+            SapQuotationDraft.created_at, SapQuotationDraft.status, Product.name, Visit.visited_at,
         )
         .join(Product, Product.sku == SapQuotationDraft.sku)
         .outerjoin(Visit, Visit.id == SapQuotationDraft.visit_id)
-        .where(SapQuotationDraft.customer_id == customer_id, SapQuotationDraft.status == "draft")
+        .where(SapQuotationDraft.customer_id == customer_id, SapQuotationDraft.status.in_(OPEN_QUOTE_STATUSES))
         .order_by(func.coalesce(Visit.visited_at, SapQuotationDraft.created_at).desc(), SapQuotationDraft.line_no)
     ).all()
     quotes: dict[str, OpenQuote] = {}
     for row in rows:
         day = local_date(row.visited_at or row.created_at)
-        quote = quotes.setdefault(row.quote_no, OpenQuote(row.quote_no, row.visit_id, day, "", 0.0))
+        quote = quotes.setdefault(row.quote_no, OpenQuote(row.quote_no, row.visit_id, day, "", 0.0, row.status))
         quote.items = "、".join(filter(None, [quote.items, f"{row.name} × {row.qty}"]))
         quote.amount += float(row.unit_price) * row.qty
     return list(quotes.values())

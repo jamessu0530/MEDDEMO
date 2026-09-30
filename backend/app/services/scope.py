@@ -43,8 +43,8 @@ SHARING_LEVEL = {
     "visit_record": TEAM,       # 讀拜訪紀錄與逐字稿
     "visit_edit": SELF,         # 改、確認、刪除拜訪：做這次拜訪的本人（主管的路徑較短，也涵蓋在內）
     "customer_profile": SELF,   # 客戶檔案、議價卡，以及對這家客戶做事（錄音、排進路線）
-    "quote": SELF,              # 報價與交易條件
-    "oa_form": SELF,            # 出差單
+    "quote": SELF,              # 報價與交易條件（開報價、看合約條件、送續約申請）
+    "oa_form": SELF,            # 申請單：出差單、優惠、合約
     # 頻道（services/channels.py）：全國頻道全公司；整區、地點頻道與客戶討論串整區；小組頻道到小組
     "channel_national": ROOT,
     "channel_region": REGION,

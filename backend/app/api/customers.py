@@ -1,8 +1,9 @@
-"""客戶相關 API：客戶清單、客戶檔案（FR-2）、談判卡（FR-3）。"""
+"""客戶相關 API：客戶清單、客戶檔案（FR-2）、談判卡（FR-3）、開報價與續約申請。"""
 
 import dataclasses
 from datetime import date, datetime, timedelta
-from typing import Annotated
+from decimal import ROUND_HALF_UP, Decimal
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -14,7 +15,7 @@ from app.api.auth import CurrentUser
 from app.db import get_session
 from app.models import AppUser, Customer, Product, SalesTransaction, SapQuotationDraft, Visit
 from app.pricing import supply_price
-from app.services import customer_profile, writeback
+from app.services import approvals, customer_profile, writeback
 from app.services.scope import SHARING_LEVEL, Scope
 
 router = APIRouter(prefix="/api/customers", tags=["customers"])
@@ -58,6 +59,8 @@ class OpenQuote(BaseModel):
     date: date
     items: str
     amount: float
+    # draft：可以送給客戶；pending_approval：折扣還在等簽核
+    status: str
 
 
 class Commitment(BaseModel):
@@ -224,16 +227,40 @@ class QuoteLineInput(BaseModel):
     qty: int = Field(gt=0)
 
 
+# 申請理由最多幾個字：一兩句話講客戶的進貨金額與競品條件
+REASON_MAX_LENGTH = 500
+
+
 class QuoteInput(BaseModel):
     items: list[QuoteLineInput] = Field(min_length=1, max_length=MAX_QUOTE_LINES)
+    # 整張報價一個折扣，套在標準供貨價上
+    discount_pct: float = 0
+    reason: str | None = Field(default=None, max_length=REASON_MAX_LENGTH)
 
 
 class QuoteLine(BaseModel):
     sku: str
     name: str
     qty: int
-    unit_price: int
-    amount: int
+    # 折扣後的單價，到分
+    unit_price: float
+    amount: float
+
+
+class WaitingFor(BaseModel):
+    step: str
+    name: str
+
+
+class Approval(BaseModel):
+    """送出之後的簽核結果：系統核准了，或是現在等誰簽。"""
+
+    form_id: int
+    form_no: str
+    status: str
+    auto_approved: bool
+    probability: float | None
+    waiting_for: WaitingFor | None
 
 
 class Quote(BaseModel):
@@ -241,6 +268,11 @@ class Quote(BaseModel):
     customer_id: str
     items: list[QuoteLine]
     amount: int
+    discount_pct: float
+    # draft：可以送給客戶；pending_approval：折扣超過業務的權限，等簽核
+    status: str
+    # 折扣在業務的權限內就沒有申請單
+    approval: Approval | None
     created_at: datetime
 
 
@@ -279,9 +311,33 @@ def _next_quote_no(session: Session, today: date) -> str:
     return f"{prefix}{(count or 0) + 1:04d}"
 
 
+def _oa_must_be_up(what: str) -> None:
+    """要開申請單的動作受模擬 OA 的開關影響：OA 停機時整件事都不做，不留下一張送不出去的報價。"""
+    if writeback.is_mock_down("oa"):
+        raise HTTPException(503, f"OA 暫時連不上，{what}，請稍後再試")
+
+
+def _discount_level(body: QuoteInput) -> tuple[str | None, str]:
+    """檢查折扣與理由，回傳（最高要簽到哪一級, 整理過的理由）。"""
+    pct = body.discount_pct
+    if not 0 <= pct <= approvals.DISCOUNT_MAX:
+        raise HTTPException(422, f"折扣要在 0～{approvals.DISCOUNT_MAX:g}% 之間")
+    if (pct / approvals.DISCOUNT_STEP) % 1:
+        raise HTTPException(422, f"折扣每 {approvals.DISCOUNT_STEP:g}% 一格")
+    reason = (body.reason or "").strip()
+    level = approvals.discount_level(pct)
+    if level and not reason:
+        raise HTTPException(422, f"折扣超過 {approvals.DISCOUNT_FREE:g}% 要送簽核，請寫申請理由")
+    return level, reason
+
+
 @router.post("/{customer_id}/quotes", status_code=201, response_model=Quote)
 def create_quote(session: SessionDep, customer_id: str, body: QuoteInput, user: CurrentUser):
-    """在客戶檔案直接開 SAP 報價草稿，不必先有一次拜訪。"""
+    """在客戶檔案直接開 SAP 報價草稿，不必先有一次拜訪。
+
+    折扣在業務的權限（3%）內就直接開；超過的報價先停在等簽核，同一個交易裡開優惠申請單，
+    模型有把握就由系統核准、報價立刻可以送出（services/approvals.py）。
+    """
     customer, _ = _load(session, customer_id, user, SHARING_LEVEL["quote"])
     skus = [line.sku for line in body.items]
     if len(set(skus)) != len(skus):
@@ -289,22 +345,46 @@ def create_quote(session: SessionDep, customer_id: str, body: QuoteInput, user: 
     products = {p.sku: p for p in session.scalars(select(Product).where(Product.sku.in_(skus)))}
     if missing := [sku for sku in skus if sku not in products]:
         raise HTTPException(422, f"找不到品項：{'、'.join(missing)}")
+    level, reason = _discount_level(body)
     # 跟拜訪回寫一樣受模擬系統開關影響：展示「SAP 停機」時這裡也開不成
     if writeback.is_mock_down("sap"):
         raise HTTPException(503, "SAP 暫時連不上，報價草稿沒有開成，請稍後再試")
+    if level:
+        _oa_must_be_up("這個折扣要送簽核，報價沒有開成")
 
     today = customer_profile.app_today(session)
+    # 折扣每 0.5% 一格，用整數算才不會有浮點數的尾差：405 元打 97 折是 392.85
+    keep = Decimal(200 - round(body.discount_pct * 2)) / 200
+    supply = {sku: supply_price(products[sku].unit_price, customer.type) for sku in skus}
+    prices = {sku: (Decimal(price) * keep).quantize(Decimal("0.01"), ROUND_HALF_UP) for sku, price in supply.items()}
+    # 整張報價的金額到元，四捨五入（跟畫面上金額的進位方式一樣）
+    amount = int(sum(prices[line.sku] * line.qty for line in body.items).quantize(Decimal("1"), ROUND_HALF_UP))
+    form = None
     for _attempt in range(3):  # 兩個人同時開報價可能拿到同一個單號，撞到唯一限制就換下一號
         quote_no = _next_quote_no(session, today)
         lines = [
             SapQuotationDraft(
                 quote_no=quote_no, visit_id=None, created_by=user.id, line_no=n, customer_id=customer.id,
-                sku=line.sku, qty=line.qty, unit_price=supply_price(products[line.sku].unit_price, customer.type),
+                sku=line.sku, qty=line.qty, unit_price=prices[line.sku], discount_pct=body.discount_pct,
+                status="pending_approval" if level else "draft",
             )
             for n, line in enumerate(body.items, start=1)
         ]
         session.add_all(lines)
         try:
+            session.flush()
+            if level:
+                form = approvals.submit(
+                    session, kind="discount", customer=customer,
+                    # 申請人記客戶的負責人，跟出差單一樣：自建帳號、主管代開的單都在負責人的申請匣裡
+                    applicant=session.get(AppUser, customer.owner_user_id),
+                    payload={
+                        "quote_no": quote_no, "discount_pct": body.discount_pct,
+                        "list_amount": sum(supply[line.sku] * line.qty for line in body.items), "amount": amount,
+                        "cost": round(sum(products[line.sku].unit_cost * line.qty for line in body.items)),
+                        "reason": reason,
+                    },
+                )
             session.commit()
             break
         except IntegrityError:
@@ -314,12 +394,85 @@ def create_quote(session: SessionDep, customer_id: str, body: QuoteInput, user: 
 
     items = [
         QuoteLine(
-            sku=l.sku, name=products[l.sku].name, qty=l.qty, unit_price=int(l.unit_price), amount=int(l.unit_price) * l.qty
+            sku=l.sku, name=products[l.sku].name, qty=l.qty, unit_price=float(l.unit_price),
+            amount=float(l.unit_price * l.qty),
         )
         for l in lines
     ]
     return Quote(
-        quote_no=quote_no, customer_id=customer.id, items=items, amount=sum(i.amount for i in items),
+        quote_no=quote_no, customer_id=customer.id, items=items, amount=amount, discount_pct=body.discount_pct,
+        # 系統核准的話，報價在同一個交易裡已經變成可以送出
+        status=lines[0].status, approval=approvals.approval_out(session, form) if form else None,
         created_at=lines[0].created_at,
     )
 
+
+# ── 連鎖續約（合約申請單）────────────────────────────────────────
+
+# 費率的合理範圍：內部文件寫上架費 5%～8%、通路獎勵 3%～5%，這裡收到 20% 為止，擋掉把 8 打成 80 這種誤填
+CONTRACT_RATE_MAX = 0.2
+
+
+class Contract(BaseModel):
+    contract_end_date: date | None
+    days_left: int | None
+    # 到期前 3 個月要啟動續約協商（《連鎖通路合約條件》），客戶檔案頁把這一列標出來
+    ending_soon: bool
+    listing_fee_rate: float
+    channel_reward_rate: float
+    # 還沒簽完的續約申請；同一家客戶同時只能有一張
+    pending_form_id: int | None
+
+
+class ContractRequestInput(BaseModel):
+    term_months: Literal[12, 24]
+    listing_fee_rate: float = Field(ge=0, le=CONTRACT_RATE_MAX)
+    channel_reward_rate: float = Field(ge=0, le=CONTRACT_RATE_MAX)
+    reason: str = Field(default="", max_length=REASON_MAX_LENGTH)
+
+
+def _load_chain(session: Session, customer_id: str, user: AppUser) -> Customer:
+    customer, _ = _load(session, customer_id, user, SHARING_LEVEL["quote"])
+    if customer.type != "chain":
+        raise HTTPException(409, "只有連鎖客戶有通路合約")
+    return customer
+
+
+def _contract(session: Session, customer: Customer) -> dict[str, Any]:
+    terms = approvals.contract_terms(session, customer, customer_profile.app_today(session))
+    days_left = terms["days_left"]
+    return terms | {
+        "ending_soon": days_left is not None and days_left <= customer_profile.CONTRACT_NOTICE_DAYS,
+        "pending_form_id": approvals.pending_contract(session, customer.id),
+    }
+
+
+@router.get("/{customer_id}/contract", response_model=Contract)
+def get_contract(session: SessionDep, customer_id: str, user: CurrentUser):
+    """目前的合約條件。系統沒有合約表：到期日在客戶主檔，費率從近 90 天的交易算出來。"""
+    return _contract(session, _load_chain(session, customer_id, user))
+
+
+@router.post("/{customer_id}/contract-requests", status_code=201, response_model=Approval)
+def create_contract_request(session: SessionDep, customer_id: str, body: ContractRequestInput, user: CurrentUser):
+    """送續約申請：照原費率由區處主管核准（模型有把握就由系統核准），費率有調整要再送業務處長。"""
+    customer = _load_chain(session, customer_id, user)
+    if approvals.pending_contract(session, customer.id):
+        raise HTTPException(409, "這家客戶已經有一張還沒簽完的續約申請")
+    reason = body.reason.strip()
+    payload = approvals.contract_payload(
+        session, customer, customer_profile.app_today(session), term_months=body.term_months,
+        # 費率到 0.1 個百分點，跟帶出來的目前費率同一個精度，沒改的才比得出「沒改」
+        listing_fee_rate=round(body.listing_fee_rate, 3), channel_reward_rate=round(body.channel_reward_rate, 3),
+        reason=reason,
+    )
+    listing, reward = payload["listing_fee_rate"], payload["channel_reward_rate"]
+    changed = approvals.contract_level(listing["from"], listing["to"], reward["from"], reward["to"]) != "manager"
+    if changed and not reason:
+        raise HTTPException(422, "費率有調整要送業務處長，請寫申請理由")
+    _oa_must_be_up("續約申請沒有送出")
+    form = approvals.submit(
+        session, kind="contract", customer=customer, applicant=session.get(AppUser, customer.owner_user_id), payload=payload,
+    )
+    session.commit()
+    return approvals.approval_out(session, form)
