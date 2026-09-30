@@ -20,10 +20,13 @@ import math
 from pathlib import Path
 from typing import Any
 
+from fastapi import HTTPException
 from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import (
+    PENDING_CONTRACT_INDEX,
     AppUser,
     Customer,
     OaActivity,
@@ -328,24 +331,34 @@ def submit(session: Session, *, kind: str, applicant: AppUser, customer: Custome
     )
 
     now = dt.datetime.now(dt.UTC)
-    form = OaExpenseForm(
-        form_no=oa.next_form_no(session, oa.FORM_NO_PREFIX[kind], today),
-        kind=kind,
-        applicant_id=applicant.id,
-        request_date=today,
-        customer_id=customer.id,
-        purpose=PURPOSE[kind],
-        unit_name=customer.region,
-        payload=payload,
-        required_level=level,
-        model_probability=probability,
-        model_features=features,
-        auto_approved=auto,
-        status="approved" if auto else "pending",
-        submitted_at=now,
-    )
-    session.add(form)
-    session.flush()
+    # 兩個人同時送單會拿到同一個流水號，後到的撞到唯一限制：退回這一步、換下一號再試（跟開報價的單號一樣）
+    for _attempt in range(3):
+        form = OaExpenseForm(
+            form_no=oa.next_form_no(session, oa.FORM_NO_PREFIX[kind], today),
+            kind=kind,
+            applicant_id=applicant.id,
+            request_date=today,
+            customer_id=customer.id,
+            purpose=PURPOSE[kind],
+            unit_name=customer.region,
+            payload=payload,
+            required_level=level,
+            model_probability=probability,
+            model_features=features,
+            auto_approved=auto,
+            status="approved" if auto else "pending",
+            submitted_at=now,
+        )
+        try:
+            with session.begin_nested():
+                session.add(form)
+                session.flush()
+            break
+        except IntegrityError as exc:
+            if getattr(getattr(exc.orig, "diag", None), "constraint_name", None) == PENDING_CONTRACT_INDEX:
+                raise HTTPException(409, "這家客戶已經有一張還沒簽完的續約申請") from None
+    else:
+        raise HTTPException(409, "申請單號衝突，請再送一次")
     session.add(OaApprovalStep(
         form_id=form.id, step_no=1, role_label="請求者", user_id=applicant.id, title="業務", status="done", acted_at=now,
     ))

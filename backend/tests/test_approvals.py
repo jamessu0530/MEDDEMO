@@ -699,3 +699,34 @@ def test_signing_names_the_step_it_saw(tx, api, auth, model):
     # 整張單已經有結果了
     done = sign("A01")
     assert done.status_code == 409 and "已經" in done.json()["detail"]
+
+
+def renewal_of(customer_id: str):
+    def act(session: Session):
+        customer = session.get(Customer, customer_id)
+        payload = approvals.contract_payload(
+            session, customer, TODAY, term_months=12, listing_fee_rate=0.08, channel_reward_rate=0.05, reason="",
+        )
+        return approvals.submit(session, kind="contract", applicant=session.get(AppUser, customer.owner_user_id),
+                                customer=customer, payload=payload).form_no
+
+    return act
+
+
+def test_two_requests_filed_at_the_same_moment_get_their_own_numbers(engine, committed):
+    # 兩家不同客戶同時送續約：兩張都拿到同一個流水號，後到的撞到唯一限制，要換下一號重送，不是 500
+    numbers = {}
+    second = overlap(engine, lambda session: numbers.update(first=renewal_of("C003")(session)), renewal_of("C007"))
+    assert second["blocked"] is True and "error" not in second
+    assert second["value"] != numbers["first"] and second["value"][:8] == numbers["first"][:8] == "CT202610"
+    assert int(second["value"][8:]) == int(numbers["first"][8:]) + 1
+
+
+def test_the_database_keeps_one_pending_renewal_per_customer(engine, committed):
+    # 同一家同時送兩張：先檢查「有沒有還沒簽完的」兩邊都看不到對方，所以由資料庫的唯一索引守，後到的回 409
+    second = overlap(engine, renewal_of("C003"), renewal_of("C003"))
+    assert second == {"blocked": True, "error": 409}
+    with Session(engine) as session:
+        assert session.scalar(select(func.count()).select_from(OaExpenseForm).where(
+            OaExpenseForm.kind == "contract", OaExpenseForm.customer_id == "C003", OaExpenseForm.status == "pending",
+        )) == 1

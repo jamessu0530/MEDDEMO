@@ -432,6 +432,7 @@ OA_ACTIVITY_ACTIONS = ("submitted", "approved", "rejected", "returned", "comment
 OA_FORM_KINDS = ("trip", "discount", "contract")
 # 規則算出來最高要簽到哪一級：區處主管、業務處長、總經理
 OA_REQUIRED_LEVELS = ("manager", "director", "gm")
+PENDING_CONTRACT_INDEX = "uq_oa_expense_form_pending_contract"
 
 
 class OaExpenseForm(Base):
@@ -451,6 +452,11 @@ class OaExpenseForm(Base):
             " OR (kind IN ('discount', 'contract') AND visit_id IS NULL AND trip_date IS NULL"
             "     AND payload IS NOT NULL AND request_date IS NOT NULL)",
             name="kind_fields",
+        ),
+        # 同一家客戶同時只能有一張還沒簽完的續約申請。由資料庫守：兩個請求同時送，先查「有沒有」兩邊都看不到對方
+        Index(
+            PENDING_CONTRACT_INDEX, "customer_id", unique=True,
+            postgresql_where=text("kind = 'contract' AND status = 'pending'"),
         ),
     )
 
