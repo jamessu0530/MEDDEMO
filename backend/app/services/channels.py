@@ -190,6 +190,11 @@ def visible_channels(session: Session, user: AppUser) -> list[ChannelInfo]:
     return sorted((info for info in describe(session, rows) if can_see(user, info)), key=_order)
 
 
+def visible_ids(session: Session, user: AppUser) -> set[int]:
+    """看得到的每個頻道的編號，含客戶討論串。WebSocket 連上時算一次，決定新訊息通知送給誰（api/presence.py）。"""
+    return {info.id for info in describe(session, list(session.scalars(select(Channel)))) if can_see(user, info)}
+
+
 def get_channel(session: Session, user: AppUser, channel_id: int) -> ChannelInfo:
     channel = session.get(Channel, channel_id)
     if channel is None:

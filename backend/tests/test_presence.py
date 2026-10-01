@@ -6,6 +6,7 @@ WebSocket 那幾個測試不能用 tx：連線在自己的 session 裡讀狀態�
 """
 
 import datetime as dt
+import time
 
 import pytest
 from fastapi.testclient import TestClient
@@ -276,3 +277,102 @@ def test_a_socket_that_stops_pinging_is_closed(client, engine, monkeypatch):
             while True:
                 ws.receive_json()
     assert closed.value.code == 4408
+
+
+# WebSocket 不能讓每條連線、每個事件都各查一次資料庫：50 個人同時發言時會跟發言的請求搶 threadpool 與連線池，
+# 整個 API 卡死（docs/superpowers/specs/2026-10-01-channel-rail-design.md「壓力測試」）
+
+
+async def test_status_requests_after_the_same_event_share_one_query(monkeypatch):
+    import asyncio
+
+    calls = 0
+
+    def slow_statuses():
+        nonlocal calls
+        calls += 1
+        time.sleep(0.05)
+        return {"U01": "available"}
+
+    monkeypatch.setattr(presence_api, "_statuses", slow_statuses)
+    cache = presence_api._StatusCache()
+    since = time.monotonic()
+    results = await asyncio.gather(*(cache.get(since) for _ in range(50)))
+    assert calls == 1 and all(r == {"U01": "available"} for r in results)
+    # 事件之後才開始算的那一份可以共用；比它晚的事件要重算，才看得到新的變動
+    await cache.get(since)
+    assert calls == 1
+    await cache.get(time.monotonic())
+    assert calls == 2
+
+
+async def test_a_failed_status_query_is_not_shared_afterwards(monkeypatch):
+    attempts = iter([RuntimeError("資料庫斷了"), {"U01": "busy"}])
+
+    def flaky():
+        result = next(attempts)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    monkeypatch.setattr(presence_api, "_statuses", flaky)
+    cache = presence_api._StatusCache()
+    since = time.monotonic()
+    with pytest.raises(RuntimeError):
+        await cache.get(since)
+    assert await cache.get(since) == {"U01": "busy"}
+
+
+def test_message_notifications_do_not_query_the_database_per_message(tx, client, engine, auth, monkeypatch):
+    north = channel_id(client, auth, "陳建宏小組")
+    checks = []
+    original = presence_api._can_see
+    monkeypatch.setattr(presence_api, "_can_see", lambda *args: checks.append(args) or original(*args))
+    with client.websocket_connect("/api/ws") as ws:
+        connect(ws, engine, "U01")
+        for body in ("一", "二", "三"):
+            assert client.post(f"/api/channels/{north}/messages", json={"body": body}, headers=auth("M01")).status_code == 201
+            assert next_of(ws, "message") == {"type": "message", "channel_id": north}
+    # 看得到哪些頻道是連上時一次算好的，三則訊息都不必再查
+    assert checks == []
+
+
+def test_a_channel_opened_after_connecting_still_notifies(client, engine, auth):
+    # 不能用 tx：連線在自己的 session 裡查新頻道，只看得到 commit 過的。測完刪掉開的頻道（訊息跟著 CASCADE）
+    north_region = channel_id(client, auth, "北區")
+    south_region = channel_id(client, auth, "南區")
+    opened = []
+    try:
+        with client.websocket_connect("/api/ws") as u01, client.websocket_connect("/api/ws") as u04:
+            connect(u01, engine, "U01")
+            connect(u04, engine, "U04")
+            for manager, parent, name in (("M01", north_region, "陳列競賽"), ("M03", south_region, "左營檔期")):
+                created = client.post("/api/channels", json={"parent_id": parent, "name": name}, headers=auth(manager))
+                assert created.status_code == 201
+                opened.append(created.json()["id"])
+            north_topic, south_topic = opened
+            client.post(f"/api/channels/{north_topic}/messages", json={"body": "北區開跑"}, headers=auth("M01"))
+            client.post(f"/api/channels/{south_topic}/messages", json={"body": "南區開跑"}, headers=auth("M03"))
+            assert next_of(u01, "message") == {"type": "message", "channel_id": north_topic}
+            # 北區的先發，吳承翰卻先收到南區的：連上之後才開的北區頻道，一樣不會通知看不到的人
+            assert next_of(u04, "message") == {"type": "message", "channel_id": south_topic}
+    finally:
+        with engine.begin() as conn:
+            conn.execute(delete(Channel).where(Channel.id.in_(opened)))
+
+
+def test_the_pool_has_room_for_every_threadpool_worker():
+    import anyio.to_thread
+
+    from app.db import MAX_OVERFLOW, POOL_SIZE, make_engine
+
+    async def threads() -> int:
+        return int(anyio.to_thread.current_default_thread_limiter().total_tokens)
+
+    engine = make_engine()
+    try:
+        assert (engine.pool.size(), engine.pool._max_overflow) == (POOL_SIZE, MAX_OVERFLOW)
+    finally:
+        engine.dispose()
+    # 請求在換執行緒之間會拿著連線：連線池比執行緒少就可能互卡
+    assert POOL_SIZE + MAX_OVERFLOW > anyio.run(threads)

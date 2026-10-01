@@ -29,9 +29,18 @@ def database_url() -> str:
     return url
 
 
+# API 的同步端點與相依（get_session、current_user）在 anyio 的 threadpool 裡跑（預設 40 條執行緒），
+# 一個請求在兩次換執行緒之間會一直拿著它的資料庫連線。連線池比執行緒少，很多人同時發言時，
+# 拿著連線的請求等執行緒、佔著執行緒的請求等連線，整個 API 卡到連線池逾時（壓力測試找到的，
+# docs/superpowers/specs/2026-10-01-channel-rail-design.md）。所以連線池要比執行緒多。
+# Postgres 預設 max_connections 是 100：API 最多 60 條，背景工作與 CronJob 平常各用一兩條
+POOL_SIZE = 20
+MAX_OVERFLOW = 40
+
+
 def make_engine(url: str | None = None) -> Engine:
     # pool_pre_ping：資料庫重啟後，連線池裡失效的舊連線會先被換掉，API 不會因此回 500
-    return create_engine(url or database_url(), pool_pre_ping=True)
+    return create_engine(url or database_url(), pool_pre_ping=True, pool_size=POOL_SIZE, max_overflow=MAX_OVERFLOW)
 
 
 @cache

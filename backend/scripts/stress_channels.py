@@ -4,6 +4,8 @@ demo 當天幾十個人同時在同一個文字頻道收發訊息，WebSocket �
     DATABASE_URL=… REDIS_URL=… uv run --project backend python backend/scripts/stress_channels.py \
         --base-url http://127.0.0.1:8011
 
+API 與這支腳本要用同一把 JWT_SECRET（backend/.env 沒設的話，API 每次啟動隨機產生一把，腳本簽的 token 會被當成無效）：兩邊的指令前面都加上同一個 JWT_SECRET=…。
+
 只打本機（--base-url 不是 localhost 就拒絕），不會在正式站留下測試訊息。
 帳號直接寫進 DATABASE_URL 那個資料庫（註冊 API 每個來源每小時只能開 20 個）；重跑會沿用同一批帳號。
 發言每天全系統最多 1,000 則（app/usage.py），一次 50 人 × 3 則 = 150 則，一天大約能跑六次。
@@ -56,7 +58,9 @@ def accounts(count: int) -> list[str]:
 def topic_id(client: httpx.Client, it_token: str) -> int:
     """北區的「壓力測試」文字頻道，沒有就由 IT 開一個（順便測開頻道的端點）。"""
     headers = {"Authorization": f"Bearer {it_token}"}
-    listed = client.get("/api/channels", headers=headers).json()
+    response = client.get("/api/channels", headers=headers)
+    response.raise_for_status()
+    listed = response.json()
     found = next((c for c in listed if c["kind"] == "topic" and c["name"] == TOPIC), None)
     if found:
         return found["id"]

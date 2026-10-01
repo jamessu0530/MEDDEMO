@@ -4,11 +4,16 @@
 訊息本身不經過 WebSocket，手機收到通知再用原本的 API 拿，權限檢查與訊息格式只有一份。
 每條連線自己訂閱 Redis 的事件頻道（app/realtime.py），連線斷了訂閱跟著結束，不另外開背景程序。
 連不上 WebSocket 的時候（公司網路擋掉之類），手機改用 POST /api/presence/ping 心跳。
+
+同一個事件會送到每一條連線：每條連線各查一次資料庫，連線一多就跟發言的請求搶 threadpool 與連線池，
+所以看得到哪些頻道記在連線上、大家的狀態同一個程序裡共用一份（_StatusCache）。
 """
 
 import asyncio
 import contextlib
 import json
+import math
+import random
 import time
 from collections import Counter
 from typing import Annotated, Literal
@@ -42,6 +47,12 @@ MIN_PING_SECONDS = 5
 PING_TIMEOUT_SECONDS = 90
 # 同一個帳號在同一台 API 最多幾條連線：自建帳號誰都能開，不能讓一個人無限開
 MAX_CONNECTIONS = 5
+# 每條連線記住自己看得到哪些頻道，隔這麼久（再乘上 1～1.5 倍，讓同時連上的連線錯開）重算一次：
+# 調區、停用這類權限變動最慢這麼久生效。這段時間內新出現的頻道（剛開的文字頻道、第一次有人打開的客戶討論串）
+# 第一次有訊息時單獨查一次
+VISIBLE_TTL_SECONDS = 60
+# 定時重算狀態時，別條連線這麼近才算好的那一份可以直接用
+SWEEP_SHARE_SECONDS = 1.0
 
 # 關閉碼：4000～4999 給應用程式自己用
 CLOSE_UNAUTHORIZED = 4401
@@ -142,6 +153,48 @@ def _can_see(user_id: str, channel_id: int) -> bool:
         return True
 
 
+def _visible_ids(user_id: str) -> frozenset[int]:
+    """這個人看得到的頻道編號；帳號不在或停用是空的。"""
+    with session_factory()() as session:
+        user = session.get(AppUser, user_id)
+        if user is None or user.deactivated_at is not None:
+            return frozenset()
+        return frozenset(channels.visible_ids(session, user))
+
+
+class _StatusCache:
+    """大家的狀態，同一個程序裡的連線共用。一個狀態事件會讓每條連線都要一次，以前每條各查一次資料庫，
+    50 條連線就是 50 次，跟發言的請求搶 threadpool 與連線池（docs/superpowers/specs/2026-10-01-channel-rail-design.md）。
+
+    get(since)：since 之後才開始算的那一份（算好的或正在算的）直接共用，不然才重算。
+    since 是呼叫的人收到事件的時間；事件是 commit 之後才發的，之後才開始算的一定看得到那次變動。
+    算失敗的那一份不共用，下一個人重算。不同的 event loop（測試裡每個 TestClient 各一個）各算各的。"""
+
+    def __init__(self) -> None:
+        self._started = -math.inf
+        self._task: asyncio.Task[dict[str, str]] | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
+
+    async def get(self, since: float) -> dict[str, str]:
+        loop = asyncio.get_running_loop()
+        task = self._task
+        stale = (
+            task is None
+            or self._loop is not loop
+            or self._started < since
+            or (task.done() and (task.cancelled() or task.exception() is not None))
+        )
+        if stale:
+            self._started = time.monotonic()
+            self._loop = loop
+            self._task = task = loop.create_task(run_in_threadpool(_statuses))
+        # shield：等的那條連線斷了被取消，不能把大家共用的那一份一起取消
+        return await asyncio.shield(task)
+
+
+_status_cache = _StatusCache()
+
+
 class _Connection:
     def __init__(self, ws: WebSocket, user_id: str, token: str, active: bool):
         self.ws = ws
@@ -157,6 +210,11 @@ class _Connection:
         # 狀態事件與每 10 秒的重算可能同時進來：讀、比對、送整段一次只跑一個，
         # 不然比較舊的那份晚讀完，會蓋掉比較新的
         self.presence_lock = asyncio.Lock()
+        # 看得到的頻道：連上時算一次，之後隔一陣子重算；中間出現的新頻道第一次有訊息時單獨查一次並記住
+        self.visible: frozenset[int] = frozenset()
+        self.hidden: set[int] = set()
+        self.visible_at = -math.inf
+        self.visible_ttl = VISIBLE_TTL_SECONDS * random.uniform(1, 1.5)
 
     async def send(self, payload: dict) -> None:
         async with self.lock:
@@ -169,9 +227,9 @@ class _Connection:
                 self.closed = True
                 await self.ws.close(code)
 
-    async def send_presence(self, full: bool = False) -> None:
+    async def send_presence(self, since: float, full: bool = False) -> None:
         async with self.presence_lock:
-            current = await run_in_threadpool(_statuses)
+            current = await _status_cache.get(since)
             if full:
                 changes = current
             else:
@@ -180,6 +238,27 @@ class _Connection:
             self.sent = current
             if full or changes:
                 await self.send({"type": "presence", "full": full, "statuses": changes})
+
+    async def refresh_visible(self) -> None:
+        """重算這個人看得到的頻道。連上時算一次，之後過期了（visible_ttl）由 can_see 重算。"""
+        self.visible = await run_in_threadpool(_visible_ids, self.user_id)
+        self.hidden = set()
+        self.visible_at = time.monotonic()
+
+    async def can_see(self, channel_id: int) -> bool:
+        """新訊息通知要不要送給這條連線。看得到的頻道記在連線上，不必每則訊息都查資料庫。"""
+        if time.monotonic() - self.visible_at > self.visible_ttl:
+            await self.refresh_visible()
+        if channel_id in self.visible:
+            return True
+        if channel_id in self.hidden:
+            return False
+        # 連上之後才出現的頻道：查一次，結果記下來
+        if await run_in_threadpool(_can_see, self.user_id, channel_id):
+            self.visible = self.visible | {channel_id}
+            return True
+        self.hidden.add(channel_id)
+        return False
 
     async def read(self) -> None:
         """手機送來的心跳。token 驗不過就關掉連線：登出、改密碼、被別的裝置頂掉的那條連線不能繼續收通知。"""
@@ -206,7 +285,7 @@ class _Connection:
                 continue
             event = json.loads(message["data"])
             if event.get("type") == "presence":
-                await self.send_presence()
+                await self.send_presence(time.monotonic())
             elif event.get("type") == "avatars":
                 await self.send({"type": "avatars"})
             elif event.get("type") == "channels":
@@ -215,7 +294,7 @@ class _Connection:
             elif event.get("type") == "message":
                 channel_id = int(event["channel_id"])
                 # 只通知看得到的人：看不到的頻道連「有新訊息」都不能透露
-                if await run_in_threadpool(_can_see, self.user_id, channel_id):
+                if await self.can_see(channel_id):
                     await self.send({"type": "message", "channel_id": channel_id})
 
     async def sweep(self) -> None:
@@ -224,7 +303,7 @@ class _Connection:
             if time.monotonic() - self.last_ping > PING_TIMEOUT_SECONDS:
                 await self.close(CLOSE_TIMEOUT)
                 return
-            await self.send_presence()
+            await self.send_presence(time.monotonic() - SWEEP_SHARE_SECONDS)
 
     async def run(self) -> None:
         client = aioredis.Redis.from_url(settings().redis_url)
@@ -233,8 +312,10 @@ class _Connection:
             await pubsub.subscribe(realtime.events_channel())
             # 等 Redis 確認訂閱好了才說 ready：之後發的事件一定收得到
             await pubsub.get_message(timeout=5)
+            # 先把看得到的頻道算好：不然第一則訊息進來時，每條連線同時去查
+            await self.refresh_visible()
             await self.send({"type": "ready", "user_id": self.user_id})
-            await self.send_presence(full=True)
+            await self.send_presence(time.monotonic(), full=True)
             tasks = [asyncio.create_task(job) for job in (self.read(), self.listen(pubsub), self.sweep())]
             try:
                 done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
