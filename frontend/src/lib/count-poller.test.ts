@@ -63,3 +63,56 @@ describe("CountPoller", () => {
     expect(fetchCount).toHaveBeenCalledTimes(1)
   })
 })
+
+// demo 當天 50 個人同時發言，每支手機每則通知都問一次紅點的話，幾秒內就是幾千個請求，會把 API 的連線池擠爆
+describe("CountPoller 合併請求", () => {
+  it("一次只問一個；問的時候又要問，問完只補問一次", async () => {
+    const pending: Array<(value: { count: number }) => void> = []
+    const fetchCount = vi.fn(() => new Promise<{ count: number }>((resolve) => pending.push(resolve)))
+    const poller = new CountPoller(fetchCount)
+
+    const first = poller.refresh()
+    for (let i = 0; i < 5; i++) void poller.refresh()
+    expect(fetchCount).toHaveBeenCalledTimes(1)
+
+    pending[0]({ count: 1 })
+    await vi.advanceTimersByTimeAsync(0)
+    // 問的時候又要了五次：只補一次，補的這次看得到這段時間的變動
+    expect(fetchCount).toHaveBeenCalledTimes(2)
+    pending[1]({ count: 2 })
+    await first
+    expect(fetchCount).toHaveBeenCalledTimes(2)
+    expect(poller.getSnapshot()).toBe(2)
+
+    // 都問完了，下一次照常馬上問
+    void poller.refresh()
+    expect(fetchCount).toHaveBeenCalledTimes(3)
+  })
+
+  it("即時通知等 2 秒再問，這段時間的通知併成一次", async () => {
+    const fetchCount = vi.fn().mockResolvedValue({ count: 1 })
+    const poller = new CountPoller(fetchCount)
+
+    for (let i = 0; i < 50; i++) poller.refreshSoon()
+    await vi.advanceTimersByTimeAsync(1_999)
+    expect(fetchCount).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(fetchCount).toHaveBeenCalledTimes(1)
+
+    // 之後再來的通知再等 2 秒
+    poller.refreshSoon()
+    await vi.advanceTimersByTimeAsync(2_000)
+    expect(fetchCount).toHaveBeenCalledTimes(2)
+  })
+
+  it("通知一直進來也不會一直往後延：至少每 2 秒問一次", async () => {
+    const fetchCount = vi.fn().mockResolvedValue({ count: 1 })
+    const poller = new CountPoller(fetchCount)
+
+    for (let elapsed = 0; elapsed < 6_000; elapsed += 100) {
+      poller.refreshSoon()
+      await vi.advanceTimersByTimeAsync(100)
+    }
+    expect(fetchCount).toHaveBeenCalledTimes(3)
+  })
+})
