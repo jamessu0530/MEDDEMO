@@ -220,16 +220,33 @@ const WINDOW_KINDS: [WindowKind, string][] = [
   ["after", "以後"],
 ]
 
+const MIN_DURATION = 5
+const MAX_DURATION = 480
+const DURATION_HINT = `停留要在 ${MIN_DURATION}～${MAX_DURATION} 分`
+
+function sameTarget(a: HabitTarget, b: HabitTarget): boolean {
+  return a.by === b.by && a.value === b.value
+}
+
 function HabitForm({ targets, onCreate }: { targets: Record<HabitTarget["by"], HabitOption[]>; onCreate: (habit: HabitDraft) => Promise<void> }) {
   const first = (by: HabitTarget["by"]) => targets[by][0]?.value ?? ""
+  const defaults = {
+    kind: "first" as HabitKind,
+    subject: { by: "customer", value: first("customer") } as HabitTarget,
+    object: { by: "type", value: first("type") } as HabitTarget,
+    weekday: "",
+    windowKind: "before" as WindowKind,
+    time: "11:00",
+    minutes: "60",
+  }
   const [open, setOpen] = useState(false)
-  const [kind, setKind] = useState<HabitKind>("first")
-  const [subject, setSubject] = useState<HabitTarget>({ by: "customer", value: first("customer") })
-  const [object, setObject] = useState<HabitTarget>({ by: "type", value: first("type") })
-  const [weekday, setWeekday] = useState("")
-  const [windowKind, setWindowKind] = useState<WindowKind>("before")
-  const [time, setTime] = useState("11:00")
-  const [minutes, setMinutes] = useState("60")
+  const [kind, setKind] = useState<HabitKind>(defaults.kind)
+  const [subject, setSubject] = useState<HabitTarget>(defaults.subject)
+  const [object, setObject] = useState<HabitTarget>(defaults.object)
+  const [weekday, setWeekday] = useState(defaults.weekday)
+  const [windowKind, setWindowKind] = useState<WindowKind>(defaults.windowKind)
+  const [time, setTime] = useState(defaults.time)
+  const [minutes, setMinutes] = useState(defaults.minutes)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -242,7 +259,25 @@ function HabitForm({ targets, onCreate }: { targets: Record<HabitTarget["by"], H
     )
   }
 
+  const minutesNum = Number(minutes)
+  const durationValid = kind !== "duration" || (minutes !== "" && Number.isInteger(minutesNum) && minutesNum >= MIN_DURATION && minutesNum <= MAX_DURATION)
+  const windowValid = kind !== "window" || time !== ""
+  const samePrecedenceTarget = kind === "precedence" && sameTarget(subject, object)
+  const targetsValid = subject.value !== "" && (kind !== "precedence" || object.value !== "")
+  const valid = targetsValid && durationValid && windowValid && !samePrecedenceTarget
+
+  function reset() {
+    setKind(defaults.kind)
+    setSubject(defaults.subject)
+    setObject(defaults.object)
+    setWeekday(defaults.weekday)
+    setWindowKind(defaults.windowKind)
+    setTime(defaults.time)
+    setMinutes(defaults.minutes)
+  }
+
   async function submit() {
+    if (!valid) return
     setBusy(true)
     setError(null)
     try {
@@ -256,6 +291,7 @@ function HabitForm({ targets, onCreate }: { targets: Record<HabitTarget["by"], H
         weekday: weekday === "" ? null : Number(weekday),
       })
       setOpen(false)
+      reset()
     } catch (reason) {
       setError(reason instanceof ApiError ? reason.message : "連不上伺服器，這次沒有新增。")
     } finally {
@@ -277,6 +313,7 @@ function HabitForm({ targets, onCreate }: { targets: Record<HabitTarget["by"], H
       </Field>
       <TargetPicker label={kind === "precedence" ? "誰排前面" : "對象"} target={subject} targets={targets} onChange={setSubject} />
       {kind === "precedence" && <TargetPicker label="排在誰前面" target={object} targets={targets} onChange={setObject} />}
+      {samePrecedenceTarget && <p className="text-xs text-destructive">前後不能是同一個對象</p>}
       {kind === "window" && (
         <Field label="約的時間">
           <div className="flex gap-2">
@@ -296,6 +333,7 @@ function HabitForm({ targets, onCreate }: { targets: Record<HabitTarget["by"], H
           <Input inputMode="numeric" value={minutes} onChange={(event) => setMinutes(event.target.value.replace(/\D/g, ""))} className="h-11" />
         </Field>
       )}
+      {kind === "duration" && !durationValid && <p className="text-xs text-destructive">{DURATION_HINT}</p>}
       <Field label="星期幾">
         <NativeSelect value={weekday} onChange={(event) => setWeekday(event.target.value)}>
           <option value="">每天</option>
@@ -311,7 +349,7 @@ function HabitForm({ targets, onCreate }: { targets: Record<HabitTarget["by"], H
         <Button variant="outline" className="h-11 flex-1" disabled={busy} onClick={() => setOpen(false)}>
           取消
         </Button>
-        <Button className="h-11 flex-1" disabled={busy || !subject.value} onClick={() => void submit()}>
+        <Button className="h-11 flex-1" disabled={busy || !valid} onClick={() => void submit()}>
           新增
         </Button>
       </div>
