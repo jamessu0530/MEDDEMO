@@ -101,7 +101,13 @@ def apply(session: Session, user_id: str, proposal_id: int) -> Itinerary:
     if proposal.itinerary_id != itinerary.id or proposal.base_version != itinerary.version:
         raise itinerary_service.VersionConflict
     try:
-        built = _build(session, itinerary, proposal.operations)
+        # 問完之後客戶可能轉給別的業務了（同一天、版本不會變）：套用前拿存下來的操作重新驗證一次，
+        # 不是這位業務的客戶就轉成「找不到」，不然 _build 直接用存著的客戶 id 查名字會 KeyError
+        operations = normalize(
+            proposal.operations, _customers(session, user_id),
+            {h.id for h in route_habits.mine(session, user_id) if h.active},
+        )
+        built = _build(session, itinerary, operations)
         draft, _, _ = _settle(session, itinerary, built)
     except itinerary_service.InvalidDraft:
         raise itinerary_service.VersionConflict from None
@@ -301,7 +307,8 @@ def _build(session: Session, itinerary: Itinerary, operations: list[dict[str, An
     built = Built(draft)
     customers = _customers(session, itinerary.user_id)
     names = {cid: c.name for cid, c in customers.items()}
-    done = {c.id for _, c in today_route.done_visits(session, itinerary.user_id, itinerary.date)}
+    visits = today_route.done_visits(session, itinerary.user_id, itinerary.date)
+    done = {c.id for _, c in visits}
     habits = {h.id: h for h in route_habits.mine(session, itinerary.user_id)}
     options = route_habits.targets(session, itinerary.user_id)
     new_rules: set[str] = set()
@@ -329,7 +336,7 @@ def _build(session: Session, itinerary: Itinerary, operations: list[dict[str, An
         elif name in STOP_OPS:
             stop = stop_of(op["customer_id"])
             if stop is not None:
-                _change_stop(built, stop, op, names, len(done))
+                _change_stop(built, stop, op, names, len(visits))
         elif name in ("add_precedence", "remove_precedence"):
             pair = (op["before"], op["after"])
             if stop_of(pair[0]) is None or stop_of(pair[1]) is None:

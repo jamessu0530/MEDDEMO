@@ -1,3 +1,5 @@
+"""跟熊熊滾說要怎麼排：提示、操作的驗證與套用、對照卡、提案的存取與套用。Gemini 一律用假的。"""
+
 import datetime as dt
 
 import pytest
@@ -8,6 +10,25 @@ from app.config import NotConfigured
 from app.models import Customer, ItineraryProposal, RouteHabit
 from app.services import itinerary as service
 from app.services import itinerary_ai, route_habits
+
+
+def proposal(tx, itinerary, days_ago=0):
+    row = ItineraryProposal(
+        itinerary_id=itinerary.id, base_version=itinerary.version, question="測試", operations=[],
+        result={"kind": "answer"},
+        created_at=dt.datetime.now(dt.UTC) - dt.timedelta(days=days_ago),
+    )
+    tx.add(row)
+    tx.flush()
+    return row
+
+
+def test_old_proposals_are_purged_after_seven_days(tx):
+    itinerary = service.get_or_create(tx, "U01")
+    fresh, old = proposal(tx, itinerary), proposal(tx, itinerary, days_ago=8)
+    assert itinerary_ai.purge_proposals(tx) == 1
+    left = set(tx.scalars(select(ItineraryProposal.id)))
+    assert fresh.id in left and old.id not in left
 
 
 def route(tx):
@@ -190,6 +211,17 @@ def test_applying_checks_the_version_owner_and_kind(tx):
     service.apply_feedback(tx, "U01", ids[3], "pin", itinerary.version)
     with pytest.raises(service.VersionConflict):
         itinerary_ai.apply(tx, "U01", moved.id)
+
+
+def test_applying_after_the_customer_changed_owner(tx):
+    # 問完之後那家被轉給別的業務了（同一天、版本沒變）：套用時不能因為查不到名字就炸掉（KeyError → 500）
+    itinerary, ids, _ = route(tx)
+    proposal = ask(tx, {"op": "remove", "customer_id": ids[3]})
+    tx.get(Customer, ids[3]).owner_user_id = "U02"
+    tx.flush()
+    itinerary_ai.apply(tx, "U01", proposal.id)
+    stops = {s.customer_id for s in service.view(tx, itinerary).stops}
+    assert ids[3] in stops  # 重新驗證後這個操作變成「找不到」，套用時沒有真的拿掉
 
 
 def test_asking_without_gemini_configured(tx):
