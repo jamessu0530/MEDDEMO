@@ -1696,7 +1696,8 @@ EOF
   - `class InvalidDraft(ValueError)`（訊息寫給業務看）、`TOO_MANY = "今天已經排了 8 站，要先刪掉一站"`、`NEARBY = 5`
   - `DraftStop(customer_id, duration_minutes=40, window_kind=None, window_time: dt.time | None = None, note=None, locked=False)`
   - `Draft(stops: list[DraftStop], precedences: list[tuple[str, str]] = [], skipped_habit_ids: list[int] = [], habits: list[PendingHabit] = [])`
-  - `preview(session, user_id, draft, insert: str | None = None) -> ItineraryView`
+  - `preview(session, user_id, draft, insert: str | None = None) -> ItineraryView`（車程一律直線估算，`estimated` 是 True）
+  - `_estimated(points) -> travel.Matrix`（直線估算的整張矩陣）；`_timed(points, estimate=False)`、`_compose(..., pending, estimate=False)`
   - `save(session, user_id, version, draft) -> Itinerary`（409 用 `VersionConflict`，內容不合用 `InvalidDraft`）
   - `Candidate(customer_id, customer_name, type, area, signal=None, after_stop=None, extra_minutes=None)`、`Candidates(nearby, others, full)`
   - `candidates(session, user_id, order: list[str] | None = None, locked: Sequence[str] = ()) -> Candidates`
@@ -1741,6 +1742,7 @@ def test_preview_recomputes_times_without_saving(tx):
     assert shown.stops[0].duration_minutes == 90
     # 第一站停 90 分鐘，第二站 09:40 以前一定到不了
     assert shown.stops[1].late_minutes > 0 and shown.stops[1].window_time == "09:40"
+    assert shown.estimated is True
     assert service.view(tx, itinerary) == before
 
 
@@ -1963,13 +1965,14 @@ class Candidates:
 ```python
 def preview(session: Session, user_id: str, draft: Draft, insert: str | None = None) -> ItineraryView:
     """調整清單上的改動算時間、車程與違反的規則，不存。insert 是「加一站」點的那一家：
-    插在多繞最少、又不新增違反的位置，約的時間與停留照習慣給的預設值。"""
+    插在多繞最少、又不新增違反的位置，約的時間與停留照習慣給的預設值。
+    車程一律用直線估算（畫面寫「估計」）：拖一下就算一次，每次都打 Google 太貴；按「完成」存好之後讀到的才是正式的車程。"""
     itinerary = get_or_create(session, user_id)
     day = _day(session, itinerary)
     open_, precedences, skipped, pending = _resolve(session, day, draft)
     if insert is not None:
         open_ = _inserted(session, day, open_, insert, precedences, skipped, pending)
-    return _compose(session, day, open_, precedences, skipped, _reasons(itinerary, skipped), pending)
+    return _compose(session, day, open_, precedences, skipped, _reasons(itinerary, skipped), pending, estimate=True)
 
 
 def save(session: Session, user_id: str, version: int, draft: Draft) -> Itinerary:
@@ -2039,7 +2042,7 @@ def candidates(
         start, points = _points(
             session, day.rep, itinerary.date, day.done, day.durations(), [*(o.customer for o in open_), *pool]
         )
-        minutes = _estimated(points)
+        minutes = _estimated(points).minutes
         ordered = [o.plan_stop(n + 1) for n, o in enumerate(open_)]
         base = route_planner.schedule(start, 0, ordered, minutes).travel_minutes
         precedences = [(a, b) for a, b in _precedences(session, itinerary) if a in ids and b in ids]
@@ -2145,10 +2148,25 @@ def _inserted(
     return [*open_[:index], new, *open_[index:]]
 
 
-def _estimated(points: list[travel.Point]) -> list[list[int]]:
-    """直線估算的車程矩陣（分鐘）。加一站的候選一次要算約 50 家，只用估算，不打 Google。"""
-    return [[travel.estimate(a, b)[0] for b in points] for a in points]
+def _estimated(points: list[travel.Point]) -> travel.Matrix:
+    """直線估算的車程矩陣。調整清單的 preview（拖一下就算一次）與加一站的候選（一次約 50 家）只用估算，不打 Google。"""
+    pairs = [[travel.estimate(a, b) for b in points] for a in points]
+    return travel.Matrix(
+        minutes=[[m for m, _ in row] for row in pairs], km=[[k for _, k in row] for row in pairs], estimated=True,
+    )
 ```
+
+`_timed` 多一個參數，`_compose` 跟著多一個參數傳下去（其他呼叫端不用改）：
+
+```python
+def _timed(points: list[travel.Point], estimate: bool = False) -> travel.Matrix:
+    """照這個順序跑的車程（順序已經定了：讀取、調整清單的 preview 與存檔）。只會用到相鄰兩點
+    （第 n 點到第 n + 1 點）那幾格。順序還要由程式挑的地方（每天的建議、插入新的一站、排順路）直接用 travel.matrix。
+    estimate：只要直線估算（調整清單的 preview）。"""
+    return _estimated(points) if estimate else travel.matrix(points)
+```
+
+`_compose` 的參數最後加 `estimate: bool = False`，裡面的 `matrix = _timed(points)` 改成 `matrix = _timed(points, estimate)`。
 
 - [ ] **Step 6: 跑測試，確認通過**
 
@@ -2722,9 +2740,8 @@ def save_today(session: SessionDep, body: SaveInput, user: CurrentUser):
         raise HTTPException(422, str(exc)) from None
     except LookupError:
         raise HTTPException(403, NO_ROUTE) from None
-    result = _out(service.view(session, itinerary))
     session.commit()
-    return result
+    return _out(service.view(session, itinerary))
 
 
 @router.get("/today/candidates", response_model=CandidateList)
@@ -2743,7 +2760,44 @@ def list_candidates(session: SessionDep, user: CurrentUser, order: str | None = 
     return result
 ```
 
-- [ ] **Step 5: 掛上習慣的 router**
+- [ ] **Step 5: 先提交再算畫面**
+
+接上 Google 之後（另一條線），`view()` 算車程最多要等 Google 5 秒。改了行程的 API 要先 commit（放掉 `_lock` 的列鎖），再算畫面，不要鎖著這份行程等 Google。`get_today`、`send_feedback`、`add_stops` 都改成這個順序（上面的 `save_today` 已經是）：
+
+```python
+@router.get("/today", response_model=TodayItinerary)
+def get_today(session: SessionDep, user: CurrentUser):
+    """今天的行程；當天第一次讀取時照模型的建議建好。"""
+    try:
+        itinerary = service.get_or_create(session, _rep_id(user))
+    except LookupError:
+        raise HTTPException(403, NO_ROUTE) from None
+    # 先提交再算畫面：算車程可能要等 Google，不要讓剛建好的那一列一直卡著同時第一次讀的人
+    session.commit()
+    return _out(service.view(session, itinerary))
+```
+
+`send_feedback`：`except` 區塊之後換成
+
+```python
+    # 先提交、放掉列鎖再算畫面：算車程可能要等 Google
+    session.commit()
+    return _out(service.view(session, itinerary))
+```
+
+`add_stops`：`except` 區塊之後換成
+
+```python
+    session.commit()
+    return StopsResult(
+        itinerary=_out(service.view(session, itinerary)), added=added,
+        skipped=[SkippedStop(**dataclasses.asdict(item)) for item in skipped],
+    )
+```
+
+commit 之後 `itinerary` 的欄位會過期，`view()` 讀的時候自動重新載入，不用另外處理。
+
+- [ ] **Step 6: 掛上習慣的 router**
 
 `backend/app/main.py`：在 `from app.api import admin, asks, ...` 那一長行**下面另起一行**（不要改那一長行，另一條線也會在那裡加東西）：
 
@@ -2757,12 +2811,12 @@ from app.api import route_habits as route_habits_api
 app.include_router(route_habits_api.router)
 ```
 
-- [ ] **Step 6: 跑測試，確認通過**
+- [ ] **Step 7: 跑測試，確認通過**
 
 Run: `TEST_DB_NAME=meddemo_test_edit TEST_REDIS_URL=redis://127.0.0.1:6379/8 uv run --project backend pytest backend/tests -q`
 Expected: 全部 PASS（整包跑一次，確認 OAuth、組織管理、問答「排入今天的路線」都沒被影響）。
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add backend/app/api/route_habits.py backend/app/api/itinerary.py backend/app/main.py backend/tests/test_itinerary_api.py backend/tests/test_route_habits_api.py
@@ -3048,9 +3102,11 @@ describe("調整中的草稿", () => {
     routeDraft.change({ ...first, stops: [...first.stops].reverse() }, "B")
     expect(routeDraft.get()!.history).toEqual([first])
     expect(routeDraft.get()!.moved).toBe("B")
+    routeDraft.showView({ ...today, version: 5 }, routeDraft.get()!.draft)
     routeDraft.revert(0)
     expect(routeDraft.get()!.draft).toBe(first)
     expect(routeDraft.get()!.history).toEqual([])
+    expect(routeDraft.get()!.view).toBe(today)
     routeDraft.clear()
     expect(routeDraft.get()).toBeNull()
   })
@@ -3521,9 +3577,11 @@ export const routeDraft = {
     state = { ...state, draft, history: [...state.history, state.draft], moved }
     emit()
   },
+  // 回到第 index 份草稿；回到最一開始就連畫面也回到進來時讀到的那一份（那一份的車程是正式的，不是 preview 的估計）
   revert(index: number) {
     if (!state || !state.history[index]) return
-    state = { ...state, draft: state.history[index], history: state.history.slice(0, index), moved: null }
+    const view = index === 0 ? state.base : state.view
+    state = { ...state, draft: state.history[index], history: state.history.slice(0, index), view, moved: null }
     emit()
   },
   // preview 回來時草稿已經又改了，那一份就不用：下一次 preview 會算新的
@@ -4281,7 +4339,7 @@ EOF
 
 **Files:**
 - Create: `frontend/src/pages/route-edit.tsx`
-- Create: `frontend/src/components/route/home-extras.tsx`
+- Create: `frontend/src/components/route/home-extras.tsx`、`frontend/src/components/route/drive-source.tsx`
 - Modify: `frontend/src/pages/today.tsx`（一行 import、橫幅加 `<EditRouteLink />`、提示區加 `<SkippedHabitsNote />`）
 - Modify: `frontend/src/components/route-path.tsx`（會晚到的紅字）、`frontend/src/components/route-path.test.ts`
 - Modify: `frontend/src/App.tsx`（一行 import、一個路由）
@@ -4390,7 +4448,18 @@ export function SkippedHabitsNote({ route }: { route: TodayRoute }) {
         {route && <SkippedHabitsNote route={route} />}
    ```
 
-- [ ] **Step 5: 調整行程頁**
+- [ ] **Step 5: 車程的出處**
+
+接上 Google 之後（另一條線），沒有 Google 地圖的畫面上顯示 Google 算的車程與里程，要照 Google 的使用條款標「Google Maps」（不翻譯）；直線估算的照舊寫「估計」。新檔 `frontend/src/components/route/drive-source.tsx`：
+
+```tsx
+/** 車程從哪裡來：Google 算的標「Google Maps」（Google 的使用條款，不翻譯），直線估算的寫「（估計）」 */
+export function DriveSource({ estimated }: { estimated: boolean }) {
+  return estimated ? <span>（估計）</span> : <span className="font-[Roboto,sans-serif]"> · Google Maps</span>
+}
+```
+
+- [ ] **Step 6: 調整行程頁**
 
 新檔 `frontend/src/pages/route-edit.tsx`：
 
@@ -4415,6 +4484,7 @@ import { getTodayRoute, previewToday, saveToday, type DraftStop, type Precedence
 import { Mascot } from "@/components/mascot"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
+import { DriveSource } from "@/components/route/drive-source"
 import { HabitPrompt, type HabitChoice } from "@/components/route/habit-prompt"
 import { StopCard, type StopHandle } from "@/components/route/stop-card"
 import { StopEditor } from "@/components/route/stop-editor"
@@ -4482,10 +4552,12 @@ export function RouteEditPage() {
     return () => controller.abort()
   }, [userId, attempt])
 
-  // 每次改動停 300ms 再算時間、車程與違反的規則；算好之前畫面先用上一次的時間
+  // 每次改動停 300ms 再算時間、車程與違反的規則；算好之前畫面先用上一次的時間。
+  // 還沒改過就不算：畫面用進來時讀到的那一份（正式的車程），preview 一律是直線估算
   const draft = edit?.draft
+  const changed = Boolean(edit && edit.history.length > 0)
   useEffect(() => {
-    if (!draft) return
+    if (!draft || !changed) return
     const controller = new AbortController()
     const timer = setTimeout(() => {
       previewToday(draft, undefined, controller.signal)
@@ -4499,7 +4571,7 @@ export function RouteEditPage() {
       clearTimeout(timer)
       controller.abort()
     }
-  }, [draft])
+  }, [draft, changed])
 
   function cancel() {
     routeDraft.clear()
@@ -4687,7 +4759,7 @@ export function RouteEditPage() {
         <p className="text-xs text-muted-foreground tabular-nums">
           共 {view.travel_km} 公里 · 車程 {formatMinutes(view.travel_minutes)}
           {view.finish_time && ` · 約 ${view.finish_time} 收工`}
-          {view.estimated && "（估計）"}
+          <DriveSource estimated={view.estimated} />
         </p>
         {hint && <p className="mt-2 rounded-xl bg-primary/10 px-3 py-2 text-xs text-primary">{hint}</p>}
         {conflicts.length > 0 && (
@@ -4822,7 +4894,7 @@ function Sortable({ id, children }: { id: string; children: (handle: StopHandle,
 }
 ```
 
-- [ ] **Step 6: 路由**
+- [ ] **Step 7: 路由**
 
 `frontend/src/App.tsx`：
 
@@ -4836,15 +4908,15 @@ function Sortable({ id, children }: { id: string; children: (handle: StopHandle,
             <Route path="/route/edit" element={<RouteEditPage />} />
    ```
 
-- [ ] **Step 7: 檢查**
+- [ ] **Step 8: 檢查**
 
 Run: `cd frontend && npx vitest run && npm run typecheck && npm run lint && npm run build`
 Expected: 全部通過。`react-hooks` 的規則若對「在 render 期間改 module 變數」報錯，`promptCount` 只在事件處理函式裡改，不在 render 裡，應該不會；真的報錯就改成 `useRef`。
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
-git add frontend/src/pages/route-edit.tsx frontend/src/components/route/home-extras.tsx frontend/src/pages/today.tsx frontend/src/components/route-path.tsx frontend/src/components/route-path.test.ts frontend/src/App.tsx
+git add frontend/src/pages/route-edit.tsx frontend/src/components/route/drive-source.tsx frontend/src/components/route/home-extras.tsx frontend/src/pages/today.tsx frontend/src/components/route-path.tsx frontend/src/components/route-path.test.ts frontend/src/App.tsx
 git commit -m "$(cat <<'EOF'
 Edit today's itinerary as a list: drag, expand, rule warnings and keep-as-habit
 
