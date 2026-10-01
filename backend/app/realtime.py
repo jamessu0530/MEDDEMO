@@ -9,6 +9,8 @@ API 與背景工作不在同一個程序，API 之後也可能開到兩個以上
 - {"type": "avatars"}：有人換了或移除大頭貼，手機重拿一次網址
 - {"type": "channels"}：有人開了、改名或封存文字頻道，或 IT 改了組織（誰看得到哪些頻道可能變了）。
   手機重新載入頻道列表，WebSocket 重算這個人看得到的頻道
+- {"type": "location", "user_id": "U01"}：這位業務的位置或分享狀態變了，只送給看得到他的主管與 IT
+- {"type": "itinerary", "user_id": "U01"}：這位業務今天的行程變了（改了順序、跑完一站…），同上
 """
 
 import json
@@ -16,7 +18,10 @@ import logging
 import time
 
 from redis.exceptions import RedisError
+from sqlalchemy import event, inspect
+from sqlalchemy.orm import Session
 
+from app.models import Itinerary, Visit
 from app.tasks import redis
 
 log = logging.getLogger(__name__)
@@ -51,3 +56,51 @@ def avatars_changed() -> None:
 
 def channels_changed() -> None:
     publish({"type": "channels"})
+
+
+def location_changed(user_id: str) -> None:
+    publish({"type": "location", "user_id": user_id})
+
+
+def itinerary_changed(user_id: str) -> None:
+    publish({"type": "itinerary", "user_id": user_id})
+
+
+# 行程變了就通知主管頁（{"type": "itinerary"}）。行程的每一種改動都會改 Itinerary（加版本），所以看這張表就夠，
+# 加上確認拜訪（跑完一站）；不必每一支 API 各自記得發。事件在 commit 之後才發：沒 commit 的改動別人讀不到，
+# 先通知只會讓主管頁拿到舊的那份。整批 DELETE（IT 重置示範業務的行程）看不到，由那支 API 自己發
+_PENDING = "realtime:itinerary_changed"
+
+
+@event.listens_for(Session, "after_flush")
+def _collect_itinerary_changes(session: Session, flush_context) -> None:
+    reps = session.info.setdefault(_PENDING, set())
+    for obj in (*session.new, *session.dirty, *session.deleted):
+        if isinstance(obj, Itinerary) and (obj in session.new or obj in session.deleted or session.is_modified(obj)):
+            reps.add(obj.user_id)
+        elif (
+            isinstance(obj, Visit) and obj.confirmed_at is not None
+            and inspect(obj).attrs.confirmed_at.history.has_changes()
+        ):
+            reps.add(obj.user_id)
+
+
+@event.listens_for(Session, "after_commit")
+def _announce_itinerary_changes(session: Session) -> None:
+    # SQLAlchemy 在 begin_nested()（SAVEPOINT）釋放時也會跑 after_commit，不只是真的 commit 的時候：
+    # session.in_nested_transaction() 這時候是 True，忽略它，等外層真的 commit 才發，不然行程改到一半
+    # （還在外層交易裡、隨時可能回滾）就先通知了主管。tx 測試用的 fixture 用 join_transaction_mode="create_savepoint"
+    # 接上外層連線的交易，但那是 session 自己最外層的交易，不是 begin_nested() 開的，in_nested_transaction() 是 False，
+    # 所以這裡不影響它：tx.commit() 照樣會發事件。
+    if session.in_nested_transaction():
+        return
+    for user_id in session.info.pop(_PENDING, set()):
+        itinerary_changed(user_id)
+
+
+@event.listens_for(Session, "after_rollback")
+def _forget_itinerary_changes(session: Session) -> None:
+    # 同樣的道理：SAVEPOINT 回滾也會跑 after_rollback，不能把外層交易裡先前已經收集到的 rep 清掉
+    if session.in_nested_transaction():
+        return
+    session.info.pop(_PENDING, None)

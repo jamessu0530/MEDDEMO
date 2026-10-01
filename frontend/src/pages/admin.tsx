@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react"
-import { ChevronRight, Inbox, Settings, UserPlus, Users } from "lucide-react"
+import { ChevronRight, Inbox, RotateCcw, Settings, UserPlus, Users } from "lucide-react"
 import { Link, useNavigate } from "react-router"
 
 import {
@@ -10,10 +10,12 @@ import {
   getOrgChart,
   moveManager,
   reactivateAccount,
+  resetDemoItinerary,
   type AssignableRole,
   type OrgChart,
   type OrgMember,
 } from "@/api/admin"
+import { ApiError } from "@/api/client"
 import { ChannelsLink } from "@/components/channels-link"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
@@ -62,6 +64,9 @@ export function AdminPage() {
   const [selected, setSelected] = useState<OrgMember | null>(null)
   const [creating, setCreating] = useState(false)
   const [flash, setFlash] = useState<string | null>(null)
+  const [resetConfirming, setResetConfirming] = useState(false)
+  const [resetBusy, setResetBusy] = useState(false)
+  const [resetError, setResetError] = useState<string | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -80,6 +85,22 @@ export function AdminPage() {
     setCreating(false)
     const detail = chart.log[0]?.detail
     setFlash(detail ? `${detail}。${note ?? ""}` : null)
+  }
+
+  async function resetDemo() {
+    setResetBusy(true)
+    setResetError(null)
+    try {
+      const { rep_name } = await resetDemoItinerary()
+      setResetConfirming(false)
+      setResetBusy(false)
+      setFlash(`已重置${rep_name}今天的行程，下次打開首頁會照系統的建議重新排。`)
+    } catch (error) {
+      setResetBusy(false)
+      setResetError(
+        error instanceof ApiError ? error.message : "連不上伺服器，請再試一次"
+      )
+    }
   }
 
   return (
@@ -114,6 +135,55 @@ export function AdminPage() {
             icon={<Users className="size-4" />}
             label="客戶清單"
           />
+        </div>
+
+        <div className="rounded-2xl border-2 bg-card p-4 shadow-lip">
+          <h2 className="text-sm font-semibold">示範業務的今日行程</h2>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+            評審用第三方登入看的都是示範業務的行程，大家共用一份：按過的暫緩、插入下一站、加進去的站都會留著。換一批評審前重置，回到系統早上的建議。
+          </p>
+          {!resetConfirming ? (
+            <Button
+              variant="outline"
+              className="mt-3 h-10 gap-1.5"
+              onClick={() => setResetConfirming(true)}
+            >
+              <RotateCcw className="size-4" />
+              重置示範業務今天的行程
+            </Button>
+          ) : (
+            <div className="mt-3 space-y-2">
+              <p className="text-sm leading-relaxed text-foreground">
+                確定要重置嗎？大家正在看的行程會回到系統的建議。
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="destructive"
+                  className="h-10 gap-1.5"
+                  disabled={resetBusy}
+                  onClick={resetDemo}
+                >
+                  重置
+                </Button>
+                <Button
+                  variant="outline"
+                  className="h-10"
+                  disabled={resetBusy}
+                  onClick={() => {
+                    setResetConfirming(false)
+                    setResetError(null)
+                  }}
+                >
+                  取消
+                </Button>
+              </div>
+              {resetError && (
+                <p className="text-sm leading-relaxed text-destructive">
+                  {resetError}
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         <p className="text-xs leading-relaxed text-muted-foreground">

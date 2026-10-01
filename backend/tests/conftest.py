@@ -58,8 +58,13 @@ for key in (
     "VOICE_MODEL",
     "FIRECRAWL_API_KEY",
     "COHERE_API_KEY",
+    "GOOGLE_MAPS_SERVER_KEY",
+    "GOOGLE_MAPS_BROWSER_KEY",
+    "GOOGLE_MAPS_MAP_ID",
 ):
     os.environ[key] = ""
+# 上班時間固定成預設值：backend/.env 改了也不影響測試；要整天都算或都不算的測試用 env fixture 改
+os.environ["LOCATION_SHARE_HOURS"] = "1-5 08:30-18:30"
 settings.cache_clear()
 session_factory.cache_clear()
 redis.cache_clear()
@@ -77,6 +82,24 @@ def engine():
     engine = create_engine(TEST_URL)
     yield engine
     engine.dispose()
+
+
+@pytest.fixture(autouse=True)
+def _reset_google_pause(monkeypatch):
+    """Google 失敗後的暫停是 per-process 的模組狀態，不重設的話一個測試失敗會讓別的檔案也跳過 Google。"""
+    from app.services import travel
+
+    monkeypatch.setattr(travel, "_google_paused_until", 0.0)
+
+
+@pytest.fixture(autouse=True)
+def _clear_route_lines():
+    """沿路的線快取在 Redis（travel.lines），測試之間不留：同一串點在下一個測試不該拿到上一個測試的假折線。"""
+    from app.services import travel
+
+    keys = redis().keys(f"{travel.LINES_CACHE_PREFIX}*")
+    if keys:
+        redis().delete(*keys)
 
 
 @pytest.fixture

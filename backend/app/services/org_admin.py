@@ -123,7 +123,7 @@ def change_role(
 ) -> None:
     """業務升主管（要選一區；名下的客戶整批交給 successor）或主管降業務（底下要先清空；要選新主管）。
 
-    主管沒有自己的路線（services/today_route.py 只排業務的），所以升主管前客戶一定要交出去。
+    主管沒有自己的路線（services/itinerary.py 只排業務的），所以升主管前客戶一定要交出去。
     降職前底下的人要清空，停用的也算：他們接在這位主管後面，主管一變成業務，樹就長到第五層。
     """
     user = _editable(session, user_id)

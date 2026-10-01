@@ -1,6 +1,7 @@
 """在線狀態 API 與 WebSocket（docs/superpowers/specs/2026-10-01-presence-design.md）。
 
-一條 WebSocket（/api/ws）同時送兩件事：有人的狀態變了、看得到的頻道有新訊息。
+一條 WebSocket（/api/ws）送幾件事：有人的狀態變了、看得到的頻道有新訊息，以及（主管與 IT）看得到的業務的位置或
+今天的行程變了。業務的心跳順便帶位置（services/locations.py）。
 訊息本身不經過 WebSocket，手機收到通知再用原本的 API 拿，權限檢查與訊息格式只有一份。
 每條連線自己訂閱 Redis 的事件頻道（app/realtime.py），連線斷了訂閱跟著結束，不另外開背景程序。
 連不上 WebSocket 的時候（公司網路擋掉之類），手機改用 POST /api/presence/ping 心跳。
@@ -20,16 +21,16 @@ from typing import Annotated, Literal, NamedTuple
 
 import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
 from app import realtime
-from app.api.auth import CurrentUser
+from app.api.auth import MANAGER_SIDE_ROLES, CurrentUser
 from app.config import settings
 from app.db import get_session, session_factory
 from app.models import AppUser
-from app.services import auth, channels, presence
+from app.services import auth, channels, locations, presence, team_itineraries
 
 router = APIRouter(tags=["presence"])
 SessionDep = Annotated[Session, Depends(get_session)]
@@ -54,6 +55,8 @@ MAX_CONNECTIONS = 5
 VISIBLE_TTL_SECONDS = 60
 # 定時重算狀態時，別條連線這麼近才算好的那一份可以直接用
 SWEEP_SHARE_SECONDS = 1.0
+# 每條連線記住看不看得到某位業務的位置與行程事件：位置事件很密，不必每一則都查資料庫。組織改了最慢 5 分鐘生效
+SEE_REP_CACHE_SECONDS = 300
 
 # 關閉碼：4000～4999 給應用程式自己用
 CLOSE_UNAUTHORIZED = 4401
@@ -75,8 +78,18 @@ class ChoiceInput(BaseModel):
     choice: Status | None
 
 
+class LocationInput(BaseModel):
+    lat: float = Field(ge=-90, le=90)
+    lng: float = Field(ge=-180, le=180)
+    # 誤差幾公尺（瀏覽器的 coords.accuracy）
+    accuracy: float | None = Field(default=None, ge=0)
+
+
 class PingInput(BaseModel):
     active: bool
+    # 業務的手機在上班時間多帶目前的位置；瀏覽器拒絕定位時改帶 location_denied（services/locations.py）
+    location: LocationInput | None = None
+    location_denied: bool = False
 
 
 class Statuses(BaseModel):
@@ -105,22 +118,28 @@ def set_mine(session: SessionDep, user: CurrentUser, body: ChoiceInput):
 
 @router.post("/api/presence/ping", response_model=Statuses)
 def ping(session: SessionDep, user: CurrentUser, body: PingInput):
-    """WebSocket 連不上時的心跳，順便回全部的狀態。"""
+    """WebSocket 連不上時的心跳，順便回全部的狀態。業務的心跳多帶位置。"""
     try:
         changed = presence.touch(session, user, body.active)
     except presence.SignedOut:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "請重新登入") from None
+    position = (body.location.lat, body.location.lng, body.location.accuracy) if body.location else None
+    rep_id = locations.report(session, user, position, body.location_denied)
     session.commit()
     if changed:
         realtime.presence_changed()
+    if rep_id:
+        realtime.location_changed(rep_id)
     return Statuses(statuses=presence.statuses(session))
 
 
 # 以下在 threadpool 裡跑：資料庫是同步的，每次開一個短的 session，不讓一條長連線佔住一個資料庫連線
 
 
-def _heartbeat(token: str, active: bool) -> str | None:
-    """驗 token 並記一次心跳，回傳帳號；token 不對（過期、登出、被別的裝置頂掉、停用）回 None。"""
+def _heartbeat(
+    token: str, active: bool, position: tuple[float, float, float | None] | None = None, denied: bool = False
+) -> str | None:
+    """驗 token 並記一次心跳（業務的心跳順便記位置），回傳帳號；token 不對（過期、登出、被別的裝置頂掉、停用）回 None。"""
     with session_factory()() as session:
         try:
             user = auth.user_from_token(session, token)
@@ -131,9 +150,12 @@ def _heartbeat(token: str, active: bool) -> str | None:
             changed = presence.touch(session, user, active)
         except presence.SignedOut:
             return None
+        rep_id = locations.report(session, user, position, denied)
         session.commit()
     if changed:
         realtime.presence_changed()
+    if rep_id:
+        realtime.location_changed(rep_id)
     return user_id
 
 
@@ -213,6 +235,26 @@ class _StatusCache:
 _status_cache = _StatusCache()
 
 
+def _can_see_rep(viewer_id: str, rep_id: str) -> bool:
+    """這條連線的人看不看得到這位業務的位置與行程：主管看自己底下的人、IT 看全公司（跟主管端同一個範圍）。"""
+    with session_factory()() as session:
+        viewer = session.get(AppUser, viewer_id)
+        if viewer is None or viewer.deactivated_at is not None or viewer.role not in MANAGER_SIDE_ROLES:
+            return False
+        return team_itineraries.find_rep(session, viewer, rep_id) is not None
+
+
+def _position(value: object) -> tuple[float, float, float | None] | None:
+    """WebSocket 心跳帶來的位置；格式不對就當作沒帶（跟 HTTP 心跳用同一個 LocationInput 驗）。"""
+    if not isinstance(value, dict):
+        return None
+    try:
+        parsed = LocationInput.model_validate(value)
+    except ValidationError:
+        return None
+    return parsed.lat, parsed.lng, parsed.accuracy
+
+
 class _Connection:
     def __init__(self, ws: WebSocket, user_id: str, token: str, active: bool):
         self.ws = ws
@@ -233,6 +275,8 @@ class _Connection:
         self.hidden: set[int] = set()
         self.visible_at = -math.inf
         self.visible_ttl = VISIBLE_TTL_SECONDS * random.uniform(1, 1.5)
+        # 看不看得到某位業務：{業務 id: (看得到嗎, 查的時間)}
+        self.reps_seen: dict[str, tuple[bool, float]] = {}
 
     async def send(self, payload: dict) -> None:
         async with self.lock:
@@ -244,6 +288,14 @@ class _Connection:
             if not self.closed:
                 self.closed = True
                 await self.ws.close(code)
+
+    async def can_see_rep(self, rep_id: str) -> bool:
+        cached = self.reps_seen.get(rep_id)
+        if cached and time.monotonic() - cached[1] < SEE_REP_CACHE_SECONDS:
+            return cached[0]
+        allowed = await run_in_threadpool(_can_see_rep, self.user_id, rep_id)
+        self.reps_seen[rep_id] = (allowed, time.monotonic())
+        return allowed
 
     async def send_presence(self, since: float, full: bool = False) -> None:
         async with self.presence_lock:
@@ -289,11 +341,16 @@ class _Connection:
             if not isinstance(data, dict) or data.get("type") != "ping":
                 continue
             active = bool(data.get("active"))
-            if active == self.active and time.monotonic() - self.last_ping < MIN_PING_SECONDS:
+            # active 沒變、5 秒內不寫資料庫：但這則帶了位置或「沒有權限」就不能略過，
+            # 不然剛連上線那幾秒送的位置會被當成跟連線當下的心跳重複，直接丟掉
+            carries_location = "location" in data or "location_denied" in data
+            if active == self.active and not carries_location and time.monotonic() - self.last_ping < MIN_PING_SECONDS:
                 continue
             self.active = active
             self.last_ping = time.monotonic()
-            if await run_in_threadpool(_heartbeat, self.token, active) is None:
+            position = _position(data.get("location"))
+            denied = data.get("location_denied") is True
+            if await run_in_threadpool(_heartbeat, self.token, active, position, denied) is None:
                 await self.close(CLOSE_UNAUTHORIZED)
                 return
 
@@ -317,6 +374,11 @@ class _Connection:
                 # 只通知看得到的人：看不到的頻道連「有新訊息」都不能透露
                 if await self.can_see(channel_id):
                     await self.send({"type": "message", "channel_id": channel_id})
+            elif event.get("type") in ("location", "itinerary"):
+                rep_id = str(event.get("user_id"))
+                # 只送給看得到這位業務的人：別人的位置連「動了」都不能透露
+                if await self.can_see_rep(rep_id):
+                    await self.send({"type": event["type"], "user_id": rep_id})
 
     async def sweep(self) -> None:
         while True:

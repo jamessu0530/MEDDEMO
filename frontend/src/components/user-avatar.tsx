@@ -7,7 +7,8 @@ import { avatarTone, initials, STATUS_LABEL, usePresence } from "@/lib/presence"
 import { cn } from "@/lib/utils"
 
 // 頭像底色：主題色票的淡色，五個彼此分得開；字一律用前景色，淡底上才看得清楚。深色配色下跟著換，不會跳出一塊亮色
-// 頻道左欄的方塊也用這一組（components/channel-rail.tsx）
+// 頻道左欄的方塊也用這一組（components/channel-rail.tsx）。
+// 順序跟主管頁路線的顏色一樣（lib/team-routes.ts 的 ROUTE_COLOR_VARS），改這裡要一起改。
 // eslint-disable-next-line react-refresh/only-export-components -- 給 channel-rail.tsx 共用，跟頭像放一起比另開檔案合理
 export const AVATAR_TONES = [
   "bg-primary/20 text-foreground",

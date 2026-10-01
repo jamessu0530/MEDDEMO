@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.main import app
 from app.models import AppUser, UserIdentity
+from app.services import itinerary as itinerary_service
 from app.services import oauth
 
 
@@ -52,25 +53,32 @@ def test_providers_hides_what_is_not_configured(client, env):
     assert "secret" not in str(body).lower()
 
 
-def test_first_sign_in_opens_a_sales_account_that_sees_the_demo_rep(client, fake_google):
-    first = google_login(client, "g-judge")
-    assert first.status_code == 200
-    user = first.json()["user"]
-    assert user["id"].startswith("X") and user["name"] == "評審 g-judge"
-    # 一律是業務，不會自動變主管；沒有密碼；看的是示範業務的資料
-    assert user["role"] == "sales"
-    assert user["has_password"] is False and user["email"] is None
-    assert user["acting_as"] == {"id": "U01", "name": "林昱辰"}
-    assert [(i["provider"], i["email"]) for i in user["linked"]] == [("google", "g-judge@gmail.com")]
+def test_first_sign_in_opens_a_sales_account_that_sees_the_demo_rep(client, engine, fake_google):
+    try:
+        first = google_login(client, "g-judge")
+        assert first.status_code == 200
+        user = first.json()["user"]
+        assert user["id"].startswith("X") and user["name"] == "評審 g-judge"
+        # 一律是業務，不會自動變主管；沒有密碼；看的是示範業務的資料
+        assert user["role"] == "sales"
+        assert user["has_password"] is False and user["email"] is None
+        assert user["acting_as"] == {"id": "U01", "name": "林昱辰"}
+        assert [(i["provider"], i["email"]) for i in user["linked"]] == [("google", "g-judge@gmail.com")]
 
-    # 第二次登入回到同一個帳號，不會再開一個
-    again = google_login(client, "g-judge")
-    assert again.json()["user"]["id"] == user["id"]
+        # 第二次登入回到同一個帳號，不會再開一個
+        again = google_login(client, "g-judge")
+        assert again.json()["user"]["id"] == user["id"]
 
-    headers = {"Authorization": f"Bearer {again.json()['token']}"}
-    route = client.post("/api/route/today", json={}, headers=headers).json()
-    assert route["rep"]["id"] == "U01" and len(route["stops"]) == 5
-    assert client.post("/api/escalations/1/reply", json={"answer": "x"}, headers=headers).status_code == 403
+        headers = {"Authorization": f"Bearer {again.json()['token']}"}
+        route = client.get("/api/itinerary/today", headers=headers).json()
+        assert route["rep"]["id"] == "U01" and len(route["stops"]) == 5
+        assert client.post("/api/escalations/1/reply", json={"answer": "x"}, headers=headers).status_code == 403
+    finally:
+        # 這個測試不像其他測試用 tx（回滾），client 真的 commit 到共用的測試資料庫：
+        # 上面那個 GET 會把 U01 的 10/28 行程存下來，留著會卡到後面每一個測試，收尾要清掉
+        with Session(engine) as session:
+            itinerary_service.reset_today(session, "U01")
+            session.commit()
 
 
 def test_an_external_account_cannot_lock_itself_out(client, fake_google):

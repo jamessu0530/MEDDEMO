@@ -10,7 +10,8 @@ export const channelUnread = new CountPoller(() => getChannelUnread())
 // 有新訊息的通知、重連之後，不等下一分鐘的輪詢。等 2 秒再問：很多人同時發言時一陣通知只問一次，
 // 不然 50 支手機每則通知都問，幾秒內就是幾千個請求
 realtime.subscribe((event) => {
-  if (event.type !== "avatars") channelUnread.refreshSoon()
+  // 大頭貼與主管頁的位置、行程通知跟未讀數無關；開了或封存頻道、改了組織（channels）看得到的頻道會變
+  if (event.type === "message" || event.type === "resync" || event.type === "channels") channelUnread.refreshSoon()
 })
 
 export function useChannelUnread() {

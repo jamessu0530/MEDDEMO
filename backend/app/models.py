@@ -107,6 +107,9 @@ class OrgUnit(Base):
     name: Mapped[str]
     kind: Mapped[str]
     parent_id: Mapped[str | None] = mapped_column(ForeignKey("org_unit.id"))
+    # 區處辦公室的位置，今日路線每天從這裡出發；只有三個區有值
+    lat: Mapped[float | None]
+    lng: Mapped[float | None]
 
 
 class AppUser(Base):
@@ -223,6 +226,11 @@ class Customer(Base):
     grade: Mapped[str]
     contract_end_date: Mapped[dt.date | None]
     owner_user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id"))
+    # 行政區或鄉鎮（「大安」「板橋」），排序習慣的「地區」用；位置是那一區的中心點錯開幾百公尺，
+    # 沒有真的地址（data/seed/generate.py 的 location_of）
+    area: Mapped[str]
+    lat: Mapped[float]
+    lng: Mapped[float]
 
 
 class Product(Base):
@@ -883,6 +891,26 @@ class UserPresence(Base):
     last_active_at: Mapped[dt.datetime | None]
 
 
+class UserLocation(Base):
+    """即時位置（docs/superpowers/specs/2026-10-01-itinerary-planning-design.md〈即時位置〉）。一人一列、覆寫，不留軌跡。
+    代理示範業務的帳號寫在示範業務名下；好幾位評審同時代理同一位時，以最後一筆為準。"""
+
+    __tablename__ = "user_location"
+
+    user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), primary_key=True)
+    # 最新的一筆；還沒拿到過位置（只按過暫停、或瀏覽器拒絕定位）是 NULL
+    lat: Mapped[float | None]
+    lng: Mapped[float | None]
+    accuracy_m: Mapped[float | None]
+    at: Mapped[dt.datetime | None]
+    # 業務按了暫停：不寫位置，主管看到「暫停分享位置」
+    paused: Mapped[bool] = mapped_column(server_default=false())
+    paused_at: Mapped[dt.datetime | None]
+    # 瀏覽器沒給定位權限；之後拿到位置就清掉
+    denied: Mapped[bool] = mapped_column(server_default=false())
+    denied_at: Mapped[dt.datetime | None]
+
+
 class UserAvatar(Base):
     """大頭貼（docs/superpowers/specs/2026-10-01-avatars-text-size-design.md）。一個帳號最多一列，
     存在資料庫裡跟附件一樣；沒有這一列就是用名字縮寫。"""
@@ -969,3 +997,90 @@ class MethodCardFeedback(Base):
     customer_id: Mapped[str | None] = mapped_column(ForeignKey("customer.id"))
     helped: Mapped[bool]
     created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+
+
+# 行程裡每一站的來源。model：系統早上排的；rep：業務自己加的；ai：跟熊熊滾說加的；ask：問答頁「排入今天的路線」
+ITINERARY_STOP_SOURCES = ("model", "rep", "ai", "ask")
+
+
+class Itinerary(Base):
+    """一位業務一天的行程（docs/superpowers/specs/2026-10-01-itinerary-planning-design.md）。
+
+    當天第一次讀取時照模型的建議建好（services/itinerary.py），之後以這份為準，模型不再重排。
+    """
+
+    __tablename__ = "itinerary"
+    __table_args__ = (UniqueConstraint("user_id", "date"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"))
+    date: Mapped[dt.date]
+    # 每存一次加一：兩個人同時改同一位業務的行程時，後存的那一個擋下來，不默默蓋掉
+    version: Mapped[int] = mapped_column(server_default="1")
+    # 建立當下模型建議的站（客戶、訊號、理由，照順序），主管頁比對「改了什麼」用，之後不再改
+    suggested: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
+    # 「需立即處理」那張卡；按了三顆鈕之一、那站拿掉或跑完之後清成 NULL
+    urgent: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True))
+    # 今天不套用的排序習慣（第二階段才有習慣）
+    skipped_habit_ids: Mapped[list[int]] = mapped_column(ARRAY(BigInteger), server_default="{}")
+    created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+
+
+class ItineraryStop(Base):
+    """行程裡的一站。已完成與否不存：看今天有沒有這家已確認的拜訪紀錄。"""
+
+    __tablename__ = "itinerary_stop"
+    __table_args__ = (
+        UniqueConstraint("itinerary_id", "customer_id"),
+        one_of("source", ITINERARY_STOP_SOURCES, "source"),
+        CheckConstraint("window_kind IS NULL OR window_kind IN ('at', 'before', 'after')", name="window_kind"),
+        CheckConstraint("(window_kind IS NULL) = (window_time IS NULL)", name="window_pair"),
+        CheckConstraint("duration_minutes > 0", name="duration_positive"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    itinerary_id: Mapped[int] = mapped_column(ForeignKey("itinerary.id", ondelete="CASCADE"))
+    position: Mapped[int]
+    customer_id: Mapped[str] = mapped_column(ForeignKey("customer.id"))
+    source: Mapped[str]
+    signal: Mapped[str]
+    reason: Mapped[str]
+    # 約的時間：at 幾點到、before 幾點以前、after 幾點以後
+    window_kind: Mapped[str | None]
+    window_time: Mapped[dt.time | None]
+    duration_minutes: Mapped[int] = mapped_column(server_default="40")
+    note: Mapped[str | None]
+    # 重排時位置不動
+    locked: Mapped[bool] = mapped_column(server_default=false())
+
+
+class ItineraryPrecedence(Base):
+    """今天設的先後：before 那家要排在 after 那家前面。刪掉其中一站時一起刪。"""
+
+    __tablename__ = "itinerary_precedence"
+    __table_args__ = (CheckConstraint("before_customer_id <> after_customer_id", name="two_customers"),)
+
+    itinerary_id: Mapped[int] = mapped_column(ForeignKey("itinerary.id", ondelete="CASCADE"), primary_key=True)
+    before_customer_id: Mapped[str] = mapped_column(ForeignKey("customer.id"), primary_key=True)
+    after_customer_id: Mapped[str] = mapped_column(ForeignKey("customer.id"), primary_key=True)
+
+
+class RouteSnooze(Base):
+    """「暫緩」「誤判」：這家到哪一天以前不排進每天的建議。原本存在手機上，改存伺服器。"""
+
+    __tablename__ = "route_snooze"
+
+    user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), primary_key=True)
+    customer_id: Mapped[str] = mapped_column(ForeignKey("customer.id"), primary_key=True)
+    until: Mapped[dt.date]
+
+
+class RouteSignalWeight(Base):
+    """「插入下一站」加一、「誤判」減一：這類提醒在每天的建議裡排前面或後面一點（today_route.PERSONAL_STEP）。"""
+
+    __tablename__ = "route_signal_weight"
+
+    user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), primary_key=True)
+    signal: Mapped[str] = mapped_column(primary_key=True)
+    weight: Mapped[float] = mapped_column(server_default="0")

@@ -8,7 +8,7 @@ import { Link, useNavigate } from "react-router"
  * 改了做法要回來改這一頁。
  */
 
-const UPDATED = "2026 年 9 月 30 日"
+const UPDATED = "2026 年 10 月 2 日"
 
 function Section({ id, title, children }: { id?: string; title: string; children: React.ReactNode }) {
   return (
@@ -60,6 +60,9 @@ export function PrivacyPage() {
             <li>
               <b>在線狀態</b>：你自己選的狀態（忙碌、顯示為離線等），以及最後一次打開、使用這個網站的時間。時間只用來算出別人看到的狀態（有空、離開、離線），不會給別人看。
             </li>
+            <li>
+              <b>位置</b>：業務帳號在上班時間（週一到週五 08:30–18:30）打開這個網站時，手機的最新位置，你的主管與 IT 看得到你在哪。只存最新的一筆、不留軌跡，可以隨時在首頁暫停；第一次會先問過你，瀏覽器也會再問一次定位權限。用 Google、GitHub、Facebook 登入或自己註冊的帳號看的是示範業務的資料，位置也存在示範業務名下，下一個人送出位置就蓋掉。
+            </li>
           </ul>
         </Section>
 
@@ -110,6 +113,7 @@ export function PrivacyPage() {
             <li>帳號、提問、頻道訊息與附件、方法卡的回饋與報價草稿：保留到你刪除帳號為止。</li>
             <li>大頭貼：保留到你移除或換掉為止，換掉的舊照片不會留著。</li>
             <li>在線狀態：只留最後一次的時間，每次使用就蓋掉舊的，登出時清掉；選的狀態保留到你刪除帳號為止。</li>
+            <li>位置：只留最新的一筆，每次更新就蓋掉舊的；暫停或下班時間不會更新。IT 換一批評審前會清掉示範業務的位置。</li>
           </ul>
         </Section>
 
@@ -122,7 +126,7 @@ export function PrivacyPage() {
             <li>綁定的 Google／GitHub／Facebook 登入資訊</li>
             <li>你問過的問題與附的檔案，以及轉給主管的提問與回覆</li>
             <li>你在頻道發的訊息與附的照片、PDF，以及頻道的已讀位置</li>
-            <li>你的大頭貼與在線狀態</li>
+            <li>你的大頭貼、在線狀態與位置</li>
             <li>你對方法卡按的「有幫上／沒幫上」，那張卡的次數會跟著減少</li>
           </ul>
           <p>

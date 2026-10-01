@@ -17,6 +17,11 @@ function stop(id: string, status: RouteStop["status"], extra: Partial<RouteStop>
     signal: "ar",
     reason: "帳款最久拖了 78 天",
     visit_id: null,
+    source: "model",
+    duration_minutes: 40,
+    late_minutes: 0,
+    travel_minutes: 10,
+    travel_km: 3.2,
     ...extra,
   }
 }

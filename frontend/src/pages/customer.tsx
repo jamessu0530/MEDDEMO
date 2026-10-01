@@ -28,7 +28,7 @@ type LoadState =
   | { status: "error"; missing: boolean }
   | { status: "ready"; profile: CustomerProfile }
 
-// 別的頁面帶過來的：flash 是開報價、送續約申請之後的提示（pages/quote.tsx、contract.tsx）；backTo 是返回鍵要回哪裡（主管從風險通報點進來）
+// 別的頁面帶過來的：flash 是開報價、送續約申請之後的提示（pages/quote.tsx、contract.tsx）；backTo 是返回鍵要回哪裡（主管從風險通報、團隊行程點進來）
 export type CustomerLocationState = { flash?: string; backTo?: string }
 type Tone = "alert" | "warn" | undefined
 
