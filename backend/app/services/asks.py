@@ -15,6 +15,7 @@ from app.llm import LLM, Media, get_llm
 from app.models import AppUser, AskRecord, Attachment, QueryTrace
 from app.services.attachment_processing import describe_and_embed
 from app.services.data_agent import answer_data
+from app.services.memory_answer import answer_memory
 from app.services.scope import Scope
 from app.services.knowledge import answer_knowledge
 
@@ -63,7 +64,11 @@ def run_ask(ask_id: str) -> None:
             llm = get_llm()
             embedder = optional_embedder()
             media, note = look_at_attachment(session, ask_id, llm, embedder, on_step)
-            if record.kind == "data":
+            if record.kind == "memory":
+                asker = session.get(AppUser, record.user_id)
+                result = answer_memory(session, llm, asker, record.question, on_step, embedder, media=media, note=note)
+                record.status, record.answer, record.evidence = result.status, result.answer, result.evidence
+            elif record.kind == "data":
                 today = session.scalar(text("SELECT app_today()"))
                 asker = session.get(AppUser, record.user_id)
                 result = answer_data(

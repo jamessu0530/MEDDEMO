@@ -15,6 +15,7 @@ import { AskPage } from "@/pages/ask"
 import { ChannelPage } from "@/pages/channel"
 import { ChannelThreadsPage } from "@/pages/channel-threads"
 import { ChannelsPage } from "@/pages/channels"
+import { ChannelSearchPage } from "@/pages/channel-search"
 import { ContractPage } from "@/pages/contract"
 import { CustomerPage } from "@/pages/customer"
 import { CustomerPicker } from "@/pages/customer-picker"
@@ -156,6 +157,7 @@ export default function App() {
             <Route path="/ask" element={<AskPage />} />
             {/* 頻道：業務、主管、IT 都進得去，看得到哪些頻道由後端依組織樹決定 */}
             <Route path="/channels" element={<ChannelsPage />} />
+            <Route path="/channels/search" element={<ChannelSearchPage />} />
             <Route path="/channels/:channelId" element={<ChannelPage />} />
             <Route path="/channels/:channelId/threads" element={<ChannelThreadsPage />} />
             <Route path="/promotions" element={<PromotionsPage />} />

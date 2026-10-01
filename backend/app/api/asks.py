@@ -27,7 +27,7 @@ SessionDep = Annotated[Session, Depends(get_session)]
 
 
 class AskInput(BaseModel):
-    kind: Literal["data", "knowledge"]
+    kind: Literal["data", "knowledge", "memory"]
     # 業務口語提問不會超過 500 字；再長多半是誤貼了一大段文字
     question: str = Field(min_length=1, max_length=500)
 
@@ -125,13 +125,14 @@ def _detail(session: Session, record: AskRecord, user: AppUser) -> AskDetail:
     trace = session.scalars(select(QueryTrace).where(QueryTrace.ask_id == record.id).order_by(QueryTrace.id))
     escalation = session.scalar(select(Escalation.id).where(Escalation.ask_id == record.id))
     attachment = session.scalar(select(Attachment).where(Attachment.ask_id == record.id))
+    evidence = _signed_evidence(session, record, user)
     return AskDetail(
         id=record.id,
         kind=record.kind,
         question=record.question,
         status=record.status,
         answer=record.answer,
-        evidence=record.evidence,
+        evidence=evidence,
         error_message=record.error_message,
         trace=[
             TraceItem(round=t.round, step=t.step, sql=t.sql, search_query=t.search_query, row_count=t.row_count, decision=t.decision)
@@ -141,6 +142,23 @@ def _detail(session: Session, record: AskRecord, user: AppUser) -> AskDetail:
         customers=mentioned_customers(session, record, user),
         attachment=attachment_item(attachment, user) if attachment else None,
     )
+
+
+def _signed_evidence(session: Session, record: AskRecord, user: AppUser) -> dict[str, Any] | None:
+    """頻道記憶的依據裡有附件：每次讀都重新查權限、發簽名網址。撤回往上傳或 IT 刪了訊息之後就不再列出來。"""
+    evidence = record.evidence
+    if record.kind != "memory" or not evidence or not evidence.get("attachments"):
+        return evidence
+    ids = [entry["attachment_id"] for entry in evidence["attachments"]]
+    found = {a.id: a for a in session.scalars(select(Attachment).where(Attachment.id.in_(ids)))}
+    signed = []
+    for entry in evidence["attachments"]:
+        attachment = found.get(entry["attachment_id"])
+        if attachment is None or not attachments.can_see(session, user, attachment):
+            continue
+        url, thumb_url = attachments.urls(attachment, user)
+        signed.append({**entry, "kind": attachment.kind, "filename": attachment.filename, "url": url, "thumb_url": thumb_url})
+    return {**evidence, "attachments": signed}
 
 
 def _load(session: Session, ask_id: str, user: AppUser) -> AskRecord:
@@ -189,6 +207,8 @@ def escalate(session: SessionDep, ask_id: str, user: CurrentUser):
     record = _load(session, ask_id, user)
     if record.status not in ("no_evidence", "not_converged"):
         raise HTTPException(409, "只有查不到答案的提問可以轉給主管")
+    if record.kind == "memory":
+        raise HTTPException(409, "頻道記憶的提問不轉給主管，可以到頻道裡問同事或 @熊熊滾")
     if (record.evidence or {}).get("reason") == "medical":
         # James 2026-09-15：用藥題請業務詢問醫師或藥師，不轉主管（畫面也不給按鈕）
         raise HTTPException(409, "用藥、劑量、療效這類醫療問題請詢問醫師或藥師，不轉給主管")

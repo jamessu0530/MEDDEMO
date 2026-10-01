@@ -34,6 +34,12 @@ const MODES: { kind: AskKind; label: string; placeholder: string; examples: stri
     placeholder: "例如：近效期的貨要多久前申請退貨？",
     examples: ["近效期的貨要多久前申請退貨？", "我可以直接給客戶幾趴折扣？"],
   },
+  {
+    kind: "memory",
+    label: "查頻道",
+    placeholder: "例如：最近競品有什麼動作？",
+    examples: ["最近競品有什麼動作？", "北區還有哪些待辦沒做完？"],
+  },
 ]
 
 /** 問答（原型 S-07）：打字與語音在同一條對話裡，兩種問法共用同一套查詢與查詢軌跡 */
@@ -116,7 +122,7 @@ export function AskPage() {
         {/* 語音會話裡是模型自己選要查數字還是查規定，這組切換只對打字有用。
             看的是 session 不是 voiceOn：連線中或掛斷後打字走的還是這裡選的工具，這時候藏起來業務就看不到也改不了 */}
         {!session && (
-          <div className="mt-3 grid grid-cols-2 gap-1 rounded-lg bg-muted p-1">
+          <div className="mt-3 grid grid-cols-3 gap-1 rounded-lg bg-muted p-1">
             {MODES.map((m) => (
               <button
                 key={m.kind}

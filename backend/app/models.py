@@ -36,7 +36,8 @@ VISIT_STATUSES = ("processing", "failed", "draft", "confirmed", "synced")
 WRITEBACK_TARGETS = ("crm", "sap", "oa")
 # skipped：該拜訪沒有購買意向，SAP 不需要報價草稿
 WRITEBACK_STATUSES = ("pending", "success", "failed", "skipped")
-ASK_KINDS = ("data", "knowledge")
+# memory：在頻道記憶裡找（各頻道整理出來的重點與附件）
+ASK_KINDS = ("data", "knowledge", "memory")
 # queued／running：排隊與處理中；answered：有答案；no_evidence：知識庫查無依據（FR-8.3）；
 # not_converged：查到上限還答不出來（FR-7.2）；failed：處理出錯，例如 AI 模型還沒設定
 ASK_STATUSES = ("queued", "running", "answered", "no_evidence", "not_converged", "failed")

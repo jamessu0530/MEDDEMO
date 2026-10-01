@@ -4,7 +4,7 @@ import { AskAnswer, TracePanel } from "@/components/ask/ask-result"
 import { AttachmentGallery } from "@/components/attachments/attachment-gallery"
 import { Mascot } from "@/components/mascot"
 
-const TOOL_LABEL = { data: "查數字", knowledge: "查規定" }
+const TOOL_LABEL = { data: "查數字", knowledge: "查規定", memory: "查頻道" }
 
 export function EntryView({
   entry,

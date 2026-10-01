@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { SendHorizontal, Store } from "lucide-react"
+import { Search, SendHorizontal, Store } from "lucide-react"
 import { Link, useLocation, useParams } from "react-router"
 
 import { ApiError } from "@/api/client"
@@ -50,7 +50,8 @@ const KIND_LABEL: Record<Channel["kind"], string> = {
   customer: "客戶討論串",
 }
 
-export type ChannelLocationState = { backTo?: string }
+// jumpTo：從搜尋頁、問答的出處點進來，打開後捲到那一則並標亮
+export type ChannelLocationState = { backTo?: string; jumpTo?: number }
 type LoadState = { status: "loading" } | { status: "error"; missing: boolean } | { status: "ready"; channel: Channel }
 
 /** 頻道頁：訊息由舊到新，最新的在最下面；往上捲可以載入更早的。
@@ -73,7 +74,7 @@ export function ChannelPage() {
 }
 
 function ChannelView({ id }: { id: number }) {
-  const { backTo = "/channels" } = (useLocation().state as ChannelLocationState | null) ?? {}
+  const { backTo = "/channels", jumpTo: jumpTarget } = (useLocation().state as ChannelLocationState | null) ?? {}
   const selfId = useAuth()?.user.id ?? ""
   const connected = useRealtimeConnected()
   const [state, setState] = useState<LoadState>({ status: "loading" })
@@ -127,19 +128,28 @@ function ChannelView({ id }: { id: number }) {
   // 頻道資訊與最新一頁
   useEffect(() => {
     const controller = new AbortController()
-    Promise.all([getChannel(id, controller.signal), listMessages(id, {}, controller.signal)])
+    // 從搜尋頁、問答的出處點進來：先載入那一則前後各 20 則，捲過去標亮
+    const first = jumpTarget === undefined ? {} : { around: jumpTarget }
+    Promise.all([getChannel(id, controller.signal), listMessages(id, first, controller.signal)])
       .then(([channel, page]) => {
         setState({ status: "ready", channel })
         setMessages(page)
         cursor.current = page.at(-1)?.id ?? 0
-        setHasOlder(page.length === MESSAGE_PAGE)
+        if (jumpTarget === undefined) {
+          setHasOlder(page.length === MESSAGE_PAGE)
+        } else {
+          setHasOlder(true)
+          nearBottom.current = false
+          seenFirstLoad.current = true
+          setHighlight(jumpTarget)
+        }
       })
       .catch((error) => {
         if (controller.signal.aborted) return
         setState({ status: "error", missing: error instanceof ApiError && error.status === 404 })
       })
     return () => controller.abort()
-  }, [id])
+  }, [id, jumpTarget])
 
   // 拿新訊息：收到這個頻道的通知、重連或切回前景時補漏掉的，加上輪詢。
   // 一次只問一個；問的時候又來了通知，問完再問一次，不會漏也不會同時打好幾個
@@ -223,9 +233,10 @@ function ChannelView({ id }: { id: number }) {
     if (!messages.some((m) => m.id === messageId)) {
       try {
         const page = await listMessages(id, { around: messageId })
-        // 不是最新的一頁：先別讓「還在底部」的捲動把畫面拉走
+        // 不是最新的一頁：先別讓「還在底部」的捲動把畫面拉走；之後的新訊息從這一頁的最後一則往後補
         nearBottom.current = false
         setMessages(page)
+        cursor.current = page.at(-1)?.id ?? cursor.current
         setHasOlder(true)
       } catch {
         return
@@ -314,7 +325,18 @@ function ChannelView({ id }: { id: number }) {
         title={channel.name}
         subtitle={KIND_LABEL[channel.kind]}
         backTo={backTo}
-        trailing={channel.archived ? undefined : <ChannelMembers channelId={channel.id} selfId={selfId} />}
+        trailing={
+          <>
+            <Link
+              to={`/channels/search?channel=${channel.id}`}
+              aria-label="在這個頻道找照片與檔案"
+              className="flex size-11 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
+            >
+              <Search className="size-5" />
+            </Link>
+            {!channel.archived && <ChannelMembers channelId={channel.id} selfId={selfId} />}
+          </>
+        }
       />
       {channel.kind === "place" && (
         <Link to={`/channels/${channel.id}/threads`} className="flex min-h-11 items-center gap-2 border-b px-4 text-sm text-primary">

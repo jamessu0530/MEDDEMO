@@ -2,7 +2,8 @@ import { useState } from "react"
 import { CalendarPlus, Check, ChevronDown } from "lucide-react"
 import { Link } from "react-router"
 
-import { escalateAsk, isFinished, type Ask, type TraceItem } from "@/api/asks"
+import { escalateAsk, isFinished, type Ask, type MemoryFile, type TraceItem } from "@/api/asks"
+import { AttachmentThumbs } from "@/components/attachments/attachment-thumbs"
 import { Mascot } from "@/components/mascot"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/lib/auth"
@@ -86,9 +87,49 @@ export function AskAnswer({ ask, onChange }: { ask: Ask; onChange: (ask: Ask) =>
           })}
         </div>
       )}
-      {/* 用藥題請業務詢問醫師或藥師，不給轉主管（James 2026-09-15） */}
-      {(ask.status === "no_evidence" || ask.status === "not_converged") && ask.evidence?.reason !== "medical" && (
+      {ask.kind === "memory" && <MemorySources items={ask.evidence?.items ?? []} files={ask.evidence?.attachments ?? []} />}
+      {/* 用藥題請業務詢問醫師或藥師，不給轉主管（James 2026-09-15）；頻道記憶題到頻道裡問就好，也不轉 */}
+      {(ask.status === "no_evidence" || ask.status === "not_converged") && ask.evidence?.reason !== "medical" && ask.kind !== "memory" && (
         <Escalate ask={ask} onChange={onChange} />
+      )}
+    </div>
+  )
+}
+
+/** 頻道記憶題的依據：引用的重點（頻道、日期）與附件縮圖；看得到原頻道的附件可以點回原訊息 */
+function MemorySources({ items, files }: { items: NonNullable<Ask["evidence"]>["items"] & object; files: MemoryFile[] }) {
+  if (!items.length && !files.length) return null
+  return (
+    <div className="flex flex-col gap-1.5">
+      <p className="text-xs text-muted-foreground">出處（頻道記憶）</p>
+      {items.map((item) => (
+        <p key={item.index} className="rounded-lg bg-muted px-3 py-2 text-xs leading-relaxed">
+          <span className="font-medium">
+            [{item.index}] {item.channel_name} · {item.date.slice(5).replace("-", "/")}
+          </span>
+          <br />
+          <span className="text-muted-foreground">{item.text}</span>
+        </p>
+      ))}
+      {files.length > 0 && (
+        <div className="rounded-lg bg-muted px-3 py-2 text-xs">
+          <p className="font-medium">相關的照片與檔案</p>
+          <AttachmentThumbs attachments={files} />
+          <ul className="mt-1.5 flex flex-col gap-1 text-muted-foreground">
+            {files.map((file) => (
+              <li key={file.attachment_id}>
+                [{file.index}] {file.channel_name} · {file.date.slice(5).replace("-", "/")}：
+                {file.channel_id !== null ? (
+                  <Link to={`/channels/${file.channel_id}`} state={{ jumpTo: file.message_id }} className="underline underline-offset-2">
+                    {file.caption}
+                  </Link>
+                ) : (
+                  file.caption
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </div>
   )

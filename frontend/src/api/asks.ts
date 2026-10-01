@@ -1,7 +1,8 @@
 import type { Attachment } from "@/api/attachments"
 import { jsonBody, request, upload } from "@/api/client"
 
-export type AskKind = "data" | "knowledge"
+// memory：在頻道記憶裡找（各頻道整理出來的重點與附件）
+export type AskKind = "data" | "knowledge" | "memory"
 export type AskStatus = "queued" | "running" | "answered" | "no_evidence" | "not_converged" | "failed"
 
 export type TraceItem = {
@@ -36,6 +37,22 @@ export type AskEvidence = {
   sources?: Source[]
   // 知識題刻意不上網的原因：medical（用藥題，不給轉主管）、internal（只有公司內部才有答案）
   reason?: "medical" | "internal" | null
+  // 頻道記憶題的依據：重點與附件，編號跟答案裡的 [n] 對得上
+  items?: MemorySource[]
+  attachments?: MemoryFile[]
+}
+
+export type MemorySource = { index: number; channel_name: string; date: string; category: string; text: string }
+
+/** 頻道記憶題引用的附件。channel_id 是 null 代表看不到原頻道（靠往上傳才看得到），點不回原訊息 */
+export type MemoryFile = Attachment & {
+  index: number
+  attachment_id: number
+  channel_name: string
+  date: string
+  caption: string
+  message_id: number
+  channel_id: number | null
 }
 
 export type Ask = {

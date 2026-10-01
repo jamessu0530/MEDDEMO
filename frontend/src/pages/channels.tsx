@@ -1,5 +1,6 @@
+import { Link } from "react-router"
 import { useEffect, useState } from "react"
-import { ChevronDown, ChevronRight } from "lucide-react"
+import { ChevronDown, ChevronRight, Search } from "lucide-react"
 
 import { listChannels, type Channel } from "@/api/channels"
 import { BottomNav } from "@/components/bottom-nav"
@@ -58,7 +59,15 @@ export function ChannelsPage() {
   const sales = user?.role === "sales"
   return (
     <div className="flex min-h-svh flex-col">
-      <PageHeader title="頻道" backTo={sales || !user ? undefined : homePath(user.role)} />
+      <PageHeader
+        title="頻道"
+        backTo={sales || !user ? undefined : homePath(user.role)}
+        trailing={
+          <Link to="/channels/search" aria-label="找照片與檔案" className="flex size-11 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted">
+            <Search className="size-5" />
+          </Link>
+        }
+      />
       <main className="flex flex-1 flex-col gap-5 px-4 pt-4 pb-24">
         {state.status === "loading" && <p className="py-10 text-center text-sm text-muted-foreground">載入頻道中…</p>}
         {state.status === "error" && (

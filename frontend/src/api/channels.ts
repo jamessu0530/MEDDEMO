@@ -80,6 +80,28 @@ export function postMessage(id: number, body: string, files: File[] = [], onProg
   return upload<ChannelMessage>(path, form, onProgress)
 }
 
+export type SearchHit = {
+  attachment: Attachment
+  message_id: number
+  channel_id: number
+  channel_name: string
+  author_name: string | null
+  created_at: string
+  caption: string | null
+  // 看得到原頻道的，點了跳回原訊息；靠往上傳才搜得到的，只開大圖，下面寫往上傳的寫法
+  reachable: boolean
+  shared_text: string | null
+}
+
+/** 頻道的搜尋：用文字找照片與檔案、附一張照片以圖找圖，或兩個一起。channelId 只搜那個頻道 */
+export function searchAttachments(params: { q: string; image?: File; channelId?: number | null }) {
+  const form = new FormData()
+  if (params.q) form.append("q", params.q)
+  if (params.image) form.append("image", params.image, params.image.name)
+  if (params.channelId) form.append("channel_id", String(params.channelId))
+  return request<SearchHit[]>("/api/channels/search", { method: "POST", body: form })
+}
+
 /** IT 刪訊息：附件刪掉、內容換成固定的一句 */
 export function deleteMessage(messageId: number) {
   return request<void>(`/api/channels/messages/${messageId}`, { method: "DELETE" })
