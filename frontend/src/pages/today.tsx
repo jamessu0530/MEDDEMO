@@ -7,6 +7,7 @@ import { getTodayRoute, type TodayRoute } from "@/api/route"
 import { BottomNav } from "@/components/bottom-nav"
 import { Mascot } from "@/components/mascot"
 import { Notice } from "@/components/notice"
+import { MyStatusButton } from "@/components/my-status"
 import { RoutePath } from "@/components/route-path"
 import { SkinToggle } from "@/components/skin-toggle"
 import { Button, buttonVariants } from "@/components/ui/button"
@@ -94,17 +95,20 @@ export function TodayPage() {
     <div className="flex min-h-svh flex-col">
       <header className="sticky top-0 z-10 bg-background/95 px-4 pt-2 pb-3 backdrop-blur">
         <div className="-mr-2 flex items-center justify-between gap-2">
-          {/* 點自己的名字進帳號設定：改密碼、登出、使用說明 */}
-          <Link to="/settings" className="flex h-11 min-w-0 items-center gap-1 text-xs text-muted-foreground">
-            {/* 示範說明另起一行：接在名字後面的話手機上整句會被截掉 */}
-            <span className="flex min-w-0 flex-col leading-tight">
-              <span className="truncate">
-                {user.region} · {user.name}
+          {/* 自己的頭像：點了換狀態（有空、忙碌、顯示為離線…）；點名字進帳號設定：改密碼、登出、使用說明 */}
+          <div className="flex min-w-0 items-center gap-1.5">
+            <MyStatusButton className="size-9" />
+            <Link to="/settings" className="flex h-11 min-w-0 items-center gap-1 text-xs text-muted-foreground">
+              {/* 示範說明另起一行：接在名字後面的話手機上整句會被截掉 */}
+              <span className="flex min-w-0 flex-col leading-tight">
+                <span className="truncate">
+                  {user.region} · {user.name}
+                </span>
+                {user.acting_as && <span className="truncate">示範：{user.acting_as.name}的客戶</span>}
               </span>
-              {user.acting_as && <span className="truncate">示範：{user.acting_as.name}的客戶</span>}
-            </span>
-            <ChevronRight className="size-3.5 shrink-0" />
-          </Link>
+              <ChevronRight className="size-3.5 shrink-0" />
+            </Link>
+          </div>
           {/* 像 Duolingo 的狀態列：圖示加數字。進度只是顯示，其他三顆可以按 */}
           <div className="flex shrink-0 items-center">
             {/* 今天沒排拜訪就不顯示 0/0 */}

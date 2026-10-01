@@ -8,6 +8,8 @@ import { Notice } from "@/components/notice"
 import { Onboarding } from "@/components/onboarding"
 import { canManage, homePath, refreshUser, useAuth } from "@/lib/auth"
 import { uploadQueue } from "@/lib/offline-queue"
+import { clearMyPresence, loadMyPresence } from "@/lib/presence"
+import { realtime } from "@/lib/realtime"
 import { AdminPage } from "@/pages/admin"
 import { AskPage } from "@/pages/ask"
 import { ChannelPage } from "@/pages/channel"
@@ -54,6 +56,18 @@ function RequireAuth() {
   const session = useAuth()
   const location = useLocation()
   const signedIn = Boolean(session)
+  const token = session?.token
+
+  // 登入後連上 WebSocket（在線狀態與新訊息通知，lib/realtime.ts）；換了 token（改過密碼、換人登入）就重連
+  useEffect(() => {
+    if (!token) return
+    realtime.start()
+    void loadMyPresence()
+    return () => {
+      realtime.stop()
+      clearMyPresence()
+    }
+  }, [token])
 
   // 一打開就確認這組 token 還有效，順便更新姓名、區域；401 會由 api/client.ts 登出
   useEffect(() => {

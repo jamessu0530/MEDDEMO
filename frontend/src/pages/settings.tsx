@@ -12,6 +12,7 @@ import {
   type OAuthCredential,
   type OAuthProviders,
 } from "@/api/auth"
+import { MyStatusSection } from "@/components/my-status"
 import { FacebookButton, GitHubButton, GoogleButton, NotReadyButton } from "@/components/oauth-buttons"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
@@ -454,6 +455,8 @@ export function SettingsPage() {
             </p>
           )}
         </section>
+
+        <MyStatusSection />
 
         <Link
           to={canManage(user.role) ? "/manager?view=oa" : "/oa/forms"}
