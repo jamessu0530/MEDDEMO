@@ -70,7 +70,9 @@ realtime.subscribe((event) => {
 })
 
 export function useAvatarUrl(id: string) {
-  return useSyncExternalStore(avatars.subscribe, () => avatars.urlOf(id))
+  const read = () => avatars.urlOf(id)
+  // 第三個參數給伺服器端 render（元件測試）用，同一份
+  return useSyncExternalStore(avatars.subscribe, read, read)
 }
 
 /** 從中間裁出最大的正方形，再縮到 maxEdge 以內（本來就比較小的不放大） */

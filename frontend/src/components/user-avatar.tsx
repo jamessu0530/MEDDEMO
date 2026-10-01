@@ -7,6 +7,7 @@ import { avatarTone, initials, STATUS_LABEL, usePresence } from "@/lib/presence"
 import { cn } from "@/lib/utils"
 
 // 頭像底色：主題色票的淡色，五個彼此分得開；字一律用前景色，淡底上才看得清楚。深色配色下跟著換，不會跳出一塊亮色
+// 順序跟主管頁路線的顏色一樣（lib/team-routes.ts 的 ROUTE_COLOR_VARS），改這裡要一起改。
 const TONES = [
   "bg-primary/20 text-foreground",
   "bg-chart-4/20 text-foreground",

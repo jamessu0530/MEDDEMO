@@ -94,12 +94,14 @@ export const presence = new PresenceStore()
 
 /** 某個人現在的狀態 */
 export function usePresence(id: string) {
-  return useSyncExternalStore(presence.subscribe, () => presence.statusOf(id))
+  const read = () => presence.statusOf(id)
+  // 第三個參數給伺服器端 render（元件測試）用，同一份
+  return useSyncExternalStore(presence.subscribe, read, read)
 }
 
 /** 整份狀態：成員清單、頭像群組要一起排序時用 */
 export function usePresenceMap() {
-  return useSyncExternalStore(presence.subscribe, presence.getSnapshot)
+  return useSyncExternalStore(presence.subscribe, presence.getSnapshot, presence.getSnapshot)
 }
 
 // 自己選的狀態。登入後問一次，之後只有自己改
