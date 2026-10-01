@@ -260,7 +260,7 @@ def test_reading_the_itinerary_asks_google_for_the_legs_in_order_not_the_whole_m
     env(GOOGLE_MAPS_SERVER_KEY="server-key")
     asked = []
 
-    def route_legs(key, points, http=None):
+    def route_legs(key, points, http=None, polylines=True):
         asked.append(points)
         return [google_routes.Leg(seconds=600, meters=3000, polyline="") for _ in points[1:]]
 

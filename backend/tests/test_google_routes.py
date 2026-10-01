@@ -31,7 +31,7 @@ def fake(handler):
 
 def test_matrix_asks_for_driving_without_traffic_and_reads_every_cell():
     elements = [
-        # 數字是 0 的欄位 Google 會省略：第 0 個起點、第 0 個終點都沒有 index
+        # proto3 預設值的欄位 Google 可能省略：沒有 index 不代表一定是第 0 個起點／終點
         {"destinationIndex": 1, "duration": "600s", "distanceMeters": 4200, "condition": "ROUTE_EXISTS", "status": {}},
         {"originIndex": 1, "destinationIndex": 0, "duration": "630.4s", "distanceMeters": 4400,
          "condition": "ROUTE_EXISTS", "status": {}},
@@ -77,6 +77,17 @@ def test_matrix_errors_and_odd_answers_raise(status, body):
         google_routes.route_matrix("k", [TAIPEI_MAIN], [TAIPEI_101], http=http)
 
 
+def test_error_responses_keep_googles_reason_without_leaking_the_key():
+    body = {"error": {"message": "API key not valid. Please pass a valid API key."}}
+    http, _ = fake(lambda request: (403, body))
+    with pytest.raises(RoutesError) as exc_info:
+        google_routes.route_matrix("secret-key-123", [TAIPEI_MAIN], [TAIPEI_101], http=http)
+    message = str(exc_info.value)
+    assert "403" in message
+    assert "API key not valid" in message
+    assert "secret-key-123" not in message
+
+
 def test_timeouts_raise_for_both_calls():
     def slow(request):
         raise httpx.ReadTimeout("Google 太慢", request=request)
@@ -116,6 +127,16 @@ def test_legs_follow_the_given_order_with_a_polyline_each():
     assert body["intermediates"] == [waypoint(TAIPEI_101)]
     assert body["destination"] == waypoint(SONGSHAN)
     assert body["travelMode"] == "DRIVE" and body["routingPreference"] == "TRAFFIC_UNAWARE"
+
+
+def test_route_legs_without_polylines_skips_the_polyline_field_and_still_parses():
+    answer = {"routes": [{"legs": [
+        {"duration": "300s", "distanceMeters": 2000, "polyline": {"encodedPolyline": "abc"}},
+    ]}]}
+    http, sent = fake(lambda request: (200, answer))
+    legs = google_routes.route_legs("k", [TAIPEI_MAIN, TAIPEI_101], http=http, polylines=False)
+    assert legs == [Leg(300, 2000, "")]
+    assert "polyline" not in sent[0].headers["X-Goog-FieldMask"]
 
 
 def test_more_than_ten_intermediates_are_split_to_stay_in_essentials():
