@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app import realtime
 from app.api.auth import ItUser
 from app.db import get_session
 from app.services import org_admin
@@ -100,6 +101,9 @@ def _apply(session: Session, change: Callable[[], object]) -> OrgChart:
     except IntegrityError:  # 兩個人同時開了同一個 Email 的帳號
         session.rollback()
         raise HTTPException(status.HTTP_409_CONFLICT, "有人同時改了同一筆資料，請重新整理後再試一次") from None
+    # commit 之後才通知：組織一改，誰看得到哪些頻道可能就變了（調區、換主管、降職封存小組頻道、客戶換人）。
+    # 手機重新載入頻道列表，WebSocket 也重算看得到的頻道，不再通知已經看不到的頻道（api/presence.py）
+    realtime.channels_changed()
     return OrgChart(**org_admin.chart(session))
 
 

@@ -47,8 +47,9 @@ MIN_PING_SECONDS = 5
 PING_TIMEOUT_SECONDS = 90
 # 同一個帳號在同一台 API 最多幾條連線：自建帳號誰都能開，不能讓一個人無限開
 MAX_CONNECTIONS = 5
-# 每條連線記住自己看得到哪些頻道，隔這麼久（再乘上 1～1.5 倍，讓同時連上的連線錯開）重算一次：
-# 調區、停用這類權限變動最慢這麼久生效。這段時間內新出現的頻道（剛開的文字頻道、第一次有人打開的客戶討論串）
+# 每條連線記住自己看得到哪些頻道，隔這麼久（再乘上 1～1.5 倍，讓同時連上的連線錯開）重算一次。
+# 組織異動（調區、換主管、降職、客戶換人）會發 channels 事件，收到就作廢、下一則訊息時重算，不必等到過期；
+# 定時重算是漏接事件時的保險。這段時間內新出現的頻道（剛開的文字頻道、第一次有人打開的客戶討論串）
 # 第一次有訊息時單獨查一次
 VISIBLE_TTL_SECONDS = 60
 # 定時重算狀態時，別條連線這麼近才算好的那一份可以直接用
@@ -210,7 +211,7 @@ class _Connection:
         # 狀態事件與每 10 秒的重算可能同時進來：讀、比對、送整段一次只跑一個，
         # 不然比較舊的那份晚讀完，會蓋掉比較新的
         self.presence_lock = asyncio.Lock()
-        # 看得到的頻道：連上時算一次，之後隔一陣子重算；中間出現的新頻道第一次有訊息時單獨查一次並記住
+        # 看得到的頻道：連上時算一次，收到 channels 事件或隔一陣子重算；中間出現的新頻道第一次有訊息時單獨查一次並記住
         self.visible: frozenset[int] = frozenset()
         self.hidden: set[int] = set()
         self.visible_at = -math.inf
@@ -240,7 +241,7 @@ class _Connection:
                 await self.send({"type": "presence", "full": full, "statuses": changes})
 
     async def refresh_visible(self) -> None:
-        """重算這個人看得到的頻道。連上時算一次，之後過期了（visible_ttl）由 can_see 重算。"""
+        """重算這個人看得到的頻道。連上時算一次，之後作廢或過期了（visible_ttl）由 can_see 重算。"""
         self.visible = await run_in_threadpool(_visible_ids, self.user_id)
         self.hidden = set()
         self.visible_at = time.monotonic()
@@ -289,6 +290,9 @@ class _Connection:
             elif event.get("type") == "avatars":
                 await self.send({"type": "avatars"})
             elif event.get("type") == "channels":
+                # 開了頻道或改了組織，看得到的頻道可能變了：記下的作廢，下一則訊息時才重算
+                # （這裡不查：每條連線同時去查，又會跟發言的請求搶 threadpool 與連線池）
+                self.visible_at = -math.inf
                 # 不帶內容：收到的人重新載入自己看得到的頻道列表，看不到的頻道不會因此透露
                 await self.send({"type": "channels"})
             elif event.get("type") == "message":

@@ -10,13 +10,13 @@ import time
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.orm import Session
 from starlette.websockets import WebSocketDisconnect
 
 from app.api import presence as presence_api
 from app.main import app
-from app.models import AppUser, Channel, UserPresence
+from app.models import AppUser, Channel, ChannelMessage, ChannelRead, OrgChangeLog, UserPresence
 from app.services import channels, presence
 
 NOW = dt.datetime(2026, 10, 1, 9, 0, tzinfo=dt.UTC)
@@ -359,6 +359,39 @@ def test_a_channel_opened_after_connecting_still_notifies(client, engine, auth):
     finally:
         with engine.begin() as conn:
             conn.execute(delete(Channel).where(Channel.id.in_(opened)))
+
+
+def test_an_org_change_stops_notifications_from_channels_no_longer_visible(client, engine, auth):
+    # 不能用 tx：連線在自己的 session 裡算看得到的頻道，只看得到 commit 過的。
+    # 測完把陳建宏調回北區，刪掉發的訊息與異動紀錄，IT 的已讀位置還原
+    it = auth("A01")
+    daan = channel_id(client, auth, "台北市・大安區")
+    central = channel_id(client, auth, "中區")
+    reads = (ChannelRead.user_id == "A01") & ChannelRead.channel_id.in_((daan, central))
+    with engine.connect() as conn:
+        last_log = conn.scalar(select(func.coalesce(func.max(OrgChangeLog.id), 0)))
+        read_before = [dict(row._mapping) for row in conn.execute(select(ChannelRead).where(reads))]
+    posted = []
+    try:
+        with client.websocket_connect("/api/ws") as u01:
+            connect(u01, engine, "U01")
+            # 陳建宏調到中區，林昱辰跟著走：大安區看不到了，中區看得到
+            assert client.put("/api/admin/users/M01/unit", json={"unit_id": "TW.C"}, headers=it).status_code == 200
+            for channel in (daan, central):
+                sent = client.post(f"/api/channels/{channel}/messages", json={"body": "調區之後"}, headers=it)
+                assert sent.status_code == 201
+                posted.append(sent.json()["id"])
+            # 大安區的先發，林昱辰卻先收到中區的：調區之後，連上時記下的大安區不再通知他
+            assert next_of(u01, "message") == {"type": "message", "channel_id": central}
+    finally:
+        moved_back = client.put("/api/admin/users/M01/unit", json={"unit_id": "TW.N"}, headers=it)
+        with engine.begin() as conn:
+            conn.execute(delete(ChannelMessage).where(ChannelMessage.id.in_(posted)))
+            conn.execute(delete(OrgChangeLog).where(OrgChangeLog.id > last_log))
+            conn.execute(delete(ChannelRead).where(reads))
+            if read_before:
+                conn.execute(insert(ChannelRead), read_before)
+    assert moved_back.status_code == 200
 
 
 def test_the_pool_has_room_for_every_threadpool_worker():

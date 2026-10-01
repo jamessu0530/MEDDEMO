@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app import realtime
 from app.config import settings
 from app.main import app
 from app.models import AppUser, AskRecord, Escalation, OaApprovalStep, OaExpenseForm, OrgChangeLog, SapEmployee, Visit
@@ -314,3 +315,32 @@ def test_it_can_hand_one_customer_to_another_rep(tx, client, auth):
     assert client.get("/api/customers/C002", headers=auth("U03")).json()["owner_id"] == "U03"
     assert client.get("/api/customers/C002/profile", headers=auth("U03")).status_code == 200
     assert client.get("/api/customers/C002/profile", headers=auth("U02")).status_code == 404
+
+
+# 組織一改，誰看得到哪些頻道可能就變了：每個改組織的操作都發 channels 事件，
+# 手機重新載入頻道列表，WebSocket 也重算看得到的頻道（api/presence.py），不再通知已經看不到的頻道
+ORG_CHANGES = {
+    "create": [("POST", "/api/admin/users", {
+        "name": "測試業務", "email": "event.rep@meddemo.tw", "password": "abcd1234", "role": "sales", "manager_id": "M02",
+    })],
+    "manager": [("PUT", "/api/admin/users/U02/manager", {"manager_id": "M02"})],
+    "unit": [("PUT", "/api/admin/users/M01/unit", {"unit_id": "TW.C"})],
+    "role": [("PUT", "/api/admin/users/U02/role", {"role": "manager", "unit_id": "TW.C", "successor_id": "U01"})],
+    "deactivate": [("POST", "/api/admin/users/U05/deactivate", {"successor_id": "U04"})],
+    "reactivate": [
+        ("POST", "/api/admin/users/U05/deactivate", {"successor_id": "U04"}),
+        ("POST", "/api/admin/users/U05/reactivate", None),
+    ],
+    "customer owner": [("PUT", "/api/admin/customers/C002/owner", {"owner_id": "U03"})],
+}
+
+
+@pytest.mark.parametrize("calls", ORG_CHANGES.values(), ids=ORG_CHANGES.keys())
+def test_every_org_change_tells_every_socket(tx, client, auth, monkeypatch, calls):
+    published = []
+    monkeypatch.setattr(realtime, "publish", published.append)
+    for method, path, body in calls:
+        published.clear()
+        response = client.request(method, path, json=body, headers=auth("A01"))
+        assert response.status_code in (200, 201), response.text
+        assert published == [{"type": "channels"}]
