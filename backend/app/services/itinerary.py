@@ -619,7 +619,7 @@ def _inserted(
     row = next((r for r in day.rows if r.customer_id == customer_id), None)
     label = (row.signal, row.reason) if row else today_route.labels(session, day.rep.id, [customer_id])[customer_id]
     new = _new_open(customer, row.source if row else "rep", label, day.habits)
-    index = _cheapest_index(session, day, open_, new, precedences, skipped, pending)
+    index = _cheapest_index(session, day, open_, new, precedences, skipped, pending, estimate=True)
     return [*open_[:index], new, *open_[index:]]
 
 
@@ -752,13 +752,15 @@ def _locks(open_: list[_Open], done: int) -> list[route_planner.Rule]:
 
 def _cheapest_index(
     session: Session, day: _Day, open_: list[_Open], new: _Open, precedences: list[tuple[str, str]], skipped: set[int],
-    pending: Sequence[PendingHabit] = (),
+    pending: Sequence[PendingHabit] = (), estimate: bool = False,
 ) -> int:
-    """新的一站插在還沒跑的站的第幾個位置：多繞最少、又不新增違反（鎖、今天的先後、習慣）。"""
+    """新的一站插在還沒跑的站的第幾個位置：多繞最少、又不新增違反（鎖、今天的先後、習慣）。
+    estimate：只要直線估算，不打 Google（調整清單的 preview／「加一站」）。候選（candidates）也是用估算算出
+    同一家會插在第幾站，兩邊要用同一種車程，不然 Google 的矩陣跟估算的矩陣算出來的位置可能不一樣。"""
     customers = [o.customer for o in open_] + [new.customer]
     durations = day.durations() | {o.customer.id: o.duration_minutes for o in open_}
     start, points = _points(session, day.rep, day.itinerary.date, day.done, durations, customers)
-    matrix = travel.matrix(points)
+    matrix = _estimated(points) if estimate else travel.matrix(points)
     ordered = [o.plan_stop(n + 1) for n, o in enumerate(open_)]
     rules = _rules([*open_, new], precedences, day.habits, skipped, pending) + _locks(open_, len(day.done))
     return route_planner.cheapest_insert(start, 0, ordered, new.plan_stop(len(open_) + 1), rules, matrix.minutes)
