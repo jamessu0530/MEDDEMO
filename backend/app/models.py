@@ -1089,3 +1089,25 @@ class RouteHabit(Base):
     active: Mapped[bool] = mapped_column(server_default=text("true"))
     # 兩條習慣衝突時新的優先
     created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+
+
+class ItineraryProposal(Base):
+    """跟熊熊滾說要怎麼排、「幫我排順一點」算出來的提案（services/itinerary_ai.py）。
+
+    按「套用」時照 operations 在最新的行程上再做一次，不信前端傳來的內容；base_version 對不上就擋下來。
+    只留最近 7 天（jobs/retention.py）。行程刪掉（IT 重置示範業務）時一起刪。
+    """
+
+    __tablename__ = "itinerary_proposal"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    itinerary_id: Mapped[int] = mapped_column(ForeignKey("itinerary.id", ondelete="CASCADE"), index=True)
+    # 算提案時的行程版本
+    base_version: Mapped[int]
+    # 業務說的那句話；按鈕觸發的排順路是 NULL
+    question: Mapped[str | None] = mapped_column(Text)
+    # 驗證過的操作清單（AI 的輸出換成這位業務自己的客戶與習慣，不合的已經轉成 not_found）
+    operations: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
+    # 對照卡的內容（api/itinerary.py 的 ProposalOut 照這個欄位回傳）
+    result: Mapped[dict[str, Any]]
+    created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now(), index=True)
