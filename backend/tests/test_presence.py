@@ -6,6 +6,7 @@ WebSocket 那幾個測試不能用 tx：連線在自己的 session 裡讀狀態�
 """
 
 import datetime as dt
+import math
 import time
 
 import pytest
@@ -14,6 +15,7 @@ from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.orm import Session
 from starlette.websockets import WebSocketDisconnect
 
+from app import realtime
 from app.api import presence as presence_api
 from app.main import app
 from app.models import AppUser, Channel, ChannelMessage, ChannelRead, OrgChangeLog, UserPresence
@@ -283,27 +285,143 @@ def test_a_socket_that_stops_pinging_is_closed(client, engine, monkeypatch):
 # 整個 API 卡死（docs/superpowers/specs/2026-10-01-channel-rail-design.md「壓力測試」）
 
 
-async def test_status_requests_after_the_same_event_share_one_query(monkeypatch):
-    import asyncio
-
-    calls = 0
+def counting_statuses(monkeypatch, seconds: float = 0.05) -> list[int]:
+    """把查大家狀態的那一步換成慢一點的假的，回傳一個記次數的 list（長度就是查了幾次）。"""
+    calls = []
 
     def slow_statuses():
-        nonlocal calls
-        calls += 1
-        time.sleep(0.05)
+        calls.append(1)
+        time.sleep(seconds)
         return {"U01": "available"}
 
     monkeypatch.setattr(presence_api, "_statuses", slow_statuses)
+    return calls
+
+
+async def test_status_requests_after_the_same_event_share_one_query(monkeypatch):
+    import asyncio
+
+    calls = counting_statuses(monkeypatch)
+    published = []
+    monkeypatch.setattr(realtime, "publish", published.append)
     cache = presence_api._StatusCache()
-    since = time.monotonic()
-    results = await asyncio.gather(*(cache.get(since) for _ in range(50)))
-    assert calls == 1 and all(r == {"U01": "available"} for r in results)
-    # 事件之後才開始算的那一份可以共用；比它晚的事件要重算，才看得到新的變動
-    await cache.get(since)
-    assert calls == 1
-    await cache.get(time.monotonic())
-    assert calls == 2
+    # 跟正式的一樣：一則狀態事件叫醒 50 條連線，一條接一條跑，每條各自從收到的事件算 since
+    realtime.presence_changed()
+    (event,) = published
+    woke = asyncio.Event()
+
+    async def connection():
+        await woke.wait()
+        return await cache.get(presence_api._event_time(event))
+
+    tasks = [asyncio.create_task(connection()) for _ in range(50)]
+    await asyncio.sleep(0)
+    woke.set()
+    results = await asyncio.gather(*tasks)
+    assert len(calls) == 1 and all(r == {"U01": "available"} for r in results)
+    # 事件之後才開始算的那一份，算完了也可以共用；下一則事件要重算，才看得到新的變動
+    await cache.get(presence_api._event_time(event))
+    assert len(calls) == 1
+    realtime.presence_changed()
+    await cache.get(presence_api._event_time(published[-1]))
+    assert len(calls) == 2
+
+
+async def test_one_status_event_reaches_fifty_sockets_with_one_query(monkeypatch):
+    # 走真的路：Redis 發布一則狀態事件，50 條連線各自訂閱、各自在 listen 裡收到，只查一次資料庫
+    import asyncio
+
+    import redis.asyncio as aioredis
+
+    from app.config import settings
+
+    calls = counting_statuses(monkeypatch)
+    monkeypatch.setattr(presence_api, "_status_cache", presence_api._StatusCache())
+
+    class Socket:
+        def __init__(self):
+            self.sent = []
+
+        async def send_json(self, payload):
+            self.sent.append(payload)
+
+    client = aioredis.Redis.from_url(settings().redis_url)
+    pubsubs = [client.pubsub() for _ in range(50)]
+    sockets = [presence_api._Connection(Socket(), f"S{n:02d}", "token", True) for n in range(50)]
+    tasks = []
+    try:
+        for pubsub in pubsubs:
+            await pubsub.subscribe(realtime.events_channel())
+            await pubsub.get_message(timeout=5)
+        tasks = [asyncio.create_task(socket.listen(pubsub)) for socket, pubsub in zip(sockets, pubsubs, strict=True)]
+        realtime.presence_changed()
+        async with asyncio.timeout(10):
+            while not all(socket.ws.sent for socket in sockets):
+                await asyncio.sleep(0.01)
+    finally:
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        for pubsub in pubsubs:
+            await pubsub.aclose()
+        await client.aclose()
+    assert len(calls) == 1
+    assert all(socket.ws.sent == [{"type": "presence", "full": False, "statuses": {"U01": "available"}}] for socket in sockets)
+
+
+async def test_two_event_loops_never_await_each_others_query(monkeypatch):
+    # 測試裡每條沒包在 with TestClient 裡的 WebSocket 各有一條 event loop（各在一個執行緒）。
+    # 兩條同時對同一則事件要狀態時，不能把別條 loop 建的那一份拿來 await（RuntimeError: attached to a different loop）
+    import asyncio
+    import threading
+
+    release = threading.Event()
+    calls = []
+
+    def statuses():
+        calls.append(1)
+        # 第二次（這條 loop 的那一份）卡住，讓另一條 loop 在它算完之前又來要一次
+        if len(calls) == 2:
+            release.wait(5)
+        return {"U01": "available"}
+
+    monkeypatch.setattr(presence_api, "_statuses", statuses)
+    cache = presence_api._StatusCache()
+    # since 給最早的：時間上怎樣都能共用，只看兩條 loop 有沒有分開
+    since = -math.inf
+    other = asyncio.new_event_loop()
+    seen = []
+
+    def ask_from_the_other_loop():
+        def run():
+            try:
+                seen.append(other.run_until_complete(cache.get(since)))
+            except Exception as error:  # noqa: BLE001 -- 要比對丟出來的是什麼
+                seen.append(error)
+
+        thread = threading.Thread(target=run)
+        thread.start()
+        thread.join()
+
+    original = presence_api.run_in_threadpool
+
+    def interleaved(func, *args):
+        # 這條 loop 正要建新的那一份時，另一條 loop 剛好也來要（執行緒隨時可能在這裡切換）
+        monkeypatch.setattr(presence_api, "run_in_threadpool", original)
+        ask_from_the_other_loop()
+        return original(func, *args)
+
+    monkeypatch.setattr(presence_api, "run_in_threadpool", interleaved)
+    try:
+        mine = asyncio.create_task(cache.get(since))
+        await asyncio.sleep(0.05)
+        ask_from_the_other_loop()
+        release.set()
+        assert await mine == {"U01": "available"}
+    finally:
+        release.set()
+        other.close()
+    assert seen == [{"U01": "available"}, {"U01": "available"}]
 
 
 async def test_a_failed_status_query_is_not_shared_afterwards(monkeypatch):
@@ -317,7 +435,7 @@ async def test_a_failed_status_query_is_not_shared_afterwards(monkeypatch):
 
     monkeypatch.setattr(presence_api, "_statuses", flaky)
     cache = presence_api._StatusCache()
-    since = time.monotonic()
+    since = time.time()
     with pytest.raises(RuntimeError):
         await cache.get(since)
     assert await cache.get(since) == {"U01": "busy"}

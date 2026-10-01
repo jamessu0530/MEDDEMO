@@ -16,7 +16,7 @@ import math
 import random
 import time
 from collections import Counter
-from typing import Annotated, Literal
+from typing import Annotated, Literal, NamedTuple
 
 import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
@@ -163,34 +163,51 @@ def _visible_ids(user_id: str) -> frozenset[int]:
         return frozenset(channels.visible_ids(session, user))
 
 
+def _event_time(event: dict) -> float:
+    """狀態事件發出的時間（app/realtime.py 的 at）。舊版 API 發的事件沒有（部署換版的那一下），當作現在。"""
+    at = event.get("at")
+    return float(at) if isinstance(at, int | float) else time.time()
+
+
+class _SharedStatuses(NamedTuple):
+    loop: asyncio.AbstractEventLoop
+    # 開始算的時間（time.time()）
+    started: float
+    task: asyncio.Task[dict[str, str]]
+
+
 class _StatusCache:
-    """大家的狀態，同一個程序裡的連線共用。一個狀態事件會讓每條連線都要一次，以前每條各查一次資料庫，
+    """大家的狀態，同一個程序裡的連線共用。一則狀態事件會叫醒每一條連線，每條各查一次資料庫的話，
     50 條連線就是 50 次，跟發言的請求搶 threadpool 與連線池（docs/superpowers/specs/2026-10-01-channel-rail-design.md）。
 
     get(since)：since 之後才開始算的那一份（算好的或正在算的）直接共用，不然才重算。
-    since 是呼叫的人收到事件的時間；事件是 commit 之後才發的，之後才開始算的一定看得到那次變動。
-    算失敗的那一份不共用，下一個人重算。不同的 event loop（測試裡每個 TestClient 各一個）各算各的。"""
+    事件的 since 是事件裡的 at：發事件的那一邊 commit 之後才取的時間，之後才開始算的一定看得到那次變動。
+    同一則事件的每條連線拿到同一個 at，第一條開始算的那一份其他條都能共用；
+    不能用各自收到事件的時間：連線一條接一條跑，後面的那條收到的時間一定比前面那條開始算的晚，又會各查一次。
+    比的是 time.time()，不同程序之間也對得上（狀態事件目前都是 API 自己發的，同一台機器）。
+    算失敗的那一份不共用，下一個人重算。
+
+    不同的 event loop 各算各的：正式環境只有一條；測試裡每條沒包在 with TestClient 裡的 WebSocket 各有一條，
+    各在自己的執行緒。所以 loop、開始的時間與那一份查詢放在同一個 tuple，一次讀進來、一次寫回去：
+    兩條 loop 同時來要時，不會拼出「這條的 loop、那條的查詢」，去 await 別條 loop 的查詢。"""
 
     def __init__(self) -> None:
-        self._started = -math.inf
-        self._task: asyncio.Task[dict[str, str]] | None = None
-        self._loop: asyncio.AbstractEventLoop | None = None
+        self._shared: _SharedStatuses | None = None
 
     async def get(self, since: float) -> dict[str, str]:
         loop = asyncio.get_running_loop()
-        task = self._task
-        stale = (
-            task is None
-            or self._loop is not loop
-            or self._started < since
-            or (task.done() and (task.cancelled() or task.exception() is not None))
-        )
-        if stale:
-            self._started = time.monotonic()
-            self._loop = loop
-            self._task = task = loop.create_task(run_in_threadpool(_statuses))
+        shared = self._shared
+        if (
+            shared is None
+            or shared.loop is not loop
+            or shared.started < since
+            or (shared.task.done() and (shared.task.cancelled() or shared.task.exception() is not None))
+        ):
+            started = time.time()
+            shared = _SharedStatuses(loop, started, loop.create_task(run_in_threadpool(_statuses)))
+            self._shared = shared
         # shield：等的那條連線斷了被取消，不能把大家共用的那一份一起取消
-        return await asyncio.shield(task)
+        return await asyncio.shield(shared.task)
 
 
 _status_cache = _StatusCache()
@@ -286,7 +303,7 @@ class _Connection:
                 continue
             event = json.loads(message["data"])
             if event.get("type") == "presence":
-                await self.send_presence(time.monotonic())
+                await self.send_presence(_event_time(event))
             elif event.get("type") == "avatars":
                 await self.send({"type": "avatars"})
             elif event.get("type") == "channels":
@@ -307,7 +324,7 @@ class _Connection:
             if time.monotonic() - self.last_ping > PING_TIMEOUT_SECONDS:
                 await self.close(CLOSE_TIMEOUT)
                 return
-            await self.send_presence(time.monotonic() - SWEEP_SHARE_SECONDS)
+            await self.send_presence(time.time() - SWEEP_SHARE_SECONDS)
 
     async def run(self) -> None:
         client = aioredis.Redis.from_url(settings().redis_url)
@@ -319,7 +336,7 @@ class _Connection:
             # 先把看得到的頻道算好：不然第一則訊息進來時，每條連線同時去查
             await self.refresh_visible()
             await self.send({"type": "ready", "user_id": self.user_id})
-            await self.send_presence(time.monotonic(), full=True)
+            await self.send_presence(time.time(), full=True)
             tasks = [asyncio.create_task(job) for job in (self.read(), self.listen(pubsub), self.sweep())]
             try:
                 done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
