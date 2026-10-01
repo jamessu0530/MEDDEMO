@@ -3,6 +3,7 @@
 業務打開 App 時，在線狀態的心跳（api/presence.py：WebSocket 每 20 秒、斷線時的 POST /api/presence/ping）多帶一筆位置。
 只有業務、上班時間（台北的真實時間，LOCATION_SHARE_HOURS）、沒暫停才寫；一人一列覆寫、不留軌跡。
 代理示範業務的帳號（第三方登入的評審）寫在示範業務名下，分享的是評審手機真的位置。
+位置描述（describe）是純函式：主管頁卡片與詳細的那一行。
 """
 
 from __future__ import annotations
@@ -21,6 +22,12 @@ from app.timeutil import TAIPEI
 # 跟上一筆差不到 30 公尺、又不到 2 分鐘就不寫、不發事件：人在店裡沒動時不必每 20 秒寫一次、通知主管一次
 MIN_MOVE_METERS = 30
 MIN_INTERVAL = dt.timedelta(minutes=2)
+# 超過 5 分鐘沒更新：主管看到「最後位置 HH:MM」，頭像變灰
+STALE_AFTER = dt.timedelta(minutes=5)
+# 離某一站 200 公尺內算「在 X 附近」
+NEAR_METERS = 200
+# 最後位置 3 公里內有自己的客戶，才寫是哪一區
+AREA_WITHIN_KM = 3
 
 
 class NotSharing(Exception):
@@ -160,3 +167,92 @@ def state(session: Session, user: AppUser) -> ShareState:
     row = session.get(UserLocation, rep.id)
     manager = session.get(AppUser, rep.manager_id) if rep.manager_id else None
     return ShareState(True, bool(row and row.paused), bool(row and row.denied), manager.name if manager else None, hours)
+
+
+@dataclass(frozen=True)
+class StopPoint:
+    """今天的一站，描述位置用：站號、店名（去掉地區）、座標、跑完了沒。"""
+
+    number: int
+    name: str
+    lat: float
+    lng: float
+    done: bool
+
+
+@dataclass(frozen=True)
+class AreaPoint:
+    """這位業務的一家客戶與它的地區（「內湖區」），寫「最後位置 10:41，在內湖區」用。"""
+
+    lat: float
+    lng: float
+    label: str
+
+
+@dataclass(frozen=True)
+class Seen:
+    """主管看到的位置：一句話，加上地圖上頭像畫在哪（沒有就不畫）、要不要上色。"""
+
+    text: str
+    lat: float | None = None
+    lng: float | None = None
+    at: dt.datetime | None = None
+    live: bool = False  # 分享中而且 5 分鐘內有更新；暫停、沒權限、太久沒更新都是灰的
+
+
+def describe(
+    now: dt.datetime, hours: ShareHours, row: UserLocation | None, stops: list[StopPoint], areas: list[AreaPoint]
+) -> Seen:
+    """依序：下班時間 → 暫停 → 沒有權限 → 今天還沒有位置 → 太久沒更新 → 在某一站附近 → 往下一站途中 → 今天跑完了。
+    位置的 at 不是今天（台北日期）就當作沒有。"""
+    if not within(now, hours):
+        return Seen("下班時間")
+    today = (
+        row is not None and row.at is not None and row.lat is not None and row.lng is not None
+        and _date(row.at) == _date(now)
+    )
+    where = {"lat": row.lat, "lng": row.lng, "at": row.at} if today else {}
+    if row is not None and row.paused:
+        return Seen("暫停分享位置" + (f" · 最後位置 {_clock(row.at)}" if today else ""), **where)
+    if row is not None and row.denied:
+        return Seen("沒有開定位權限", **where)
+    if not today:
+        return Seen("今天還沒有位置")
+    here = (row.lat, row.lng)
+    age = now - row.at
+    if age > STALE_AFTER:
+        area = _nearest(here, areas, AREA_WITHIN_KM)
+        return Seen(f"最後位置 {_clock(row.at)}" + (f"，在{area.label}" if area else ""), **where)
+    ago = _ago(age)
+    near = _nearest(here, stops, NEAR_METERS / 1000)
+    if near:
+        return Seen(f"在{near.name}附近{ago}", live=True, **where)
+    upcoming = next((stop for stop in stops if not stop.done), None)
+    if upcoming:
+        return Seen(f"往第 {upcoming.number} 站{upcoming.name}途中{ago}", live=True, **where)
+    return Seen(f"今天跑完了{ago}", live=True, **where)
+
+
+def area_label(area: str, city: str) -> str:
+    """地區給人看的寫法：直轄市的區加「區」（內湖 → 內湖區）；本來就有「區」的、縣裡的鄉鎮市不加。"""
+    return area if area.endswith("區") or not city.endswith("市") else f"{area}區"
+
+
+def _nearest[P: (StopPoint, AreaPoint)](here: travel.Point, points: list[P], within_km: float) -> P | None:
+    best = min(points, key=lambda p: travel.straight_km(here, (p.lat, p.lng)), default=None)
+    if best is None or travel.straight_km(here, (best.lat, best.lng)) > within_km:
+        return None
+    return best
+
+
+def _ago(age: dt.timedelta) -> str:
+    minutes = int(age.total_seconds() // 60)
+    return f" · {minutes} 分鐘前" if minutes >= 1 else ""
+
+
+def _clock(at: dt.datetime) -> str:
+    return at.astimezone(TAIPEI).strftime("%H:%M")
+
+
+def _date(at: dt.datetime) -> dt.date:
+    return at.astimezone(TAIPEI).date()
