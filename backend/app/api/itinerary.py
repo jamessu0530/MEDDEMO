@@ -4,23 +4,32 @@
 """
 
 import dataclasses
+import logging
 from datetime import date, time
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
+from google.genai import errors
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.orm import Session
 
 from app.api.auth import CurrentUser
 from app.api.route_habits import HabitInput
+from app.config import NotConfigured
 from app.db import get_session
+from app.llm import LLMOutputError
 from app.models import AppUser
 from app.services import itinerary as service
+from app.services import itinerary_ai
 
+log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/itinerary", tags=["itinerary"])
 SessionDep = Annotated[Session, Depends(get_session)]
 NO_ROUTE = "主管沒有自己的拜訪路線"
 STALE = "行程剛被改過，已幫你重新整理"
+NO_AI = "熊熊滾現在沒辦法排行程"
+MISHEARD = "熊熊滾這次沒聽懂，請換個說法再試一次"
+ASKED_STALE = "行程在你問完之後改過了"
 
 
 class Rep(BaseModel):
@@ -189,6 +198,54 @@ class CandidateList(BaseModel):
     full: bool
 
 
+class AskInput(BaseModel):
+    question: str = Field(min_length=1, max_length=300)
+    # 「要選一個」時業務按的那一家，跟原句一起再送一次
+    customer_id: str | None = None
+
+
+class ProposalStop(BaseModel):
+    customer_id: str
+    customer_name: str
+    planned_time: str
+    late_minutes: int
+
+
+class ProposalSide(BaseModel):
+    stops: list[ProposalStop]
+    travel_minutes: int
+    travel_km: float
+
+
+class CustomerName(BaseModel):
+    customer_id: str
+    customer_name: str
+
+
+class ProposalOut(BaseModel):
+    """對照卡。kind：proposal 提案（changed 是 False 時沒有「套用」）、conflict 規則互相衝突排不出來、
+    ask_which 名字對到好幾家要選一個、answer 只回答。一行一行的字都是後端寫好的。"""
+
+    id: int
+    question: str | None
+    kind: Literal["proposal", "conflict", "ask_which", "answer"]
+    summary: str
+    changed: bool
+    before: ProposalSide | None
+    after: ProposalSide | None
+    rule_costs: list[str]
+    late: list[str]
+    habits_added: list[str]
+    habits_disabled: list[str]
+    dropped: list[str]
+    notes: list[str]
+    conflict: list[str]
+    mention: str | None
+    candidates: list[CustomerName]
+    text: str | None
+    estimated: bool
+
+
 def _rep_id(user: AppUser) -> str:
     return user.acts_as_user_id or user.id
 
@@ -205,6 +262,10 @@ def _out(view: service.ItineraryView) -> TodayItinerary:
         precedences=[PrecedenceOut(**dataclasses.asdict(p)) for p in view.precedences],
         skipped_habits=[SkippedHabit(**dataclasses.asdict(h)) for h in view.skipped_habits],
     )
+
+
+def _proposal(proposal) -> ProposalOut:
+    return ProposalOut(id=proposal.id, question=proposal.question, **proposal.result)
 
 
 @router.get("/today", response_model=TodayItinerary)
@@ -295,3 +356,50 @@ def list_candidates(session: SessionDep, user: CurrentUser, order: str | None = 
     )
     session.commit()
     return result
+
+
+@router.post("/today/ask", response_model=ProposalOut)
+def ask_route(session: SessionDep, body: AskInput, user: CurrentUser):
+    """跟熊熊滾說要怎麼排：一次 Gemini 把話翻成操作，回對照卡（還沒套用）。算進用量上限（usage.py）。"""
+    try:
+        proposal = itinerary_ai.ask(session, _rep_id(user), body.question.strip(), body.customer_id)
+    except NotConfigured:
+        raise HTTPException(503, NO_AI) from None
+    except (LLMOutputError, errors.APIError) as exc:
+        log.warning("跟熊熊滾說要怎麼排：Gemini 沒有給可以用的回答：%s", exc)
+        raise HTTPException(502, MISHEARD) from None
+    except LookupError:
+        raise HTTPException(403, NO_ROUTE) from None
+    result = _proposal(proposal)
+    session.commit()
+    return result
+
+
+@router.post("/today/optimize", response_model=ProposalOut)
+def optimize_route(session: SessionDep, user: CurrentUser):
+    """「幫我排順一點」：整條重排，回同一種對照卡。不呼叫 Gemini。"""
+    try:
+        proposal = itinerary_ai.optimize(session, _rep_id(user))
+    except LookupError:
+        raise HTTPException(403, NO_ROUTE) from None
+    result = _proposal(proposal)
+    session.commit()
+    return result
+
+
+@router.post("/proposals/{proposal_id}/apply", response_model=TodayItinerary)
+def apply_proposal(session: SessionDep, proposal_id: int, user: CurrentUser):
+    """套用提案：照存下來的操作在最新的行程上再做一次，版本對不上回 409。"""
+    try:
+        itinerary = itinerary_ai.apply(session, _rep_id(user), proposal_id)
+    except itinerary_ai.ProposalNotFound:
+        raise HTTPException(404, "找不到這個提案") from None
+    except service.VersionConflict:
+        raise HTTPException(409, ASKED_STALE) from None
+    except itinerary_ai.NotApplicable:
+        raise HTTPException(422, "這個提案不能套用") from None
+    except LookupError:
+        raise HTTPException(403, NO_ROUTE) from None
+    # 先提交、放掉列鎖再算畫面：算車程可能要等 Google
+    session.commit()
+    return _out(service.view(session, itinerary))

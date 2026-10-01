@@ -2,11 +2,13 @@
 
 import pytest
 from fastapi.testclient import TestClient
+from route_fakes import FakeLLM
 from sqlalchemy import select, text
 
 from app.main import app
 from app.models import Customer, Itinerary, RouteSignalWeight, RouteSnooze
 from app.services import itinerary as service
+from app.services import itinerary_ai
 
 
 @pytest.fixture
@@ -193,3 +195,47 @@ def test_an_it_reset_between_reading_and_saving_is_a_409(client, auth, monkeypat
         "/api/itinerary/today/feedback", json={"customer_id": first, "action": "pin", "version": 1}, headers=auth(),
     )
     assert response.status_code == 409 and response.json()["detail"] == "行程剛被改過，已幫你重新整理"
+
+
+def test_asking_needs_gemini(client, auth):
+    response = client.post("/api/itinerary/today/ask", json={"question": "幫我排順一點"}, headers=auth())
+    assert response.status_code == 503 and response.json()["detail"] == "熊熊滾現在沒辦法排行程"
+
+
+def test_ask_and_apply_a_proposal(client, auth, monkeypatch):
+    ids = [s["customer_id"] for s in today(client, auth)["stops"]]
+    llm = FakeLLM([{"op": "move", "customer_id": ids[4], "to_position": 2}])
+    monkeypatch.setattr(itinerary_ai, "get_llm", lambda: llm)
+    asked = client.post("/api/itinerary/today/ask", json={"question": "鶯歌店排第二站"}, headers=auth())
+    assert asked.status_code == 200, asked.text
+    proposal = asked.json()
+    assert proposal["kind"] == "proposal" and proposal["changed"] is True and proposal["question"] == "鶯歌店排第二站"
+    assert set(proposal) == {
+        "id", "question", "kind", "summary", "changed", "before", "after", "rule_costs", "late", "habits_added",
+        "habits_disabled", "dropped", "notes", "conflict", "mention", "candidates", "text", "estimated",
+    }
+    assert [s["customer_id"] for s in proposal["after"]["stops"]][:2] == [ids[0], ids[4]]
+    applied = client.post(f"/api/itinerary/proposals/{proposal['id']}/apply", headers=auth())
+    assert applied.status_code == 200, applied.text
+    assert applied.json()["version"] == 2 and applied.json()["stops"][1]["customer_id"] == ids[4]
+    again = client.post(f"/api/itinerary/proposals/{proposal['id']}/apply", headers=auth())
+    assert again.status_code == 409 and again.json()["detail"] == "行程在你問完之後改過了"
+
+
+def test_the_optimize_button_and_proposals_that_cannot_be_applied(client, auth):
+    optimized = client.post("/api/itinerary/today/optimize", headers=auth())
+    assert optimized.status_code == 200, optimized.text
+    proposal = optimized.json()
+    assert proposal["question"] is None and proposal["kind"] == "proposal"
+    response = client.post(f"/api/itinerary/proposals/{proposal['id']}/apply", headers=auth())
+    if proposal["changed"]:
+        assert response.status_code == 200
+    else:
+        assert response.status_code == 422 and response.json()["detail"] == "這個提案不能套用"
+    assert client.post("/api/itinerary/proposals/999999/apply", headers=auth()).status_code == 404
+
+
+def test_managers_cannot_ask_or_apply(client, auth):
+    for path in ("/api/itinerary/today/ask", "/api/itinerary/today/optimize", "/api/itinerary/proposals/1/apply"):
+        response = client.post(path, json={"question": "幫我排順一點"}, headers=auth("M01"))
+        assert response.status_code == 403, path
