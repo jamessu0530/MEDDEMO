@@ -8,6 +8,7 @@ import { getUnseenNoticeCount, listNotices, markNoticeSeen, type ManagerNotice }
 import { listAutoApproved, listOaInbox, type OaFormItem } from "@/api/oa"
 import { AttachmentGallery } from "@/components/attachments/attachment-gallery"
 import { ChannelsLink } from "@/components/channels-link"
+import { RoutesPanel } from "@/components/manager/routes-panel"
 import { MethodCardForm } from "@/components/method-card-form"
 import { Notice } from "@/components/notice"
 import { OaModelNote } from "@/components/oa-model"
@@ -24,12 +25,18 @@ import { tagLabel } from "@/lib/methods"
 import { cn } from "@/lib/utils"
 import type { CustomerLocationState } from "@/pages/customer"
 
-// 主管端的分頁：業務轉來的提問、拜訪提到競品或客訴的風險通報、簽核、自己寫的方法卡。
+// 主管端的分頁：團隊今天的行程（預設）、業務轉來的提問、拜訪提到競品或客訴的風險通報、簽核、自己寫的方法卡。
 // 記在網址上，從客戶檔案回來還停在同一頁
-const VIEWS = ["asks", "notices", "oa", "methods"] as const
+const VIEWS = ["routes", "asks", "notices", "oa", "methods"] as const
 type View = (typeof VIEWS)[number]
-const VIEW_TITLE: Record<View, string> = { asks: "待回覆的提問", notices: "風險通報", oa: "OA 簽核", methods: "方法卡" }
-const VIEW_TAB: Record<View, string> = { asks: "提問", notices: "風險通報", oa: "簽核", methods: "方法卡" }
+const VIEW_TITLE: Record<View, string> = {
+  routes: "團隊行程",
+  asks: "待回覆的提問",
+  notices: "風險通報",
+  oa: "OA 簽核",
+  methods: "方法卡",
+}
+const VIEW_TAB: Record<View, string> = { routes: "行程", asks: "提問", notices: "風險通報", oa: "簽核", methods: "方法卡" }
 type Tab = "open" | "answered"
 type LoadState = { status: "loading" } | { status: "error" } | { status: "ready"; items: Escalation[] }
 type NoticeState = { status: "loading" } | { status: "error" } | { status: "ready"; items: ManagerNotice[] }
@@ -43,11 +50,11 @@ function whose(user: AuthUser) {
   return user.role === "it" ? "全公司" : "你團隊"
 }
 
-/** 主管端（FR-8.4 延伸）：回覆業務轉過來的提問、看風險通報、簽申請單（出差單、優惠、合約）、寫方法卡。主管看自己底下的人，IT 看全公司 */
+/** 主管端（FR-8.4 延伸）：看團隊今天的行程、回覆業務轉過來的提問、看風險通報、簽申請單（出差單、優惠、合約）、寫方法卡。主管看自己底下的人，IT 看全公司 */
 export function ManagerPage() {
   const user = useAuth()?.user
   const [params, setParams] = useSearchParams()
-  const view: View = VIEWS.find((value) => value === params.get("view")) ?? "asks"
+  const view: View = VIEWS.find((value) => value === params.get("view")) ?? "routes"
   const [unseenNotices, setUnseenNotices] = useState(0)
   const [pendingOa, setPendingOa] = useState(0)
 
@@ -68,8 +75,7 @@ export function ManagerPage() {
   }, [view])
 
   function switchView(next: View) {
-    if (next === view) return
-    setParams(next === "asks" ? {} : { view: next }, { replace: true })
+    setParams(next === "routes" ? {} : { view: next }, { replace: true })
   }
 
   return (
@@ -93,7 +99,7 @@ export function ManagerPage() {
           </>
         }
       />
-      <div className="flex border-b bg-background px-4" role="tablist">
+      <div className="flex border-b bg-background px-2" role="tablist">
         {VIEWS.map((value) => (
           <button
             key={value}
@@ -102,7 +108,7 @@ export function ManagerPage() {
             aria-selected={view === value}
             onClick={() => switchView(value)}
             className={cn(
-              "-mb-px flex h-11 flex-1 items-center justify-center gap-1.5 border-b-2 text-sm",
+              "-mb-px flex h-11 min-w-0 flex-1 items-center justify-center gap-1 border-b-2 text-[0.8125rem] whitespace-nowrap",
               view === value ? "border-primary font-medium text-primary" : "border-transparent text-muted-foreground"
             )}
           >
@@ -127,7 +133,9 @@ export function ManagerPage() {
         ))}
       </div>
       <main className="flex flex-1 flex-col gap-3 px-4 pt-3 pb-10">
-        {view === "asks" ? (
+        {view === "routes" ? (
+          <RoutesPanel />
+        ) : view === "asks" ? (
           <EscalationsPanel />
         ) : view === "notices" ? (
           <NoticesPanel onSeen={() => setUnseenNotices((count) => Math.max(0, count - 1))} />
@@ -438,7 +446,7 @@ function OaInboxPanel() {
               setAttempt((n) => n + 1)
             },
           }}
-          secondary={{ label: "回提問", onClick: () => navigate("/manager") }}
+          secondary={{ label: "回提問", onClick: () => navigate("/manager?view=asks") }}
         />
       )}
       {state.status === "ready" && state.items.length === 0 && (
@@ -551,7 +559,7 @@ function MethodsPanel() {
               setAttempt((n) => n + 1)
             },
           }}
-          secondary={{ label: "回提問", onClick: () => navigate("/manager") }}
+          secondary={{ label: "回提問", onClick: () => navigate("/manager?view=asks") }}
         />
       )}
       {state.status === "ready" && state.cards.length === 0 && (
