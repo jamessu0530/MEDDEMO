@@ -1,11 +1,13 @@
-import { jsonBody, request } from "@/api/client"
+import type { Attachment } from "@/api/attachments"
+import { jsonBody, request, upload } from "@/api/client"
 
 export type AskKind = "data" | "knowledge"
 export type AskStatus = "queued" | "running" | "answered" | "no_evidence" | "not_converged" | "failed"
 
 export type TraceItem = {
   round: number
-  step: "sql" | "search" | "rewrite" | "web" | "answer" | "stop"
+  // attachment：先看懂提問附的檔案（AI 寫的說明放在 decision）
+  step: "attachment" | "sql" | "search" | "rewrite" | "web" | "answer" | "stop"
   sql: string | null
   search_query: string | null
   row_count: number | null
@@ -48,12 +50,20 @@ export type Ask = {
   escalation_id: number | null
   // 數字查詢的答案或查詢結果裡提到、而且是登入者負責的客戶，可以一鍵排進今日路線；知識查詢或沒有就是 []
   customers: { id: string; name: string }[]
+  // 提問附的照片或 PDF
+  attachment: Attachment | null
 }
 
 export const isFinished = (ask: Ask) => ask.status !== "queued" && ask.status !== "running"
 
-export function createAsk(kind: AskKind, question: string) {
-  return request<Ask>("/api/asks", jsonBody("POST", { kind, question }))
+/** 提問。附了檔案（拍產品盒、仿單、競品海報）就用 multipart 上傳 */
+export function createAsk(kind: AskKind, question: string, file?: File) {
+  if (!file) return request<Ask>("/api/asks", jsonBody("POST", { kind, question }))
+  const form = new FormData()
+  form.append("kind", kind)
+  form.append("question", question)
+  form.append("file", file, file.name)
+  return upload<Ask>("/api/asks", form)
 }
 
 export function getAsk(id: string, signal?: AbortSignal) {

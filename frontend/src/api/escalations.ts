@@ -1,3 +1,4 @@
+import type { Attachment } from "@/api/attachments"
 import { jsonBody, request } from "@/api/client"
 
 // 查不到答案時轉給主管的提問（FR-8.4 延伸）。system_answer 是系統當時的回覆，主管回覆前看得到業務卡在哪裡
@@ -13,6 +14,8 @@ export type Escalation = {
   answered_at: string | null
   seen_at: string | null
   created_at: string
+  // 業務提問時附的照片或 PDF
+  attachment: Attachment | null
 }
 
 export function listEscalations(status?: Escalation["status"], signal?: AbortSignal) {

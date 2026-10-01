@@ -26,15 +26,18 @@ function sleep(ms: number, signal: AbortSignal) {
   })
 }
 
-/** 回傳查完的 Ask；中途被 abort、或後端明確說不行（4xx）會丟出，呼叫端決定怎麼顯示 */
+/** 回傳查完的 Ask；中途被 abort、或後端明確說不行（4xx）會丟出，呼叫端決定怎麼顯示。
+ * file：打字提問附的檔案；utteranceId：那句提問，送出後把後端回的附件（簽過名的網址）掛上去顯示縮圖 */
 export async function runAsk(
   conversation: Conversation,
   entryId: number,
   kind: AskKind,
   question: string,
-  signal: AbortSignal
+  signal: AbortSignal,
+  options: { file?: File; utteranceId?: number } = {}
 ): Promise<Ask> {
-  let ask = await createAsk(kind, question)
+  let ask = await createAsk(kind, question, options.file)
+  if (options.utteranceId !== undefined && ask.attachment) conversation.attach(options.utteranceId, ask.attachment)
   conversation.replace(entryId, { ask })
   while (!isFinished(ask)) {
     await sleep(POLL_MS, signal)

@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.orm import Session
 from starlette.datastructures import UploadFile
 
+from app.api.attachments import AttachmentItem, attachment_item
 from app.api.auth import CurrentUser, ItUser
 from app.db import get_session
 from app.models import MESSAGE_MAX_LENGTH, AppUser, Attachment, ChannelMessage
@@ -36,18 +37,6 @@ class ChannelItem(BaseModel):
     audience: str
     unread: int
     last_message_at: dt.datetime | None
-
-
-class AttachmentItem(BaseModel):
-    id: int
-    kind: str
-    filename: str
-    width: int | None
-    height: int | None
-    page_count: int | None
-    # 簽過名的網址，<img> 直接用；PDF 沒有縮圖
-    url: str
-    thumb_url: str | None
 
 
 class MessageItem(BaseModel):
@@ -116,21 +105,13 @@ def _items(session: Session, user: AppUser, infos: list[ChannelInfo]) -> list[Ch
     ]
 
 
-def _attachment(attachment: Attachment, user: AppUser) -> AttachmentItem:
-    url, thumb_url = attachments.urls(attachment, user)
-    return AttachmentItem(
-        id=attachment.id, kind=attachment.kind, filename=attachment.filename, width=attachment.width,
-        height=attachment.height, page_count=attachment.page_count, url=url, thumb_url=thumb_url,
-    )
-
-
 def _message(
     message: ChannelMessage, author_name: str | None, user: AppUser, files: list[Attachment] | None = None
 ) -> MessageItem:
     return MessageItem(
         id=message.id, kind=message.kind, author_id=message.author_id, author_name=author_name,
         body=message.body, created_at=message.created_at, mine=message.author_id == user.id,
-        attachments=[_attachment(a, user) for a in files or []], deleted=message.deleted_at is not None,
+        attachments=[attachment_item(a, user) for a in files or []], deleted=message.deleted_at is not None,
     )
 
 

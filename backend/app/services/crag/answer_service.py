@@ -55,11 +55,11 @@ import asyncio
 import logging
 import re
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from app.llm import LLM
+from app.llm import LLM, Media
 from app.services.crag.cannot_answer import (
     CANNOT_ANSWER_MARKERS,
     NO_ANSWER_SENTINEL,
@@ -257,8 +257,12 @@ class RagAnswerService:
         crag_rewrite_budget_seconds: float = DEFAULT_CRAG_REWRITE_BUDGET_SECONDS,
         speculative_generate: bool = True,
         total_timeout_seconds: float = DEFAULT_RAG_ANSWER_TIMEOUT_SECONDS,
+        media: Sequence[Media] = (),
     ) -> None:
         self._llm = llm
+        # 提問附的照片或 PDF：只在產生答案時給模型看。評分、改寫問法讀的是接在問題後面的說明
+        # （knowledge.with_note），每一步都送原檔太慢也太貴
+        self.media = tuple(media)
         self.retriever = retriever
         self.reranker = reranker
         self.rerank_top_n = rerank_top_n
@@ -709,7 +713,9 @@ class RagAnswerService:
 
     async def _generate_answer(self, question: str, docs: list[Document]) -> str:
         context = wrap_context(self._build_context(docs))
-        answer_text = await self._llm.atext(system=ANSWER_SYSTEM, prompt=build_rag_prompt(question, context), effort="medium")
+        answer_text = await self._llm.atext(
+            system=ANSWER_SYSTEM, prompt=build_rag_prompt(question, context), effort="medium", media=self.media
+        )
         # 空字串＝答不出來（LLM.atext 被擋或沒有候選回應時的約定，見 app.llm）。
         # 照搬 CARE：不能把預設文案當答案送出，直接給拒答標記讓 _is_cannot_answer 接手。
         return answer_text or NO_ANSWER_SENTINEL

@@ -7,6 +7,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Response
+from pydantic import BaseModel
 from sqlalchemy.orm import Session, undefer
 
 from app.db import get_session
@@ -17,6 +18,28 @@ router = APIRouter(prefix="/api/attachments", tags=["attachments"])
 SessionDep = Annotated[Session, Depends(get_session)]
 # 權限每次都查，快取短一點：撤回之後，已經載入的畫面最多五分鐘內也拿不到新的
 CACHE = "private, max-age=300"
+
+
+class AttachmentItem(BaseModel):
+    """頻道訊息、提問回傳的附件。"""
+
+    id: int
+    kind: str
+    filename: str
+    width: int | None
+    height: int | None
+    page_count: int | None
+    # 簽過名的網址，<img> 直接用；PDF 沒有縮圖
+    url: str
+    thumb_url: str | None
+
+
+def attachment_item(attachment: Attachment, user: AppUser) -> AttachmentItem:
+    url, thumb_url = attachments.urls(attachment, user)
+    return AttachmentItem(
+        id=attachment.id, kind=attachment.kind, filename=attachment.filename, width=attachment.width,
+        height=attachment.height, page_count=attachment.page_count, url=url, thumb_url=thumb_url,
+    )
 
 
 def _load(session: Session, attachment_id: int, sig: str, column: str) -> Attachment:

@@ -10,6 +10,7 @@ import { pinCustomers, readFeedback } from "@/lib/route-feedback"
 import { cn } from "@/lib/utils"
 
 const STEP_LABEL: Record<TraceItem["step"], string> = {
+  attachment: "看附件",
   sql: "查詢",
   search: "檢索",
   rewrite: "改寫問法",

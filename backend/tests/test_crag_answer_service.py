@@ -1025,7 +1025,7 @@ async def test_speculative_generate_starts_before_grading_finishes():
     grader.grade = AsyncMock(side_effect=_slow_grade)
 
     class _OrderTrackingLLM(TextLLM):
-        async def atext(self, *, system, prompt, effort="medium"):
+        async def atext(self, *, system, prompt, effort="medium", media=()):
             order.append("generate_start")
             return await super().atext(system=system, prompt=prompt, effort=effort)
 
@@ -1105,7 +1105,7 @@ async def test_speculative_disabled_generates_sequentially():
     grader.grade = AsyncMock(side_effect=_slow_grade)
 
     class _OrderTrackingLLM(TextLLM):
-        async def atext(self, *, system, prompt, effort="medium"):
+        async def atext(self, *, system, prompt, effort="medium", media=()):
             order.append("generate_start")
             return await super().atext(system=system, prompt=prompt, effort=effort)
 
@@ -1280,7 +1280,7 @@ async def test_timeout_cancels_in_flight_speculative_generation():
     cancelled = asyncio.Event()
 
     class _HangingLLM(TextLLM):
-        async def atext(self, *, system, prompt, effort="medium"):
+        async def atext(self, *, system, prompt, effort="medium", media=()):
             try:
                 await asyncio.sleep(5)
             except asyncio.CancelledError:

@@ -6,12 +6,20 @@
  */
 
 import { tidyTranscript } from "@/ask/transcript"
+import type { Attachment } from "@/api/attachments"
 import type { Ask, AskKind } from "@/api/asks"
 
 export type UtteranceSource = "voice" | "typed"
 
-/** 業務或 AI 說的一句話。source 決定要不要標「語音辨識，僅供參考」——打字的是原文，不必標 */
-export type Utterance = { id: number; kind: "user" | "model"; source: UtteranceSource; text: string }
+/** 業務或 AI 說的一句話。source 決定要不要標「語音辨識，僅供參考」——打字的是原文，不必標。
+ * attachment：打字提問附的照片或 PDF，送出後後端回了才有（要用後端簽過名的網址） */
+export type Utterance = {
+  id: number
+  kind: "user" | "model"
+  source: UtteranceSource
+  text: string
+  attachment?: Attachment
+}
 
 /** 一次查詢：打字問答與語音的工具呼叫長得一樣，所以共用同一種 entry */
 export type ToolRun = {
@@ -33,6 +41,7 @@ export type Conversation = {
   addToolRun: (askKind: AskKind | null, question: string) => number
   appendText: (id: number, chunk: string) => void
   replace: (id: number, patch: Partial<Omit<ToolRun, "id" | "kind">>) => void
+  attach: (id: number, attachment: Attachment) => void
 }
 
 export function createConversation(): Conversation {
@@ -76,6 +85,12 @@ export function createConversation(): Conversation {
       const target = entries.find((entry) => entry.id === id)
       if (!target || target.kind === "tool") return
       commit(entries.map((e) => (e.id === id && e.kind !== "tool" ? { ...e, text: tidyTranscript(e.text + chunk) } : e)))
+    },
+
+    attach: (id, attachment) => {
+      const target = entries.find((entry) => entry.id === id)
+      if (!target || target.kind !== "user") return
+      commit(entries.map((e) => (e.id === id && e.kind === "user" ? { ...e, attachment } : e)))
     },
 
     replace: (id, patch) => {

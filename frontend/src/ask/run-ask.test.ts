@@ -52,4 +52,17 @@ describe("runAsk", () => {
     await expect(result).rejects.toThrow("找不到這個提問")
     expect(api.getAsk).toHaveBeenCalledTimes(1)
   })
+
+  it("附了檔案就交給 createAsk，後端回的附件掛到那一句提問上", async () => {
+    const attachment = { id: 3, kind: "image", filename: "box.jpg", url: "/api/attachments/3?sig=x", thumb_url: null }
+    api.createAsk.mockResolvedValue({ ...ask("answered"), attachment })
+    const conversation = createConversation()
+    const utteranceId = conversation.addUtterance("user", "typed", "這個賣多少")
+    const entryId = conversation.addToolRun("data", "這個賣多少")
+    const file = new File(["x"], "box.jpg", { type: "image/jpeg" })
+    await runAsk(conversation, entryId, "data", "這個賣多少", new AbortController().signal, { file, utteranceId })
+    expect(api.createAsk).toHaveBeenCalledWith("data", "這個賣多少", file)
+    const first = conversation.getSnapshot()[0]
+    expect(first.kind === "user" && first.attachment).toEqual(attachment)
+  })
 })

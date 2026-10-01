@@ -2,7 +2,7 @@
 
 import asyncio
 import contextvars
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -10,7 +10,7 @@ from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.llm import LLM
+from app.llm import LLM, Media
 from app.services.crag.answer_service import DEFAULT_RAG_ANSWER_TIMEOUT_SECONDS, OnStep, RagAnswerService
 from app.services.crag.answer_service import NO_EVIDENCE as KB_NO_EVIDENCE
 from app.services.crag.fail_codes import FailCode
@@ -93,7 +93,13 @@ class KnowledgeAnswer:
     reason: str | None = None  # 刻意不上網的原因：medical／internal（見 NO_WEB）
 
 
-def build_service(engine: Engine, llm: LLM, on_step: OnStep, embed_query: Callable[[str], list[float]] | None) -> RagAnswerService:
+def build_service(
+    engine: Engine,
+    llm: LLM,
+    on_step: OnStep,
+    embed_query: Callable[[str], list[float]] | None,
+    media: Sequence[Media] = (),
+) -> RagAnswerService:
     config = settings()
     retriever = HybridRetriever(vector_retriever=VectorRetriever(engine, embed_query), text_retriever=KeywordRetriever(engine))
     reranker = CohereReranker(api_key=config.cohere_api_key) if config.cohere_api_key else VectorScoreReranker()
@@ -101,7 +107,7 @@ def build_service(engine: Engine, llm: LLM, on_step: OnStep, embed_query: Callab
     return RagAnswerService(
         llm, retriever, reranker,
         grader=LLMRetrievalGrader(llm), rewriter=LLMQueryRewriter(llm),
-        web_search=web, link_checker=_link_checker, on_step=on_step,
+        web_search=web, link_checker=_link_checker, on_step=on_step, media=media,
     )
 
 
@@ -120,10 +126,26 @@ def _went_to_web(outcome) -> bool:
     return outcome.fail_code == FailCode.MODEL_REFUSE and outcome.route == "web"
 
 
-def answer_knowledge(session: Session, llm: LLM, question: str, on_step: OnStep, embed_query=None) -> KnowledgeAnswer:
-    service = build_service(session.get_bind(), llm, on_step, embed_query)
+def with_note(question: str, note: str | None) -> str:
+    """提問附了檔案：AI 寫的說明接在問題後面。關鍵字檢索、評分、改寫問法讀的都是這段文字，
+    檔案上讀出來的品名、標語才派得上用場；原檔只在產生答案時給模型看（RagAnswerService 的 media）。"""
+    return f"{question}\n（業務附了一個檔案：{note}）" if note else question
+
+
+def answer_knowledge(
+    session: Session,
+    llm: LLM,
+    question: str,
+    on_step: OnStep,
+    embed_query=None,
+    *,
+    media: Sequence[Media] = (),
+    note: str | None = None,
+) -> KnowledgeAnswer:
+    """embed_query：提問附了檔案時，呼叫端要給「文字 + 這個檔案」合成向量的版本（Embedder.embed_query 的 media）。"""
+    service = build_service(session.get_bind(), llm, on_step, embed_query, media)
     # 每次一份新的 contextvars，跟 asyncio.run 一樣；不給的話 Runner 讓連續的 run 共用同一份
-    outcome = _event_loop_runner().run(service.answer(question), context=contextvars.copy_context())
+    outcome = _event_loop_runner().run(service.answer(with_note(question, note)), context=contextvars.copy_context())
     if outcome.status == "failed":
         return KnowledgeAnswer("failed", None, [], outcome.route, FAILED_MESSAGES.get(str(outcome.fail_code), "查詢失敗"))
     if outcome.status == "no_evidence":

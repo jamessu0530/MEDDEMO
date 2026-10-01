@@ -3,16 +3,21 @@
 import json
 import logging
 import uuid
+from dataclasses import dataclass
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from starlette.datastructures import UploadFile
 
+from app.api.attachments import AttachmentItem, attachment_item
 from app.api.auth import CurrentUser
 from app.db import get_session
-from app.models import AppUser, AskRecord, Customer, Escalation, QueryTrace
+from app.models import AppUser, AskRecord, Attachment, Customer, Escalation, QueryTrace
+from app.services import attachments
 from app.services.scope import SHARING_LEVEL, Scope
 from app.tasks import visit_queue
 
@@ -25,6 +30,37 @@ class AskInput(BaseModel):
     kind: Literal["data", "knowledge"]
     # 業務口語提問不會超過 500 字；再長多半是誤貼了一大段文字
     question: str = Field(min_length=1, max_length=500)
+
+
+@dataclass(frozen=True)
+class AskForm:
+    body: AskInput
+    # (檔名, 內容)；JSON 提問沒有檔案
+    file: tuple[str | None, bytes] | None
+
+
+def _invalid(exc: ValueError) -> RequestValidationError:
+    errors = exc.errors() if isinstance(exc, ValidationError) else [{"msg": "格式不對", "loc": ("body",)}]
+    return RequestValidationError(errors)
+
+
+async def ask_form(request: Request) -> AskForm:
+    """提問可以送 JSON，也可以送 multipart（kind、question 加 1 個檔案：拍產品盒、仿單、競品海報來問）。"""
+    if not request.headers.get("content-type", "").startswith("multipart/form-data"):
+        try:
+            return AskForm(AskInput.model_validate(await request.json()), None)
+        except ValueError as exc:
+            raise _invalid(exc) from None
+    form = await request.form(max_files=attachments.MAX_PER_ASK + 1, max_fields=5)
+    uploads = [item for item in form.getlist("file") if isinstance(item, UploadFile)]
+    if len(uploads) > attachments.MAX_PER_ASK:
+        raise HTTPException(422, "一次提問只能附 1 個檔案")
+    try:
+        body = AskInput.model_validate({"kind": form.get("kind"), "question": form.get("question")})
+    except ValueError as exc:
+        raise _invalid(exc) from None
+    file = (uploads[0].filename, await uploads[0].read(attachments.MAX_FILE_BYTES + 1)) if uploads else None
+    return AskForm(body, file)
 
 
 class TraceItem(BaseModel):
@@ -53,6 +89,8 @@ class AskDetail(BaseModel):
     escalation_id: int | None
     # 答案或查詢結果裡提到、而且是提問者自己看得到的客戶。畫面上「排入今天的路線」用
     customers: list[CustomerRef] = Field(default_factory=list)
+    # 提問附的照片或 PDF
+    attachment: AttachmentItem | None = None
 
 
 # 答案裡最多抓幾家：原型的例子是「衰退集中 3 家連鎖」；一次排超過一天的量（5 家）也跑不完
@@ -86,6 +124,7 @@ def mentioned_customers(session: Session, record: AskRecord, user: AppUser) -> l
 def _detail(session: Session, record: AskRecord, user: AppUser) -> AskDetail:
     trace = session.scalars(select(QueryTrace).where(QueryTrace.ask_id == record.id).order_by(QueryTrace.id))
     escalation = session.scalar(select(Escalation.id).where(Escalation.ask_id == record.id))
+    attachment = session.scalar(select(Attachment).where(Attachment.ask_id == record.id))
     return AskDetail(
         id=record.id,
         kind=record.kind,
@@ -100,6 +139,7 @@ def _detail(session: Session, record: AskRecord, user: AppUser) -> AskDetail:
         ],
         escalation_id=escalation,
         customers=mentioned_customers(session, record, user),
+        attachment=attachment_item(attachment, user) if attachment else None,
     )
 
 
@@ -112,12 +152,21 @@ def _load(session: Session, ask_id: str, user: AppUser) -> AskRecord:
 
 
 @router.post("", status_code=202, response_model=AskDetail)
-def create_ask(session: SessionDep, body: AskInput, user: CurrentUser):
-    """提問。查詢要跑好幾輪、呼叫好幾次模型，所以放到背景做，畫面輪詢 GET 看進度（NFR-5）。"""
+def create_ask(session: SessionDep, form: Annotated[AskForm, Depends(ask_form)], user: CurrentUser):
+    """提問。查詢要跑好幾輪、呼叫好幾次模型，所以放到背景做，畫面輪詢 GET 看進度（NFR-5）。
+    附的檔案先檢查完才建提問；AI 看檔案、算向量在背景工作的第一步做。"""
+    body = form.body
+    try:
+        prepared = attachments.prepare(form.file[1], form.file[0]) if form.file else None
+    except attachments.Rejected as exc:
+        raise HTTPException(exc.status, str(exc)) from None
     record = AskRecord(
         id=uuid.uuid4().hex, user_id=user.id, kind=body.kind, question=body.question.strip(), status="queued"
     )
     session.add(record)
+    session.flush()
+    if prepared:
+        attachments.add(session, user, prepared, context=record.question, ask_id=record.id)
     session.commit()
     try:
         visit_queue().enqueue("app.services.asks.run_ask", record.id)

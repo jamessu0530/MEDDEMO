@@ -85,4 +85,19 @@ describe("conversation", () => {
     c.addUtterance("user", "typed", "問題")
     expect(c.getSnapshot()).toBe(c.getSnapshot())
   })
+
+  it("打字提問的附件掛在那一句上，掛不到工具卡或 AI 的話", () => {
+    const c = createConversation()
+    const user = c.addUtterance("user", "typed", "這個上個月賣多少")
+    const tool = c.addToolRun("data", "這個上個月賣多少")
+    const model = c.addUtterance("model", "voice", "好")
+    const file = { id: 7, kind: "image", filename: "box.jpg" } as unknown as import("@/api/attachments").Attachment
+    c.attach(user, file)
+    c.attach(tool, file)
+    c.attach(model, file)
+    const [first, second, third] = c.getSnapshot() as Entry[]
+    expect(first.kind === "user" && first.attachment).toBe(file)
+    expect("attachment" in second).toBe(false)
+    expect(third.kind === "model" && third.attachment).toBeFalsy()
+  })
 })

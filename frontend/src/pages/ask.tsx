@@ -5,6 +5,7 @@ import { type Ask, type AskKind } from "@/api/asks"
 import { askSessionFor } from "@/ask/ask-session"
 import { useConversation } from "@/ask/use-conversation"
 import { EntryView } from "@/components/ask/entry-view"
+import { AttachButton, DraftFiles } from "@/components/attachments/draft-files"
 // type-only：只拿型別，不會把 VoiceDock（跟著它的 src/voice）拉進主 chunk
 import type { VoiceSession } from "@/components/ask/voice-dock"
 import { BottomNav } from "@/components/bottom-nav"
@@ -12,6 +13,7 @@ import { Mascot } from "@/components/mascot"
 import { Notice } from "@/components/notice"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { addDraftFiles, shrinkPhoto, type DraftFile } from "@/lib/attachments"
 import { useAuth } from "@/lib/auth"
 import { askScopeText } from "@/lib/scope"
 import { cn } from "@/lib/utils"
@@ -43,6 +45,9 @@ export function AskPage() {
   const sending = useSyncExternalStore(asking.subscribe, asking.isBusy)
   const [kind, setKind] = useState<AskKind>("data")
   const [question, setQuestion] = useState("")
+  // 打字提問可以附一個檔案（拍產品盒、仿單、競品海報）；語音不能附
+  const [files, setFiles] = useState<DraftFile[]>([])
+  const [pickError, setPickError] = useState<string | null>(null)
   const [voiceOn, setVoiceOn] = useState(false)
   const [session, setSession] = useState<VoiceSession | null>(null)
   // React 的 lazy 會把失敗的那一次記在元件身上，之後只會再丟同一個錯；要讓「請稍後再試」是真的，重試就得換一顆新的
@@ -69,8 +74,18 @@ export function AskPage() {
       session.sendText(trimmed)
       return
     }
+    const file = files[0]?.file
+    setFiles([])
+    setPickError(null)
     // 送出與輪詢都在 asking 裡跑：這一頁卸載了也照樣查完，錯誤寫在那一格卡片上
-    void asking.ask(kind, trimmed)
+    void (file ? shrinkPhoto(file) : Promise.resolve(undefined)).then((ready) => asking.ask(kind, trimmed, ready))
+  }
+
+  function pick(picked: File[]) {
+    // 只能附一個：再選就換掉原本那個
+    const result = addDraftFiles([], picked.slice(0, 1), 1)
+    if (result.files.length) setFiles(result.files)
+    setPickError(result.error)
   }
 
   const replaceAsk = (id: number, patch: { ask: Ask }) => conversation.replace(id, patch)
@@ -182,14 +197,17 @@ export function AskPage() {
           {/* 數字查詢只查得到登入者看得到的客戶；規定題查的是公司文件，不分客戶，不必提。
               會話活著時是模型自己選工具，這行文字才對不上；連線中或掛斷後打字仍走這條路，要照樣說清楚查得到誰 */}
           {user && kind === "data" && !session && <p className="px-1 text-[11px] text-muted-foreground">{askScopeText(user)}</p>}
+          {pickError && <p className="px-1 text-[11px] text-destructive">{pickError}</p>}
+          {!session && <DraftFiles files={files} onRemove={() => setFiles([])} disabled={sending} />}
           <div className="flex gap-2">
+            {!session && <AttachButton onPick={pick} disabled={sending} multiple={false} />}
             <Input
               value={question}
               onChange={(event) => {
                 setQuestion(event.target.value)
                 session?.noteActivity()
               }}
-              placeholder={session ? "也可以打字問，AI 會用講的回答" : mode.placeholder}
+              placeholder={session ? "也可以打字問，AI 會用講的回答" : files.length ? "問這個檔案的什麼？" : mode.placeholder}
               aria-label="輸入問題"
               className="h-11 bg-card"
             />

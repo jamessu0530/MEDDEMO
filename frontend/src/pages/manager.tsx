@@ -6,6 +6,7 @@ import { listEscalations, replyEscalation, type Escalation } from "@/api/escalat
 import { customerTypeLabel, listMyMethods, updateMethod, type MethodCard } from "@/api/methods"
 import { getUnseenNoticeCount, listNotices, markNoticeSeen, type ManagerNotice } from "@/api/notices"
 import { listAutoApproved, listOaInbox, type OaFormItem } from "@/api/oa"
+import { AttachmentGallery } from "@/components/attachments/attachment-gallery"
 import { ChannelsLink } from "@/components/channels-link"
 import { MethodCardForm } from "@/components/method-card-form"
 import { Notice } from "@/components/notice"
@@ -217,6 +218,7 @@ function EscalationsPanel() {
               {formatDateTime(item.created_at)} · {item.kind === "data" ? "數字查詢" : "知識查詢"} · 單號 #{item.id}
             </p>
             <p className="mt-1.5 text-sm font-medium">{item.question}</p>
+            {item.attachment && <AttachmentGallery attachments={[item.attachment]} className="mt-2 w-56 max-w-full" />}
             {item.system_answer && (
               <p className="mt-2 line-clamp-4 rounded-lg bg-muted px-3 py-2 text-xs leading-relaxed text-muted-foreground">
                 系統的回覆：{item.system_answer}

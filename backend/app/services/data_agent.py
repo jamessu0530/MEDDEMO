@@ -6,14 +6,14 @@
 
 import datetime as dt
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
 from sqlalchemy import Engine
 from sqlalchemy.exc import DBAPIError
 
-from app.llm import LLM
+from app.llm import LLM, Media
 from app.services.scope import Scope
 from app.services.sql_executor import QueryRejected, QueryResult, describe_views, run_readonly
 
@@ -92,8 +92,11 @@ class DataAnswer:
 OnStep = Callable[..., None]
 
 
-def _render(question: str, today: dt.date, rounds: list[Round]) -> str:
+def _render(question: str, today: dt.date, rounds: list[Round], note: str | None = None) -> str:
     parts = [f"今天是 {today.isoformat()}。", f"問題：{question}"]
+    if note:
+        # 例如拍了產品盒問「這個上個月賣多少」：品名要從檔案讀，再拿去查
+        parts.append(f"業務附了一個檔案（放在最前面），內容大致是：{note}")
     for number, rnd in enumerate(rounds, start=1):
         parts.append(f"\n第 {number} 輪查詢（原因：{rnd.reason}）\n{rnd.sql}")
         if rnd.error:
@@ -115,13 +118,25 @@ def _evidence(rounds: list[Round]) -> dict[str, Any]:
 
 
 def answer_data(
-    engine: Engine, llm: LLM, question: str, today: dt.date, on_step: OnStep, scope: Scope | None = None
+    engine: Engine,
+    llm: LLM,
+    question: str,
+    today: dt.date,
+    on_step: OnStep,
+    scope: Scope | None = None,
+    *,
+    media: Sequence[Media] = (),
+    note: str | None = None,
 ) -> DataAnswer:
-    """scope：只查得到這個範圍的客戶（見 services/scope.py）。沒給就不過濾，只有評測這樣用。"""
+    """scope：只查得到這個範圍的客戶（見 services/scope.py）。沒給就不過濾，只有評測這樣用。
+    media、note：提問附的檔案與 AI 寫的說明，每一輪都一起給模型看。"""
     system = SYSTEM.format(views=describe_views(engine))
     rounds: list[Round] = []
+    note = note or ("（看不出內容，請直接看檔案）" if media else None)
     for number in range(1, MAX_ROUNDS + 1):
-        step = llm.json(system=system, prompt=_render(question, today, rounds), schema=STEP_SCHEMA, effort=EFFORT)
+        step = llm.json(
+            system=system, prompt=_render(question, today, rounds, note), schema=STEP_SCHEMA, effort=EFFORT, media=media
+        )
         if step["action"] == "answer" and step.get("answer"):
             on_step(number, "answer", decision=step["reason"])
             return DataAnswer("answered", step["answer"], _evidence(rounds))
@@ -142,8 +157,8 @@ def answer_data(
             decision=rnd.reason if not rnd.error else f"{rnd.reason}（{rnd.error}）",
         )
 
-    prompt = _render(question, today, rounds) + "\n\n" + FINAL_INSTRUCTION.format(rounds=MAX_ROUNDS)
-    final = llm.json(system=system, prompt=prompt, schema=FINAL_SCHEMA, effort=EFFORT)
+    prompt = _render(question, today, rounds, note) + "\n\n" + FINAL_INSTRUCTION.format(rounds=MAX_ROUNDS)
+    final = llm.json(system=system, prompt=prompt, schema=FINAL_SCHEMA, effort=EFFORT, media=media)
     evidence = _evidence(rounds)
     if final["answerable"]:
         on_step(MAX_ROUNDS, "answer", decision="查滿三輪後整理出答案")

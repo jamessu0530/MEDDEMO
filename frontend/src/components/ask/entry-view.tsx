@@ -1,6 +1,7 @@
 import { isFinished, type Ask } from "@/api/asks"
 import type { Entry, ToolRun } from "@/ask/conversation"
 import { AskAnswer, TracePanel } from "@/components/ask/ask-result"
+import { AttachmentGallery } from "@/components/attachments/attachment-gallery"
 import { Mascot } from "@/components/mascot"
 
 const TOOL_LABEL = { data: "查數字", knowledge: "查規定" }
@@ -18,6 +19,7 @@ export function EntryView({
     return (
       <div className="ml-10 flex flex-col items-end gap-1 self-end">
         <p className="rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-sm text-primary-foreground">{entry.text}</p>
+        {entry.attachment && <AttachmentGallery attachments={[entry.attachment]} className="w-56 max-w-full items-end" />}
         {entry.source === "voice" && <p className="text-[11px] text-muted-foreground">語音辨識，僅供參考</p>}
       </div>
     )

@@ -95,8 +95,8 @@ def use_web(monkeypatch, web_client):
     """讓 build_service 組出來的服務改用假的網搜（測試環境沒有 Firecrawl 金鑰，預設不上網）。"""
     real_build = knowledge.build_service
 
-    def with_fake_web(engine_, llm_, on_step, embed_query):
-        service = real_build(engine_, llm_, on_step, embed_query)
+    def with_fake_web(engine_, llm_, on_step, embed_query, media=()):
+        service = real_build(engine_, llm_, on_step, embed_query, media)
         service.web_search = WebSearchService(llm_, web_client, link_checker=None)
         return service
 
@@ -424,8 +424,8 @@ def test_a_slow_embedding_does_not_hold_up_the_answer_after_its_leg_times_out(en
 
     real_build = knowledge.build_service
 
-    def with_short_leg_timeout(engine_, llm_, on_step, embed_query):
-        service = real_build(engine_, llm_, on_step, embed_query)
+    def with_short_leg_timeout(engine_, llm_, on_step, embed_query, media=()):
+        service = real_build(engine_, llm_, on_step, embed_query, media)
         service.retriever.leg_timeout_seconds = 0.2
         return service
 

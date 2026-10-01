@@ -12,9 +12,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.api.attachments import AttachmentItem, attachment_item
 from app.api.auth import CurrentUser, ManagerUser
 from app.db import get_session
-from app.models import AppUser, AskRecord, Escalation
+from app.models import AppUser, AskRecord, Attachment, Escalation
 from app.services.escalations import Asker, visible_to
 
 router = APIRouter(prefix="/api/escalations", tags=["escalations"])
@@ -34,6 +35,8 @@ class EscalationItem(BaseModel):
     answered_at: dt.datetime | None
     seen_at: dt.datetime | None
     created_at: dt.datetime
+    # 業務提問時附的照片或 PDF：主管回覆前要看得到業務問的是哪一張
+    attachment: AttachmentItem | None = None
 
 
 class ReplyInput(BaseModel):
@@ -45,7 +48,7 @@ class Unseen(BaseModel):
     count: int
 
 
-def _items(session: Session, *criteria: Any) -> list[EscalationItem]:
+def _items(session: Session, user: AppUser, *criteria: Any) -> list[EscalationItem]:
     rows = session.execute(
         select(Escalation, AskRecord.kind, AskRecord.answer, AppUser.name)
         .join(AskRecord, AskRecord.id == Escalation.ask_id)
@@ -53,7 +56,10 @@ def _items(session: Session, *criteria: Any) -> list[EscalationItem]:
         .outerjoin(AppUser, AppUser.id == Escalation.answered_by)
         .where(*criteria)
         .order_by(Escalation.created_at.desc(), Escalation.id.desc())
-    )
+    ).all()
+    files = {
+        a.ask_id: a for a in session.scalars(select(Attachment).where(Attachment.ask_id.in_([e.ask_id for e, *_ in rows])))
+    }
     return [
         EscalationItem(
             id=e.id,
@@ -67,13 +73,14 @@ def _items(session: Session, *criteria: Any) -> list[EscalationItem]:
             answered_at=e.answered_at,
             seen_at=e.seen_at,
             created_at=e.created_at,
+            attachment=attachment_item(files[e.ask_id], user) if e.ask_id in files else None,
         )
         for e, kind, system_answer, manager in rows
     ]
 
 
 def _one(session: Session, escalation_id: int, user: AppUser) -> EscalationItem:
-    items = _items(session, Escalation.id == escalation_id, visible_to(user))
+    items = _items(session, user, Escalation.id == escalation_id, visible_to(user))
     if not items:
         raise HTTPException(404, "找不到這個提問")
     return items[0]
@@ -82,7 +89,7 @@ def _one(session: Session, escalation_id: int, user: AppUser) -> EscalationItem:
 @router.get("", response_model=list[EscalationItem])
 def list_escalations(session: SessionDep, user: CurrentUser, status: Literal["open", "answered"] | None = None):
     """主管端分開看待回覆（open）與已回覆（answered）；業務端不帶條件，看全部。新的在前面。"""
-    return _items(session, visible_to(user), *([Escalation.status == status] if status else []))
+    return _items(session, user, visible_to(user), *([Escalation.status == status] if status else []))
 
 
 @router.get("/unseen", response_model=Unseen)
@@ -104,7 +111,7 @@ def reply(session: SessionDep, escalation_id: int, body: ReplyInput, manager: Ma
     回覆者就是登入的主管（FR-12 之前是在畫面上自己選）。
     """
     escalation = session.get(Escalation, escalation_id, with_for_update=True)
-    if escalation is None or not _items(session, Escalation.id == escalation_id, visible_to(manager)):
+    if escalation is None or not _items(session, manager, Escalation.id == escalation_id, visible_to(manager)):
         raise HTTPException(404, "找不到這個提問")
     answer = body.answer.strip()
     if not answer:

@@ -17,8 +17,8 @@ export type AskSession = {
   conversation: Conversation
   /** 登出或換人登入時中止。打字的查詢與語音呼叫工具的查詢都看這一個，離開問答頁不會中止 */
   polls: AbortSignal
-  /** 送出一題打字的提問並輪詢到有結果，錯誤寫在那一格上。已經有一題在跑就不送 */
-  ask: (kind: AskKind, question: string) => Promise<void>
+  /** 送出一題打字的提問（可以附一個檔案）並輪詢到有結果，錯誤寫在那一格上。已經有一題在跑就不送 */
+  ask: (kind: AskKind, question: string, file?: File) => Promise<void>
   /** 有打字的提問還沒答完（送出鈕轉圈、擋掉連按） */
   isBusy: () => boolean
   subscribe: (listener: () => void) => () => void
@@ -47,13 +47,13 @@ function create(userId: string): NonNullable<typeof current> {
         listeners.delete(listener)
       }
     },
-    ask: async (kind, question) => {
+    ask: async (kind, question, file) => {
       if (busy) return
       setBusy(true)
-      conversation.addUtterance("user", "typed", question)
+      const utteranceId = conversation.addUtterance("user", "typed", question)
       const entryId = conversation.addToolRun(kind, question)
       try {
-        await runAsk(conversation, entryId, kind, question, controller.signal)
+        await runAsk(conversation, entryId, kind, question, controller.signal, { file, utteranceId })
       } catch (error) {
         // 登出時中止的不算錯；其餘寫在那一格卡片上，輸入框上面不另外放橫幅
         if (!controller.signal.aborted) {

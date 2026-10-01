@@ -35,6 +35,6 @@ class TextLLM:
     def __init__(self, *replies):
         self.replies, self.prompts = list(replies), []
 
-    async def atext(self, *, system, prompt, effort="medium"):
+    async def atext(self, *, system, prompt, effort="medium", media=()):
         self.prompts.append(prompt)
         return self.replies.pop(0)
