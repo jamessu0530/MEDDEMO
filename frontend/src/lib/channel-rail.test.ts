@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import type { Channel } from "@/api/channels"
-import { pickSelected, railItems, railPath, railUnread, shortName, topicsOf } from "@/lib/channel-rail"
+import { folderExpanded, pickSelected, railItems, railPath, railUnread, shortName, topicsOf } from "@/lib/channel-rail"
 
 const channel = (id: number, kind: Channel["kind"], name: string, extra: Partial<Channel> = {}) =>
   ({ id, kind, name, region_id: null, parent_id: null, unread: 0, archived: false, can_manage: false, ...extra }) as Channel
@@ -100,5 +100,19 @@ describe("railPath", () => {
     expect(railPath(news)).toBe("/channels?c=2")
     expect(railPath(channel(30, "customer", "忠孝店", { parent_id: 9 }))).toBe("/channels?c=9")
     expect(railPath(team)).toBe("/channels?c=5")
+  })
+})
+
+describe("folderExpanded", () => {
+  it("沒點過的資料夾：裡面有選中的頻道就展開，沒有就收著", () => {
+    expect(folderExpanded(new Map(), "places-2", true)).toBe(true)
+    expect(folderExpanded(new Map(), "places-2", false)).toBe(false)
+  })
+
+  it("自己點過的照自己點的：選中的頻道在裡面也收得起來", () => {
+    expect(folderExpanded(new Map([["places-2", false]]), "places-2", true)).toBe(false)
+    expect(folderExpanded(new Map([["places-2", true]]), "places-2", false)).toBe(true)
+    // 點的是別的資料夾，不影響這一個
+    expect(folderExpanded(new Map([["archived", false]]), "places-2", true)).toBe(true)
   })
 })

@@ -58,6 +58,11 @@ export function railItems(channels: Channel[]): RailItem[] {
   return items
 }
 
+/** 資料夾展開了沒：自己點過的照自己點的（選中的頻道在裡面也收得起來）；沒點過的，裡面有選中的頻道就展開 */
+export function folderExpanded(choices: ReadonlyMap<string, boolean>, key: string, containsSelected: boolean): boolean {
+  return choices.get(key) ?? containsSelected
+}
+
 /** 選中哪個頻道：網址的 ?c=，再來是上次選的；指定的是文字頻道就停在它的上層。
  * 都不在了（封存、調區）：業務與主管停在自己的小組，IT 停在全國 */
 export function pickSelected(channels: Channel[], requested: number | null, remembered: number | null, role: Role): Channel | null {

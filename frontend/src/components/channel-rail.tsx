@@ -4,7 +4,7 @@ import { Archive, MapPin } from "lucide-react"
 import type { Channel } from "@/api/channels"
 import { UnreadDot } from "@/components/channels-link"
 import { AVATAR_TONES } from "@/components/user-avatar"
-import { railItems, shortName } from "@/lib/channel-rail"
+import { folderExpanded, railItems, shortName } from "@/lib/channel-rail"
 import { cn } from "@/lib/utils"
 
 /** 頻道頁的左欄：全國、各區、各小組，地點與已封存收在資料夾裡，跟 Discord 手機版的伺服器列一樣。
@@ -18,15 +18,9 @@ export function ChannelRail({
   selectedId: number | null
   onSelect: (channel: Channel) => void
 }) {
-  // 自己打開的資料夾；裡面有選中的頻道時一律展開
-  const [open, setOpen] = useState<Set<string>>(new Set())
-  const toggle = (key: string) =>
-    setOpen((prev) => {
-      const next = new Set(prev)
-      if (next.has(key)) next.delete(key)
-      else next.add(key)
-      return next
-    })
+  // 自己點過的資料夾是開是關；沒點過的，裡面有選中的頻道就展開（folderExpanded）
+  const [choices, setChoices] = useState<ReadonlyMap<string, boolean>>(new Map())
+  const toggle = (key: string, expanded: boolean) => setChoices((prev) => new Map(prev).set(key, !expanded))
 
   return (
     <nav aria-label="頻道" className="flex w-[4.5rem] shrink-0 flex-col items-center gap-2 overflow-y-auto border-r bg-muted/40 pt-3 pb-24">
@@ -43,7 +37,7 @@ export function ChannelRail({
             />
           )
         }
-        const expanded = open.has(item.key) || item.channels.some((c) => c.id === selectedId)
+        const expanded = folderExpanded(choices, item.key, item.channels.some((c) => c.id === selectedId))
         const Icon = item.icon === "places" ? MapPin : Archive
         return (
           <div key={item.key} className="flex w-full shrink-0 flex-col items-center gap-2">
@@ -51,7 +45,7 @@ export function ChannelRail({
               type="button"
               aria-expanded={expanded}
               aria-label={`${item.label}（${item.channels.length}）`}
-              onClick={() => toggle(item.key)}
+              onClick={() => toggle(item.key, expanded)}
               className="relative flex size-12 flex-col items-center justify-center gap-0.5 rounded-2xl border-2 bg-card text-muted-foreground shadow-lip"
             >
               <Icon className="size-4" />
