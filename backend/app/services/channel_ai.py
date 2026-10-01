@@ -10,13 +10,15 @@ import logging
 from typing import Any
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, undefer
 
 from app.db import session_factory
 from app.embeddings import optional_embedder
-from app.llm import LLMOutputError, get_llm
-from app.models import AppUser, Channel, ChannelMessage, Customer, Place
-from app.services import channels
+from app.llm import LLMOutputError, Media, get_llm
+from app.models import AppUser, Attachment, Channel, ChannelMessage, Customer, Place
+from app.services import attachments as attachment_files
+from app.services import channels, memory_board
+from app.services.channel_memory import CATEGORY_LABEL, inline_files
 from app.services.channels import ChannelInfo
 from app.services.knowledge import answer_knowledge
 from app.timeutil import TAIPEI
@@ -26,6 +28,8 @@ log = logging.getLogger(__name__)
 SORRY = "我暫時答不出來，請稍後再 @ 我一次。"
 # 給模型看最近幾則（含提問那一則）
 CONTEXT_MESSAGES = 50
+# 給模型看看板上最近變動的幾條重點（自己的與下層往上傳的）
+BOARD_ITEMS = 150
 KIND_LABEL = {
     "national": "全國頻道", "region": "整區頻道", "team": "小組頻道", "place": "地點頻道", "customer": "客戶討論串",
 }
@@ -40,7 +44,9 @@ route 二選一：
 - chat：只看下面的對話與客戶資料就答得出來的題目（例如整理剛剛大家說了什麼、這家客戶誰負責），或是打招呼、閒聊。
   answer 直接寫回答：繁體中文、口語、簡短；對話與客戶資料裡沒有的事就說不知道，不要猜。question 填空字串。
 
-你看不到銷售數字與拜訪紀錄；有人問這些，走 chat，請他到問答頁查。"""
+你看不到銷售數字與拜訪紀錄；有人問這些，走 chat，請他到問答頁查。
+@ 你的那一則附了照片或 PDF 的話，原檔放在最前面，一起看；其他訊息的附件只有說明。
+看板上的重點是你之前從對話整理出來的，可以拿來回答「最近有什麼客訴」「還有哪些待辦」這類問題。"""
 
 ROUTE_SCHEMA = {
     "type": "object",
@@ -78,9 +84,22 @@ def answer(session: Session, message_id: int) -> ChannelMessage | None:
     return channels.post_mascot(session, info.id, body, message_id)
 
 
+def _asked_files(session: Session, asked: ChannelMessage) -> tuple[list[Media], str | None]:
+    """@ 的那一則附的檔案：原檔給模型看（到 18MB 為止），說明接在問題後面給文件檢索用。"""
+    files = list(session.scalars(
+        select(Attachment).where(Attachment.message_id == asked.id).options(undefer(Attachment.content)).order_by(Attachment.id)
+    ))
+    media, _ = inline_files(files)
+    notes = "；".join(f.caption for f in files if f.caption)
+    return media, notes or None
+
+
 def _reply(session: Session, info: ChannelInfo, asked: ChannelMessage) -> str:
     llm = get_llm()
-    decision = llm.json(system=SYSTEM, prompt=_prompt(session, info, asked), schema=ROUTE_SCHEMA, effort="low")
+    media, note = _asked_files(session, asked)
+    decision = llm.json(
+        system=SYSTEM, prompt=_prompt(session, info, asked), schema=ROUTE_SCHEMA, effort="low", media=media
+    )
     if decision["route"] == "chat":
         if not decision["answer"].strip():
             raise LLMOutputError("判斷只看對話就答得出來，卻沒有寫回答")
@@ -89,7 +108,9 @@ def _reply(session: Session, info: ChannelInfo, asked: ChannelMessage) -> str:
     if not question:
         raise LLMOutputError("判斷要查文件，卻沒有寫問題")
     embedder = optional_embedder()
-    result = answer_knowledge(session, llm, question, _skip_step, embedder.embed_query if embedder else None)
+    # 附了照片（例如拍仿單問怎麼退貨）：跟問答頁一樣，向量用「問題 + 檔案」、說明接在問題後面、產生答案時看原檔
+    embed_query = (lambda query: embedder.embed_query(query, media)) if embedder else None
+    result = answer_knowledge(session, llm, question, _skip_step, embed_query, media=media, note=note)
     if result.status == "answered":
         return with_sources(result.answer, result.sources)
     if result.status == "no_evidence":
@@ -125,14 +146,39 @@ def _prompt(session: Session, info: ChannelInfo, asked: ChannelMessage) -> str:
     parts = [f"頻道：{info.name}（{KIND_LABEL[info.kind]}）"]
     if info.customer_id:
         parts.append(_customer(session, info.customer_id))
+    parts += _board(session, info)
+    files = attachment_files.for_messages(session, [message.id for message, _ in rows])
     parts.append("最近的對話（由舊到新，最後一則是 @ 你的那一則）：")
-    parts += [_line(message, author_name) for message, author_name in rows]
+    parts += [_line(message, author_name, files.get(message.id, [])) for message, author_name in rows]
     return "\n".join(parts)
 
 
-def _line(message: ChannelMessage, author_name: str | None) -> str:
+def _board(session: Session, info: ChannelInfo) -> list[str]:
+    """這個頻道的看板：自己的重點，加上下層往上傳的（只有往上傳的寫法）。最近變動的 150 條。"""
+    board = memory_board.board(session, info)
+    entries = [(item.updated_at, f"（{_label(item)}）{item.text}") for item in board.own]
+    entries += [
+        (item.updated_at, f"（{group.channel_name}往上傳、{_label(item)}）{item.shared_text or item.text}")
+        for group in board.below
+        for item in group.items
+    ]
+    if not entries:
+        return []
+    entries.sort(key=lambda entry: entry[0], reverse=True)
+    return ["看板上的重點：", *(text for _, text in entries[:BOARD_ITEMS])]
+
+
+def _label(item) -> str:
+    label = CATEGORY_LABEL[item.category]
+    if item.category == "todo":
+        label += "、已完成" if item.status == "done" else (f"、{item.due_date.isoformat()} 到期" if item.due_date else "")
+    return label
+
+
+def _line(message: ChannelMessage, author_name: str | None, files: list[Attachment] = ()) -> str:
     who = {"ai": "熊熊滾", "notice": "風險通報"}.get(message.kind, author_name)
-    return f"{message.created_at.astimezone(TAIPEI):%m/%d %H:%M} {who}：{message.body}"
+    notes = "".join(f"〔附件：{f.caption or f.filename}〕" for f in files)
+    return f"{message.created_at.astimezone(TAIPEI):%m/%d %H:%M} {who}：{message.body}{notes}"
 
 
 def _customer(session: Session, customer_id: str) -> str:

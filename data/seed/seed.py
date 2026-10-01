@@ -25,7 +25,7 @@ import generate
 from app import models
 from app.db import make_engine, reset_schema, schema_version
 from app.embeddings import optional_embedder
-from app.services import approvals, attachment_processing, attachments
+from app.services import approvals, attachment_processing, attachments, channel_memory
 from app.services.auth import EXTERNAL_ACCOUNT_ACTS_AS
 from app.services.channels import ensure_channels
 from app.services.documents import index_documents
@@ -133,10 +133,15 @@ def restore_or_skip(session: Session, kept: KeptAccounts) -> tuple[int, int]:
 
 
 def seed_conversations(session: Session) -> int:
-    """頻道裡預先寫好的對話（catalog.CONVERSATIONS）。時間從灌資料的這一刻往前推，之後有人發言一定排在後面。
+    """頻道裡預先寫好的對話（catalog.CONVERSATIONS）與整理好的記憶（catalog.MEMORY）。
+    時間從灌資料的這一刻往前推，之後有人發言一定排在後面。
     不放在 generate.py：那裡的產出跟著 as_of 固定下來，這裡的時間要跟著實際灌資料的日子走。"""
     now = datetime.now(generate.TAIPEI)
     count = 0
+    # 每個頻道第幾行對話是哪一則訊息、附件檔名是哪一個附件，整理記憶時對得回去
+    message_ids: dict[tuple[str, str], list[int]] = {}
+    attachment_ids: dict[str, int] = {}
+    channel_ids: dict[tuple[str, str], int] = {}
     for (kind, key), lines in catalog.CONVERSATIONS:
         if kind == "customer":
             customer_id = session.scalar(select(models.Customer.id).where(models.Customer.name == key))
@@ -152,24 +157,56 @@ def seed_conversations(session: Session) -> int:
             message = models.ChannelMessage(channel_id=channel.id, author_id=author_id, kind="user", body=body, created_at=at)
             session.add(message)
             count += 1
+            session.flush()
+            message_ids.setdefault((kind, key), []).append(message.id)
             if files:
-                session.flush()
-                seed_attachments(session, message, files[0])
+                attachment_ids |= seed_attachments(session, message, files[0])
         # 每個頻道寫完就送出去：編號照加入的順序，同一個頻道裡越晚的編號越大
         session.flush()
+        channel_ids[(kind, key)] = channel.id
+    seed_memory(session, now.date(), channel_ids, message_ids, attachment_ids)
     return count
 
 
-def seed_attachments(session: Session, message: models.ChannelMessage, names: tuple[str, ...]) -> None:
+def seed_memory(
+    session: Session,
+    today: date,
+    channel_ids: dict[tuple[str, str], int],
+    message_ids: dict[tuple[str, str], list[int]],
+    attachment_ids: dict[str, int],
+) -> None:
+    """示範對話整理好的重點。這些頻道算是已經整理到最後一則，熊熊滾不會再整理一次。"""
+    for owner, items in catalog.MEMORY:
+        lines = message_ids[owner]
+        for entry in items:
+            shared = "shared_text" in entry
+            due_in = entry.get("due_in")
+            session.add(models.MemoryItem(
+                channel_id=channel_ids[owner], category=entry["category"], text=entry["text"],
+                status=entry.get("status", "open"),
+                due_date=today + timedelta(days=due_in) if due_in is not None else None,
+                source_message_ids=[lines[i] for i in entry["sources"]],
+                attachment_ids=[attachment_ids[name] for name in entry.get("files", [])],
+                shared_attachment_ids=[attachment_ids[name] for name in entry.get("share_files", [])],
+                shared=shared, shared_text=entry.get("shared_text"),
+            ))
+        session.get(models.Channel, channel_ids[owner]).memory_through_id = lines[-1]
+    session.flush()
+
+
+def seed_attachments(session: Session, message: models.ChannelMessage, names: tuple[str, ...]) -> dict[str, int]:
     """示範對話附的照片與 PDF，照上傳的流程整理（清 EXIF、縮圖）。說明是手寫的，所以直接算處理完；
-    向量等有設定 embedding 再算（灌資料不需要金鑰）。"""
+    向量等有設定 embedding 再算（灌資料不需要金鑰）。回傳 {檔名: 附件編號}。"""
     author = session.get(models.AppUser, message.author_id)
+    added = {}
     for name in names:
         prepared = attachments.prepare((ATTACHMENTS_DIR / name).read_bytes(), name)
-        attachments.add(
+        added[name] = attachments.add(
             session, author, prepared, context=message.body, message_id=message.id,
             caption=catalog.SEED_ATTACHMENTS[name], status="ready",
         )
+    session.flush()
+    return {name: attachment.id for name, attachment in added.items()}
 
 
 def seed_approval_steps(session: Session) -> int:
@@ -327,10 +364,14 @@ def seed(url: str | None, as_of: date) -> dict[str, int]:
         # 內部文件建索引；有設定 embedding 服務才一併算向量，否則只建關鍵字索引
         embedder = optional_embedder()
         chunks = index_documents(session, embed=embedder.embed_documents if embedder else None)
-        # 示範對話的照片與 PDF：說明是手寫的，有設定 embedding 才補向量（跟上面的文件一樣）
+        # 示範對話的照片與 PDF、整理好的重點：有設定 embedding 才補向量（跟上面的文件一樣）
         if embedder:
             for attachment in session.scalars(select(models.Attachment).options(undefer(models.Attachment.content))):
                 attachment_processing.describe_and_embed(session, attachment, embedder=embedder, caption=False)
+            items = list(session.scalars(select(models.MemoryItem).order_by(models.MemoryItem.id)))
+            vectors = embedder.embed_documents([(None, channel_memory.memory_text(item)) for item in items])
+            for item, vector in zip(items, vectors, strict=True):
+                item.embedding = vector
     engine.dispose()
     return {name: len(data[name]) for name, _ in TABLES} | {
         "document_chunk": chunks, "channel_message": messages,

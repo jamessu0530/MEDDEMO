@@ -12,9 +12,9 @@ from sqlalchemy.orm import Session
 
 from app.api.auth import CurrentUser
 from app.db import get_session
-from app.models import AppUser, WRITEBACK_TARGETS, Customer, FollowUpReminder, OaExpenseForm, Visit, VisitAudio, ManagerNotice
+from app.models import AppUser, WRITEBACK_TARGETS, ChannelMessage, Customer, FollowUpReminder, OaExpenseForm, Visit, VisitAudio, ManagerNotice
 from app.services import privacy, writeback
-from app.services import risk
+from app.services import channel_memory, risk
 from app.services.scope import SHARING_LEVEL, Scope, owner_path
 from app.services.extraction import empty_fields, missing_sap_details, unsourced_fields, validate_fields
 from app.services.reminders import create_reminder
@@ -260,6 +260,11 @@ def confirm(session: SessionDep, visit_id: str, user: CurrentUser):
     # 風險分要把這次拜訪算進去，所以放在狀態改成已確認之後
     risk.notify_manager(session, visit)
     session.commit()
+    # 風險通報也貼進了小組頻道：跟一般訊息一樣，兩分鐘後熊熊滾整理進記憶
+    if team := session.scalar(
+        select(ChannelMessage.channel_id).where(ChannelMessage.visit_id == visit.id, ChannelMessage.kind == "notice")
+    ):
+        channel_memory.schedule(team)
 
     results = writeback.dispatch(visit.id)
     if all(r.status in ("success", "skipped") for r in results):

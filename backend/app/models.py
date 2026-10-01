@@ -19,6 +19,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    false,
     func,
     text,
 )
@@ -688,6 +689,8 @@ class Channel(Base):
     manager_id: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"), unique=True)
     place_id: Mapped[str | None] = mapped_column(ForeignKey("place.id"), unique=True)
     customer_id: Mapped[str | None] = mapped_column(ForeignKey("customer.id"), unique=True)
+    # 熊熊滾已經把對話整理到哪一則（services/channel_memory.py）；還沒整理過是 NULL
+    memory_through_id: Mapped[int | None] = mapped_column(BigInteger)
     created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
 
 
@@ -713,6 +716,8 @@ class ChannelMessage(Base):
     mentions_ai: Mapped[bool] = mapped_column(server_default=text("false"))
     # 熊熊滾回答的是哪一則。那一則不在了（自建帳號刪除時一起刪）就留 NULL，回答本身留著
     reply_to_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("channel_message.id", ondelete="SET NULL"))
+    # 風險通報（kind = notice）附的拜訪，畫面上點了進拜訪結果頁。拜訪刪掉，通報跟著刪
+    visit_id: Mapped[str | None] = mapped_column(ForeignKey("visit.id", ondelete="CASCADE"))
     created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
     # IT 刪掉的訊息：內容換成固定的一句、附件整列刪掉，這一則本身留著，編號與已讀才不會亂
     deleted_at: Mapped[dt.datetime | None]
@@ -727,6 +732,56 @@ class ChannelRead(Base):
     user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), primary_key=True)
     channel_id: Mapped[int] = mapped_column(ForeignKey("channel.id", ondelete="CASCADE"), primary_key=True)
     last_read_id: Mapped[int] = mapped_column(BigInteger)
+
+
+# complaint 客訴；competitor 競品；todo 待辦；decision 決議；experience 經驗
+MEMORY_CATEGORIES = ("complaint", "competitor", "todo", "decision", "experience")
+# 待辦是 open／done，其他分類一律 open
+MEMORY_STATUSES = ("open", "done")
+
+
+class MemoryItem(Base):
+    """頻道的記憶：熊熊滾從對話整理出來的一條一條重點（docs/superpowers/specs/2026-09-28-channels-design.md）。
+    下層往上傳（shared）、沒撤回、沒刪除的，出現在所有上層的看板；上層只看得到 shared_text 與往上傳的附件，
+    點不回原始訊息（附件與記憶見 2026-10-01-attachments-design.md）。"""
+
+    __tablename__ = "memory_item"
+    __table_args__ = (
+        one_of("category", MEMORY_CATEGORIES, "category"),
+        one_of("status", MEMORY_STATUSES, "status"),
+        # 往上傳的附件一定是來源附件的一部分
+        CheckConstraint("shared_attachment_ids <@ attachment_ids", name="shared_attachments"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    channel_id: Mapped[int] = mapped_column(ForeignKey("channel.id", ondelete="CASCADE"), index=True)
+    category: Mapped[str]
+    text: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(server_default="open")
+    # 只有待辦會有
+    due_date: Mapped[dt.date | None]
+    # 從這個頻道的哪幾則訊息整理出來
+    source_message_ids: Mapped[list[int]] = mapped_column(ARRAY(BigInteger), server_default="{}")
+    # 這條重點的來源附件，與其中跟著往上傳的
+    attachment_ids: Mapped[list[int]] = mapped_column(ARRAY(BigInteger), server_default="{}")
+    shared_attachment_ids: Mapped[list[int]] = mapped_column(ARRAY(BigInteger), server_default="{}")
+    # 要不要往上傳、往上傳時的寫法（拿掉人名、議價細節）
+    # 欄位 text 在這個類別裡蓋掉了 sqlalchemy 的 text()，預設值用 false()
+    shared: Mapped[bool] = mapped_column(server_default=false())
+    shared_text: Mapped[str | None] = mapped_column(Text)
+    # 撤回是單向的：撤回過的重點 AI 之後也不能再標成往上傳
+    withdrawn_at: Mapped[dt.datetime | None]
+    withdrawn_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id", ondelete="SET NULL"))
+    deleted_at: Mapped[dt.datetime | None]
+    deleted_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id", ondelete="SET NULL"))
+    # 最後改內容的人；NULL 代表熊熊滾。人改過的重點，熊熊滾只能把待辦標完成，不能改內容
+    updated_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id", ondelete="SET NULL"))
+    # 上次提醒逾期的時間（第 3 階段的逾期提醒）
+    reminded_at: Mapped[dt.datetime | None]
+    # 問答頁查頻道記憶用；沒設定語意檢索時是 NULL
+    embedding: Mapped[Any | None] = mapped_column(Vector())
+    created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
 
 
 ATTACHMENT_KINDS = ("image", "pdf")

@@ -13,6 +13,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, Field, ValidationError
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 from starlette.datastructures import UploadFile
 
@@ -21,7 +22,7 @@ from app.api.attachments import AttachmentItem, attachment_item
 from app.api.auth import CurrentUser, ItUser
 from app.db import get_session
 from app.models import MESSAGE_MAX_LENGTH, AppUser, Attachment, ChannelMessage
-from app.services import attachment_processing, attachments, channel_ai, channels
+from app.services import attachment_processing, attachments, channel_ai, channel_memory, channels
 from app.services.channels import ChannelInfo
 from app.tasks import channels_queue
 
@@ -60,6 +61,8 @@ class MessageItem(BaseModel):
     mentions_ai: bool
     # 熊熊滾的回答指向提問那一則
     reply_to_id: int | None
+    # 風險通報附的拜訪，點了進拜訪結果頁
+    visit_id: str | None = None
 
 
 class MessageInput(BaseModel):
@@ -121,7 +124,7 @@ def _message(
         id=message.id, kind=message.kind, author_id=message.author_id, author_name=author_name,
         body=message.body, created_at=message.created_at, mine=message.author_id == user.id,
         attachments=[attachment_item(a, user) for a in files or []], deleted=message.deleted_at is not None,
-        mentions_ai=message.mentions_ai, reply_to_id=message.reply_to_id,
+        mentions_ai=message.mentions_ai, reply_to_id=message.reply_to_id, visit_id=message.visit_id,
     )
 
 
@@ -162,11 +165,17 @@ def list_messages(
     channel_id: int,
     after: int | None = None,
     before: int | None = None,
+    around: int | None = None,
     limit: Annotated[int, Query(ge=1, le=channels.MESSAGE_PAGE)] = channels.MESSAGE_PAGE,
 ):
-    """由舊到新。after 給輪詢用，before 給往上捲；都沒給就是最新的一頁。"""
+    """由舊到新。after 給輪詢用，before 給往上捲，around 給從看板、搜尋跳回某一則（前後各 20 則）；
+    都沒給就是最新的一頁。around 那一則不在這個頻道就 404。"""
     info = _visible(session, user, channel_id)
-    rows = channels.messages(session, info.id, after=after, before=before, limit=limit)
+    if around is not None and session.scalar(
+        select(ChannelMessage.id).where(ChannelMessage.id == around, ChannelMessage.channel_id == info.id)
+    ) is None:
+        raise HTTPException(404, "找不到這則訊息")
+    rows = channels.messages(session, info.id, after=after, before=before, around=around, limit=limit)
     return _messages(session, user, rows)
 
 
@@ -202,6 +211,8 @@ def post_message(
     session.commit()
     # 寫說明、算向量在背景做；先回訊息，畫面上照片馬上看得到
     attachment_processing.enqueue([f.id for f in files])
+    # 兩分鐘後熊熊滾把這段對話整理進記憶（同一個頻道兩分鐘內的訊息併成一次）
+    channel_memory.schedule(info.id)
     if message.mentions_ai:
         _call_mascot(session, message)
     return _message(message, user.name, user, files)

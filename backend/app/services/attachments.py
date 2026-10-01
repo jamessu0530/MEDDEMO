@@ -23,7 +23,7 @@ from pypdf.errors import PyPdfError
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import AppUser, AskRecord, Attachment, Channel, ChannelMessage, Escalation
+from app.models import AppUser, AskRecord, Attachment, Channel, ChannelMessage, Escalation, MemoryItem
 from app.services import auth, channels
 from app.services.escalations import Asker, visible_to
 from app.services.retrieval import SIMPLE, to_tsvector_input
@@ -255,9 +255,25 @@ def _ask_visible(session: Session, user: AppUser, ask_id: str) -> bool:
     ) is not None
 
 
+def shared_upward(session: Session, attachment_id: int) -> bool:
+    """附件跟著某條重點往上傳、沒撤回、沒刪除：全公司都看得到（等於全國看板的範圍）。"""
+    return session.scalar(
+        select(MemoryItem.id)
+        .where(
+            MemoryItem.shared.is_(True),
+            MemoryItem.withdrawn_at.is_(None),
+            MemoryItem.deleted_at.is_(None),
+            MemoryItem.shared_attachment_ids.any(attachment_id),
+        )
+        .limit(1)
+    ) is not None
+
+
 def can_see(session: Session, user: AppUser, attachment: Attachment) -> bool:
-    """附件看不看得到：看得到它所在的頻道，或是自己的提問、轉給自己回覆的提問。"""
+    """附件看不看得到：看得到它所在的頻道、跟著重點往上傳了，或是自己的提問、轉給自己回覆的提問。"""
     if attachment.message_id is not None:
+        if shared_upward(session, attachment.id):
+            return True
         message = session.get(ChannelMessage, attachment.message_id)
         channel = session.get(Channel, message.channel_id) if message else None
         if channel is None:

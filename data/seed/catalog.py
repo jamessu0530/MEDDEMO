@@ -422,6 +422,49 @@ CONVERSATIONS = [
     ]),
 ]
 
+# 示範對話整理好的記憶重點（灌資料不呼叫 AI，見 docs/superpowers/specs/2026-09-28-channels-design.md「示範資料」）。
+# sources 與 files 用上面 CONVERSATIONS 同一個頻道的第幾行（從 0 起算）與附件檔名；
+# shared_text 有寫就是往上傳，share_files 是跟著往上傳的附件；due_in 是從灌資料那天算起幾天後到期。
+# 御松田的海報與貨架照帶圖往上傳；康普樂的報價單是報價，只傳文字（示範哪些圖不能往上傳）。
+MEMORY = [
+    (("team", "M01"), [
+        {"category": "complaint", "text": "康泰忠孝店補貨延遲三天、魚油缺貨；物流說北區倉的排程卡住。",
+         "sources": [0, 1], "files": ["zhongxiao-shelf.jpg"],
+         "shared_text": "北區倉排程卡住，連鎖店補貨延遲、魚油缺貨，黃金層已經被御松田占走。", "share_files": ["zhongxiao-shelf.jpg"]},
+        {"category": "decision", "text": "北區補貨從下週一起改成一週兩次（物流回覆）。", "sources": [3],
+         "shared_text": "北區補貨從下週一起改成一週兩次。"},
+        {"category": "todo", "text": "林昱辰跟忠孝店店長說補貨改成一週兩次。", "sources": [3, 4], "due_in": -1, "status": "done"},
+        {"category": "todo", "text": "王冠宇這週跟會計核對三重店開錯的發票。", "sources": [2], "due_in": 2},
+        {"category": "competitor", "text": "御松田在板橋店談陳列位；忠孝店店長說再延遲就考慮換御松田的魚油。", "sources": [4],
+         "shared_text": "御松田在北區連鎖店談陳列位；補貨再延遲，店家可能改進御松田的魚油。"},
+    ]),
+    (("place", "TPE-DA"), [
+        {"category": "competitor", "text": "大安區好幾家店反映御松田的業務在跑，魚油開買十送一（檔期 10/1–10/31）。",
+         "sources": [0], "files": ["yushotian-poster.jpg"],
+         "shared_text": "御松田在台北大安區推魚油買十送一（10/1–10/31），業務逐店在跑。", "share_files": ["yushotian-poster.jpg"]},
+        {"category": "experience", "text": "杏林診所的慢箋量在成長，下次帶學名藥比價表與慢性病衛教單張過去。",
+         "sources": [1], "files": ["chronic-medication-leaflet.pdf"]},
+    ]),
+    (("customer", "康泰連鎖藥局 · 忠孝店"), [
+        {"category": "complaint", "text": "到貨的魚油 30 入有兩盒外盒壓壞，店長要我們回報檔期。", "sources": [0],
+         "files": ["fish-oil-box-damaged.jpg"],
+         "shared_text": "康泰忠孝店到貨的魚油有兩盒外盒壓壞。", "share_files": ["fish-oil-box-damaged.jpg"]},
+        {"category": "todo", "text": "檔期資料週三前給忠孝店店長。", "sources": [1], "due_in": 3},
+    ]),
+    (("team", "M03"), [
+        {"category": "competitor", "text": "左營店櫃檯旁的陳列位換成瑞得生技的益生菌（買二送一 DM），進貨間隔拉長。",
+         "sources": [0], "files": ["ruide-probiotics-dm.jpg"],
+         "shared_text": "瑞得生技用益生菌買二送一，換到南區連鎖店櫃檯旁的陳列位。", "share_files": ["ruide-probiotics-dm.jpg"]},
+        {"category": "todo", "text": "主管陪同去左營店談檔期。", "sources": [1], "due_in": 6},
+    ]),
+    (("team", "M04"), [
+        {"category": "competitor", "text": "台南兩家診所反映康普樂的血糖試紙報得比較低（50 片每盒 $520，20 盒以上再折 5%）。",
+         "sources": [0], "files": ["kangpule-quote.jpg"],
+         "shared_text": "康普樂在台南的診所用比較低的價格搶血糖試紙。"},
+        {"category": "decision", "text": "超過三趴的折扣要主管核准，報價前先看報價權限的規範。", "sources": [1]},
+    ]),
+]
+
 # 示範對話附的照片與 PDF（backend/scripts/draw_seed_images.py 畫的）。說明照 AI 寫的格式手寫：
 # 灌資料不呼叫 AI，每次結果一樣，也不需要金鑰（docs/superpowers/specs/2026-10-01-attachments-design.md）
 SEED_ATTACHMENTS = {

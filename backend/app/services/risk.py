@@ -12,8 +12,8 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import AppUser, Customer, ManagerNotice, Visit
-from app.services import customer_profile
+from app.models import AppUser, Channel, Customer, ManagerNotice, Visit
+from app.services import channels, customer_profile
 
 RISK_MAX = 5
 
@@ -61,7 +61,19 @@ def notify_manager(session: Session, visit: Visit) -> ManagerNotice | None:
         reason=reason, score=len(items), items=items,
     )
     session.add(notice)
+    post_to_team(session, notice, rep, customer)
     return notice
+
+
+def post_to_team(session: Session, notice: ManagerNotice, rep: AppUser, customer: Customer) -> int | None:
+    """同一個交易裡，在業務目前主管的小組頻道貼一則風險通報（docs/superpowers/specs/2026-09-28-channels-design.md）。
+    小組頻道只有組內看得到，跟拜訪紀錄的層級一樣。找不到小組或已經封存就不發。回傳頻道編號。"""
+    channel = session.scalar(select(Channel).where(Channel.manager_id == rep.manager_id))
+    if channel is None or channels.describe(session, [channel])[0].archived:
+        return None
+    body = f"{rep.name}拜訪{customer.name}：{notice.reason}（風險分 {notice.score}）"
+    channels.post_notice(session, channel.id, body, notice.visit_id)
+    return channel.id
 
 
 def first_competitors(session: Session, visit: Visit, fields: dict) -> list[str]:

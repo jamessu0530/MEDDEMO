@@ -1,0 +1,34 @@
+# 頻道裡熊熊滾的主動發言（backend/app/jobs/channels.py）：週摘要與逾期提醒。寫法照 retention.yaml。
+# 排程寫 UTC，不依賴叢集有沒有時區資料。錯過排程（例如 VM 重開機）的話，週摘要一天內、提醒半天內補跑。
+{{- range $job := list (dict "name" "channel-weekly" "task" "weekly" "schedule" "30 0 * * 1" "deadline" 86400 "comment" "台北時間每週一 08:30：過去七天有人發言的頻道各貼一則週摘要")
+                       (dict "name" "channel-reminders" "task" "reminders" "schedule" "0 1 * * *" "deadline" 43200 "comment" "台北時間每天 09:00：過了期限、三天內沒提醒過的待辦，依頻道各貼一則清單") }}
+---
+# {{ $job.comment }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ $job.name }}
+  labels:
+    {{- include "meddemo.labels" $ | nindent 4 }}
+spec:
+  schedule: {{ $job.schedule | quote }}
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: {{ $job.deadline }}
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      # 跑完留一天查 log 再自動刪掉
+      ttlSecondsAfterFinished: 86400
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: {{ $job.name }}
+              image: {{ include "meddemo.apiImage" $ | quote }}
+              imagePullPolicy: {{ $.Values.image.pullPolicy }}
+              command: ["python", "-m", "app.jobs.channels", {{ $job.task | quote }}]
+              env:
+                {{- include "meddemo.databaseEnv" $ | nindent 16 }}
+              envFrom:
+                {{- include "meddemo.aiEnvFrom" $ | nindent 16 }}
+{{- end }}

@@ -14,6 +14,7 @@ import {
 } from "@/api/channels"
 import { AttachmentGallery } from "@/components/attachments/attachment-gallery"
 import { AttachButton, DraftFiles } from "@/components/attachments/draft-files"
+import { ChannelBoard } from "@/components/channel-board"
 import { Mascot } from "@/components/mascot"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
@@ -69,6 +70,10 @@ export function ChannelPage() {
 function ChannelView({ id }: { id: number }) {
   const { backTo = "/channels" } = (useLocation().state as ChannelLocationState | null) ?? {}
   const [state, setState] = useState<LoadState>({ status: "loading" })
+  // 上方兩個分頁：對話、記憶看板
+  const [tab, setTab] = useState<"chat" | "board">("chat")
+  // 從看板跳回來要標亮的那一則
+  const [highlight, setHighlight] = useState<number | null>(null)
   const [messages, setMessages] = useState<ChannelMessage[]>([])
   const [hasOlder, setHasOlder] = useState(false)
   const [loadingOlder, setLoadingOlder] = useState(false)
@@ -162,6 +167,30 @@ function ChannelView({ id }: { id: number }) {
     }
   }, [id, lastId, lastMine])
 
+  // 從看板跳回原訊息：載入那一則前後各 20 則，捲過去標亮兩秒
+  useEffect(() => {
+    if (highlight === null || tab !== "chat") return
+    document.getElementById(`message-${highlight}`)?.scrollIntoView({ block: "center" })
+    const timer = setTimeout(() => setHighlight(null), 2_000)
+    return () => clearTimeout(timer)
+  }, [highlight, tab, messages])
+
+  async function jumpTo(messageId: number) {
+    setTab("chat")
+    if (!messages.some((m) => m.id === messageId)) {
+      try {
+        const page = await listMessages(id, { around: messageId })
+        // 不是最新的一頁：先別讓「還在底部」的捲動把畫面拉走
+        nearBottom.current = false
+        setMessages(page)
+        setHasOlder(true)
+      } catch {
+        return
+      }
+    }
+    setHighlight(messageId)
+  }
+
   async function loadOlder() {
     const first = messages[0]?.id
     // 已經在載入中就不要重複打 API（雙擊、手指按到兩次）
@@ -245,7 +274,30 @@ function ChannelView({ id }: { id: number }) {
           這裡的客戶討論串
         </Link>
       )}
-      <main ref={main} onScroll={handleScroll} className="flex flex-1 flex-col gap-3 overflow-y-auto px-4 py-4">
+      <div className="grid grid-cols-2 gap-1 border-b bg-background px-4 py-2" role="tablist">
+        {(["chat", "board"] as const).map((key) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            aria-selected={tab === key}
+            onClick={() => setTab(key)}
+            className={cn("h-9 rounded-md text-sm font-medium", tab === key ? "bg-muted text-foreground" : "text-muted-foreground")}
+          >
+            {key === "chat" ? "對話" : "記憶看板"}
+          </button>
+        ))}
+      </div>
+      {tab === "board" && (
+        <main className="flex-1 overflow-y-auto px-4 py-4">
+          <ChannelBoard channel={channel} onJump={(messageId) => void jumpTo(messageId)} />
+        </main>
+      )}
+      <main
+        ref={main}
+        onScroll={handleScroll}
+        className={cn("flex flex-1 flex-col gap-3 overflow-y-auto px-4 py-4", tab !== "chat" && "hidden")}
+      >
         {hasOlder && (
           <div className="flex flex-col items-center gap-1">
             <Button variant="ghost" className="self-center text-xs" disabled={loadingOlder} onClick={() => void loadOlder()}>
@@ -260,6 +312,7 @@ function ChannelView({ id }: { id: number }) {
             key={message.id}
             message={message}
             replyTo={byId.get(message.reply_to_id ?? -1)}
+            highlighted={highlight === message.id}
             onDelete={isIt && !message.deleted ? setDeleting : undefined}
           />
         ))}
@@ -271,7 +324,7 @@ function ChannelView({ id }: { id: number }) {
         )}
         <div ref={bottom} />
       </main>
-      <footer className="border-t bg-card px-4 pt-2 pb-[max(env(safe-area-inset-bottom),0.75rem)]">
+      <footer className={cn("border-t bg-card px-4 pt-2 pb-[max(env(safe-area-inset-bottom),0.75rem)]", tab !== "chat" && "hidden")}>
         {channel.archived ? (
           <p className="py-2 text-center text-sm text-muted-foreground">這個小組頻道已封存，不能再發言。</p>
         ) : (
@@ -372,12 +425,16 @@ function DeleteDialog({
 function MessageBubble({
   message,
   replyTo,
+  highlighted = false,
   onDelete,
 }: {
   message: ChannelMessage
   replyTo?: ChannelMessage
+  highlighted?: boolean
   onDelete?: (message: ChannelMessage) => void
 }) {
+  // 從看板跳回來的那一則：外框標亮兩秒
+  const mark = cn("scroll-mt-4 rounded-2xl transition-shadow duration-500", highlighted && "ring-2 ring-primary ring-offset-4 ring-offset-background")
   if (message.kind !== "user") {
     // 熊熊滾與風險通報用同一種樣式；熊熊滾的左邊多一個頭像，標出回覆誰（提問那一則在畫面上才標得出來）
     const replied = replyTo && (replyTo.mine ? " · 回覆你" : ` · 回覆 ${replyTo.author_name}`)
@@ -390,16 +447,27 @@ function MessageBubble({
         <p className="whitespace-pre-wrap">{message.body}</p>
       </div>
     )
-    if (message.kind !== "ai") return bubble
+    if (message.kind === "notice" && message.visit_id) {
+      // 風險通報顯示成卡片，點了進拜訪結果頁
+      return (
+        <Link id={`message-${message.id}`} to={`/visits/${message.visit_id}`} className={cn("block border-l-4 border-destructive", mark)}>
+          {bubble}
+        </Link>
+      )
+    }
+    if (message.kind !== "ai") return <div id={`message-${message.id}`} className={mark}>{bubble}</div>
     return (
-      <div className="flex items-end gap-2">
+      <div id={`message-${message.id}`} className={cn("flex items-end gap-2", mark)}>
         <Mascot size={28} bust className="shrink-0 rounded-full bg-accent" />
         <div className="min-w-0 flex-1">{bubble}</div>
       </div>
     )
   }
   return (
-    <div className={cn("flex max-w-[85%] flex-col gap-0.5", message.mine ? "self-end items-end" : "self-start")}>
+    <div
+      id={`message-${message.id}`}
+      className={cn("flex max-w-[85%] flex-col gap-0.5", message.mine ? "self-end items-end" : "self-start", mark)}
+    >
       <p className="px-1 text-[11px] text-muted-foreground">
         {message.mine ? "" : `${message.author_name} · `}
         {formatDateTime(message.created_at)}

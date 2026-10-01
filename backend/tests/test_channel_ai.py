@@ -43,7 +43,7 @@ def mascot(monkeypatch):
     def use(decision=None, *, error=None, knowledge=None):
         llm, asked = RouteLLM(decision, error), []
 
-        def fake_knowledge(session, llm_, question, on_step, embed_query=None):
+        def fake_knowledge(session, llm_, question, on_step, embed_query=None, **_):
             asked.append(question)
             if isinstance(knowledge, Exception):
                 raise knowledge

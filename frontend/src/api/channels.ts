@@ -32,6 +32,8 @@ export type ChannelMessage = {
   attachments: Attachment[]
   // IT 刪掉的訊息：內容已經換成固定的一句
   deleted: boolean
+  // 風險通報附的拜訪，點了進拜訪結果頁
+  visit_id?: string | null
   // 有沒有叫熊熊滾
   mentions_ai: boolean
   // 熊熊滾的回答指向提問那一則
@@ -52,11 +54,12 @@ export function getChannel(id: number, signal?: AbortSignal) {
   return request<Channel>(`/api/channels/${id}`, { signal })
 }
 
-/** 由舊到新。after 給輪詢用，before 給往上捲；都不給就是最新的一頁 */
-export function listMessages(id: number, params: { after?: number; before?: number }, signal?: AbortSignal) {
+/** 由舊到新。after 給輪詢用，before 給往上捲，around 給從看板跳回某一則（前後各 20 則）；都不給就是最新的一頁 */
+export function listMessages(id: number, params: { after?: number; before?: number; around?: number }, signal?: AbortSignal) {
   const query = new URLSearchParams()
   if (params.after !== undefined) query.set("after", String(params.after))
   if (params.before !== undefined) query.set("before", String(params.before))
+  if (params.around !== undefined) query.set("around", String(params.around))
   const suffix = query.toString() ? `?${query}` : ""
   return request<ChannelMessage[]>(`/api/channels/${id}/messages${suffix}`, { signal })
 }

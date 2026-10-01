@@ -465,6 +465,29 @@ def test_seeded_conversations_carry_the_drawn_photos_and_pdf(db):
     ]
 
 
+def test_seeded_memory_shares_the_poster_but_not_the_quote(db):
+    shared = dict(rows(db, """
+        SELECT a.filename, bool_or(a.id = ANY(m.shared_attachment_ids))
+        FROM memory_item m JOIN attachment a ON a.id = ANY(m.attachment_ids)
+        GROUP BY a.filename
+    """))
+    assert shared["yushotian-poster.jpg"] and shared["zhongxiao-shelf.jpg"]
+    assert not shared["kangpule-quote.jpg"]
+    # 往上傳的附件一定是那條重點自己的附件；往上傳的都有寫法
+    assert rows(db, "SELECT count(*) FROM memory_item WHERE shared AND shared_text IS NULL")[0][0] == 0
+    # 來源訊息都在同一個頻道，有記憶的頻道都整理到最後一則
+    assert rows(db, """
+        SELECT count(*) FROM memory_item m JOIN channel_message msg ON msg.id = ANY(m.source_message_ids)
+        WHERE msg.channel_id <> m.channel_id
+    """)[0][0] == 0
+    assert rows(db, """
+        SELECT count(*) FROM channel c
+        WHERE EXISTS (SELECT 1 FROM memory_item m WHERE m.channel_id = c.id)
+          AND c.memory_through_id IS DISTINCT FROM (SELECT max(id) FROM channel_message WHERE channel_id = c.id)
+    """)[0][0] == 0
+    assert rows(db, "SELECT count(*) FROM memory_item")[0][0] == sum(len(items) for _, items in catalog.MEMORY)
+
+
 def test_method_cards_cover_every_tag_and_are_written_by_managers(db):
     assert rows(db, "SELECT count(*) FROM method_card WHERE status = 'published'")[0][0] == len(catalog.METHOD_CARDS)
     tags = Counter(tag for (card_tags,) in rows(db, "SELECT tags FROM method_card WHERE status = 'published'") for tag in card_tags)

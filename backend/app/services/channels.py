@@ -198,16 +198,30 @@ def customer_thread(session: Session, user: AppUser, customer_id: str) -> Channe
     return info
 
 
+# 跳回原訊息時，那一則前後各給幾則
+AROUND = 20
+
+
 def messages(
-    session: Session, channel_id: int, *, after: int | None = None, before: int | None = None, limit: int = MESSAGE_PAGE
+    session: Session,
+    channel_id: int,
+    *,
+    after: int | None = None,
+    before: int | None = None,
+    around: int | None = None,
+    limit: int = MESSAGE_PAGE,
 ) -> list[Row[tuple[ChannelMessage, str | None]]]:
     """(訊息, 作者名字)，由舊到新。after：輪詢用，這則之後的新訊息；before：往上捲，這則之前的一頁；
-    都沒給就是最新的一頁。"""
+    around：從看板、搜尋跳回某一則，給那一則與前後各 20 則；都沒給就是最新的一頁。"""
     stmt = (
         select(ChannelMessage, AppUser.name)
         .outerjoin(AppUser, AppUser.id == ChannelMessage.author_id)
         .where(ChannelMessage.channel_id == channel_id)
     )
+    if around is not None:
+        older = list(session.execute(stmt.where(ChannelMessage.id <= around).order_by(ChannelMessage.id.desc()).limit(AROUND + 1)))
+        newer = list(session.execute(stmt.where(ChannelMessage.id > around).order_by(ChannelMessage.id).limit(AROUND)))
+        return older[::-1] + newer
     if after is not None:
         return list(session.execute(stmt.where(ChannelMessage.id > after).order_by(ChannelMessage.id).limit(limit)))
     if before is not None:
@@ -241,9 +255,17 @@ def post(session: Session, user: AppUser, info: ChannelInfo, body: str) -> Chann
     return message
 
 
-def post_mascot(session: Session, channel_id: int, body: str, reply_to_id: int) -> ChannelMessage:
-    """熊熊滾回答 reply_to_id 那一則（services/channel_ai.py）。不判斷 @，熊熊滾不會自己叫自己。"""
+def post_mascot(session: Session, channel_id: int, body: str, reply_to_id: int | None) -> ChannelMessage:
+    """熊熊滾發言：回答 reply_to_id 那一則（services/channel_ai.py），或自己主動發的週摘要、逾期提醒（reply_to_id 是 None）。
+    不判斷 @，熊熊滾不會自己叫自己。"""
     message = _write(session, channel_id, kind="ai", body=body, reply_to_id=reply_to_id)
+    session.refresh(message)
+    return message
+
+
+def post_notice(session: Session, channel_id: int, body: str, visit_id: str) -> ChannelMessage:
+    """風險通報：拜訪提到競品或客訴、通報主管的同時，在小組頻道貼一則（services/risk.py）。"""
+    message = _write(session, channel_id, kind="notice", body=body, visit_id=visit_id)
     session.refresh(message)
     return message
 
