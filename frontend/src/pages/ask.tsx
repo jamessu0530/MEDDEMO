@@ -120,9 +120,9 @@ export function AskPage() {
       </header>
 
       {/* 底部最高的那個狀態是 dock（56）＋查詢範圍那行（17）＋輸入框（44），中間兩個 6px 間距，
-          加上 py-2 的 16、border 的 1 與導覽列的 56，約 202px。留到 208px 才不會蓋住最後一格。
+          加上上下各 8 的留白、border 的 1 與導覽列的 64，約 210px。留到 224px 才不會蓋住最後一格。
           會同時出現是因為查詢範圍那行看的是 session 而不是 voiceOn：連線中與斷線後 dock 還在，但送出走的是打字那條路 */}
-      <main className="flex flex-1 flex-col gap-4 px-4 pt-4 pb-52">
+      <main className="flex flex-1 flex-col gap-4 px-4 pt-4 pb-56">
         {entries.length === 0 && !voiceOn && (
           <div className="flex flex-col gap-2">
             <Mascot state="hi" size={96} className="self-center" />
@@ -155,7 +155,8 @@ export function AskPage() {
         <div ref={bottomRef} />
       </main>
 
-      <div className="fixed inset-x-0 bottom-14 z-10 mx-auto flex max-w-md flex-col gap-1.5 border-t bg-background px-3 py-2">
+      {/* 底色一路墊到最下面，浮著的導覽列兩旁和下面的空隙才不會露出後面捲動的對話 */}
+      <div className="fixed inset-x-0 bottom-0 z-10 mx-auto flex max-w-md flex-col gap-1.5 border-t bg-background px-3 pt-2 pb-[calc(4.5rem+env(safe-area-inset-bottom))]">
         {voiceOn && (
           <VoiceBoundary onFail={failVoice}>
             <Suspense
