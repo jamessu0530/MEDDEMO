@@ -68,7 +68,7 @@ def test_first_sign_in_opens_a_sales_account_that_sees_the_demo_rep(client, fake
     assert again.json()["user"]["id"] == user["id"]
 
     headers = {"Authorization": f"Bearer {again.json()['token']}"}
-    route = client.post("/api/route/today", json={}, headers=headers).json()
+    route = client.get("/api/itinerary/today", headers=headers).json()
     assert route["rep"]["id"] == "U01" and len(route["stops"]) == 5
     assert client.post("/api/escalations/1/reply", json={"answer": "x"}, headers=headers).status_code == 403
 

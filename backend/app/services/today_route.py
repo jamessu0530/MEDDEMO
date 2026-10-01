@@ -1,10 +1,7 @@
 """今日路線：今天該去哪幾家、先去哪一家、為什麼。
 
 排序用學出來的模型（route_model），沒有模型檔就退回規則排序。承諾逾期的客戶不管分數高低都排進來，
-因為那是答應過客戶的事，不該讓模型決定。
-
-沒有登入功能，所以三顆鈕（插入下一站／暫緩／誤判）的結果存在使用者手機上，每次要路線時一起送來。
-存在伺服器的話，決賽現場多位評審選到同一位業務會互相改到對方的畫面。
+因為那是答應過客戶的事，不該讓模型決定。這裡只決定今天去哪幾家；順序由 services/itinerary.py 排順路。
 """
 
 from __future__ import annotations
@@ -31,9 +28,8 @@ MAX_OPPORTUNITY_STOPS = 1
 OPPORTUNITY_GROWTH_RATIO = customer_profile.INTERVAL_ALERT_RATIO
 # 成長最多的品類是這個時，提醒帶內部文件的比價表（data/documents/17-學名藥比價表.md）
 GENERIC_PRICE_CATEGORY = "慢性處方"
-# 第一站的出門時間與兩站之間的間隔，跟假資料排拜訪用的節奏一致（9:30 出門、平均 75 分鐘一站）
+# 第一站的出門時間，跟假資料排拜訪用的節奏一致（9:30 出門）
 FIRST_STOP = dt.time(9, 30)
-STOP_GAP_MINUTES = 70
 # 距上次進貨超過平常間隔的幾倍才算「很久沒進貨」。跟客戶檔案「間隔拉長兩成」用同一個幅度
 ORDER_OVERDUE_RATIO = customer_profile.INTERVAL_ALERT_RATIO
 # 三顆鈕每按一次，該類提醒的分數調整一成；上下限是五次，免得按久了完全蓋過模型
@@ -53,19 +49,6 @@ SIGNAL_LABEL = {
 
 
 @dataclass
-class Stop:
-    customer_id: str
-    customer_name: str
-    type: str
-    grade: str
-    planned_time: str
-    status: str
-    signal: str
-    reason: str
-    visit_id: str | None = None
-
-
-@dataclass
 class Urgent:
     customer_id: str
     customer_name: str
@@ -77,21 +60,10 @@ class Urgent:
 
 @dataclass
 class Feedback:
-    """使用者手機上存的三顆鈕結果。"""
+    """業務按過的暫緩與誤判（存在伺服器，load_feedback 讀出來）。"""
 
     snoozed: dict[str, dt.date] = field(default_factory=dict)
-    pinned: list[str] = field(default_factory=list)
     signal_weights: dict[str, float] = field(default_factory=dict)
-
-
-@dataclass
-class TodayRoute:
-    date: dt.date
-    rep: AppUser
-    done: int
-    total: int
-    urgent: Urgent | None
-    stops: list[Stop]
 
 
 @dataclass
@@ -333,17 +305,16 @@ def pick(session: Session, user_id: str, feedback: Feedback | None = None) -> Pi
         pool.append({
             "candidate": candidate, "signal": signal, "reason": reason,
             "score": base * (1 + PERSONAL_STEP * weight),
-            # 按過「插入下一站」的排最前面，其次是逾期的承諾，再來才照分數。
-            # 這類提醒被按過「誤判」就不再硬排：業務說這種提醒對他沒用，硬排等於不理他
-            "rank": (candidate.customer_id in feedback.pinned, unresolved and weight >= 0),
+            # 逾期的承諾排最前面，再來才照分數。這類提醒被按過「誤判」就不再硬排：
+            # 業務說這種提醒對他沒用，硬排等於不理他
+            "forced": unresolved and weight >= 0,
             "opportunity": opportunity,
         })
-    pool.sort(key=lambda item: (item["rank"][0], item["rank"][1], item["score"]), reverse=True)
+    pool.sort(key=lambda item: (item["forced"], item["score"]), reverse=True)
     # 逾期承諾超過上限的，排回分數的隊伍裡，不再硬插到前面
     kept, dropped = [], []
     for item in pool:
-        forced = item["rank"][1] and not item["rank"][0]
-        (dropped if forced and sum(1 for k in kept if k["rank"][1]) >= MAX_OVERDUE_STOPS else kept).append(item)
+        (dropped if item["forced"] and sum(1 for k in kept if k["forced"]) >= MAX_OVERDUE_STOPS else kept).append(item)
     pool = kept + sorted(dropped, key=lambda item: item["score"], reverse=True)
     picked = pool[: max(0, ROUTE_SIZE - len(done))]
     # 路線裡沒有商機、而且有名額時，把分數最高的一家商機換進來（替掉分數最低、不是硬排的那一站）
@@ -351,7 +322,7 @@ def pick(session: Session, user_id: str, feedback: Feedback | None = None) -> Pi
     # 看的是畫面上有沒有標成商機：有商機、但因為同時帳款逾期而標成帳款的那一站不算
     if picked and not any(item["signal"] == "opportunity" for item in picked):
         best = next((item for item in pool if item["opportunity"] and item["candidate"].customer_id not in picked_ids), None)
-        replaceable = [i for i, item in enumerate(picked) if not item["rank"][0] and not item["rank"][1]]
+        replaceable = [i for i, item in enumerate(picked) if not item["forced"]]
         if best and replaceable and MAX_OPPORTUNITY_STOPS:
             best = {**best, "signal": "opportunity", "reason": best["opportunity"]}
             picked[replaceable[-1]] = best
@@ -361,26 +332,3 @@ def pick(session: Session, user_id: str, feedback: Feedback | None = None) -> Pi
     if picked and picked[0]["signal"] not in ("routine", "visit"):
         urgent = _urgent(session, picked[0]["candidate"], picked[0]["signal"], picked[0]["reason"])
     return Pick(today=today, rep=rep, done=done, picked=picked, urgent=urgent)
-
-
-def build(session: Session, user_id: str, feedback: Feedback | None = None) -> TodayRoute:
-    result = pick(session, user_id, feedback)
-    stops = [
-        Stop(
-            customer_id=c.id, customer_name=c.name, type=c.type, grade=c.grade,
-            planned_time=v.visited_at.astimezone(TAIPEI).strftime("%H:%M"),
-            status="done", signal="routine", reason="已完成", visit_id=v.id,
-        )
-        for v, c in result.done
-    ]
-    start = dt.datetime.combine(result.today, FIRST_STOP) + dt.timedelta(minutes=STOP_GAP_MINUTES * len(stops))
-    for n, item in enumerate(result.picked):
-        candidate = item["candidate"]
-        stops.append(Stop(
-            customer_id=candidate.customer_id, customer_name=candidate.name, type=candidate.type,
-            grade=candidate.grade,
-            planned_time=(start + dt.timedelta(minutes=STOP_GAP_MINUTES * n)).strftime("%H:%M"),
-            status="next" if n == 0 else "todo", signal=item["signal"], reason=item["reason"],
-        ))
-    return TodayRoute(date=result.today, rep=result.rep, done=len(result.done), total=len(stops),
-                      urgent=result.urgent, stops=stops)
