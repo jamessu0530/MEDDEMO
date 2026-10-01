@@ -96,13 +96,19 @@ export function RouteEditPage() {
   }, [userId, attempt])
 
   // 每次改動停 300ms 再算時間、車程與違反的規則；算好之前畫面先用上一次的時間。
-  // 還沒改過就不算：畫面用進來時讀到的那一份（正式的車程），preview 一律是直線估算
+  // 還沒改過就不算：畫面用進來時讀到的那一份（正式的車程），preview 一律是直線估算。
+  // 例外：從加一站、習慣頁回來時草稿已經在（不是這次進頁面才建的），上面可能改了習慣或順路的候選，
+  // view 卻還是離開前那一份、沒有照最新的草稿重算，進頁面時先補跑一次 preview（immediateRef 只在那一次是 true）
   const draft = edit?.draft
   const changed = Boolean(edit && edit.history.length > 0)
+  const immediateRef = useRef(Boolean(routeDraft.get()))
   useEffect(() => {
-    if (!draft || !changed) return
+    if (!draft) return
+    const immediate = immediateRef.current
+    immediateRef.current = false
+    if (!changed && !immediate) return
     const controller = new AbortController()
-    const timer = setTimeout(() => {
+    const run = () => {
       previewToday(draft, undefined, controller.signal)
         .then((view) => {
           routeDraft.showView(view, draft)
@@ -112,7 +118,12 @@ export function RouteEditPage() {
           if (controller.signal.aborted) return
           setPreviewError(error instanceof ApiError ? error.message : "連不上伺服器，時間先不更新。")
         })
-    }, 300)
+    }
+    if (immediate) {
+      run()
+      return () => controller.abort()
+    }
+    const timer = setTimeout(run, 300)
     return () => {
       clearTimeout(timer)
       controller.abort()
@@ -184,7 +195,9 @@ export function RouteEditPage() {
     onDragStart: ({ active }) => `拿起 ${stopName(active.id)}`,
     onDragOver: ({ active, over }) => (over ? `${stopName(active.id)} 移到 ${stopName(over.id)} 的位置` : undefined),
     onDragEnd: ({ active, over }) =>
-      over ? `${stopName(active.id)} 放在第 ${order.indexOf(String(over.id)) + 1} 站` : `${stopName(active.id)} 放回原位`,
+      over
+        ? `${stopName(active.id)} 放在第 ${finished.length + order.indexOf(String(over.id)) + 1} 站`
+        : `${stopName(active.id)} 放回原位`,
     onDragCancel: ({ active }) => `取消，${stopName(active.id)} 回到原位`,
   }
 
