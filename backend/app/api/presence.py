@@ -207,6 +207,8 @@ class _Connection:
             event = json.loads(message["data"])
             if event.get("type") == "presence":
                 await self.send_presence()
+            elif event.get("type") == "avatars":
+                await self.send({"type": "avatars"})
             elif event.get("type") == "message":
                 channel_id = int(event["channel_id"])
                 # 只通知看得到的人：看不到的頻道連「有新訊息」都不能透露

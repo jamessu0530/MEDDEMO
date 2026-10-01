@@ -62,12 +62,12 @@ export function EscalationsPage() {
             return (
               <article key={item.id} className={cn("rounded-2xl border-2 bg-card p-4 shadow-lip", fresh && "border-primary/40")}>
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-[0.6875rem] text-muted-foreground">
                     {formatDateTime(item.created_at)} 轉出 · 單號 #{item.id}
                   </p>
                   <span
                     className={cn(
-                      "shrink-0 rounded-md px-2 py-0.5 text-[11px]",
+                      "shrink-0 rounded-md px-2 py-0.5 text-[0.6875rem]",
                       item.status === "answered" ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
                     )}
                   >
@@ -77,7 +77,7 @@ export function EscalationsPage() {
                 <p className="mt-1.5 text-sm font-medium">{item.question}</p>
                 {item.status === "answered" && (
                   <div className="mt-3 rounded-xl bg-primary/10 px-3 py-2.5">
-                    <p className="text-[11px] font-semibold text-primary">
+                    <p className="text-[0.6875rem] font-semibold text-primary">
                       {item.answered_by} 回覆 · {item.answered_at && formatDateTime(item.answered_at)}
                     </p>
                     <p className="mt-1 text-sm leading-relaxed whitespace-pre-line">{item.answer}</p>

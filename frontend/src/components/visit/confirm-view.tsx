@@ -153,7 +153,7 @@ function markSources(transcript: string, sources: Visit["sources"]) {
     parts.push(
       <mark key={mark.key} className="rounded bg-accent px-0.5 text-foreground">
         {transcript.slice(mark.start, mark.end)}
-        <sup className="ml-0.5 text-[10px] font-medium text-primary">{FIELD_LABEL[mark.key]}</sup>
+        <sup className="ml-0.5 text-[0.625rem] font-medium text-primary">{FIELD_LABEL[mark.key]}</sup>
       </mark>
     )
     cursor = mark.end

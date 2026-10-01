@@ -99,21 +99,23 @@ export function TodayPage() {
           <div className="flex min-w-0 items-center gap-1.5">
             <MyStatusButton className="size-9" />
             <Link to="/settings" className="flex h-11 min-w-0 items-center gap-1 text-xs text-muted-foreground">
-              {/* 示範說明另起一行：接在名字後面的話手機上整句會被截掉 */}
+              {/* 名字自己一行、區與示範說明另一行：右邊還有狀態列，放大字體時接在一起整句會被截到只剩一兩個字 */}
               <span className="flex min-w-0 flex-col leading-tight">
+                <span className="truncate">{user.name}</span>
                 <span className="truncate">
-                  {user.region} · {user.name}
+                  {user.region}
+                  {user.acting_as && ` · 示範：${user.acting_as.name}的客戶`}
                 </span>
-                {user.acting_as && <span className="truncate">示範：{user.acting_as.name}的客戶</span>}
               </span>
               <ChevronRight className="size-3.5 shrink-0" />
             </Link>
           </div>
-          {/* 像 Duolingo 的狀態列：圖示加數字。進度只是顯示，其他三顆可以按 */}
+          {/* 像 Duolingo 的狀態列：圖示加數字。進度只是顯示，其他三顆可以按。
+              按鈕用固定的 40px，不跟著放大字體變大，不然左邊的名字會被擠到只剩一個字 */}
           <div className="flex shrink-0 items-center">
             {/* 今天沒排拜訪就不顯示 0/0 */}
             {route && route.total > 0 && (
-              <span className="flex h-10 items-center gap-1 px-1.5 text-sm font-semibold tabular-nums">
+              <span className="flex h-[40px] items-center gap-1 px-1.5 text-sm font-semibold tabular-nums">
                 <Flag className="size-5 fill-primary text-primary" />
                 <span className="sr-only">今日進度</span>
                 {route.done}/{route.total}
@@ -123,7 +125,7 @@ export function TodayPage() {
             <Link
               to="/escalations"
               aria-label={unseen > 0 ? `主管回覆 ${unseen} 則，查看` : "轉給主管的提問"}
-              className="flex h-10 min-w-10 items-center justify-center gap-1 rounded-lg px-1.5 hover:bg-muted"
+              className="flex h-[40px] min-w-[40px] items-center justify-center gap-1 rounded-lg px-1.5 hover:bg-muted"
             >
               <Bell className={cn("size-5", unseen > 0 ? "fill-warning text-warning" : "text-muted-foreground")} />
               {unseen > 0 && <span className="text-sm font-semibold text-warning tabular-nums">{unseen}</span>}
@@ -131,11 +133,11 @@ export function TodayPage() {
             <Link
               to="/oa/forms"
               aria-label="我的申請單"
-              className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
+              className="flex size-[40px] items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
             >
               <FileText className="size-5" />
             </Link>
-            <SkinToggle className="size-10" />
+            <SkinToggle className="size-[40px]" />
           </div>
         </div>
         {/* 像 Duolingo 的單元橫幅；右邊的「指南」換成方法卡：主管教的做法，出門前或進門前翻一下 */}
@@ -151,7 +153,7 @@ export function TodayPage() {
           </div>
           <Link
             to="/methods"
-            className="flex w-16 shrink-0 flex-col items-center justify-center gap-0.5 border-l-2 border-black/15 text-[11px] font-semibold active:bg-black/10"
+            className="flex w-16 shrink-0 flex-col items-center justify-center gap-0.5 border-l-2 border-black/15 text-[0.6875rem] font-semibold active:bg-black/10"
           >
             <BookOpenText className="size-5" />
             方法卡
@@ -203,7 +205,7 @@ export function TodayPage() {
 
         {route && urgent && (
           <article className="mb-2 flex flex-col gap-2 rounded-2xl border-2 border-destructive/30 bg-destructive/10 p-4 shadow-lip-destructive-soft">
-            <span className="flex items-center gap-1 self-start rounded-md bg-destructive px-2 py-1 text-[11px] font-semibold text-white">
+            <span className="flex items-center gap-1 self-start rounded-md bg-destructive px-2 py-1 text-[0.6875rem] font-semibold text-white">
               <TriangleAlert className="size-3" />
               需立即處理 · {urgent.headline}
             </span>

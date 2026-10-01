@@ -174,15 +174,15 @@ function ItemRow({ item }: { item: PromotionItem }) {
       <p className="mt-1 text-xs text-muted-foreground">{item.deal}</p>
       <dl className="mt-3 grid grid-cols-3 gap-2 border-t pt-2 text-center">
         <div>
-          <dt className="text-[11px] text-muted-foreground">每口</dt>
+          <dt className="text-[0.6875rem] text-muted-foreground">每口</dt>
           <dd className="text-sm font-medium tabular-nums">{formatMoney(item.deal_price)}</dd>
         </div>
         <div>
-          <dt className="text-[11px] text-muted-foreground">平均每個</dt>
+          <dt className="text-[0.6875rem] text-muted-foreground">平均每個</dt>
           <dd className="text-sm font-medium tabular-nums">{formatUnitPrice(item.unit_deal_price)}</dd>
         </div>
         <div>
-          <dt className="text-[11px] text-muted-foreground">比出貨價 {formatMoney(item.ship_price)}</dt>
+          <dt className="text-[0.6875rem] text-muted-foreground">比出貨價 {formatMoney(item.ship_price)}</dt>
           <dd className="text-sm font-medium text-primary tabular-nums">省 {(item.discount_rate * 100).toFixed(1)}%</dd>
         </div>
       </dl>

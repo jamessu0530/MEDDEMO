@@ -20,7 +20,7 @@ export function ChannelRow({ channel, indent = false, backTo }: { channel: Chann
     >
       <div className="min-w-0 flex-1">
         <p className={cn("truncate text-sm", channel.unread > 0 && "font-semibold")}>{channel.name}</p>
-        {detail.length > 0 && <p className="text-[11px] text-muted-foreground">{detail.join(" · ")}</p>}
+        {detail.length > 0 && <p className="text-[0.6875rem] text-muted-foreground">{detail.join(" · ")}</p>}
       </div>
       {channel.unread > 0 && <UnreadDot count={channel.unread} />}
     </Link>

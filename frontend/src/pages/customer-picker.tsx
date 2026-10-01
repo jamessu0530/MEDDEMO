@@ -73,7 +73,7 @@ export function CustomerPicker() {
             >
               <Bell className="size-5" />
               {unseen > 0 && (
-                <span className="absolute top-1 right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-white">
+                <span className="absolute top-1 right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[0.625rem] font-semibold text-white">
                   {unseen}
                 </span>
               )}

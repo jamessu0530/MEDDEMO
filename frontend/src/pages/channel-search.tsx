@@ -109,11 +109,11 @@ export function ChannelSearchPage() {
                   )}
                   <span className="flex flex-col gap-0.5 px-2.5 py-2">
                     <span className="truncate text-xs font-medium">{hit.channel_name}</span>
-                    <span className="truncate text-[11px] text-muted-foreground">
+                    <span className="truncate text-[0.6875rem] text-muted-foreground">
                       {hit.author_name ?? "熊熊滾"} · {formatDateTime(hit.created_at)}
                     </span>
                     {(hit.caption || hit.shared_text) && (
-                      <span className="line-clamp-1 text-[11px] text-muted-foreground">{hit.reachable ? hit.caption : hit.shared_text}</span>
+                      <span className="line-clamp-1 text-[0.6875rem] text-muted-foreground">{hit.reachable ? hit.caption : hit.shared_text}</span>
                     )}
                   </span>
                 </button>

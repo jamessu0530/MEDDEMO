@@ -266,7 +266,7 @@ export function TracePanel({ trace, live }: { trace: TraceItem[]; live: boolean 
                   `（${item.step === "sql" ? `${item.row_count} 列` : item.step === "web" ? `${item.row_count} 頁` : `${item.row_count} 段`}）`}
               </p>
               {item.search_query && <p className="mt-1 text-muted-foreground">檢索字句：{item.search_query}</p>}
-              {item.sql && <pre className="mt-1 overflow-x-auto font-mono text-[11px] whitespace-pre-wrap text-muted-foreground">{item.sql.trim()}</pre>}
+              {item.sql && <pre className="mt-1 overflow-x-auto font-mono text-[0.6875rem] whitespace-pre-wrap text-muted-foreground">{item.sql.trim()}</pre>}
               <p className="mt-1 text-muted-foreground">{item.decision}</p>
             </li>
           ))}

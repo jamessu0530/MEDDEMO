@@ -35,7 +35,8 @@ type LoadState = { status: "loading" } | { status: "error" } | { status: "ready"
 type NoticeState = { status: "loading" } | { status: "error" } | { status: "ready"; items: ManagerNotice[] }
 
 const NOTICES_PATH = "/manager?view=notices"
-const HEADER_BUTTON = "flex size-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
+// 標頭的圖示按鈕用固定的 44px，不跟著放大字體變大，標題才不會被擠掉（components/channels-link.tsx 同）
+const HEADER_BUTTON = "flex size-[44px] shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
 
 /** 三個分頁看的是誰的事：主管是自己底下的人，IT 是全公司（後端依組織樹過濾，不看轄區） */
 function whose(user: AuthUser) {
@@ -78,8 +79,8 @@ export function ManagerPage() {
         subtitle="主管端"
         trailing={
           <>
-            <MyStatusButton className="size-11" />
-            <SkinToggle className="size-11" />
+            <MyStatusButton className="size-[44px]" />
+            <SkinToggle className="size-[44px]" />
             <ChannelsLink />
             {user?.role === "it" && (
               <Link to="/admin" aria-label="組織管理" className={HEADER_BUTTON}>
@@ -109,7 +110,7 @@ export function ManagerPage() {
             {value === "notices" && unseenNotices > 0 && (
               <span
                 aria-label={`未讀 ${unseenNotices} 則`}
-                className="flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-white"
+                className="flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[0.625rem] font-semibold text-white"
               >
                 {unseenNotices}
               </span>
@@ -117,7 +118,7 @@ export function ManagerPage() {
             {value === "oa" && pendingOa > 0 && (
               <span
                 aria-label={`待簽 ${pendingOa} 張`}
-                className="flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-white"
+                className="flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[0.625rem] font-semibold text-white"
               >
                 {pendingOa}
               </span>
@@ -216,7 +217,7 @@ function EscalationsPanel() {
       {state.status === "ready" &&
         state.items.map((item) => (
           <article key={item.id} className="rounded-2xl border-2 bg-card p-4 shadow-lip">
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-[0.6875rem] text-muted-foreground">
               {formatDateTime(item.created_at)} · {item.kind === "data" ? "數字查詢" : "知識查詢"} · 單號 #{item.id}
             </p>
             <p className="mt-1.5 text-sm font-medium">{item.question}</p>
@@ -230,11 +231,11 @@ function EscalationsPanel() {
               <ReplyForm item={item} onReplied={replied} />
             ) : (
               <div className="mt-3 rounded-xl bg-primary/10 px-3 py-2.5">
-                <p className="text-[11px] font-semibold text-primary">
+                <p className="text-[0.6875rem] font-semibold text-primary">
                   {item.answered_by} · {item.answered_at && formatDateTime(item.answered_at)}
                 </p>
                 <p className="mt-1 text-sm leading-relaxed whitespace-pre-line">{item.answer}</p>
-                <p className="mt-1.5 text-[11px] text-muted-foreground">
+                <p className="mt-1.5 text-[0.6875rem] text-muted-foreground">
                   {item.seen_at ? `業務 ${formatDateTime(item.seen_at)} 看過` : "業務還沒看"}
                 </p>
               </div>
@@ -351,11 +352,11 @@ function NoticeCard({ item, onSeen }: { item: ManagerNotice; onSeen: (item: Mana
   return (
     <article className={cn("rounded-2xl border-2 bg-card p-4 shadow-lip", unseen && "border-destructive/40")}>
       <div className="flex items-center justify-between gap-2">
-        <p className="min-w-0 text-[11px] text-muted-foreground">
+        <p className="min-w-0 text-[0.6875rem] text-muted-foreground">
           {formatDateTime(item.created_at)} · 業務 {item.rep_name}
         </p>
         {unseen && (
-          <span className="shrink-0 rounded-md bg-destructive/10 px-2 py-0.5 text-[11px] text-destructive">未讀</span>
+          <span className="shrink-0 rounded-md bg-destructive/10 px-2 py-0.5 text-[0.6875rem] text-destructive">未讀</span>
         )}
       </div>
       {/* 回來時停在風險通報，不是提問 */}
@@ -386,7 +387,7 @@ function NoticeCard({ item, onSeen }: { item: ManagerNotice; onSeen: (item: Mana
           知道了
         </Button>
       ) : (
-        item.seen_at && <p className="mt-2 text-[11px] text-muted-foreground">{formatDateTime(item.seen_at)} 看過</p>
+        item.seen_at && <p className="mt-2 text-[0.6875rem] text-muted-foreground">{formatDateTime(item.seen_at)} 看過</p>
       )}
     </article>
   )
@@ -458,7 +459,7 @@ function OaInboxPanel() {
                   <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{formatProbability(item.model.probability)}</span>
                 )}
               </div>
-              <p className="mt-1 text-[11px] text-muted-foreground">
+              <p className="mt-1 text-[0.6875rem] text-muted-foreground">
                 {item.form_no} · {item.applicant_name} · {item.customer_name} · {oaDateText(item)}
               </p>
             </Link>
@@ -483,7 +484,7 @@ function OaInboxCard({ item }: { item: OaFormItem }) {
         {item.form_no} · {item.applicant_name}
         {item.kind !== "trip" && ` · ${item.customer_name}`}
       </p>
-      <p className="mt-1 text-[11px] text-muted-foreground">{oaDateText(item)}</p>
+      <p className="mt-1 text-[0.6875rem] text-muted-foreground">{oaDateText(item)}</p>
       {item.model && <OaModelNote model={item.model} className="mt-2" />}
     </Link>
   )
@@ -631,7 +632,7 @@ function MyMethodCard({
         採用 <span className="font-semibold tabular-nums">{card.adopted}</span> 次 · 沒幫上{" "}
         <span className="font-semibold tabular-nums">{card.not_helped}</span> 次
       </p>
-      <p className="mt-1 text-[11px] text-muted-foreground">
+      <p className="mt-1 text-[0.6875rem] text-muted-foreground">
         {card.author_name} · {formatDateTime(card.updated_at)} 更新
       </p>
       {error && <p className="mt-2 text-xs text-destructive">{error}</p>}

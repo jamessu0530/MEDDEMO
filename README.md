@@ -488,6 +488,16 @@ uv run --project backend python backend/scripts/eval_ask.py
 - 登入後開一條 WebSocket（`/api/ws`），同時收狀態變化與「頻道有新訊息」的通知，頻道不必再每 3 秒輪詢；斷線時退回輪詢與 HTTP 心跳。熊熊滾在背景寫好回答後一樣發通知（`services/channel_ai.run`）。本機開發由 Vite 代理（`vite.config.ts`），正式環境由 Nginx 轉（`frontend/nginx.conf`）。
 - 選「顯示為離線」的人，在別人眼中跟真的離線一樣：伺服器只送算好的狀態，不送最後上線時間。
 
+## 大頭貼與字體大小
+
+設計見 [docs/superpowers/specs/2026-10-01-avatars-text-size-design.md](docs/superpowers/specs/2026-10-01-avatars-text-size-design.md)。
+
+- **大頭貼**：帳號設定的「大頭貼」可以拍照或從相簿選一張，所有帳號都能換；沒有照片就用名字縮寫。後端重新整理一次（`backend/app/services/avatars.py`）：轉正、清掉 EXIF、從中間裁成 256×256 的 JPEG，存在 `user_avatar` 表。
+  - 網址帶一個用登入密鑰簽的 `sig`，沒有期限、不分看的人，只有要登入的 `GET /api/avatars` 會發；換照片或移除時版本換成新的隨機值，舊網址就 404，所以圖片可以一直快取。
+  - 有人換了照片就發 WebSocket 的 `avatars` 事件，手機重拿一次網址。IT 在頻道的成員清單可以移除別人的照片。
+  - 換照片算在用量上限的「換大頭貼」（每個帳號每小時 20 次、全系統每天 300 次）。
+- **字體大小**：帳號設定的「字體大小」有標準、大、特大（根字級 100%／112.5%／125%），記在這支手機的 `localStorage`，掛在 `<html data-text-size>`。Tailwind 的字級、間距都是 rem，整頁一起等比例放大；寫字級時不要用 `text-[11px]` 這種像素值，改用 `text-[0.6875rem]`，不然那些字不會跟著放大。
+
 ## 個資與保存期限（NFR-8）
 
 - **確認送出時把逐字稿去識別**：email、身分證字號、電話換成［email］［身分證字號］［電話］；系統裡業務與主管的姓名，以及「姓＋稱謂」（王藥師、陳小姐、林店長）遮成 ○。客戶名稱、品項、競品不遮。送出前業務看的是原文，才能核對。

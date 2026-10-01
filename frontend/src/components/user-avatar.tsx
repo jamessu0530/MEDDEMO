@@ -1,7 +1,8 @@
 import { Check, Clock, Minus } from "lucide-react"
 
 import type { PresenceStatus } from "@/api/presence"
-import { Avatar, AvatarBadge, AvatarFallback } from "@/components/ui/avatar"
+import { Avatar, AvatarBadge, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { useAvatarUrl } from "@/lib/avatars"
 import { avatarTone, initials, STATUS_LABEL, usePresence } from "@/lib/presence"
 import { cn } from "@/lib/utils"
 
@@ -33,7 +34,7 @@ function DotIcon({ status }: { status: PresenceStatus }) {
 
 type Size = "sm" | "default" | "lg"
 
-/** 名字縮寫的頭像，給了 status 就在右下角加狀態點 */
+/** 頭像：有大頭貼就用照片，沒有（或載入失敗）用名字縮寫；給了 status 就在右下角加狀態點 */
 export function UserAvatar({
   id,
   name,
@@ -47,12 +48,15 @@ export function UserAvatar({
   size?: Size
   className?: string
 }) {
+  const url = useAvatarUrl(id)
   return (
     <Avatar size={size} className={className}>
+      {/* 旁邊一定寫著名字，照片本身不必再念一次 */}
+      {url && <AvatarImage src={url} alt="" />}
       <AvatarFallback
         aria-hidden
         className={cn(
-          "text-[11px] font-medium group-data-[size=lg]/avatar:text-sm group-data-[size=sm]/avatar:text-[9px]",
+          "text-[0.6875rem] font-medium group-data-[size=lg]/avatar:text-sm group-data-[size=sm]/avatar:text-[0.5625rem]",
           TONES[avatarTone(id, TONES.length)]
         )}
       >

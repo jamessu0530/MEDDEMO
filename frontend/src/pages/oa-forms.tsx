@@ -64,7 +64,7 @@ export function OaFormsPage() {
                 )}
               >
                 <span className="text-sm font-semibold tabular-nums">{n > 99 ? "99+" : n}</span>
-                <span className="text-[10px] text-muted-foreground">{item.label}</span>
+                <span className="text-[0.625rem] text-muted-foreground">{item.label}</span>
               </button>
             )
           })}
@@ -107,7 +107,7 @@ function FormCard({ item }: { item: OaFormItem }) {
         </p>
         <span
           className={cn(
-            "shrink-0 rounded-md px-2 py-0.5 text-[11px]",
+            "shrink-0 rounded-md px-2 py-0.5 text-[0.6875rem]",
             item.status === "approved" && "bg-primary/10 text-primary",
             item.status === "pending" && "bg-muted text-muted-foreground",
             item.status === "rejected" && "bg-destructive/10 text-destructive",
@@ -122,7 +122,7 @@ function FormCard({ item }: { item: OaFormItem }) {
       <p className="mt-1 text-xs text-muted-foreground">
         {item.form_no} · {item.customer_name}
       </p>
-      <p className="mt-1 text-[11px] text-muted-foreground">
+      <p className="mt-1 text-[0.6875rem] text-muted-foreground">
         {oaDateText(item)} · {formatDateTime(item.submitted_at)} 送出
         {item.approver_name ? ` · 等${item.approver_name}簽核` : ""}
       </p>

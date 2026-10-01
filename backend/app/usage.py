@@ -61,6 +61,8 @@ LIMITS: dict[str, Limit] = {
     "attachment": Limit("上傳附件", per_client_hour=30, per_day=500),
     # 搜尋附件每次算一次向量（文字或照片），很便宜，擋的是程式一直送
     "attachment_search": Limit("搜尋附件", per_client_hour=60, per_day=1000),
+    # 換大頭貼不花錢，但每次要解一張最大 15MB 的照片，全公司又都看得到：擋的是一直換
+    "avatar": Limit("換大頭貼", per_client_hour=20, per_day=300),
 }
 
 # 會呼叫 Gemini，或是不花錢但容易被濫用、做了無法復原的入口。提問與錄音整理在背景工作裡呼叫，
@@ -79,6 +81,7 @@ ROUTES: list[tuple[str, re.Pattern[str], str, bool]] = [
     ("POST", re.compile(r"/api/channels/\d+/messages"), "channel_post", False),
     ("POST", re.compile(r"/api/channels/\d+/messages"), "attachment", True),
     ("POST", re.compile(r"/api/channels/search"), "attachment_search", False),
+    ("POST", re.compile(r"/api/avatars/me"), "avatar", False),
 ]
 
 

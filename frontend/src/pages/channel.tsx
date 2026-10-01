@@ -189,7 +189,7 @@ function ChannelView({ id }: { id: number }) {
     fetchNew()
     const timer = setInterval(fetchNew, connected ? POLL_CONNECTED_MS : POLL_MS)
     const unsubscribe = realtime.subscribe((event) => {
-      if (event.type === "resync" || event.channel_id === id) fetchNew()
+      if (event.type === "resync" || (event.type === "message" && event.channel_id === id)) fetchNew()
     })
     // 連著但畫面在背景時收到的通知會被略過，切回前景補一次
     const onVisible = () => document.visibilityState === "visible" && fetchNew()
@@ -400,7 +400,7 @@ function ChannelView({ id }: { id: number }) {
         ) : (
           <>
             <div className="flex items-center justify-between gap-2 pb-1">
-              <p className="text-[11px] text-muted-foreground">{channel.audience}</p>
+              <p className="text-[0.6875rem] text-muted-foreground">{channel.audience}</p>
               <Button variant="ghost" size="sm" className="h-8 shrink-0 gap-1 px-2 text-xs text-primary" onClick={callMascot}>
                 {/* Button 會把沒寫 size- 的 svg 縮成 14px，頭像要自己給尺寸 */}
                 <Mascot size={18} bust className="size-4.5" />
@@ -510,7 +510,7 @@ function MessageBubble({
     const replied = replyTo && (replyTo.mine ? " · 回覆你" : ` · 回覆 ${replyTo.author_name}`)
     const bubble = (
       <div className="rounded-xl bg-muted px-3 py-2 text-sm">
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-[0.6875rem] text-muted-foreground">
           {message.kind === "ai" ? "熊熊滾" : "風險通報"}
           {replied} · {formatDateTime(message.created_at)}
         </p>
@@ -535,7 +535,7 @@ function MessageBubble({
   }
   const bubble = (
     <div className={cn("flex min-w-0 flex-col gap-0.5", message.mine && "items-end")}>
-      <p className="px-1 text-[11px] text-muted-foreground">
+      <p className="px-1 text-[0.6875rem] text-muted-foreground">
         {message.mine ? "" : `${message.author_name} · `}
         {formatDateTime(message.created_at)}
         {onDelete && (
