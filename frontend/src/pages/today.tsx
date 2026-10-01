@@ -68,7 +68,8 @@ export function TodayPage() {
     setAttempt((n) => n + 1)
   }
 
-  // 三顆鈕：後端改今天的行程，回來的就是改好的那一份。行程剛被別人改過（409）就重新載入最新的
+  // 三顆鈕：後端改今天的行程，回來的就是改好的那一份。行程剛被別人改過（409）、
+  // 或這家剛被別人跑完拿掉了（404）都重新載入最新的
   async function feedback(action: RouteAction, message: string) {
     if (!user || !urgent || !route) return
     setBusy(true)
@@ -78,7 +79,7 @@ export function TodayPage() {
       setHint(message)
       setBusy(false)
     } catch (error) {
-      if (error instanceof ApiError && error.status === 409) {
+      if (error instanceof ApiError && (error.status === 409 || error.status === 404)) {
         setHint(error.message)
         reload()
         return
