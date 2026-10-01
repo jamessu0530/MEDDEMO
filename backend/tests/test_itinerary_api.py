@@ -2,10 +2,11 @@
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.main import app
 from app.models import Customer, Itinerary, RouteSignalWeight, RouteSnooze
+from app.services import itinerary as service
 
 
 @pytest.fixture
@@ -28,7 +29,9 @@ def test_today_has_the_fields_the_home_page_needs(client, auth):
     assert set(first) == {
         "customer_id", "customer_name", "type", "grade", "planned_time", "status", "signal", "reason", "visit_id",
         "source", "duration_minutes", "late_minutes", "travel_minutes", "travel_km",
+        "window_kind", "window_time", "note", "locked", "habit_ids",
     }
+    assert {"rules", "violations", "precedences", "skipped_habits"} <= set(data)
     assert data["urgent"]["customer_id"] == first["customer_id"]
     assert data["finish_time"] > first["planned_time"]
 
@@ -100,3 +103,81 @@ def test_add_stops_from_an_answer(client, auth, tx):
     assert data["added"] == [mine.name]
     assert data["skipped"][0]["reason"] == "已經在今天的行程裡"
     assert mine.id in {s["customer_id"] for s in data["itinerary"]["stops"]}
+
+
+def draft_body(data):
+    """讀到的行程原封不動地換成草稿（跟前端 lib/itinerary.ts 的 draftFrom 一樣）。"""
+    fields = ("customer_id", "duration_minutes", "window_kind", "window_time", "note", "locked")
+    return {
+        "stops": [{key: s[key] for key in fields} for s in data["stops"] if s["status"] != "done"],
+        "precedences": data["precedences"],
+        "skipped_habit_ids": [h["id"] for h in data["skipped_habits"]],
+        "habits": [],
+    }
+
+
+def test_preview_and_save_the_list(client, auth):
+    data = today(client, auth)
+    body = draft_body(data)
+    body["stops"][1].update(window_kind="before", window_time="09:40")
+    body["stops"][2]["duration_minutes"] = 90
+    later, earlier = body["stops"][4]["customer_id"], body["stops"][3]["customer_id"]
+    body["precedences"] = [{"before": later, "after": earlier}]
+    preview = client.post("/api/itinerary/today/preview", json=body, headers=auth())
+    assert preview.status_code == 200, preview.text
+    shown = preview.json()
+    assert shown["stops"][1]["late_minutes"] > 0 and shown["stops"][1]["window_time"] == "09:40"
+    assert shown["violations"] == [f"today:{later}>{earlier}"]
+    assert today(client, auth)["version"] == data["version"]
+    # 照先後換過來再存
+    body["stops"][3], body["stops"][4] = body["stops"][4], body["stops"][3]
+    saved = client.put("/api/itinerary/today", json={**body, "version": data["version"]}, headers=auth())
+    assert saved.status_code == 200, saved.text
+    after = saved.json()
+    assert after["version"] == data["version"] + 1 and after["violations"] == []
+    assert [s["customer_id"] for s in after["stops"]] == [s["customer_id"] for s in body["stops"]]
+    assert after["precedences"] == body["precedences"]
+    stale = client.put("/api/itinerary/today", json={**body, "version": data["version"]}, headers=auth())
+    assert stale.status_code == 409 and stale.json()["detail"] == "行程剛被改過，已幫你重新整理"
+
+
+def test_a_bad_draft_is_refused(client, auth, tx):
+    body = draft_body(today(client, auth))
+    theirs = tx.scalars(select(Customer.id).where(Customer.owner_user_id == "U02")).first()
+    bad = client.post("/api/itinerary/today/preview", json={**body, "insert": theirs}, headers=auth())
+    assert bad.status_code == 422 and bad.json()["detail"] == "只能排自己的客戶"
+    half = {**body, "stops": [{**body["stops"][0], "window_kind": "at"}]}
+    assert client.post("/api/itinerary/today/preview", json=half, headers=auth()).status_code == 422
+    assert client.post("/api/itinerary/today/preview", json=body, headers=auth("M01")).status_code == 403
+    assert client.put("/api/itinerary/today", json={**body, "version": 1}, headers=auth("M01")).status_code == 403
+
+
+def test_candidates_through_the_api(client, auth):
+    ids = [s["customer_id"] for s in today(client, auth)["stops"]]
+    response = client.get(
+        "/api/itinerary/today/candidates", params={"order": ",".join(ids[:4]), "locked": ids[0]}, headers=auth(),
+    )
+    assert response.status_code == 200, response.text
+    found = response.json()
+    assert len(found["nearby"]) == 5 and found["full"] is False
+    assert set(found["nearby"][0]) == {
+        "customer_id", "customer_name", "type", "area", "signal", "after_stop", "extra_minutes",
+    }
+    assert ids[4] in {c["customer_id"] for c in found["nearby"] + found["others"]}
+    assert client.get("/api/itinerary/today/candidates", headers=auth("M01")).status_code == 403
+
+
+def test_an_it_reset_between_reading_and_saving_is_a_409(client, auth, monkeypatch):
+    first = today(client, auth)["stops"][0]["customer_id"]
+    real = service.get_or_create
+
+    def reset_meanwhile(session, user_id):
+        itinerary = real(session, user_id)
+        session.execute(text("DELETE FROM itinerary WHERE id = :id"), {"id": itinerary.id})
+        return itinerary
+
+    monkeypatch.setattr(service, "get_or_create", reset_meanwhile)
+    response = client.post(
+        "/api/itinerary/today/feedback", json={"customer_id": first, "action": "pin", "version": 1}, headers=auth(),
+    )
+    assert response.status_code == 409 and response.json()["detail"] == "行程剛被改過，已幫你重新整理"
