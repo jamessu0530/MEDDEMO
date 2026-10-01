@@ -3,6 +3,7 @@ import {
   AdvancedMarker,
   APILoadingStatus,
   APIProvider,
+  ColorScheme,
   InfoWindow,
   Map,
   Polyline,
@@ -10,6 +11,7 @@ import {
 } from "@vis.gl/react-google-maps"
 
 import type { MapsConfig, RemovedStop, RepRoute, TeamStop } from "@/api/team-routes"
+import { useSkin } from "@/lib/skin"
 import { boundsOf, legPaths, routeColorVar } from "@/lib/team-routes"
 
 // 還沒有任何點時框住台灣本島
@@ -41,6 +43,7 @@ function cssColor(name: string) {
  */
 export default function RouteMap({ config, routes, removed = [], onFail }: Props) {
   const [selected, setSelected] = useState<Selected | null>(null)
+  const skin = useSkin()
   const points = [
     ...routes.flatMap((route) => [...(route.origin ? [route.origin] : []), ...route.stops]),
     ...removed,
@@ -50,8 +53,12 @@ export default function RouteMap({ config, routes, removed = [], onFail }: Props
     <APIProvider apiKey={config.browser_key} language="zh-TW" region="TW" onError={onFail}>
       <LoadWatch onFail={onFail} />
       <div className="h-64 overflow-hidden rounded-2xl border-2 shadow-lip">
+        {/* 地圖跟著 App 的深淺色：線的顏色是主題色，深色主題的線很淡，畫在淺色地圖上會看不見。
+            換配色時重建地圖（colorScheme 只在建立時讀） */}
         <Map
+          key={skin}
           mapId={config.map_id}
+          colorScheme={skin === "dark" ? ColorScheme.DARK : ColorScheme.LIGHT}
           defaultBounds={{ ...bounds, padding: 32 }}
           gestureHandling="cooperative"
           disableDefaultUI
