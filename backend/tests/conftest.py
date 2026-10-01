@@ -63,6 +63,8 @@ for key in (
     "GOOGLE_MAPS_MAP_ID",
 ):
     os.environ[key] = ""
+# 上班時間固定成預設值：backend/.env 改了也不影響測試；要整天都算或都不算的測試用 env fixture 改
+os.environ["LOCATION_SHARE_HOURS"] = "1-5 08:30-18:30"
 settings.cache_clear()
 session_factory.cache_clear()
 redis.cache_clear()

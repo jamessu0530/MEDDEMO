@@ -870,6 +870,26 @@ class UserPresence(Base):
     last_active_at: Mapped[dt.datetime | None]
 
 
+class UserLocation(Base):
+    """即時位置（docs/superpowers/specs/2026-10-01-itinerary-planning-design.md〈即時位置〉）。一人一列、覆寫，不留軌跡。
+    代理示範業務的帳號寫在示範業務名下；好幾位評審同時代理同一位時，以最後一筆為準。"""
+
+    __tablename__ = "user_location"
+
+    user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), primary_key=True)
+    # 最新的一筆；還沒拿到過位置（只按過暫停、或瀏覽器拒絕定位）是 NULL
+    lat: Mapped[float | None]
+    lng: Mapped[float | None]
+    accuracy_m: Mapped[float | None]
+    at: Mapped[dt.datetime | None]
+    # 業務按了暫停：不寫位置，主管看到「暫停分享位置」
+    paused: Mapped[bool] = mapped_column(server_default=false())
+    paused_at: Mapped[dt.datetime | None]
+    # 瀏覽器沒給定位權限；之後拿到位置就清掉
+    denied: Mapped[bool] = mapped_column(server_default=false())
+    denied_at: Mapped[dt.datetime | None]
+
+
 class UserAvatar(Base):
     """大頭貼（docs/superpowers/specs/2026-10-01-avatars-text-size-design.md）。一個帳號最多一列，
     存在資料庫裡跟附件一樣；沒有這一列就是用名字縮寫。"""

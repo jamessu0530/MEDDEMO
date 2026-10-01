@@ -67,6 +67,10 @@ class Settings(BaseSettings):
     # 地圖上的頭像與編號圓點用進階標記，要一個 Map ID；留空就用 Google 給測試用的 DEMO_MAP_ID
     google_maps_map_id: str = ""
 
+    # 業務分享位置的上班時間（台北的真實時間，不是展示日）：「星期 起訖時間」，星期 1＝一…7＝日，可以寫範圍或用逗號分開；
+    # 結束那一分鐘不算（18:30 起就是下班），也可以寫 24:00。測試用設定改成整天都算或都不算
+    location_share_hours: str = "1-5 08:30-18:30"
+
     @field_validator("demo_password")
     @classmethod
     def _blank_password_means_default(cls, value: str) -> str:
