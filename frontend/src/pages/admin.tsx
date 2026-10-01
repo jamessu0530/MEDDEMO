@@ -94,7 +94,7 @@ export function AdminPage() {
       const { rep_name } = await resetDemoItinerary()
       setResetConfirming(false)
       setResetBusy(false)
-      setFlash(`已重置${rep_name}今天的行程，下次打開首頁會照系統的建議重新排。`)
+      setFlash(`已重置${rep_name}今天的行程與排序習慣，下次打開首頁會照系統的建議重新排。`)
     } catch (error) {
       setResetBusy(false)
       setResetError(
@@ -140,7 +140,7 @@ export function AdminPage() {
         <div className="rounded-2xl border-2 bg-card p-4 shadow-lip">
           <h2 className="text-sm font-semibold">示範業務的今日行程</h2>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-            評審用第三方登入看的都是示範業務的行程，大家共用一份：按過的暫緩、插入下一站、加進去的站都會留著。換一批評審前重置，回到系統早上的建議。
+            評審用第三方登入看的都是示範業務的行程，大家共用一份：按過的暫緩、插入下一站、加進去的站、改過的排序習慣都會留著。換一批評審前重置，回到系統早上的建議與一開始的排序習慣。
           </p>
           {!resetConfirming ? (
             <Button
@@ -154,7 +154,7 @@ export function AdminPage() {
           ) : (
             <div className="mt-3 space-y-2">
               <p className="text-sm leading-relaxed text-foreground">
-                確定要重置嗎？大家正在看的行程會回到系統的建議。
+                確定要重置嗎？大家正在看的行程與排序習慣會回到系統的建議。
               </p>
               <div className="flex gap-2">
                 <Button

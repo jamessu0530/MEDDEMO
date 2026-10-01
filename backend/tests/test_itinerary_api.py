@@ -77,6 +77,12 @@ def test_it_resets_the_demo_reps_itinerary(client, auth, tx):
     )
     assert feedback.status_code == 200, feedback.text
 
+    # 評審加的、停用的習慣也要清掉
+    added = client.post("/api/route-habits", json={"kind": "first", "subject": {"by": "area", "value": "板橋"}}, headers=auth())
+    assert added.status_code == 201, added.text
+    first = client.get("/api/route-habits", headers=auth()).json()["habits"][0]["id"]
+    assert client.patch(f"/api/route-habits/{first}", json={"active": False}, headers=auth()).status_code == 200
+
     reset = client.post("/api/admin/demo-itinerary/reset", headers=auth("A01"))
     assert reset.status_code == 200, reset.text
     assert reset.json() == {"rep_id": "U01", "rep_name": "林昱辰"}
@@ -87,6 +93,12 @@ def test_it_resets_the_demo_reps_itinerary(client, auth, tx):
 
     rebuilt = today(client, auth)
     assert rebuilt["version"] == 1 and rebuilt["urgent"] is not None
+    habits = client.get("/api/route-habits", headers=auth()).json()["habits"]
+    assert [(h["text"], h["active"]) for h in habits] == [
+        ("康泰連鎖藥局的店排在診所前面", True),
+        ("星期三 敦南內科診所 · 大安 排最後", True),
+        ("杏林診所 · 大安 都 11:00 以前到", True),
+    ]
 
 
 def test_reset_demo_itinerary_is_it_only(client, auth):

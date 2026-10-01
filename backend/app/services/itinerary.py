@@ -439,17 +439,18 @@ def today_skips(session: Session, user_id: str) -> dict[int, str]:
 
 
 def reset_today(session: Session, user_id: str) -> None:
-    """IT 用：刪掉這位業務今天的行程（站與先後跟著 ON DELETE CASCADE 一起刪），
-    以及所有的暫緩、訊號權重，下次讀取就照模型的建議重新建一份。
+    """IT 用：刪掉這位業務今天的行程（站與先後跟著 ON DELETE CASCADE 一起刪）、所有的暫緩與訊號權重，
+    排序習慣也回到一開始那三條（route_habits.DEMO_HABITS），下次讀取就照模型的建議重新建一份。
 
     示範業務的行程給所有用第三方登入的評審共用：系統日期固定在決賽日不會換天，行程第一次建好之後
-    就一直是存著的那份，按過的暫緩、調整過的權重也會一直留著、累積影響之後的建議。換一批評審之前，
-    IT 用這個清掉，回到當天早上模型原本的建議。
+    就一直是存著的那份，按過的暫緩、調整過的權重、加的或停用的習慣也會一直留著、累積影響之後的建議。
+    換一批評審之前，IT 用這個清掉，回到當天早上模型原本的建議。
     """
     today = customer_profile.app_today(session)
     session.execute(delete(Itinerary).where(Itinerary.user_id == user_id, Itinerary.date == today))
     session.execute(delete(RouteSnooze).where(RouteSnooze.user_id == user_id))
     session.execute(delete(RouteSignalWeight).where(RouteSignalWeight.user_id == user_id))
+    route_habits.reset_demo(session, user_id)
 
 
 def _find(session: Session, user_id: str, today: dt.date) -> Itinerary | None:
