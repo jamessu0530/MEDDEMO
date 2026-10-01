@@ -269,6 +269,31 @@ def test_signing_out_closes_the_socket_on_its_next_ping(client, engine):
     assert closed.value.code == 4401
 
 
+async def test_closing_a_socket_the_phone_already_dropped_is_quiet(monkeypatch):
+    # 正式環境（uvicorn）手機先斷線的話，最後再關一次會丟 WebSocketDisconnect，不能每次斷線都在 log 留一段 traceback
+    class Dropped:
+        async def accept(self):
+            pass
+
+        async def receive_text(self):
+            return '{"type": "auth", "token": "t", "active": true}'
+
+        async def close(self, code=1000):
+            raise WebSocketDisconnect(1006)
+
+    class GoneConnection:
+        def __init__(self, *args):
+            pass
+
+        async def run(self):
+            raise WebSocketDisconnect(1006)
+
+    monkeypatch.setattr(presence_api, "_heartbeat", lambda token, active: "U01")
+    monkeypatch.setattr(presence_api, "_Connection", GoneConnection)
+    await presence_api.websocket(Dropped())
+    assert "U01" not in presence_api._connections
+
+
 def test_a_socket_that_stops_pinging_is_closed(client, engine, monkeypatch):
     # 凍結的分頁不再送心跳，也就不會再驗 token：太久沒心跳就關掉，登出之後不能還一直收到通知
     monkeypatch.setattr(presence_api, "SWEEP_SECONDS", 0.05)
@@ -469,8 +494,9 @@ def test_a_channel_opened_after_connecting_still_notifies(client, engine, auth):
                 assert created.status_code == 201
                 opened.append(created.json()["id"])
             north_topic, south_topic = opened
-            client.post(f"/api/channels/{north_topic}/messages", json={"body": "北區開跑"}, headers=auth("M01"))
-            client.post(f"/api/channels/{south_topic}/messages", json={"body": "南區開跑"}, headers=auth("M03"))
+            # 先確定兩則都發出去了：沒發出去的話，下面等通知會一直等下去
+            assert client.post(f"/api/channels/{north_topic}/messages", json={"body": "北區開跑"}, headers=auth("M01")).status_code == 201
+            assert client.post(f"/api/channels/{south_topic}/messages", json={"body": "南區開跑"}, headers=auth("M03")).status_code == 201
             assert next_of(u01, "message") == {"type": "message", "channel_id": north_topic}
             # 北區的先發，吳承翰卻先收到南區的：連上之後才開的北區頻道，一樣不會通知看不到的人
             assert next_of(u04, "message") == {"type": "message", "channel_id": south_topic}

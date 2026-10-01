@@ -384,6 +384,7 @@ async def websocket(ws: WebSocket):
         if _connections[user_id] <= 0:
             del _connections[user_id]
         # 斷線不記心跳（models.UserPresence.last_seen_at）：從最後一次心跳起算 5 分鐘變離線
-        with contextlib.suppress(RuntimeError):
-            # 已經關掉的（手機斷線、心跳驗不過）再關一次會丟 RuntimeError
+        # 自己已經關掉的（心跳驗不過、太久沒心跳）再關一次會丟 RuntimeError；手機先斷線的話送不出去，
+        # Starlette 會丟 WebSocketDisconnect，不擋的話每次斷線都在 log 留一段 traceback
+        with contextlib.suppress(RuntimeError, WebSocketDisconnect):
             await ws.close(status.WS_1000_NORMAL_CLOSURE)
