@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app import realtime
 from app.api.auth import ItUser
 from app.db import get_session
 from app.models import AppUser
@@ -156,5 +157,7 @@ def reset_demo_itinerary(session: SessionDep, _: ItUser):
     """評審用第三方登入都代理示範業務，共用一份行程；換一批評審前 IT 按這個清掉今天的累積改動。"""
     itinerary_service.reset_today(session, EXTERNAL_ACCOUNT_ACTS_AS)
     session.commit()
+    # 重置用整批 DELETE，不經過 ORM 物件，realtime 的 after_flush 看不到：主管頁要另外通知
+    realtime.itinerary_changed(EXTERNAL_ACCOUNT_ACTS_AS)
     rep = session.get(AppUser, EXTERNAL_ACCOUNT_ACTS_AS)
     return DemoItineraryReset(rep_id=EXTERNAL_ACCOUNT_ACTS_AS, rep_name=rep.name)
