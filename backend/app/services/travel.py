@@ -2,8 +2,13 @@
 
 設了 GOOGLE_MAPS_SERVER_KEY 就問 Google Routes API 的道路車程（services/google_routes.py，不看即時路況）；
 沒設、Google 回錯或逾時（5 秒）就用直線估算，Matrix.estimated 是 True，畫面註明「估計」。開發與測試一律走估算。
+
+車程的分鐘數與公里數不快取：Google 的條款只允許快取經緯度（docs/superpowers/plans/2026-10-01-itinerary-stage4.md）。
+所以分兩種問法：要排順序才問整份矩陣（matrix，按格計價）；照存著的順序算時間只要相鄰兩站（along，
+computeRoutes 按請求計價，一次拿到全部路段），讀行程、主管頁、調整清單的試算都走這條。
 """
 
+import dataclasses
 import logging
 import math
 from dataclasses import dataclass
@@ -57,6 +62,25 @@ def matrix(points: list[Point]) -> Matrix:
         log.warning("Google 路線矩陣沒有拿到，改用直線估算", exc_info=True)
         return fill(points, {}, google=False)
     return fill(points, {index: road(cell) for index, cell in cells.items()}, google=True)
+
+
+def along(points: list[Point]) -> Matrix:
+    """照這個順序開過去，相鄰兩點（points[i] → points[i + 1]）的車程。設了伺服器金鑰就用 Google 的
+    computeRoutes 一次問完；其他格子用直線估算補上，所以這份只能照同一個順序算時間（route_planner.schedule），
+    不能拿去排順序。沒設金鑰或 Google 失敗就整份用估算。"""
+    key = settings().google_maps_server_key
+    if not key:
+        return fill(points, {}, google=False)
+    if len(points) < 2:
+        return fill(points, {}, google=True)
+    try:
+        legs = google_routes.route_legs(key, points)
+    except google_routes.RoutesError:
+        log.warning("Google 路線沒有拿到，改用直線估算", exc_info=True)
+        return fill(points, {}, google=False)
+    cells = {(n, n + 1): road(google_routes.Cell(leg.seconds, leg.meters)) for n, leg in enumerate(legs)}
+    # 不相鄰的格子本來就是估算的、也用不到；相鄰的每一段都是 Google 給的，所以不算估計
+    return dataclasses.replace(fill(points, cells, google=True), estimated=False)
 
 
 def road(cell: google_routes.Cell) -> tuple[int, float]:

@@ -109,7 +109,7 @@ def view(session: Session, itinerary: Itinerary) -> ItineraryView:
     customers = _customers(session, [r.customer_id for r in open_rows])
     start, origin = _start(session, rep, itinerary.date, done, _durations(rows))
     points = [_point(customers[r.customer_id]) for r in open_rows]
-    matrix = travel.matrix([origin or (points[0] if points else (0.0, 0.0)), *points])
+    matrix = travel.along([origin or (points[0] if points else (0.0, 0.0)), *points])
     planned = route_planner.schedule(start, 0, [_plan_stop(r, n + 1) for n, r in enumerate(open_rows)], matrix.minutes)
 
     by_customer = {r.customer_id: r for r in rows}

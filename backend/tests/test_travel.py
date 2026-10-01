@@ -102,3 +102,56 @@ def test_a_single_point_needs_no_google(google):
     result = travel.matrix([POINTS[0]])
     assert result.minutes == [[0]] and result.km == [[0.0]] and result.estimated is False
     assert google == []
+
+
+def fake_legs(calls):
+    """假的 Google 路線：第 n 段開 (n + 1) × 10 分鐘、(n + 1) 公里。"""
+
+    def route_legs(key, points, http=None):
+        calls.append((key, points))
+        return [
+            google_routes.Leg(seconds=600 * (n + 1), meters=1000 * (n + 1), polyline="")
+            for n in range(len(points) - 1)
+        ]
+
+    return route_legs
+
+
+def no_matrix(*args, **kwargs):
+    raise AssertionError("照順序算時間不該問整份矩陣（按格計價）")
+
+
+def test_along_asks_google_only_for_the_legs_in_order(monkeypatch, env):
+    env(GOOGLE_MAPS_SERVER_KEY="server-key")
+    calls = []
+    monkeypatch.setattr(google_routes, "route_legs", fake_legs(calls))
+    monkeypatch.setattr(google_routes, "route_matrix", no_matrix)
+    result = travel.along(POINTS)
+    assert result.estimated is False
+    # 第 1 段 600 秒：10 分鐘加 5 分鐘停車；第 2 段 1200 秒：20 分鐘加 5 分鐘
+    assert result.minutes[0][1] == 15 and result.minutes[1][2] == 25
+    assert result.km[0][1] == 1.0 and result.km[1][2] == 2.0
+    # 不相鄰的格子是估算的：這份只能照同一個順序算時間，不能拿去排順序
+    assert result.minutes[0][2] == travel.estimate(POINTS[0], POINTS[2])[0]
+    assert calls == [("server-key", POINTS)]
+
+
+def test_along_without_a_key_or_when_google_fails_is_the_estimate(monkeypatch, env):
+    assert travel.along(POINTS).estimated is True
+    env(GOOGLE_MAPS_SERVER_KEY="server-key")
+
+    def broken(*args, **kwargs):
+        raise google_routes.RoutesError("逾時")
+
+    monkeypatch.setattr(google_routes, "route_legs", broken)
+    result = travel.along(POINTS)
+    assert result.estimated is True and result.minutes[0][1] == 36
+
+
+def test_along_a_single_point_needs_no_google(monkeypatch, env):
+    env(GOOGLE_MAPS_SERVER_KEY="server-key")
+    calls = []
+    monkeypatch.setattr(google_routes, "route_legs", fake_legs(calls))
+    result = travel.along([POINTS[0]])
+    assert result.minutes == [[0]] and result.estimated is False
+    assert calls == []

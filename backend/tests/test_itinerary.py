@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Customer, Itinerary, ItineraryStop, RouteSignalWeight, RouteSnooze, Visit
 from app.services import itinerary as service
-from app.services import route_planner, today_route, travel
+from app.services import google_routes, route_planner, today_route, travel
 from app.timeutil import TAIPEI
 
 TODAY = dt.date(2026, 10, 28)
@@ -252,3 +252,27 @@ def test_two_saves_at_once_cannot_both_pass_the_version_check(engine):
             cleanup.execute(delete(RouteSnooze).where(RouteSnooze.user_id == "U01"))
             cleanup.execute(delete(Itinerary).where(Itinerary.user_id == "U01", Itinerary.date == TODAY))
             cleanup.commit()
+
+
+def test_reading_the_itinerary_asks_google_for_the_legs_in_order_not_the_whole_matrix(tx, monkeypatch, env):
+    # 先在沒有金鑰時建好（建的時候要排順序，會問整份矩陣），再設金鑰讀
+    itinerary = service.get_or_create(tx, "U01")
+    env(GOOGLE_MAPS_SERVER_KEY="server-key")
+    asked = []
+
+    def route_legs(key, points, http=None):
+        asked.append(points)
+        return [google_routes.Leg(seconds=600, meters=3000, polyline="") for _ in points[1:]]
+
+    def no_matrix(*args, **kwargs):
+        raise AssertionError("讀行程不該問整份矩陣")
+
+    monkeypatch.setattr(google_routes, "route_legs", route_legs)
+    monkeypatch.setattr(google_routes, "route_matrix", no_matrix)
+    view = service.view(tx, itinerary)
+    assert view.estimated is False
+    # 一次問完：辦公室加每一站，照存著的順序
+    assert len(asked) == 1 and len(asked[0]) == len(view.stops) + 1
+    # 每段 10 分鐘加 5 分鐘停車、3 公里
+    assert all(s.travel_minutes == 15 and s.travel_km == 3.0 for s in view.stops)
+    assert view.travel_km == 3.0 * len(view.stops)
