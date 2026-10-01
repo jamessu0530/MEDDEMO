@@ -232,9 +232,12 @@ def create(
 
 def reset_demo(session: Session, user_id: str) -> None:
     """刪掉這位業務所有的習慣，照 DEMO_HABITS 重建。灌資料、IT 重置示範業務的行程時用：
-    評審代理示範業務時加的、停用的習慣不會一直累積到下一批評審。找不到店名的那一條就跳過。"""
+    評審代理示範業務時加的、停用的習慣不會一直累積到下一批評審。找不到店名、連鎖體系、地區的那一條就跳過
+    （例如中區的業務沒有康泰連鎖藥局的店，示範的第一條就建不起來）。"""
     session.execute(delete(RouteHabit).where(RouteHabit.user_id == user_id))
-    ids = {name: cid for cid, name in targets(session, user_id)["customer"]}
+    options = targets(session, user_id)
+    allowed = {by: {value for value, _ in items} for by, items in options.items()}
+    ids = {name: cid for cid, name in options["customer"]}
     now = dt.datetime.now(dt.UTC)
     for demo in DEMO_HABITS:
         subject = demo.spec.subject
@@ -242,5 +245,7 @@ def reset_demo(session: Session, user_id: str) -> None:
             if subject["value"] not in ids:
                 continue
             subject = {"by": "customer", "value": ids[subject["value"]]}
+        elif subject["value"] not in allowed.get(subject["by"], set()):
+            continue
         spec = dataclasses.replace(demo.spec, subject=subject)
         create(session, user_id, spec, demo.source, created_at=now - dt.timedelta(days=demo.days_ago))

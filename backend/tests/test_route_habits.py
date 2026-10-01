@@ -113,6 +113,17 @@ def test_the_demo_rep_starts_with_three_habits(tx):
     assert rh.mine(tx, "U02") == []
 
 
+def test_reset_demo_skips_habits_whose_targets_dont_exist(tx):
+    """U03 在中區，沒有康泰連鎖藥局的店：示範的第一條（連鎖體系比對）建不起來，reset_demo 要跳過它，
+    不能整個噴 InvalidHabit；其他能建的照建，建出來的對象都要是真的存在的。"""
+    options = rh.targets(tx, "U03")
+    allowed = {by: {value for value, _ in items} for by, items in options.items()}
+    assert "康泰連鎖藥局" not in allowed["chain"]
+    rh.reset_demo(tx, "U03")
+    habits = rh.mine(tx, "U03")
+    assert all(h.subject["value"] in allowed[h.subject["by"]] for h in habits)
+
+
 def test_reset_demo_puts_the_three_back(tx):
     habits = rh.mine(tx, "U01")
     habits[0].active = False

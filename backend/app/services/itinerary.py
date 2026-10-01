@@ -803,6 +803,11 @@ def _compose(
     rules = _rules(open_, precedences, day.habits, skipped, pending)
     order = [o.customer.id for o in open_]
     applied = [h for h in day.habits if h.id not in skipped]
+    habit_customers: dict[int, set[str]] = {}
+    for r in rules:
+        kind, _, key = r.id.partition(":")
+        if kind == "habit":
+            habit_customers.setdefault(int(key), set()).update(r.customer_ids)
 
     by_row = {r.customer_id: r for r in day.rows}
     stops = []
@@ -826,7 +831,7 @@ def _compose(
             duration_minutes=o.duration_minutes, late_minutes=slot.late_minutes,
             travel_minutes=slot.travel_minutes, travel_km=km,
             window_kind=o.window_kind, window_time=o.window_time.strftime("%H:%M") if o.window_time else None,
-            note=o.note, locked=o.locked, habit_ids=_habit_ids(applied, o),
+            note=o.note, locked=o.locked, habit_ids=_habit_ids(applied, o, habit_customers),
         ))
     open_ids = set(order)
     urgent = itinerary.urgent if itinerary.urgent and itinerary.urgent["customer_id"] in open_ids else None
@@ -845,15 +850,18 @@ def _compose(
     )
 
 
-def _habit_ids(habits: list[RouteHabit], stop: _Open) -> list[int]:
-    """這一站套用了哪幾條習慣：先後、排第一、排最後提到這一家，或約的時間、停留跟習慣給的一樣。"""
+def _habit_ids(habits: list[RouteHabit], stop: _Open, rule_customers: dict[int, set[str]]) -> list[int]:
+    """這一站套用了哪幾條習慣：先後、排第一、排最後今天真的排出規則、而且這一站在規則裡
+    （rule_customers：habit id → 今天這條規則牽涉到的站；precedence 兩邊都符合的站不算，見 route_habits.rules），
+    或約的時間、停留跟習慣給的一樣。"""
     found = []
     for habit in habits:
         if not route_habits.touches(route_habits.spec_of(habit), stop.customer):
             continue
         same_window = habit.kind == "window" and (stop.window_kind, stop.window_time) == (habit.window_kind, habit.window_time)
         same_stay = habit.kind == "duration" and stop.duration_minutes == habit.duration_minutes
-        if habit.kind in route_habits.RULE_KINDS or same_window or same_stay:
+        in_rule = habit.kind in route_habits.RULE_KINDS and stop.customer.id in rule_customers.get(habit.id, set())
+        if in_rule or same_window or same_stay:
             found.append(habit.id)
     return found
 

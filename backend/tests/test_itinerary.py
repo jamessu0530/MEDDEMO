@@ -287,6 +287,28 @@ def test_the_suggestion_follows_the_reps_habits(tx):
     assert view.skipped_habits == []
 
 
+def test_habit_tags_only_the_stops_the_habit_actually_rules_today(tx):
+    """綠色「習慣」標籤：先後／排第一／排最後今天真的排出規則、這一站在規則裡才算，光是被提到不算
+    （例如「康泰連鎖藥局的店排在診所前面」，今天的路線裡根本沒有診所，不該標）。"""
+    tx.execute(delete(RouteHabit).where(RouteHabit.user_id == "U01"))
+    plain = service.view(tx, service.get_or_create(tx, "U01"))
+    ids = [s.customer_id for s in plain.stops]
+    assert not any(s.type == "clinic" for s in plain.stops)  # U01 灌的路線本來就沒有診所
+    spec = route_habits.HabitSpec
+    chain = route_habits.create(
+        tx, "U01", spec("precedence", {"by": "chain", "value": "康泰連鎖藥局"}, {"by": "type", "value": "clinic"}), "manual",
+    )
+    view = rebuild(tx)
+    assert all(chain.id not in s.habit_ids for s in view.stops)
+
+    tx.execute(delete(RouteHabit).where(RouteHabit.user_id == "U01"))
+    between = route_habits.create(tx, "U01", spec("precedence", by_customer(ids[0]), by_customer(ids[1])), "manual")
+    view2 = rebuild(tx)
+    stops2 = {s.customer_id: s for s in view2.stops}
+    assert between.id in stops2[ids[0]].habit_ids
+    assert between.id in stops2[ids[1]].habit_ids
+
+
 def test_habits_that_cannot_be_kept_are_skipped_today_with_the_reason(tx):
     tx.execute(delete(RouteHabit).where(RouteHabit.user_id == "U01"))
     plain = service.view(tx, service.get_or_create(tx, "U01"))
