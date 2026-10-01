@@ -111,7 +111,7 @@
 
 ### 原本存在手機上的回饋
 
-**`route_feedback`**：`(user_id, customer_id)` 的暫緩期限，與 `(user_id, signal)` 的權重。「暫緩」「誤判」寫這裡，
+**`route_snooze`**（`user_id`、`customer_id`、`until`）與 **`route_signal_weight`**（`user_id`、`signal`、`weight`）：「暫緩」「誤判」寫這裡，
 排隔天的建議時用（照現在 `today_route.Feedback` 的規則）。`pinned` 不再需要：「插入下一站」與「排入今天的路線」
 直接改今天的行程。手機上 `meddemo:route-feedback:*` 的舊紀錄不搬，`lib/route-feedback.ts` 拿掉。
 
@@ -435,7 +435,7 @@ IT 看全公司（照 `manager.py` 現在的範圍）。只能看。原本把 `/
 | 原本 | 改成 |
 |---|---|
 | `POST /api/route/today`（手機送回饋、每次重排） | `GET /api/itinerary/today` |
-| `lib/route-feedback.ts`（localStorage） | 拿掉；暫緩與誤判存 `route_feedback` |
+| `lib/route-feedback.ts`（localStorage） | 拿掉；暫緩與誤判存 `route_snooze`、`route_signal_weight` |
 | 插入下一站 | 把那家移到下一站的位置（不鎖），加權重照舊 |
 | 暫緩 | 從今天的行程拿掉 + 三天內不排 |
 | 誤判 | 暫緩 + 這類訊號權重減一 |
