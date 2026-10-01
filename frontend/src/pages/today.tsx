@@ -9,6 +9,7 @@ import { Mascot } from "@/components/mascot"
 import { Notice } from "@/components/notice"
 import { MyStatusButton } from "@/components/my-status"
 import { RoutePath } from "@/components/route-path"
+import { EditRouteLink, SkippedHabitsNote } from "@/components/route/home-extras"
 import { SkinToggle } from "@/components/skin-toggle"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { useAuth } from "@/lib/auth"
@@ -153,6 +154,7 @@ export function TodayPage() {
             )}
             <h1 className="text-lg leading-snug font-semibold">今日路線</h1>
           </div>
+          {state.status === "ready" && !state.cached && <EditRouteLink />}
           <Link
             to="/methods"
             className="flex w-16 shrink-0 flex-col items-center justify-center gap-0.5 border-l-2 border-black/15 text-[0.6875rem] font-semibold active:bg-black/10"
@@ -178,6 +180,7 @@ export function TodayPage() {
           </div>
         )}
         {hint && <p className="mb-3 rounded-xl bg-primary/10 px-3 py-2 text-xs text-primary">{hint}</p>}
+        {route && <SkippedHabitsNote route={route} />}
         {busy && route && (
           <p className="mb-3 flex items-center gap-1.5 text-xs text-muted-foreground">
             <Loader2 className="size-3.5 animate-spin" />

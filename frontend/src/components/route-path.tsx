@@ -145,6 +145,9 @@ function StopLabel({ stop, offset }: { stop: RouteStop; offset: number }) {
       <p className="mt-0.5 text-muted-foreground">
         {done ? (
           `${stop.planned_time} 完成${stop.visit_id ? " · 已回寫" : ""}`
+        ) : stop.window_kind && stop.late_minutes > 0 ? (
+          // 有約的時間又趕不上：時間與理由讓位給這一句
+          <span className="font-semibold text-destructive">會晚到 {stop.late_minutes} 分</span>
         ) : (
           <>
             {stop.planned_time} · <SignalLabel signal={stop.signal} />

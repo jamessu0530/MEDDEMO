@@ -35,6 +35,7 @@ import { MethodsPage } from "@/pages/methods"
 import { NegotiationPage } from "@/pages/negotiation"
 import { QuotePage } from "@/pages/quote"
 import { RecordVisit } from "@/pages/record-visit"
+import { RouteEditPage } from "@/pages/route-edit"
 import { SettingsPage } from "@/pages/settings"
 import { TodayPage } from "@/pages/today"
 import { VisitPage } from "@/pages/visit"
@@ -158,6 +159,8 @@ export default function App() {
             {/* 首頁是今日路線；客戶清單移到 /customers，要自己挑一家時從底部分頁進去 */}
             <Route path="/" element={<Home />} />
             <Route path="/customers" element={<CustomerPicker />} />
+            {/* 調整今天的行程（清單）：只有業務有自己的行程，主管打開會看到後端的說明 */}
+            <Route path="/route/edit" element={<RouteEditPage />} />
             <Route path="/ask" element={<AskPage />} />
             {/* 頻道：業務、主管、IT 都進得去，看得到哪些頻道由後端依組織樹決定 */}
             <Route path="/channels" element={<ChannelsPage />} />
