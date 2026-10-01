@@ -2,8 +2,9 @@ import type { Attachment } from "@/api/attachments"
 import { jsonBody, request, upload } from "@/api/client"
 import type { PresenceStatus } from "@/api/presence"
 
-// national 全國；region 整區；team 一位主管帶的小組；place 地點（縣市，台北市到行政區）；customer 一家客戶的討論串
-export type ChannelKind = "national" | "region" | "team" | "place" | "customer"
+// national 全國；region 整區；team 一位主管帶的小組；place 地點（縣市，台北市到行政區）；customer 一家客戶的討論串；
+// topic 文字頻道：區的主管與 IT 在整區頻道、IT 在全國頻道底下開的
+export type ChannelKind = "national" | "region" | "team" | "place" | "customer" | "topic"
 
 export type Channel = {
   id: number
@@ -11,8 +12,9 @@ export type Channel = {
   name: string
   // 所在的區（TW.N），頻道列表依這個分組；全國與封存的頻道是 null
   region_id: string | null
+  // 上層頻道；文字頻道是它所在的整區或全國頻道
   parent_id: number | null
-  // 主管已經不在的小組頻道：只剩 IT 看得到，不能再發言
+  // 不能再發言：主管已經不在的小組頻道（只剩 IT 看得到），或有人封存的文字頻道（照樣看得到）
   archived: boolean
   customer_id: string | null
   // 輸入框上的提示：誰看得到這裡的訊息
@@ -21,6 +23,8 @@ export type Channel = {
   last_message_at: string | null
   // 成員裡不是離線的人數，不算自己
   online: number
+  // 全國、整區：能不能在底下開文字頻道；文字頻道：能不能改名、封存
+  can_manage: boolean
 }
 
 // 成員照組織位置算：主管與組員、整區的人；IT 只算全國頻道的成員
@@ -58,6 +62,16 @@ export function getChannelUnread(signal?: AbortSignal) {
 
 export function getChannel(id: number, signal?: AbortSignal) {
   return request<Channel>(`/api/channels/${id}`, { signal })
+}
+
+/** 在全國或整區頻道底下開文字頻道：區的在職主管與 IT，全國只有 IT */
+export function createTopic(parentId: number, name: string) {
+  return request<Channel>("/api/channels", jsonBody("POST", { parent_id: parentId, name }))
+}
+
+/** 文字頻道改名、封存或解除封存 */
+export function updateTopic(id: number, changes: { name?: string; archived?: boolean }) {
+  return request<Channel>(`/api/channels/${id}`, jsonBody("PATCH", changes))
 }
 
 /** 由舊到新。after 給輪詢用，before 給往上捲，around 給從看板跳回某一則（前後各 20 則）；都不給就是最新的一頁 */

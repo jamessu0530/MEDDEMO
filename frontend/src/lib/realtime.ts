@@ -21,8 +21,12 @@ export const RETRY_MS = [1_000, 2_000, 5_000, 10_000, 30_000]
 const CLOSE_UNAUTHORIZED = 4401
 const CLOSE_TOO_MANY = 4429
 
-// avatars：有人換了或移除大頭貼（lib/avatars.ts 重拿一次網址）
-export type RealtimeEvent = { type: "message"; channel_id: number } | { type: "resync" } | { type: "avatars" }
+// avatars：有人換了或移除大頭貼（lib/avatars.ts 重拿一次網址）；channels：有人開了、改名或封存文字頻道（頻道頁重新載入列表）
+export type RealtimeEvent =
+  | { type: "message"; channel_id: number }
+  | { type: "resync" }
+  | { type: "avatars" }
+  | { type: "channels" }
 
 type ServerEvent =
   | { type: "ready"; user_id: string }
@@ -33,6 +37,7 @@ type ServerEvent =
     }
   | { type: "message"; channel_id: number }
   | { type: "avatars" }
+  | { type: "channels" }
 
 export type SocketLike = {
   send(data: string): void
@@ -157,7 +162,7 @@ export class RealtimeClient {
       this.emit({ type: "resync" })
     } else if (event.type === "presence") {
       this.store.apply(event.full, event.statuses)
-    } else if (event.type === "message" || event.type === "avatars") {
+    } else if (event.type === "message" || event.type === "avatars" || event.type === "channels") {
       this.emit(event)
     }
   }

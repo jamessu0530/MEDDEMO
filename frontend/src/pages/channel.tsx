@@ -48,6 +48,8 @@ const KIND_LABEL: Record<Channel["kind"], string> = {
   team: "小組頻道",
   place: "地點頻道",
   customer: "客戶討論串",
+  // 文字頻道的畫面在 Task 4 才做；先補上讓這份對照表跟新的 ChannelKind 一致
+  topic: "文字頻道",
 }
 
 // jumpTo：從搜尋頁、問答的出處點進來，打開後捲到那一則並標亮

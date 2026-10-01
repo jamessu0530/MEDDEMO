@@ -1,7 +1,17 @@
-import type { Channel, ChannelMessage } from "@/api/channels"
+import type { Channel, ChannelKind, ChannelMessage } from "@/api/channels"
 
 // 後端一次給幾則；往上捲拿到比這個少，就是到頂了
 export const MESSAGE_PAGE = 50
+
+// 頻道種類的名稱：對話頁的副標題、右欄的頁首
+export const KIND_LABEL: Record<ChannelKind, string> = {
+  national: "全國頻道",
+  region: "整區頻道",
+  team: "小組頻道",
+  place: "地點頻道",
+  customer: "客戶討論串",
+  topic: "文字頻道",
+}
 
 export type ChannelSection = { key: string; title: string; channels: Channel[]; places: Channel[] }
 

@@ -96,6 +96,14 @@ describe("RealtimeClient", () => {
     expect(events.at(-1)).toEqual({ type: "message", channel_id: 12 })
   })
 
+  it("文字頻道開了、改名或封存，轉給訂閱的畫面重新載入列表", () => {
+    const { client, ready, latest, events } = setup()
+    client.start()
+    ready()
+    latest().push({ type: "channels" })
+    expect(events.at(-1)).toEqual({ type: "channels" })
+  })
+
   it("每 20 秒心跳；5 分鐘沒碰螢幕就是閒置，一碰馬上再送一次", () => {
     const { client, latest, ready, handlers } = setup()
     client.start()
