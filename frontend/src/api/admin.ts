@@ -103,3 +103,15 @@ export function reassignCustomer(customerId: string, ownerId: string) {
     jsonBody("PUT", { owner_id: ownerId })
   )
 }
+
+export type DemoItineraryReset = {
+  rep_id: string
+  rep_name: string
+}
+
+export function resetDemoItinerary() {
+  return request<DemoItineraryReset>(
+    "/api/admin/demo-itinerary/reset",
+    { method: "POST" }
+  )
+}

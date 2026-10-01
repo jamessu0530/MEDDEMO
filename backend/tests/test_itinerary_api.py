@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.main import app
-from app.models import Customer
+from app.models import Customer, Itinerary, RouteSignalWeight, RouteSnooze
 
 
 @pytest.fixture
@@ -62,6 +62,33 @@ def test_stale_version_and_unknown_customer(client, auth):
         "/api/itinerary/today/feedback", json={"customer_id": "C999", "action": "pin", "version": 1}, headers=auth(),
     )
     assert missing.status_code == 404
+
+
+def test_it_resets_the_demo_reps_itinerary(client, auth, tx):
+    urgent_id = today(client, auth)["urgent"]["customer_id"]
+    # 誤判同時留下 route_snooze 與 route_signal_weight 兩張表的紀錄，reset 兩個都要清掉
+    feedback = client.post(
+        "/api/itinerary/today/feedback",
+        json={"customer_id": urgent_id, "action": "misjudge", "version": 1},
+        headers=auth(),
+    )
+    assert feedback.status_code == 200, feedback.text
+
+    reset = client.post("/api/admin/demo-itinerary/reset", headers=auth("A01"))
+    assert reset.status_code == 200, reset.text
+    assert reset.json() == {"rep_id": "U01", "rep_name": "林昱辰"}
+
+    assert tx.scalar(select(Itinerary).where(Itinerary.user_id == "U01")) is None
+    assert tx.scalar(select(RouteSnooze).where(RouteSnooze.user_id == "U01")) is None
+    assert tx.scalar(select(RouteSignalWeight).where(RouteSignalWeight.user_id == "U01")) is None
+
+    rebuilt = today(client, auth)
+    assert rebuilt["version"] == 1 and rebuilt["urgent"] is not None
+
+
+def test_reset_demo_itinerary_is_it_only(client, auth):
+    for user_id in ("M01", "U01"):
+        assert client.post("/api/admin/demo-itinerary/reset", headers=auth(user_id)).status_code == 403
 
 
 def test_add_stops_from_an_answer(client, auth, tx):

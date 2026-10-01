@@ -15,7 +15,10 @@ from sqlalchemy.orm import Session
 
 from app.api.auth import ItUser
 from app.db import get_session
+from app.models import AppUser
+from app.services import itinerary as itinerary_service
 from app.services import org_admin
+from app.services.auth import EXTERNAL_ACCOUNT_ACTS_AS
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 SessionDep = Annotated[Session, Depends(get_session)]
@@ -87,6 +90,11 @@ class OwnerChange(BaseModel):
     owner_id: str
 
 
+class DemoItineraryReset(BaseModel):
+    rep_id: str
+    rep_name: str
+
+
 def _apply(session: Session, change: Callable[[], object]) -> OrgChart:
     try:
         change()
@@ -141,3 +149,12 @@ def reactivate(session: SessionDep, actor: ItUser, user_id: str):
 @router.put("/customers/{customer_id}/owner", response_model=OrgChart)
 def reassign_customer(session: SessionDep, actor: ItUser, customer_id: str, body: OwnerChange):
     return _apply(session, lambda: org_admin.reassign_customer(session, actor, customer_id, body.owner_id))
+
+
+@router.post("/demo-itinerary/reset", response_model=DemoItineraryReset)
+def reset_demo_itinerary(session: SessionDep, _: ItUser):
+    """評審用第三方登入都代理示範業務，共用一份行程；換一批評審前 IT 按這個清掉今天的累積改動。"""
+    itinerary_service.reset_today(session, EXTERNAL_ACCOUNT_ACTS_AS)
+    session.commit()
+    rep = session.get(AppUser, EXTERNAL_ACCOUNT_ACTS_AS)
+    return DemoItineraryReset(rep_id=EXTERNAL_ACCOUNT_ACTS_AS, rep_name=rep.name)
