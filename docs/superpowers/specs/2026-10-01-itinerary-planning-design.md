@@ -52,7 +52,7 @@
 | `customer.lat`、`customer.lng` | 該地區中心點，再依客戶 id 的雜湊錯開最多約 400 公尺，同區的店不疊在同一點 |
 | `org_unit.lat`、`org_unit.lng` | 區處辦公室的位置（北、中、南三區有值，其他節點 NULL），每天的出發點 |
 
-各地區中心點與辦公室位置寫在 `data/seed/catalog.py`（`AREA_COORDS`、`REGION_OFFICE`）。
+各地區中心點與辦公室位置寫在 `data/seed/catalog.py`（`DISTRICT_COORDS`、`REGION_OFFICE`）。
 
 ### 今天的行程
 
@@ -164,26 +164,46 @@
 純函式，不碰資料庫、不呼叫 Google，輸入都由呼叫端備好。
 
 ```python
-@dataclass
+@dataclass(frozen=True)
 class PlanStop:
     customer_id: str
-    window: tuple[Literal["at", "before", "after"], dt.time] | None
-    duration: int
-    locked_position: int | None   # 鎖住的站在第幾站
+    point: int   # 在車程矩陣裡是第幾點
+    duration: int   # 停留幾分鐘
+    window: tuple[Literal["at", "before", "after"], dt.time] | None = None   # 約的時間：幾點到／以前／以後
 
-@dataclass
+@dataclass(frozen=True)
 class Rule:
     id: str                       # "today:C012>C034"、"habit:17"、"lock:C012"
-    text: str                     # 給人看的一句話
-    kind: Literal["precedence", "first", "last"]
-    customer_ids: tuple[str, ...]  # precedence 是 (before, after)
+    text: str                     # 給人看的一句話，排不出來時拿來講是哪幾條打架
+    kind: Literal["precedence", "first", "last", "lock"]
+    customer_ids: tuple[str, ...]  # precedence 是 (前, 後)；first、last 是符合的那幾家；lock 是一家
+    position: int | None = None    # lock 專用：在還沒跑的站裡排第幾站（0 起算）
 
-def plan(start: dt.datetime, stops: list[PlanStop], rules: list[Rule], minutes: Matrix) -> Plan | Conflict
-def schedule(start, ordered: list[PlanStop], minutes) -> Schedule        # 不改順序，只算時間
-def violations(ordered, rules) -> list[Rule]                             # 這個順序違反哪幾條
-def cheapest_insert(start, ordered, new: PlanStop, rules, minutes) -> int # 插在哪裡多繞最少、又不違反規則
-def rule_costs(start, stops, rules, minutes, best: Plan) -> list[RuleCost] # 每條規則多繞多少
+@dataclass(frozen=True)
+class Slot:
+    customer_id: str
+    arrive: dt.datetime
+    leave: dt.datetime
+    travel_minutes: int   # 從上一站（或出發點）開過來
+    late_minutes: int
+
+@dataclass(frozen=True)
+class Schedule:
+    slots: list[Slot]
+    late_minutes: int
+    travel_minutes: int
+
+@dataclass(frozen=True)
+class Conflict:
+    rules: list[Rule]   # 拿掉其中任何一條就排得出來的那幾條；找不到單獨一條擋住的，就是全部的規則
+
+def plan(start: dt.datetime, start_point: int, stops: list[PlanStop], rules: list[Rule], minutes: list[list[int]]) -> Schedule | Conflict
+def schedule(start: dt.datetime, start_point: int, ordered: list[PlanStop], minutes: list[list[int]]) -> Schedule   # 不改順序，只算時間
+def violations(ordered: list[str], rules: list[Rule]) -> list[Rule]    # 這個順序違反哪幾條
+def cheapest_insert(start: dt.datetime, start_point: int, ordered: list[PlanStop], new: PlanStop, rules: list[Rule], minutes: list[list[int]]) -> int   # 插在第幾站（0 起算）
 ```
+
+`rule_costs`（每條規則多繞多少）第一階段還沒做，第三階段「跟熊熊滾說要怎麼排」才加。
 
 - **出發**：今天還沒跑任何一站，從區處辦公室 09:30 出發；跑過了，從最後完成那一站、拜訪時間加停留時間出發。
   已完成的站不進排序。跑完不用回辦公室。
@@ -194,8 +214,8 @@ def rule_costs(start, stops, rules, minutes, best: Plan) -> list[RuleCost] # 每
   一樣再比總車程。還沒跑的站最多 8 站（40,320 種排法），保證找到最好的。
 - **排不出來**：一條一條拿掉規則再試，拿掉後排得出來的那幾條就是「擋住的」，回 `Conflict(rules=[...])`，
   畫面寫「這幾條規則互相衝突，拿掉其中一條才排得出來」。
-- **每條規則多繞多少**：只算真的影響到最佳排法的規則（最多 6 條），拿掉它再排一次比較，
-  寫成「守住『先德安再佑生』，多繞 6 公里、15 分鐘」。
+- **插在哪裡**：`cheapest_insert` 只跳過比既有順序多新增規則違反的位置，不要求整段都不違反；
+  留下的位置裡晚到與車程增加最少的那個勝出，插在哪裡都新增違反就放最後，讓業務自己調。
 - **8 站上限**：還沒跑的站已經 8 站時，新增回「今天已經排了 8 站，要先刪掉一站」。
 
 ### 什麼時候用到
@@ -463,7 +483,7 @@ backend/app/api/itinerary.py              業務的行程、提案、習慣、�
 backend/app/api/manager.py                多兩支團隊行程
 backend/app/api/presence.py               心跳多收位置
 backend/app/schemas/itinerary_ops.schema.json   AI 的輸出格式
-data/seed/catalog.py                      AREA_COORDS、REGION_OFFICE、示範習慣
+data/seed/catalog.py                      DISTRICT_COORDS、REGION_OFFICE、示範習慣
 backend/scripts/eval_itinerary_ai.py      20 句話的實測
 
 frontend/src/api/itinerary.ts
@@ -538,7 +558,7 @@ frontend/src/components/manager/routes-panel.tsx、route-map.tsx（import() 載�
 每階段做完都能上線，後面的階段不必回頭改前面的資料表。
 
 1. **位置資料、排序程式、行程存檔**：客戶與辦公室座標、`route_planner`、`travel`（只有估算）、`itinerary` 系列資料表與
-   `GET /api/itinerary/today`、三顆鈕、`route_feedback`；首頁換資料來源，看起來跟現在一樣，只是順序照順路排。
+   `GET /api/itinerary/today`、三顆鈕、`route_snooze`、`route_signal_weight`；首頁換資料來源，看起來跟現在一樣，只是順序照順路排。
 2. **調整清單與習慣**：調整行程、加一站、展開編輯、違反規則、拖完記習慣、我的排序習慣、`preview`／`PUT`、
    問答「排入今天的路線」改接。
 3. **跟熊熊滾說要怎麼排**：輸入列、`ask`／`optimize`／`apply`、提案卡、AI 實測。
