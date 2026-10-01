@@ -1,13 +1,18 @@
 # 對外入口：手機 ─HTTPS→ Cloudflare（橘雲）─→ VM 的 443 ─→ K3s 內建的 Traefik ─→ web（Nginx）。
 # 跟 CARE 共用同一台 VM 的 Traefik：HTTPS 憑證用 kube-system 裡 TLSStore 的預設憑證
 # （Cloudflare Origin 憑證，涵蓋整個網域），這裡不必再設 tls。
-# CARE 的 Ingress 沒指定網域、什麼網域都收；這條指定了網域，比對規則比較長，Traefik 會優先用這條。
+# CARE 的 Ingress 沒指定網域、什麼網域都收。Traefik 預設拿規則字串的長度當優先權，這條指定了網域、比較長，
+# 平常會贏；但 CARE 的 /health（CARE-infra 的 ingress-health.yaml）明訂優先權 100，比這條的長度（約 50）高，
+# meddemo 網域的 /health 就被 CARE 的後端接走了，部署最後的健康檢查一直在檢查 CARE。
+# 這條只管 meddemo 這個網域，給它更高的優先權，這個網域底下的路徑一律走 MEDDEMO，其他網域照舊歸 CARE。
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: web
   labels:
     {{- include "meddemo.labels" . | nindent 4 }}
+  annotations:
+    traefik.ingress.kubernetes.io/router.priority: "200"
 spec:
   ingressClassName: traefik
   rules:

@@ -240,10 +240,22 @@ jobs:
             $KC logs "job/$job"
           fi
 
+      # 跟 CARE 共用同一個 Traefik：打到別人的 /health 一樣是 200（以前就被 CARE 的後端接走過），
+      # 所以要看到 MEDDEMO 自己的回應才算過。剛部署完 Traefik 可能還沒換上新規則，等一下再試
       - name: 健康檢查
         env:
           SITE_URL: ${{ vars.SITE_URL }}
-        run: curl -fsS --retry 20 --retry-all-errors --retry-delay 3 "$SITE_URL/health"
+        run: |
+          for attempt in $(seq 1 20); do
+            body=$(curl -fsS "$SITE_URL/health" 2>/dev/null || true)
+            if [ "$body" = '{"status":"ok"}' ]; then
+              echo "$body"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "::error::$SITE_URL/health 回的不是 MEDDEMO 的健康檢查：${body:-（沒有回應）}"
+          exit 1
 
       # 舊版映像留著只會佔磁碟。要退版就重跑舊的那次 workflow，會重新建出同一版映像並拉進 VM；
       # 不用 helm rollback，因為舊版映像已經清掉，GHCR 又是私有的，K3s 自己拉不到
