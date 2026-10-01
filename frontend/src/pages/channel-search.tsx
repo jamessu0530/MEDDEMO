@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react"
 import { FileText, Search } from "lucide-react"
-import { useNavigate, useSearchParams } from "react-router"
+import { useLocation, useNavigate, useSearchParams } from "react-router"
 
 import { ApiError } from "@/api/client"
 import { searchAttachments, type SearchHit } from "@/api/channels"
@@ -27,7 +27,9 @@ export function ChannelSearchPage() {
   const [pickError, setPickError] = useState<string | null>(null)
   const [state, setState] = useState<State>({ status: "idle" })
   const [viewing, setViewing] = useState<SearchHit | null>(null)
-  const backTo = fromChannel ? `/channels/${fromChannel}` : "/channels"
+  // 從頻道頁的右欄進來會帶返回位置；從對話頁進來回那個頻道，從頻道頁標頭的放大鏡進來回頻道頁
+  const backState = (useLocation().state as { backTo?: string } | null)?.backTo
+  const backTo = backState ?? (fromChannel ? `/channels/${fromChannel}` : "/channels")
 
   async function submit(event?: FormEvent) {
     event?.preventDefault()

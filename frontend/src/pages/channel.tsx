@@ -26,7 +26,8 @@ import { LiveAvatar } from "@/components/user-avatar"
 import { addDraftFiles, removeDraftFile, shrinkPhoto, type DraftFile } from "@/lib/attachments"
 import { useAuth } from "@/lib/auth"
 import { channelUnread } from "@/lib/channel-unread"
-import { awaitingMascot, MESSAGE_PAGE, mergeMessages, withMascotMention } from "@/lib/channels"
+import { railPath } from "@/lib/channel-rail"
+import { awaitingMascot, KIND_LABEL, MESSAGE_PAGE, mergeMessages, withMascotMention } from "@/lib/channels"
 import { formatDateTime } from "@/lib/format"
 import { realtime, useRealtimeConnected } from "@/lib/realtime"
 import { cn } from "@/lib/utils"
@@ -42,18 +43,8 @@ const MAX_FILES = 4
 const DELETED_BODY = "（這則訊息已被 IT 刪除）"
 // 捲動位置離底部多近算「還在底部」：在這個範圍內，新訊息進來才跟著捲到最下面
 const NEAR_BOTTOM_PX = 80
-const KIND_LABEL: Record<Channel["kind"], string> = {
-  national: "全國頻道",
-  region: "整區頻道",
-  team: "小組頻道",
-  place: "地點頻道",
-  customer: "客戶討論串",
-  // 文字頻道的畫面在 Task 4 才做；先補上讓這份對照表跟新的 ChannelKind 一致
-  topic: "文字頻道",
-}
-
-// jumpTo：從搜尋頁、問答的出處點進來，打開後捲到那一則並標亮
-export type ChannelLocationState = { backTo?: string; jumpTo?: number }
+// jumpTo：從搜尋頁、問答的出處點進來，打開後捲到那一則並標亮；tab：從右欄的「記憶看板」進來，直接打開看板
+export type ChannelLocationState = { backTo?: string; jumpTo?: number; tab?: "chat" | "board" }
 type LoadState = { status: "loading" } | { status: "error"; missing: boolean } | { status: "ready"; channel: Channel }
 
 /** 頻道頁：訊息由舊到新，最新的在最下面；往上捲可以載入更早的。
@@ -76,12 +67,12 @@ export function ChannelPage() {
 }
 
 function ChannelView({ id }: { id: number }) {
-  const { backTo = "/channels", jumpTo: jumpTarget } = (useLocation().state as ChannelLocationState | null) ?? {}
+  const { backTo: backState, jumpTo: jumpTarget, tab: initialTab } = (useLocation().state as ChannelLocationState | null) ?? {}
   const selfId = useAuth()?.user.id ?? ""
   const connected = useRealtimeConnected()
   const [state, setState] = useState<LoadState>({ status: "loading" })
   // 上方兩個分頁：對話、記憶看板
-  const [tab, setTab] = useState<"chat" | "board">("chat")
+  const [tab, setTab] = useState<"chat" | "board">(initialTab ?? "chat")
   // 從看板跳回來要標亮的那一則
   const [highlight, setHighlight] = useState<number | null>(null)
   const [messages, setMessages] = useState<ChannelMessage[]>([])
@@ -305,6 +296,9 @@ function ChannelView({ id }: { id: number }) {
     )
   }
 
+  // 沒帶返回位置（從通知、手打網址進來）：回到兩欄，停在這個頻道（文字頻道與客戶討論串停在上層）
+  const backTo = backState ?? (state.status === "ready" ? railPath(state.channel) : "/channels")
+
   if (state.status !== "ready") {
     return (
       <div className="flex min-h-svh flex-col">
@@ -398,7 +392,7 @@ function ChannelView({ id }: { id: number }) {
       </main>
       <footer className={cn("border-t bg-card px-4 pt-2 pb-[max(env(safe-area-inset-bottom),0.75rem)]", tab !== "chat" && "hidden")}>
         {channel.archived ? (
-          <p className="py-2 text-center text-sm text-muted-foreground">這個小組頻道已封存，不能再發言。</p>
+          <p className="py-2 text-center text-sm text-muted-foreground">這個頻道已封存，不能再發言。</p>
         ) : (
           <>
             <div className="flex items-center justify-between gap-2 pb-1">

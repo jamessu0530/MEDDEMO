@@ -7,7 +7,9 @@ import { avatarTone, initials, STATUS_LABEL, usePresence } from "@/lib/presence"
 import { cn } from "@/lib/utils"
 
 // 頭像底色：主題色票的淡色，五個彼此分得開；字一律用前景色，淡底上才看得清楚。深色配色下跟著換，不會跳出一塊亮色
-const TONES = [
+// 頻道左欄的方塊也用這一組（components/channel-rail.tsx）
+// eslint-disable-next-line react-refresh/only-export-components -- 給 channel-rail.tsx 共用，跟頭像放一起比另開檔案合理
+export const AVATAR_TONES = [
   "bg-primary/20 text-foreground",
   "bg-chart-4/20 text-foreground",
   "bg-chart-5/20 text-foreground",
@@ -57,7 +59,7 @@ export function UserAvatar({
         aria-hidden
         className={cn(
           "text-[0.6875rem] font-medium group-data-[size=lg]/avatar:text-sm group-data-[size=sm]/avatar:text-[0.5625rem]",
-          TONES[avatarTone(id, TONES.length)]
+          AVATAR_TONES[avatarTone(id, AVATAR_TONES.length)]
         )}
       >
         {initials(name)}
