@@ -455,7 +455,26 @@ uv run --project backend python backend/scripts/eval_ask.py
 
 ## 頻道與附件
 
-頻道的設計在 `docs/superpowers/specs/2026-09-28-channels-design.md`，附件、看圖與圖片搜尋在 `docs/superpowers/specs/2026-10-01-attachments-design.md`。
+頻道的設計在 `docs/superpowers/specs/2026-09-28-channels-design.md`，附件、看圖與圖片搜尋在 `docs/superpowers/specs/2026-10-01-attachments-design.md`，左右兩欄與文字頻道在 `docs/superpowers/specs/2026-10-01-channel-rail-design.md`。
+
+- **頻道頁分左右兩欄**（`/channels`，`frontend/src/pages/channels.tsx`），跟 Discord 手機版一樣：
+  - 左欄（`components/channel-rail.tsx`）由上而下是全國、每一區（整區、各小組、收著該區地點的「地點」資料夾），區與區之間有分隔線；IT 最下面多一個「已封存」資料夾，放主管不在了的小組頻道。方塊上寫兩個字（小組取主管名字的縮寫），右下角是未讀數（整區與全國含底下沒封存的文字頻道）。
+  - 右欄（`components/channel-panel.tsx`）是選中那個頻道的對話、記憶看板、照片與檔案，底下再列文字頻道（全國與整區）或有人發過言的客戶討論串（地點）。點「記憶看板」直接打開看板那一頁。
+  - 選中哪個放在網址的 `?c=`，也記在這支手機上（`localStorage` 的 `meddemo:channel-rail`），下次打開還停在那裡；第一次打開時業務與主管停在自己的小組，IT 停在全國。`?c=` 指到文字頻道就停在它的上層。從對話頁返回時，文字頻道與客戶討論串回到上層，地點的資料夾自動展開。
+- **文字頻道**（`kind = topic`，`backend/app/services/channel_topics.py`）：開在全國或整區頻道底下，「新品上市」「補貨問題」這種要整區一起討論的主題放這裡，不必全部擠在整區頻道。
+  - 誰能開：區裡是那一區的在職主管與 IT，全國只有 IT；小組、地點底下不能開，業務與自建帳號都不能開。同一區的主管都能改名、封存，不限原本開的那一位。右欄的「新增頻道」與每一列的「管理」只有能管的人看得到（`can_manage`）。
+  - 開好整區都看得到、都能發言（全國的是全公司），有自己的記憶看板，重點照樣往上傳。名稱 1～20 字，同一個單位裡不能重名（封存的也算）。
+  - 可以改名、封存與解除封存，**不能刪除**：封存後還看得到、變成唯讀（發言回 409，熊熊滾不回答也不整理）。
+  - API：`POST /api/channels`（`{parent_id, name}`）開、`PATCH /api/channels/{id}`（`{name?, archived?}`）改。開、改名、封存之後發 WebSocket 的 `channels` 事件，大家的頻道頁重新載入。
+  - 示範資料：全國的「公司公告」（A01 開的），北區的「新品上市」「補貨問題」（M01 開的）。
+- **壓力測試**（`backend/scripts/stress_channels.py`）：demo 當天幾十個人同時在同一個文字頻道收發訊息。50 個帳號各開一條 WebSocket，同時在北區的「壓力測試」頻道各發 3 則；通過條件是沒有 5xx、每則發言都 201、每個人輪詢都拿齊、每條 WebSocket 都收到新訊息通知、發言的 p95 在 1 秒內，不通過時 exit code 1。只打本機（`--base-url` 不是 localhost 就拒絕），帳號直接寫進 `DATABASE_URL` 那個資料庫，所以用一個另外灌好資料的開發資料庫。照上面「本機開發」的指令把 API 開起來（加 `--port 8011`，不用 `--reload`），再跑：
+
+  ```bash
+  DATABASE_URL=… REDIS_URL=… uv run --project backend python backend/scripts/stress_channels.py \
+      --base-url http://127.0.0.1:8011
+  ```
+
+  API 與腳本要用同一組 `DATABASE_URL`、`REDIS_URL`，也要同一把 `JWT_SECRET`：`backend/.env` 沒設時 API 每次啟動都隨機產生一把，腳本簽的登入 token 會被擋成 401，兩邊的指令前面都加上同一個 `JWT_SECRET=…`。發言每天全系統最多 1,000 則（`app/usage.py`），一次 150 則，一天大約能跑六次。
 
 - **附件存在資料庫裡**（`attachment` 表，bytea），跟錄音一樣：API 與背景工作不必共用磁碟，刪訊息、刪帳號靠 CASCADE 一起清掉。只收照片（JPEG、PNG、WebP）與 PDF；一則訊息最多 4 個檔案、單檔 15MB。
 - **上傳時重新整理**（`backend/app/services/attachments.py`）：前端先縮到長邊 2048 再傳；後端用 Pillow 依 EXIF 轉正、**清掉全部 EXIF**（照片常在客戶店裡拍，GPS 位置不能留著）、縮到長邊 2048、存成 JPEG（有透明背景存 PNG），另存長邊 480 的縮圖。PDF 用 pypdf 檢查打得開、沒加密、不超過 60 頁。
@@ -473,7 +492,7 @@ uv run --project backend python backend/scripts/eval_ask.py
   - 本機手動跑：`cd backend && uv run python -m app.jobs.channels weekly`（或 `reminders`）。
 - **風險通報進小組頻道**：拜訪確認時通報主管的同一個交易裡，在業務目前主管的小組頻道貼一則通報（`kind = notice`，附 `visit_id`，畫面上點了進拜訪結果頁），兩分鐘後照一般訊息整理進記憶。拜訪刪掉，通報跟著刪。
 - **@熊熊滾 看得到附圖與看板**：@ 的那一則附的照片或 PDF 原檔一起給模型看；其他訊息的附件只給說明；另外給這個頻道看板上最近變動的 150 條重點（自己的與下層往上傳的）。要查文件的題目，跟問答頁附圖一樣，向量用「問題 + 檔案」、說明接在問題後面、產生答案時看原檔。
-- **找照片與檔案**（`/channels/search`，`POST /api/channels/search`，`backend/app/services/memory_search.py`）：頻道列表與頻道頁右上角的放大鏡。可以打字、附一張照片（以圖找圖），或兩個一起；從頻道頁進來預設只搜那個頻道。向量（`gemini-embedding-2`，每個附件取最像的那一段）與關鍵字（說明、檔名、所屬訊息的文字）兩路照知識檢索的做法合併（向量 0.6）。搜得到的範圍跟看板一樣，先算出看得到哪些頻道再在 SQL 裡篩。看得到原頻道的點了跳回原訊息；靠往上傳才看得到的只開大圖、顯示往上傳的寫法。搜尋用的照片不存。只搜附件，不搜文字訊息。
+- **找照片與檔案**（`/channels/search`，`POST /api/channels/search`，`backend/app/services/memory_search.py`）：頻道頁與對話頁右上角的放大鏡。可以打字、附一張照片（以圖找圖），或兩個一起；從頻道頁進來預設只搜那個頻道。向量（`gemini-embedding-2`，每個附件取最像的那一段）與關鍵字（說明、檔名、所屬訊息的文字）兩路照知識檢索的做法合併（向量 0.6）。搜得到的範圍跟看板一樣，先算出看得到哪些頻道再在 SQL 裡篩。看得到原頻道的點了跳回原訊息；靠往上傳才看得到的只開大圖、顯示往上傳的寫法。搜尋用的照片不存。只搜附件，不搜文字訊息。
 - **IT 可以刪訊息**（`DELETE /api/channels/messages/{id}`）：附件整列刪掉，內容換成「（這則訊息已被 IT 刪除）」，這一則本身留著，編號與已讀位置不會亂。發言的人自己不能刪、不能改。
 - **同一個頻道的發言排隊寫入**：`post()` 先鎖住頻道那一列，編號的先後就等於寫入完成的先後，畫面輪詢「這則之後的新訊息」才不會跳過晚一步寫完的那則。
 - **主管重新升回主管會看到舊小組的對話**：小組頻道封存與否看主管當下的狀態算，被降職或停用的主管再升回主管，原本的頻道會回來，新帶的組員也看得到以前的對話。這是預期行為。
@@ -484,7 +503,7 @@ uv run --project backend python backend/scripts/eval_ask.py
 設計見 [docs/superpowers/specs/2026-10-01-presence-design.md](docs/superpowers/specs/2026-10-01-presence-design.md)。
 
 - 跟 Teams 一樣：自動判斷有空、離開、離線，也可以手動選忙碌、請勿打擾、馬上回來、顯示為離開、顯示為離線。業務首頁、主管端、組織管理頁的頁首與帳號設定都有自己的頭像，點了換狀態。
-- 頻道頁的頁首疊出除了自己以外在線的人，點了看成員清單；別人每則訊息旁邊有頭像與狀態點；頻道列表每一列寫「N 人在線」。成員照組織位置算，IT 只算全國頻道的成員。
+- 頻道頁的頁首疊出除了自己以外在線的人，點了看成員清單；別人每則訊息旁邊有頭像與狀態點；頻道頁右欄的頁首與文字頻道、客戶討論串每一列寫「N 人在線」。成員照組織位置算，IT 只算全國頻道的成員。
 - 登入後開一條 WebSocket（`/api/ws`），同時收狀態變化與「頻道有新訊息」的通知，頻道不必再每 3 秒輪詢；斷線時退回輪詢與 HTTP 心跳。熊熊滾在背景寫好回答後一樣發通知（`services/channel_ai.run`）。本機開發由 Vite 代理（`vite.config.ts`），正式環境由 Nginx 轉（`frontend/nginx.conf`）。
 - 選「顯示為離線」的人，在別人眼中跟真的離線一樣：伺服器只送算好的狀態，不送最後上線時間。
 
