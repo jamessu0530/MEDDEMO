@@ -7,6 +7,7 @@ import {
   heartbeatPayload,
   LocationShare,
   MAX_FIX_AGE_MS,
+  REFRESH_AFTER_MS,
   withinHours,
   type GeoEnv,
   type Position,
@@ -94,6 +95,7 @@ describe("分享列與心跳", () => {
 function setup() {
   const state = { now: WORKING, consent: false, permission: "prompt" as PermissionState, share: SHARE }
   const watchers: Array<{ onPosition: (p: Position) => void; onDenied: () => void; stopped: boolean }> = []
+  const refreshes: Array<{ onPosition: (p: Position) => void; onDenied: () => void }> = []
   const env: GeoEnv = {
     now: () => state.now,
     readConsent: () => state.consent,
@@ -109,8 +111,11 @@ function setup() {
         watcher.stopped = true
       }
     },
+    refresh: (onPosition, onDenied) => {
+      refreshes.push({ onPosition, onDenied })
+    },
   }
-  return { env, state, watchers, store: new LocationShare(env) }
+  return { env, state, watchers, refreshes, store: new LocationShare(env) }
 }
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0))
@@ -198,6 +203,60 @@ describe("LocationShare", () => {
     expect(store.heartbeat()).toEqual({ location: LOCATION_PAYLOAD })
   })
 
+  it("位置超過一分鐘沒更新（有的瀏覽器站著不動就不再回報）：主動要一次，還沒回來之前不會再要", async () => {
+    const { store, watchers, refreshes, state } = setup()
+    state.consent = true
+    await store.load()
+    watchers[0].onPosition(HERE)
+    expect(store.heartbeat()).toEqual({ location: LOCATION_PAYLOAD })
+    // 61 秒後：心跳還是帶著舊的位置（還沒超過 MAX_FIX_AGE_MS），但主動要了一次新的
+    state.now = new Date(WORKING.getTime() + REFRESH_AFTER_MS + 1_000)
+    expect(store.heartbeat()).toEqual({ location: LOCATION_PAYLOAD })
+    expect(refreshes).toHaveLength(1)
+    // 還沒回來之前再心跳一次：不會再要一次
+    store.heartbeat()
+    expect(refreshes).toHaveLength(1)
+    // 回來了：心跳帶出新的位置
+    const fresh: Position = { ...HERE, at: state.now.getTime() }
+    refreshes[0].onPosition(fresh)
+    expect(store.heartbeat()).toEqual({ location: LOCATION_PAYLOAD })
+    // 又過了一分鐘沒更新：再主動要一次
+    state.now = new Date(state.now.getTime() + REFRESH_AFTER_MS + 1_000)
+    store.heartbeat()
+    expect(refreshes).toHaveLength(2)
+  })
+
+  it("主動要位置被拒絕：跟 watch 的拒絕一樣處理", async () => {
+    const { store, watchers, refreshes, state } = setup()
+    state.consent = true
+    await store.load()
+    watchers[0].onPosition(HERE)
+    state.now = new Date(WORKING.getTime() + REFRESH_AFTER_MS + 1_000)
+    store.heartbeat()
+    expect(refreshes).toHaveLength(1)
+    refreshes[0].onDenied()
+    expect(watchers[0].stopped).toBe(true)
+    expect(store.heartbeat()).toEqual({ location_denied: true })
+  })
+
+  it("暫停中或還沒同意：不會主動要位置", async () => {
+    const { store, refreshes, state } = setup()
+    // 還沒同意：連 watch 都沒開始，不會主動要
+    state.now = new Date(WORKING.getTime() + REFRESH_AFTER_MS + 1_000)
+    store.heartbeat()
+    await settle()
+    expect(refreshes).toHaveLength(0)
+    // 暫停：watch 已經停了，不會主動要
+    state.consent = true
+    state.now = WORKING
+    await store.load()
+    store.setShare({ ...SHARE, paused: true })
+    await settle()
+    state.now = new Date(WORKING.getTime() + REFRESH_AFTER_MS + 1_000)
+    store.heartbeat()
+    expect(refreshes).toHaveLength(0)
+  })
+
   it("下班時間停止追蹤", async () => {
     const { store, watchers, state } = setup()
     state.consent = true
@@ -237,6 +296,7 @@ describe("LocationShare", () => {
           watcher.stopped = true
         }
       },
+      refresh: () => {},
     }
     const store = new LocationShare(env)
     void store.load()
@@ -259,6 +319,7 @@ describe("LocationShare", () => {
         }),
       permission: async () => "prompt",
       watch: () => () => {},
+      refresh: () => {},
     }
     const store = new LocationShare(env)
     const loading = store.load()

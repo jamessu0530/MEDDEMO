@@ -19,6 +19,9 @@ const RELOAD_MS = 5 * 60_000
 // 超過這個時間的舊位置不能再當作「現在在哪」送出去，不然主管會一直看到一個其實已經停住不動的位置當作剛更新的
 export const MAX_FIX_AGE_MS = 2 * 60_000
 
+// 站著不動時有的瀏覽器不會再回報位置，超過一分鐘就主動要一次，免得主管看到灰掉
+export const REFRESH_AFTER_MS = 60_000
+
 const WEEKDAY: Record<string, number> = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 }
 const TAIPEI_CLOCK = new Intl.DateTimeFormat("en-US", {
   timeZone: "Asia/Taipei",
@@ -102,6 +105,8 @@ export type GeoEnv = {
   permission(): Promise<PermissionState>
   /** 開始追蹤，回傳停止的函式；使用者拒絕時呼叫 onDenied */
   watch(onPosition: (position: Position) => void, onDenied: () => void): () => void
+  /** 要一次性的最新位置（watchPosition 在有的瀏覽器站著不動就不會再回報）；使用者拒絕時呼叫 onDenied */
+  refresh(onPosition: (position: Position) => void, onDenied: () => void): void
 }
 
 const EMPTY: ShareSnapshot = { share: null, consented: false, denied: false, position: null }
@@ -116,6 +121,8 @@ export class LocationShare {
   // 被拒絕當下查到的權限；跟現在查到的一樣（通常是查不到 Permissions API 時一直是 "prompt"，
   // 或是權限明明是 granted 但系統層級擋掉）就不要再開一次 watch，免得一直跳詢問或白白重試
   private deniedWith: PermissionState | null = null
+  // 已經發出一次 env.refresh() 還沒回來：避免站著不動時每次心跳都再要一次
+  private refreshing = false
   private readonly listeners = new Set<() => void>()
   private readonly env: GeoEnv
 
@@ -180,7 +187,29 @@ export class LocationShare {
   heartbeat(): HeartbeatLocation {
     if (!this.snapshot.share || this.env.now().getTime() - this.loadedAt > RELOAD_MS) void this.load()
     else void this.sync()
+    this.maybeRefresh()
     return heartbeatPayload(this.snapshot, this.env.now())
+  }
+
+  /** 分享中、watch 開著，但位置太舊（有的瀏覽器站著不動就不會再回報）就主動要一次；已經在等就不要重複要 */
+  private maybeRefresh() {
+    if (this.refreshing || !this.stopWatch) return
+    if (barState(this.snapshot, this.env.now()) !== "sharing") return
+    const { position } = this.snapshot
+    if (position && this.env.now().getTime() - position.at <= REFRESH_AFTER_MS) return
+    this.refreshing = true
+    this.env.refresh(
+      (position) => {
+        this.refreshing = false
+        this.deniedWith = null
+        this.set({ position, denied: false })
+      },
+      () => {
+        this.refreshing = false
+        this.stopWatching()
+        this.set({ denied: true })
+      }
+    )
   }
 
   /** 分享中（或沒有權限、等使用者去開）才追蹤；下班、暫停、還沒同意就停掉，不在背景一直拿 GPS */
@@ -221,6 +250,7 @@ export class LocationShare {
   private stopWatching() {
     this.stopWatch?.()
     this.stopWatch = null
+    this.refreshing = false
     // 停止追蹤（暫停、下班、拒絕）就把位置清掉：繼續分享之後要等拿到新的一筆才再送，不留著舊的當作現在在哪
     if (this.snapshot.position) this.set({ position: null })
   }
@@ -278,6 +308,17 @@ const browserEnv: GeoEnv = {
       { enableHighAccuracy: true, maximumAge: 30_000, timeout: 60_000 }
     )
     return () => navigator.geolocation.clearWatch(id)
+  },
+  refresh: (onPosition, onDenied) => {
+    if (!("geolocation" in navigator)) return
+    navigator.geolocation.getCurrentPosition(
+      ({ coords, timestamp }) =>
+        onPosition({ lat: coords.latitude, lng: coords.longitude, accuracy: coords.accuracy ?? null, at: timestamp ?? Date.now() }),
+      (error) => {
+        if (error.code === error.PERMISSION_DENIED) onDenied()
+      },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 15_000 }
+    )
   },
 }
 
