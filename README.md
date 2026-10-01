@@ -467,7 +467,7 @@ uv run --project backend python backend/scripts/eval_ask.py
   - 可以改名、封存與解除封存，**不能刪除**：封存後還看得到、變成唯讀（發言回 409，熊熊滾不回答也不整理）。
   - API：`POST /api/channels`（`{parent_id, name}`）開、`PATCH /api/channels/{id}`（`{name?, archived?}`）改。開、改名、封存之後發 WebSocket 的 `channels` 事件，大家的頻道頁重新載入。IT 在組織管理改了組織（`/api/admin` 的開帳號、換主管、調區、改角色、停用、恢復、移交客戶，`backend/app/api/admin.py`）之後也發同一個事件：誰看得到哪些頻道可能變了，WebSocket 也跟著重算每個人看得到的頻道。
   - 示範資料：全國的「公司公告」（A01 開的），北區的「新品上市」「補貨問題」（M01 開的）。
-- **壓力測試**（`backend/scripts/stress_channels.py`）：demo 當天幾十個人同時在同一個文字頻道收發訊息。50 個帳號各開一條 WebSocket，同時在北區的「壓力測試」頻道各發 3 則；通過條件是沒有 5xx、每則發言都 201、每個人輪詢都拿齊、每條 WebSocket 都收到新訊息通知、發言的 p95 在 1 秒內，不通過時 exit code 1。只打本機（`--base-url` 不是 localhost 就拒絕），帳號直接寫進 `DATABASE_URL` 那個資料庫，所以用一個另外灌好資料的開發資料庫。照上面「本機開發」的指令把 API 開起來（加 `--port 8011`，不用 `--reload`），再跑：
+- **壓力測試**（`backend/scripts/stress_channels.py`）：demo 當天幾十個人同時在同一個文字頻道收發訊息。50 個帳號各開一條 WebSocket（每 20 秒送一次心跳），同時在北區的「壓力測試」頻道各發 3 則。每條連線照手機的做法：收到這個頻道的通知就去拿新訊息（一次只問一個，問的時候又來了通知就問完再補一次，同 `pages/channel.tsx`），2 秒後再問一次紅點（同 `lib/count-poller.ts`）。通過條件是沒有 5xx、每則發言都 201、每個人輪詢都拿齊、每條 WebSocket 都收到新訊息通知（沒有中途斷線）、手機拿新訊息與紅點的請求都是 200、發言的 p95 在 1 秒內，不通過時 exit code 1；連不上、逾時也照樣印出結果。另外兩種情境各跑一次：`--idle 95`（連上之後等 95 秒才發言，每條連線記住的「看得到哪些頻道」都過期了，第一則訊息時一起重算）、`--late-topic`（連上之後才開一個新的文字頻道，在那裡發言）。只打本機（`--base-url` 不是 localhost 就拒絕），帳號直接寫進 `DATABASE_URL` 那個資料庫，所以用一個另外灌好資料的開發資料庫。照上面「本機開發」的指令把 API 開起來（加 `--port 8011`，不用 `--reload`），再跑：
 
   ```bash
   DATABASE_URL=… REDIS_URL=… uv run --project backend python backend/scripts/stress_channels.py \
