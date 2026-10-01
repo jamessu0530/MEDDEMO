@@ -9,6 +9,7 @@
 """
 
 import calendar
+import hashlib
 import random
 from math import exp, log1p
 from datetime import date, datetime, time, timedelta, timezone
@@ -213,6 +214,30 @@ def place_of(name: str, type_: str, city: str, area: str) -> str:
     return place
 
 
+# 同一區的客戶錯開的最大幅度（度）：0.004 度約 400 公尺，還在同一區裡
+LOCATION_JITTER = 0.004
+
+
+def district_of(type_: str, city: str, area: str) -> str:
+    """客戶所在的行政區或鄉鎮（不帶「區」「市」「鎮」），算車程與排序習慣的「地區」用。"""
+    if city == "台北市" and type_ == "chain":
+        return catalog.TAIPEI_BRANCH_DISTRICT[area]
+    if area in catalog.AREA_DISTRICT:
+        return catalog.AREA_DISTRICT[area]
+    return area.removesuffix("店") if type_ == "chain" else area
+
+
+def location_of(customer_id: str, city: str, district: str) -> tuple[float, float]:
+    """那一區的中心點，依客戶 id 的雜湊錯開。用雜湊不用亂數：不能動到其他資料的亂數序列。"""
+    centre = catalog.DISTRICT_COORDS.get((city, district))
+    if centre is None:
+        raise ValueError(f"{customer_id} 對不到位置（{city}・{district}），請在 catalog.py 的 DISTRICT_COORDS 補上")
+    digest = hashlib.sha256(customer_id.encode()).digest()
+    lat = centre[0] + (digest[0] / 255 * 2 - 1) * LOCATION_JITTER
+    lng = centre[1] + (digest[1] / 255 * 2 - 1) * LOCATION_JITTER
+    return round(lat, 6), round(lng, 6)
+
+
 def build_customers(rng, as_of, specs, assigned, first_id=1):
     """同一區的客戶由該區業務輪流負責；assigned 記每一區已經分了幾家，補客戶時接著輪。"""
     customers = []
@@ -228,10 +253,14 @@ def build_customers(rng, as_of, specs, assigned, first_id=1):
             grade = "B"
         has_contract = type_ == "chain" or (type_ == "independent" and rng.random() < 0.4)
         contract_end = as_of + timedelta(days=rng.randint(20, 400)) if has_contract else None
+        customer_id = f"C{i:03d}"
+        district = district_of(type_, city, area)
+        lat, lng = location_of(customer_id, city, district)
         customers.append({
-            "id": f"C{i:03d}", "name": name, "type": type_, "chain_group": group,
+            "id": customer_id, "name": name, "type": type_, "chain_group": group,
             "region": region, "city": city, "place_id": place_of(name, type_, city, area), "grade": grade,
             "contract_end_date": contract_end, "owner_user_id": owner,
+            "area": district, "lat": lat, "lng": lng,
         })
     return customers
 
@@ -933,7 +962,8 @@ def generate(as_of: date, seed: int = SEED) -> dict[str, list[dict]]:
         for i, n, r, m, u, e in catalog.USERS
     ]
     org_units = [
-        {"id": i, "name": n, "kind": k, "parent_id": p}
+        {"id": i, "name": n, "kind": k, "parent_id": p,
+         "lat": catalog.REGION_OFFICE.get(i, (None, None))[0], "lng": catalog.REGION_OFFICE.get(i, (None, None))[1]}
         for i, n, k, p in catalog.ORG_UNITS
     ]
     places = [{"id": i, "name": n, "unit_id": u} for i, n, u in catalog.PLACES]

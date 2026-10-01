@@ -107,6 +107,9 @@ class OrgUnit(Base):
     name: Mapped[str]
     kind: Mapped[str]
     parent_id: Mapped[str | None] = mapped_column(ForeignKey("org_unit.id"))
+    # 區處辦公室的位置，今日路線每天從這裡出發；只有三個區有值
+    lat: Mapped[float | None]
+    lng: Mapped[float | None]
 
 
 class AppUser(Base):
@@ -223,6 +226,11 @@ class Customer(Base):
     grade: Mapped[str]
     contract_end_date: Mapped[dt.date | None]
     owner_user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id"))
+    # 行政區或鄉鎮（「大安」「板橋」），排序習慣的「地區」用；位置是那一區的中心點錯開幾百公尺，
+    # 沒有真的地址（data/seed/generate.py 的 location_of）
+    area: Mapped[str]
+    lat: Mapped[float]
+    lng: Mapped[float]
 
 
 class Product(Base):

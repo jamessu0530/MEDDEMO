@@ -642,3 +642,31 @@ def test_accounts_that_cannot_go_back_do_not_fail_the_seed(tx):
     assert seed.restore_or_skip(tx, outdated) == (0, 0)
     assert tx.scalar(select(func.count()).select_from(models.AppUser)) == 10
     assert tx.scalar(select(func.count()).select_from(models.UserIdentity)) == 1
+
+
+def test_district_names_follow_the_branch_tables():
+    # 台北市的連鎖分店照分店對照表；其他分店去掉「店」就是鄉鎮；不是行政區名稱的地區另外對
+    assert generate.district_of("chain", "台北市", "忠孝店") == "大安"
+    assert generate.district_of("chain", "新北市", "三重店") == "三重"
+    assert generate.district_of("chain", "台中市", "逢甲店") == "西屯"
+    assert generate.district_of("chain", "彰化縣", "彰化中正店") == "彰化"
+    assert generate.district_of("independent", "台北市", "長春") == "中山"
+    assert generate.district_of("independent", "台南市", "開元") == "北區"
+    assert generate.district_of("clinic", "高雄市", "左營") == "左營"
+
+
+def test_every_customer_sits_near_its_district_centre(db):
+    found = rows(db, "SELECT id, city, area, lat, lng FROM customer")
+    assert len(found) > 100
+    for customer_id, city, area, lat, lng in found:
+        centre_lat, centre_lng = catalog.DISTRICT_COORDS[(city, area)]
+        assert abs(lat - centre_lat) <= generate.LOCATION_JITTER + 1e-9, customer_id
+        assert abs(lng - centre_lng) <= generate.LOCATION_JITTER + 1e-9, customer_id
+    # 同一區的店錯開，地圖上不會疊在同一點
+    assert len({(lat, lng) for *_, lat, lng in found}) == len(found)
+
+
+def test_each_region_has_an_office_to_start_from(db):
+    offices = dict(rows(db, "SELECT id, lat FROM org_unit WHERE kind = 'region'"))
+    assert set(offices) == set(catalog.REGION_OFFICE)
+    assert all(lat is not None for lat in offices.values())
