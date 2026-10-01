@@ -88,7 +88,7 @@ function TeamOverview() {
     <>
       <p className="text-xs text-muted-foreground">{headerLine(data)}</p>
       {data.reps.length === 0 ? (
-        <p className="py-10 text-center text-sm text-muted-foreground">你底下還沒有業務。</p>
+        <p className="py-10 text-center text-sm text-muted-foreground">目前沒有業務。</p>
       ) : (
         <>
           <MapSlot routes={data.reps} />
@@ -120,7 +120,7 @@ function RepDetail({ userId }: { userId: string }) {
   const backTo = `/manager?view=routes&rep=${route.rep.id}`
   return (
     <>
-      <Link to="/manager" className="-ml-1 flex h-11 items-center gap-1 self-start text-sm text-muted-foreground">
+      <Link to="/manager" replace className="-ml-1 flex h-11 items-center gap-1 self-start text-sm text-muted-foreground">
         <ChevronLeft className="size-4" />
         團隊行程
       </Link>
