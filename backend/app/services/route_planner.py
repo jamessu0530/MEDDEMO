@@ -204,12 +204,17 @@ def cheapest_insert(
     start: dt.datetime, start_point: int, ordered: list[PlanStop], new: PlanStop, rules: list[Rule],
     minutes: list[list[int]],
 ) -> int:
-    """新的一站插在第幾站（還沒跑的站裡，0 起算）晚到與車程增加最少、又不違反規則。
-    插在哪裡都違反就放最後，讓業務自己調。"""
+    """新的一站插在第幾站（還沒跑的站裡，0 起算）晚到與車程增加最少、又不新增規則違反。
+    插在哪裡都新增違反就放最後，讓業務自己調。"""
+    # 先算出既有順序已經違反哪些規則（基線）
+    baseline_violations = set(r.id for r in violations([s.customer_id for s in ordered], rules))
     best_index, best_cost = len(ordered), None
     for index in range(len(ordered) + 1):
         trial = ordered[:index] + [new] + ordered[index:]
-        if violations([s.customer_id for s in trial], rules):
+        # 只跳過比基線新增違反的位置
+        trial_violations = set(r.id for r in violations([s.customer_id for s in trial], rules))
+        new_violations = trial_violations - baseline_violations
+        if new_violations:
             continue
         result = schedule(start, start_point, trial, minutes)
         cost = (result.late_minutes, result.travel_minutes)

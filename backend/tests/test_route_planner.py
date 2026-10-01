@@ -135,3 +135,11 @@ def test_cheapest_insert_does_not_move_a_locked_stop():
     assert rp.cheapest_insert(START, 0, ordered, stop("X", 4), [], LINE) == 0
     lock = rp.Rule(id="lock:A", text="A 排第一站", kind="lock", customer_ids=("A",), position=0)
     assert rp.cheapest_insert(START, 0, ordered, stop("X", 4), [lock], LINE) == 2
+
+
+def test_cheapest_insert_ignores_rules_the_order_already_breaks():
+    # 既有的順序已經違反「A 排最後」的規則（A 在第一位），
+    # 插 B 在中間不會新增違反，所以應該選成本最低的位置（1）
+    last_rule = rp.Rule(id="habit:last", text="A 排最後", kind="last", customer_ids=("A",))
+    ordered = [stop("A", 1), stop("C", 3)]
+    assert rp.cheapest_insert(START, 0, ordered, stop("B", 2), [last_rule], LINE) == 1
