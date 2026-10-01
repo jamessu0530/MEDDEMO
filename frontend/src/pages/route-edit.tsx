@@ -99,6 +99,8 @@ export function RouteEditPage() {
   })
   // 每一張「以後也這樣排嗎？」的編號：換一句就換一張，選項回到「只有今天」
   const promptCount = useRef(0)
+  // 還沒存時 ask() 回的 promise：存完真的問完才知道有沒有拿到對照卡，沒存成就回 false，輸入框的字才留著
+  const askResolve = useRef<((ok: boolean) => void) | null>(null)
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
@@ -123,13 +125,13 @@ export function RouteEditPage() {
   // 每次改動停 300ms 再算時間、車程與違反的規則；算好之前畫面先用上一次的時間。
   // 還沒改過就不算：畫面用進來時讀到的那一份（正式的車程），preview 一律是直線估算。
   // 例外：從加一站、習慣頁回來時草稿已經在（不是這次進頁面才建的），上面可能改了習慣或順路的候選，
-  // view 卻還是離開前那一份、沒有照最新的草稿重算，這次進頁面就要照最新的草稿算（returned）
+  // view 卻還是離開前那一份、沒有照最新的草稿重算，這次進頁面要補跑一次（只限「進頁面時就在」的那一份草稿，
+  // 不然每次 routeDraft.start() 之後都會補跑一次，套用、先存再排、409 重新載入拿到的正式車程會被估算蓋掉）
   const draft = edit?.draft
   const changed = Boolean(edit && edit.history.length > 0)
-  // 從加一站、習慣頁回來時草稿已經在：上面可能改了習慣，view 卻還是離開前那一份，這次進頁面就要照最新的草稿算
-  const [returned] = useState(() => Boolean(routeDraft.get()))
+  const [returnedDraft] = useState(() => routeDraft.get()?.draft ?? null)
   useEffect(() => {
-    if (!draft || (!changed && !returned)) return
+    if (!draft || (!changed && draft !== returnedDraft)) return
     const controller = new AbortController()
     const timer = setTimeout(() => {
       previewToday(draft, undefined, controller.signal)
@@ -146,7 +148,7 @@ export function RouteEditPage() {
       clearTimeout(timer)
       controller.abort()
     }
-  }, [draft, changed, returned])
+  }, [draft, changed, returnedDraft])
 
   function cancel() {
     routeDraft.clear()
@@ -196,6 +198,8 @@ export function RouteEditPage() {
 
   const { base, view, history, moved } = edit
   const current = edit.draft
+  // 熊熊滾在想的時候清單先鎖住：套用會整份換掉，這段時間拖、改、加一站都先別讓動
+  const asking = flow.state.status === "asking"
   const names: Record<string, string> = Object.fromEntries(
     [...base.stops, ...view.stops].map((stop) => [stop.customer_id, stop.customer_name])
   )
@@ -301,6 +305,9 @@ export function RouteEditPage() {
         setSaving(false)
         setAfterSave(null)
         routeDraft.start(saved)
+        setPrompt(null)
+        setExpanded(null)
+        setHint(null)
         then()
         return
       }
@@ -309,6 +316,9 @@ export function RouteEditPage() {
     } catch (error) {
       setSaving(false)
       setAfterSave(null)
+      // 存失敗：先存再排沒排成，問到一半的那句話回 false，輸入框的字留著
+      askResolve.current?.(false)
+      askResolve.current = null
       if (error instanceof ApiError && error.status === 409) {
         // 行程剛被改過：剛才的改動不保留，載入最新的
         routeDraft.clear()
@@ -324,6 +334,7 @@ export function RouteEditPage() {
 
   // 還有規則沒處理：「完成」按得下去，但先問一次要不要復原
   function finish() {
+    setAfterSave(null)
     if (broken.length > 0) setConfirming(true)
     else void save()
   }
@@ -332,6 +343,13 @@ export function RouteEditPage() {
   function beforeAsking(action: () => void) {
     if (changed) setUnsavedAction(() => action)
     else action()
+  }
+
+  // 「先存再排」的確認框不存就關掉：問到一半的那句話回 false，輸入框的字留著
+  function dismissUnsaved() {
+    setUnsavedAction(null)
+    askResolve.current?.(false)
+    askResolve.current = null
   }
 
   function saveThen(action: () => void) {
@@ -343,14 +361,18 @@ export function RouteEditPage() {
     } else void save(action)
   }
 
+  // 還沒存時 ask() 要先問要不要存，但輸入列要等存完、問完才知道有沒有拿到對照卡：
+  // resolver 先放著，存完接著問那一步（saveThen → unsavedAction）問完再叫回來
   function ask(question: string) {
+    if (!changed) return flow.ask(question)
     return new Promise<boolean>((resolve) => {
-      if (!changed) {
-        void flow.ask(question).then(resolve)
-        return
-      }
-      setUnsavedAction(() => () => void flow.ask(question))
-      resolve(false)
+      askResolve.current = resolve
+      setUnsavedAction(() => () =>
+        void flow.ask(question).then((ok) => {
+          askResolve.current?.(ok)
+          askResolve.current = null
+        })
+      )
     })
   }
 
@@ -369,7 +391,7 @@ export function RouteEditPage() {
               <Repeat className="size-4" />
               習慣
             </Link>
-            <Button className="h-10 px-4" disabled={saving} onClick={finish}>
+            <Button className="h-10 px-4" disabled={saving || asking} onClick={finish}>
               {saving && <Loader2 className="animate-spin" />}
               完成
             </Button>
@@ -396,88 +418,91 @@ export function RouteEditPage() {
           </ol>
         )}
 
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={onDragEnd}
-          accessibility={{ screenReaderInstructions: SCREEN_READER_INSTRUCTIONS, announcements }}
-        >
-          <SortableContext items={order} strategy={verticalListSortingStrategy}>
-            <ol aria-label="還沒跑的站" className="flex flex-col">
-              {open.map((stop, index) => {
-                const draftStop = current.stops.find((s) => s.customer_id === stop.customer_id)!
-                const cardNotes = notes.get(stop.customer_id) ?? []
-                // move() 要的是這一站在 order（草稿全部還沒跑的站）裡的位置，不是在 open（畫面顯示的）裡的位置：
-                // 兩者通常一樣，但 shownStops 濾掉過還不認得的站時會錯開
-                const pos = order.indexOf(stop.customer_id)
-                return (
-                  <Sortable key={stop.customer_id} id={stop.customer_id}>
-                    {(handle, dragging) => (
-                      <>
-                        {stop.travel_minutes !== null && (
-                          <p className="py-1.5 pl-11 text-xs text-muted-foreground tabular-nums">
-                            車程 {stop.travel_minutes} 分 · {stop.travel_km} 公里
-                          </p>
-                        )}
-                        <StopCard
-                          stop={stop}
-                          number={finished.length + index + 1}
-                          names={names}
-                          precedences={related(stop.customer_id)}
-                          notes={cardNotes}
-                          undoable={cardNotes.length > 0 && undoable(cardNotes.map((note) => note.rule.id))}
-                          expanded={expanded === stop.customer_id}
-                          canMoveUp={pos > 0}
-                          canMoveDown={pos < order.length - 1}
-                          dragging={dragging}
-                          handle={handle}
-                          onToggle={() => setExpanded(expanded === stop.customer_id ? null : stop.customer_id)}
-                          onMoveUp={() => move(pos, pos - 1)}
-                          onMoveDown={() => move(pos, pos + 1)}
-                          onDropRule={(note) => removePrecedence({ before: note.rule.customer_ids[0], after: note.rule.customer_ids[1] })}
-                          onSkipHabit={skipHabit}
-                          onUndo={(note) => undo([note.rule.id])}
-                        >
-                          <StopEditor
-                            stop={draftStop}
-                            name={stop.customer_name}
-                            arrive={stop.planned_time}
-                            others={open
-                              .filter((o) => o.customer_id !== stop.customer_id)
-                              .map((o) => ({ id: o.customer_id, name: o.customer_name }))}
-                            precedences={related(stop.customer_id)}
-                            onChange={(values, suggestion) => patch(stop.customer_id, values, suggestion)}
-                            onAddPrecedence={addPrecedence}
-                            onRemovePrecedence={removePrecedence}
-                            onRemove={() => removeStop(stop.customer_id)}
-                          />
-                        </StopCard>
-                      </>
-                    )}
-                  </Sortable>
-                )
-              })}
-            </ol>
-          </SortableContext>
-        </DndContext>
-        {open.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">今天還沒有要跑的站。</p>}
-
-        <div className="mt-4 grid grid-cols-2 gap-2">
-          <Link to="/route/edit/add" className={cn(buttonVariants({ variant: "outline" }), "h-12 text-sm")}>
-            <Plus />
-            加一站
-          </Link>
-          <Button
-            variant="outline"
-            className="h-12 text-sm"
-            disabled={flow.state.status === "asking" || open.length < 2}
-            onClick={() => beforeAsking(() => void flow.optimize())}
+        {/* 熊熊滾想的時候整塊鎖住：套用會把清單整份換掉，這段時間拖、改、加一站都先別讓動 */}
+        <div inert={asking ? true : undefined} aria-busy={asking}>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={onDragEnd}
+            accessibility={{ screenReaderInstructions: SCREEN_READER_INSTRUCTIONS, announcements }}
           >
-            <WandSparkles />
-            幫我排順一點
-          </Button>
+            <SortableContext items={order} strategy={verticalListSortingStrategy}>
+              <ol aria-label="還沒跑的站" className="flex flex-col">
+                {open.map((stop, index) => {
+                  const draftStop = current.stops.find((s) => s.customer_id === stop.customer_id)!
+                  const cardNotes = notes.get(stop.customer_id) ?? []
+                  // move() 要的是這一站在 order（草稿全部還沒跑的站）裡的位置，不是在 open（畫面顯示的）裡的位置：
+                  // 兩者通常一樣，但 shownStops 濾掉過還不認得的站時會錯開
+                  const pos = order.indexOf(stop.customer_id)
+                  return (
+                    <Sortable key={stop.customer_id} id={stop.customer_id}>
+                      {(handle, dragging) => (
+                        <>
+                          {stop.travel_minutes !== null && (
+                            <p className="py-1.5 pl-11 text-xs text-muted-foreground tabular-nums">
+                              車程 {stop.travel_minutes} 分 · {stop.travel_km} 公里
+                            </p>
+                          )}
+                          <StopCard
+                            stop={stop}
+                            number={finished.length + index + 1}
+                            names={names}
+                            precedences={related(stop.customer_id)}
+                            notes={cardNotes}
+                            undoable={cardNotes.length > 0 && undoable(cardNotes.map((note) => note.rule.id))}
+                            expanded={expanded === stop.customer_id}
+                            canMoveUp={pos > 0}
+                            canMoveDown={pos < order.length - 1}
+                            dragging={dragging}
+                            handle={handle}
+                            onToggle={() => setExpanded(expanded === stop.customer_id ? null : stop.customer_id)}
+                            onMoveUp={() => move(pos, pos - 1)}
+                            onMoveDown={() => move(pos, pos + 1)}
+                            onDropRule={(note) => removePrecedence({ before: note.rule.customer_ids[0], after: note.rule.customer_ids[1] })}
+                            onSkipHabit={skipHabit}
+                            onUndo={(note) => undo([note.rule.id])}
+                          >
+                            <StopEditor
+                              stop={draftStop}
+                              name={stop.customer_name}
+                              arrive={stop.planned_time}
+                              others={open
+                                .filter((o) => o.customer_id !== stop.customer_id)
+                                .map((o) => ({ id: o.customer_id, name: o.customer_name }))}
+                              precedences={related(stop.customer_id)}
+                              onChange={(values, suggestion) => patch(stop.customer_id, values, suggestion)}
+                              onAddPrecedence={addPrecedence}
+                              onRemovePrecedence={removePrecedence}
+                              onRemove={() => removeStop(stop.customer_id)}
+                            />
+                          </StopCard>
+                        </>
+                      )}
+                    </Sortable>
+                  )
+                })}
+              </ol>
+            </SortableContext>
+          </DndContext>
+          {open.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">今天還沒有要跑的站。</p>}
+
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <Link to="/route/edit/add" className={cn(buttonVariants({ variant: "outline" }), "h-12 text-sm")}>
+              <Plus />
+              加一站
+            </Link>
+            <Button
+              variant="outline"
+              className="h-12 text-sm"
+              disabled={asking || open.length < 2}
+              onClick={() => beforeAsking(() => void flow.optimize())}
+            >
+              <WandSparkles />
+              幫我排順一點
+            </Button>
+          </div>
         </div>
-        <AskBar className="mt-3" busy={flow.state.status === "asking"} error={flow.error} onAsk={ask} />
+        <AskBar className="mt-3" busy={asking} error={flow.error} onAsk={ask} />
       </main>
 
       {flow.state.status === "open" && (
@@ -494,14 +519,14 @@ export function RouteEditPage() {
       )}
 
       {unsavedAction && (
-        <Dialog open onOpenChange={(visible) => !visible && setUnsavedAction(null)}>
+        <Dialog open onOpenChange={(visible) => !visible && dismissUnsaved()}>
           <DialogContent showCloseButton={false}>
             <DialogHeader>
               <DialogTitle>剛才的調整還沒存，要先存起來再請熊熊滾排嗎？</DialogTitle>
               <DialogDescription>熊熊滾是照存著的行程排的；不先存的話，剛才的調整它看不到。</DialogDescription>
             </DialogHeader>
             <DialogFooter>
-              <Button variant="outline" className="h-11" onClick={() => setUnsavedAction(null)}>
+              <Button variant="outline" className="h-11" onClick={dismissUnsaved}>
                 取消
               </Button>
               <Button className="h-11" disabled={saving} onClick={() => saveThen(unsavedAction)}>
@@ -536,6 +561,7 @@ export function RouteEditPage() {
                   className="h-11"
                   onClick={() => {
                     setConfirming(false)
+                    setAfterSave(null)
                     undo(broken.map((rule) => rule.id))
                   }}
                 >
