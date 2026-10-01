@@ -670,3 +670,8 @@ def test_each_region_has_an_office_to_start_from(db):
     offices = dict(rows(db, "SELECT id, lat FROM org_unit WHERE kind = 'region'"))
     assert set(offices) == set(catalog.REGION_OFFICE)
     assert all(lat is not None for lat in offices.values())
+
+
+def test_the_demo_rep_has_three_route_habits(db):
+    found = rows(db, "SELECT kind, weekday, source FROM route_habit WHERE user_id = 'U01' ORDER BY created_at")
+    assert found == [("precedence", None, "ai"), ("last", 2, "manual"), ("window", None, "manual")]
