@@ -10,13 +10,14 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
+from sqlalchemy import delete
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app import realtime
 from app.api.auth import ItUser
 from app.db import get_session
-from app.models import AppUser
+from app.models import AppUser, UserLocation
 from app.services import itinerary as itinerary_service
 from app.services import org_admin
 from app.services.auth import EXTERNAL_ACCOUNT_ACTS_AS
@@ -156,8 +157,11 @@ def reassign_customer(session: SessionDep, actor: ItUser, customer_id: str, body
 def reset_demo_itinerary(session: SessionDep, _: ItUser):
     """評審用第三方登入都代理示範業務，共用一份行程；換一批評審前 IT 按這個清掉今天的累積改動。"""
     itinerary_service.reset_today(session, EXTERNAL_ACCOUNT_ACTS_AS)
+    # 換一批評審：上一批的位置、暫停與「沒有開定位權限」一起清掉
+    session.execute(delete(UserLocation).where(UserLocation.user_id == EXTERNAL_ACCOUNT_ACTS_AS))
     session.commit()
     # 重置用整批 DELETE，不經過 ORM 物件，realtime 的 after_flush 看不到：主管頁要另外通知
     realtime.itinerary_changed(EXTERNAL_ACCOUNT_ACTS_AS)
+    realtime.location_changed(EXTERNAL_ACCOUNT_ACTS_AS)
     rep = session.get(AppUser, EXTERNAL_ACCOUNT_ACTS_AS)
     return DemoItineraryReset(rep_id=EXTERNAL_ACCOUNT_ACTS_AS, rep_name=rep.name)

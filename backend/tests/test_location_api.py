@@ -156,6 +156,40 @@ def test_a_ping_carrying_a_location_is_not_deduped_even_right_after_connecting(c
         assert (row.lat, row.lng, row.accuracy_m) == (25.034, 121.5645, 8)
 
 
+def test_deleting_a_self_registered_account_clears_the_demo_reps_position(client, engine, always, events):
+    """自己註冊的帳號代理示範業務（U01），位置存在 U01 名下；刪帳號時要把那一筆清掉，
+    不然示範業務的位置頁面繼續顯示一個已經刪除帳號的人的座標。"""
+    from sqlalchemy import text as sql
+
+    created = client.post(
+        "/api/auth/register", json={"name": "要刪的評審", "email": "delete-location@register.test", "password": "judge-pass-1"}
+    ).json()
+    headers = {"Authorization": f"Bearer {created['token']}"}
+    try:
+        ping(client, headers, location=TAIPEI_101)
+        row = location_of(engine, "U01")
+        assert row.lat == 25.034
+        assert client.delete("/api/auth/me", headers=headers).status_code == 204
+        row = location_of(engine, "U01")
+        assert row.lat is None and row.lng is None and row.accuracy_m is None and row.at is None
+        assert {"type": "location", "user_id": "U01"} in events
+    finally:
+        with engine.begin() as conn:
+            conn.execute(sql("DELETE FROM app_user WHERE email = 'delete-location@register.test'"))
+
+
+def test_resetting_the_demo_itinerary_clears_the_demo_reps_location_row(client, engine, auth, always, events):
+    """換一批評審：上一批人暫停、拒絕定位留下的那一列（連同「沒有開定位權限」）要整個清掉，
+    不然新的一批評審一開始就看到上一批人留下的暫停或拒絕狀態。"""
+    ping(client, auth("U01"), location=TAIPEI_101)
+    assert client.post("/api/location/pause", headers=auth("U01")).status_code == 200
+    assert location_of(engine, "U01") is not None
+    events.clear()
+    assert client.post("/api/admin/demo-itinerary/reset", headers=auth("A01")).status_code == 200
+    assert location_of(engine, "U01") is None
+    assert {"type": "location", "user_id": "U01"} in events
+
+
 def test_a_websocket_heartbeat_can_carry_the_location(client, engine, always):
     with client.websocket_connect("/api/ws") as rep:
         connect(rep, engine, "U01")

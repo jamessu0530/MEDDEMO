@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app import realtime
 from app.db import get_session
-from app.models import AppUser, SapQuotationDraft, UserIdentity
+from app.models import AppUser, SapQuotationDraft, UserIdentity, UserLocation
 from app.services import auth, oauth, presence
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -223,17 +223,25 @@ def delete_account(session: SessionDep, user: CurrentUser):
     """刪除自己的帳號（隱私權政策 /privacy 寫的刪除方式）。公司帳號不能自己刪，要由 IT 停用。
 
     一起刪掉：帳號、綁定的第三方身分、自己的提問與轉給主管的提問、自己在頻道發的訊息與已讀位置、在線狀態、大頭貼、
-    對方法卡按的「有幫上／沒幫上」（外鍵 ON DELETE CASCADE）。
+    位置、對方法卡按的「有幫上／沒幫上」（外鍵 ON DELETE CASCADE）。
     自己開的報價草稿留在 SAP 模擬表，只把「誰開的」清掉：報價是交易紀錄，屬於客戶。
     拜訪紀錄記在示範業務名下（自己開的帳號沒有自己的客戶），不受影響。
     """
     if not _is_self_service(user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="公司帳號不能自己刪除")
     session.execute(update(SapQuotationDraft).where(SapQuotationDraft.created_by == user.id).values(created_by=None))
+    # 自己開的與第三方登入的帳號，位置存在示範業務名下（services/locations.sharer）；刪帳號時清掉那一筆，
+    # 最新那一筆可能就是這個人的。別人下一次心跳會再補上
+    acts_as = user.acts_as_user_id
+    rep_location = session.get(UserLocation, acts_as) if acts_as else None
+    if rep_location is not None:
+        rep_location.lat = rep_location.lng = rep_location.accuracy_m = rep_location.at = None
     session.delete(user)
     session.commit()
     realtime.presence_changed()
     realtime.avatars_changed()
+    if rep_location is not None:
+        realtime.location_changed(acts_as)
 
 
 @router.post("/change-password", response_model=AuthResponse)
