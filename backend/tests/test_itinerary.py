@@ -185,6 +185,22 @@ def test_no_more_than_eight_open_stops(tx):
     assert [s.reason for s in skipped] == ["今天已經排了 8 站", "今天已經排了 8 站"]
 
 
+def test_saved_order_survives_new_feedback(tx):
+    """動過就固定：就算之後的暫緩、權重調整原本會讓模型選別的站、排別的順序，存著的這份也不重排。"""
+    itinerary = service.get_or_create(tx, "U01")
+    view = service.view(tx, itinerary)
+    order = [s.customer_id for s in view.stops]
+    version = view.version
+
+    tx.add(RouteSnooze(user_id="U01", customer_id=order[1], until=dt.date(2026, 10, 31)))
+    tx.add(RouteSignalWeight(user_id="U01", signal=view.stops[0].signal, weight=-999))
+    tx.flush()
+
+    again = service.view(tx, service.get_or_create(tx, "U01"))
+    assert [s.customer_id for s in again.stops] == order
+    assert again.version == version
+
+
 def test_two_saves_at_once_cannot_both_pass_the_version_check(engine):
     """兩個人同時讀到同一個版本、幾乎同時各自存：靠 _lock 的 SELECT ... FOR UPDATE 把兩邊序列化，
     後到的那個鎖到的時候，版本已經被先存的那個改過了，直接擋下來，不會兩邊的改動混在一起。
