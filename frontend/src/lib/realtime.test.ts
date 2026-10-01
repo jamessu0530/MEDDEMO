@@ -98,6 +98,20 @@ describe("RealtimeClient", () => {
     expect(env.ping).toHaveBeenCalledWith(true, { location: { lat: 25.034, lng: 121.5645, accuracy: 12 } })
   })
 
+  it("位置的程式出錯也不能讓心跳停掉，WebSocket 與 HTTP 心跳都照送", async () => {
+    const { client, env, latest, ready, state } = setup()
+    state.heartbeat = { location: { lat: 25.034, lng: 121.5645, accuracy: 12 } }
+    env.heartbeat = () => {
+      throw new Error("boom")
+    }
+    client.start()
+    ready()
+    vi.advanceTimersByTime(PING_MS)
+    expect(latest().sent.at(-1)).toEqual({ type: "ping", active: true })
+    latest().drop()
+    expect(env.ping).toHaveBeenCalledWith(true, {})
+  })
+
   it("位置與行程的通知轉給訂閱的畫面", () => {
     const { client, latest, ready, events } = setup()
     client.start()

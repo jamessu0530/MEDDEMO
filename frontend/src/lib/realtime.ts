@@ -197,8 +197,17 @@ export class RealtimeClient {
   private readonly sendPing = () => {
     if (!this.socket || !this.connected) return
     const active = this.active()
-    this.socket.send(JSON.stringify({ type: "ping", active, ...this.env.heartbeat() }))
+    this.socket.send(JSON.stringify({ type: "ping", active, ...this.heartbeatExtra() }))
     this.lastSentActive = active
+  }
+
+  // 位置的程式出錯也不能讓在線狀態的心跳停掉：壞掉就當作沒有位置可帶，照常送 active
+  private heartbeatExtra(): HeartbeatLocation {
+    try {
+      return this.env.heartbeat()
+    } catch {
+      return {}
+    }
   }
 
   private readonly onActivity = () => {
@@ -237,7 +246,7 @@ export class RealtimeClient {
     // 畫面在背景就不送：人不在了，5 分鐘後讓別人看到離線
     if (this.connected || !this.running || !this.env.visible() || !this.env.online()) return
     this.env
-      .ping(this.active(), this.env.heartbeat())
+      .ping(this.active(), this.heartbeatExtra())
       .then(({ statuses }) => {
         if (this.running && !this.connected) this.store.apply(true, statuses)
       })

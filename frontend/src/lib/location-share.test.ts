@@ -6,6 +6,7 @@ import {
   barText,
   heartbeatPayload,
   LocationShare,
+  MAX_FIX_AGE_MS,
   withinHours,
   type GeoEnv,
   type Position,
@@ -16,7 +17,9 @@ const HOURS = { weekdays: [1, 2, 3, 4, 5], start: "08:30", end: "18:30" }
 const SHARE: ShareState = { applies: true, paused: false, denied: false, manager_name: "陳建宏", hours: HOURS }
 // 2026-10-01 是星期四
 const WORKING = new Date("2026-10-01T10:00:00+08:00")
-const HERE: Position = { lat: 25.034, lng: 121.5645, accuracy: 12 }
+const HERE: Position = { lat: 25.034, lng: 121.5645, accuracy: 12, at: WORKING.getTime() }
+// 心跳的 location 不帶 at（後端 schema 沒有這個欄位）
+const LOCATION_PAYLOAD = { lat: HERE.lat, lng: HERE.lng, accuracy: HERE.accuracy }
 
 const snapshot = (extra: Partial<ShareSnapshot> = {}): ShareSnapshot => ({
   share: SHARE,
@@ -57,8 +60,15 @@ describe("分享列與心跳", () => {
 
   it("分享中帶最新的位置；還沒拿到位置就先不帶", () => {
     expect(barState(snapshot(), WORKING)).toBe("sharing")
-    expect(heartbeatPayload(snapshot(), WORKING)).toEqual({ location: HERE })
+    expect(heartbeatPayload(snapshot(), WORKING)).toEqual({ location: LOCATION_PAYLOAD })
     expect(heartbeatPayload(snapshot({ position: null }), WORKING)).toEqual({})
+  })
+
+  it("定位太舊（手機鎖屏、切到背景時瀏覽器停止拿新位置）就不送，剛好 2 分鐘內還送", () => {
+    const stale: Position = { ...HERE, at: WORKING.getTime() - MAX_FIX_AGE_MS - 1 }
+    expect(heartbeatPayload(snapshot({ position: stale }), WORKING)).toEqual({})
+    const fresh: Position = { ...HERE, at: WORKING.getTime() - MAX_FIX_AGE_MS }
+    expect(heartbeatPayload(snapshot({ position: fresh }), WORKING)).toEqual({ location: LOCATION_PAYLOAD })
   })
 
   it("暫停中不帶；暫停比沒有權限優先", () => {
@@ -122,7 +132,7 @@ describe("LocationShare", () => {
     await settle()
     expect(watchers).toHaveLength(1)
     watchers[0].onPosition(HERE)
-    expect(store.heartbeat()).toEqual({ location: HERE })
+    expect(store.heartbeat()).toEqual({ location: LOCATION_PAYLOAD })
   })
 
   it("瀏覽器拒絕：停止追蹤，心跳改帶 location_denied，不再一直跳詢問；設定裡打開之後再開始", async () => {
@@ -149,18 +159,43 @@ describe("LocationShare", () => {
     expect(store.heartbeat()).toEqual({ location_denied: true })
   })
 
-  it("暫停就停止追蹤，繼續再開", async () => {
+  it("權限其實是 granted，但實際被系統擋掉：重試不會一直開新的 watch", async () => {
+    const { store, watchers, state } = setup()
+    state.consent = true
+    state.permission = "granted"
+    await store.load()
+    expect(watchers).toHaveLength(1)
+    watchers[0].onDenied()
+    expect(watchers[0].stopped).toBe(true)
+    expect(store.heartbeat()).toEqual({ location_denied: true })
+    await settle()
+    // 權限還是 granted（跟拒絕當下查到的一樣）：不要每次心跳都再跳一次 watch
+    store.heartbeat()
+    await settle()
+    store.heartbeat()
+    await settle()
+    expect(watchers).toHaveLength(1)
+  })
+
+  it("暫停就停止追蹤、清掉位置；繼續之後要等新的一筆才送", async () => {
     const { store, watchers, state } = setup()
     state.consent = true
     await store.load()
+    watchers[0].onPosition(HERE)
+    expect(store.heartbeat()).toEqual({ location: LOCATION_PAYLOAD })
     store.setShare({ ...SHARE, paused: true })
     await settle()
     expect(watchers[0].stopped).toBe(true)
+    expect(store.getSnapshot().position).toBeNull()
     expect(store.heartbeat()).toEqual({})
     store.setShare(SHARE)
     await settle()
     expect(watchers).toHaveLength(2)
     expect(watchers[1].stopped).toBe(false)
+    // 繼續之後舊位置已經清掉了，要等新的一筆才會帶
+    expect(store.heartbeat()).toEqual({})
+    watchers[1].onPosition(HERE)
+    expect(store.heartbeat()).toEqual({ location: LOCATION_PAYLOAD })
   })
 
   it("下班時間停止追蹤", async () => {
@@ -179,6 +214,58 @@ describe("LocationShare", () => {
     await store.load()
     store.reset()
     expect(watchers[0].stopped).toBe(true)
+    expect(store.getSnapshot().share).toBeNull()
+  })
+
+  it("等權限回來的時候狀態已經變了（暫停）：不要還去開 watch", async () => {
+    const watchers: Array<{ onPosition: (p: Position) => void; onDenied: () => void; stopped: boolean }> = []
+    // 用物件裝著讓 Promise 執行器裡的指派逃過 TS 把閉包變數的型別收窄成 never 的問題
+    const gate: { resolvePermission: ((permission: PermissionState) => void) | null } = { resolvePermission: null }
+    const env: GeoEnv = {
+      now: () => WORKING,
+      readConsent: () => true,
+      writeConsent: () => {},
+      fetchState: async () => SHARE,
+      permission: () =>
+        new Promise<PermissionState>((resolve) => {
+          gate.resolvePermission = resolve
+        }),
+      watch: (onPosition, onDenied) => {
+        const watcher = { onPosition, onDenied, stopped: false }
+        watchers.push(watcher)
+        return () => {
+          watcher.stopped = true
+        }
+      },
+    }
+    const store = new LocationShare(env)
+    void store.load()
+    await settle() // fetchState 回來了，sync() 卡在等 permission()
+    store.setShare({ ...SHARE, paused: true })
+    gate.resolvePermission?.("granted")
+    await settle()
+    expect(watchers).toHaveLength(0)
+  })
+
+  it("load 還沒回來就換人（reset）：舊的結果不能蓋掉清空的狀態", async () => {
+    const gate: { resolveFetch: ((share: ShareState) => void) | null } = { resolveFetch: null }
+    const env: GeoEnv = {
+      now: () => WORKING,
+      readConsent: () => true,
+      writeConsent: () => {},
+      fetchState: () =>
+        new Promise<ShareState>((resolve) => {
+          gate.resolveFetch = resolve
+        }),
+      permission: async () => "prompt",
+      watch: () => () => {},
+    }
+    const store = new LocationShare(env)
+    const loading = store.load()
+    store.reset()
+    gate.resolveFetch?.(SHARE)
+    await loading
+    await settle()
     expect(store.getSnapshot().share).toBeNull()
   })
 })

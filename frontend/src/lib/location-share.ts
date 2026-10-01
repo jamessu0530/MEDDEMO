@@ -15,6 +15,9 @@ import { onAuthChange, readUser } from "@/lib/auth"
 const CONSENT_KEY = "meddemo:location-consent"
 // 多久重問一次後端的分享狀態：好幾位評審代理同一位示範業務時，別人按了暫停，這裡最慢 5 分鐘後跟上
 const RELOAD_MS = 5 * 60_000
+// GPS 定位多久算「還新鮮」：手機鎖屏、切到背景時瀏覽器會停止拿新位置，但 WebSocket 心跳還是每 20 秒照送。
+// 超過這個時間的舊位置不能再當作「現在在哪」送出去，不然主管會一直看到一個其實已經停住不動的位置當作剛更新的
+export const MAX_FIX_AGE_MS = 2 * 60_000
 
 const WEEKDAY: Record<string, number> = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 }
 const TAIPEI_CLOCK = new Intl.DateTimeFormat("en-US", {
@@ -37,7 +40,8 @@ export function withinHours(at: Date, hours: ShareHours) {
   return hours.weekdays.includes(WEEKDAY[parts.weekday]) && minutesOf(hours.start) <= minute && minute < minutesOf(hours.end)
 }
 
-export type Position = { lat: number; lng: number; accuracy: number | null }
+// at：拿到這個定位的時間（ms, epoch），來自 GeolocationPosition.timestamp；心跳要不要帶看這個夠不夠新
+export type Position = { lat: number; lng: number; accuracy: number | null; at: number }
 
 export type ShareSnapshot = {
   // 後端說的分享狀態；還沒問到是 null
@@ -64,11 +68,18 @@ export function barState(snapshot: ShareSnapshot, now: Date): BarState {
   return "sharing"
 }
 
-/** 心跳要多帶的：分享中帶最新的位置，沒有權限帶 location_denied，其他什麼都不帶 */
+/**
+ * 心跳要多帶的：分享中帶最新的位置，沒有權限帶 location_denied，其他什麼都不帶。
+ * 位置太舊（超過 MAX_FIX_AGE_MS，通常是手機鎖屏、切到背景）就當作沒有，不然後端會一直把舊位置當剛更新的寫進去。
+ * 帶出去的只有 lat/lng/accuracy：at 只是這支手機自己拿來判斷新不新鮮，後端的 schema 沒有這個欄位。
+ */
 export function heartbeatPayload(snapshot: ShareSnapshot, now: Date): HeartbeatLocation {
   const state = barState(snapshot, now)
   if (state === "denied") return { location_denied: true }
-  if (state === "sharing" && snapshot.position) return { location: snapshot.position }
+  if (state === "sharing" && snapshot.position && now.getTime() - snapshot.position.at <= MAX_FIX_AGE_MS) {
+    const { lat, lng, accuracy } = snapshot.position
+    return { location: { lat, lng, accuracy } }
+  }
   return {}
 }
 
@@ -100,6 +111,11 @@ export class LocationShare {
   private stopWatch: (() => void) | null = null
   private loading: Promise<void> | null = null
   private loadedAt = 0
+  // reset() 換一代：還沒回來的 load() 結果回來時，如果已經是上一代的就作廢，不要蓋掉清空的狀態
+  private generation = 0
+  // 被拒絕當下查到的權限；跟現在查到的一樣（通常是查不到 Permissions API 時一直是 "prompt"，
+  // 或是權限明明是 granted 但系統層級擋掉）就不要再開一次 watch，免得一直跳詢問或白白重試
+  private deniedWith: PermissionState | null = null
   private readonly listeners = new Set<() => void>()
   private readonly env: GeoEnv
 
@@ -118,16 +134,20 @@ export class LocationShare {
 
   /** 問後端這個帳號要不要分享、暫停了沒；同時只問一次。問不到就等下一次心跳再問 */
   load(): Promise<void> {
-    this.loading ??= this.env
+    if (this.loading) return this.loading
+    const generation = this.generation
+    this.loading = this.env
       .fetchState()
       .then((share) => {
+        // 問的時候換人了（reset）：這筆結果是上一代的，不要蓋掉已經清空的狀態
+        if (generation !== this.generation) return
         this.loadedAt = this.env.now().getTime()
         this.set({ share, consented: this.env.readConsent() })
         return this.sync()
       })
       .catch(() => {})
       .finally(() => {
-        this.loading = null
+        if (generation === this.generation) this.loading = null
       })
     return this.loading
   }
@@ -145,10 +165,13 @@ export class LocationShare {
     void this.sync()
   }
 
-  /** 登出、換人：停止追蹤，全部清掉 */
+  /** 登出、換人：停止追蹤，全部清掉；還沒回來的 load() 結果回來時會被當成上一代作廢掉 */
   reset() {
+    this.generation += 1
     this.stopWatching()
+    this.loading = null
     this.loadedAt = 0
+    this.deniedWith = null
     this.snapshot = EMPTY
     this.emit()
   }
@@ -168,19 +191,28 @@ export class LocationShare {
       return
     }
     if (this.stopWatch) return
-    // 已經被拒絕就不再呼叫 watch：有的瀏覽器（沒有 Permissions API 的）每呼叫一次就跳一次詢問，每 20 秒跳一次會很煩。
-    // 使用者去設定打開之後，查得到 granted，下一次心跳這裡就會開始追蹤
+    // 已經被拒絕就不再呼叫 watch：有的瀏覽器（沒有 Permissions API 的）每呼叫一次就跳一次詢問，每 20 秒跳一次會很煩；
+    // 權限明明是 granted 但系統層級擋掉定位的話，也不要每次心跳都重開一次。記住拒絕當下查到的權限（deniedWith），
+    // 跟現在查到的不一樣才重試——使用者去設定打開之後，查得到的權限變了，下一次心跳這裡就會開始追蹤
     const permission = await this.env.permission()
-    if (permission === "denied" || (this.snapshot.denied && permission !== "granted")) {
-      this.set({ denied: true })
+    // 等權限回來的這段時間狀態可能變了（暫停、下班、換人）：不要在不該追蹤的時候還開始 watch
+    if (barState(this.snapshot, this.env.now()) !== state) return
+    if (permission === "denied") {
+      this.deniedWith = permission
+      if (!this.snapshot.denied) this.set({ denied: true })
       return
     }
+    if (this.snapshot.denied && permission === this.deniedWith) return
     // 等權限的時候，另一次 sync 可能已經開了
     if (this.stopWatch) return
     this.stopWatch = this.env.watch(
-      (position) => this.set({ position, denied: false }),
+      (position) => {
+        this.deniedWith = null
+        this.set({ position, denied: false })
+      },
       () => {
         this.stopWatching()
+        this.deniedWith = permission
         this.set({ denied: true })
       }
     )
@@ -189,6 +221,8 @@ export class LocationShare {
   private stopWatching() {
     this.stopWatch?.()
     this.stopWatch = null
+    // 停止追蹤（暫停、下班、拒絕）就把位置清掉：繼續分享之後要等拿到新的一筆才再送，不留著舊的當作現在在哪
+    if (this.snapshot.position) this.set({ position: null })
   }
 
   private set(patch: Partial<ShareSnapshot>) {
@@ -235,7 +269,8 @@ const browserEnv: GeoEnv = {
       return () => {}
     }
     const id = navigator.geolocation.watchPosition(
-      ({ coords }) => onPosition({ lat: coords.latitude, lng: coords.longitude, accuracy: coords.accuracy ?? null }),
+      ({ coords, timestamp }) =>
+        onPosition({ lat: coords.latitude, lng: coords.longitude, accuracy: coords.accuracy ?? null, at: timestamp ?? Date.now() }),
       (error) => {
         // 拿不到位置（室內、逾時）不算拒絕，等下一筆
         if (error.code === error.PERMISSION_DENIED) onDenied()
