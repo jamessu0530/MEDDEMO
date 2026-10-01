@@ -42,7 +42,9 @@ def channel_id(client, auth, name: str, user_id: str = "A01") -> int:
 
 def test_channels_follow_the_org_tree_and_places(engine):
     with Session(engine) as session:
-        infos = channels.describe(session, list(session.scalars(select(Channel).where(Channel.kind != "customer"))))
+        infos = channels.describe(
+            session, list(session.scalars(select(Channel).where(Channel.kind.not_in(("customer", "topic")))))
+        )
     by_name = {i.name: i for i in infos}
     # 全國 1、整區 3、小組 4（每位主管一個）、地點 17
     assert len(infos) == 25
@@ -57,19 +59,19 @@ def test_channels_follow_the_org_tree_and_places(engine):
 
 
 def test_each_account_sees_its_own_team_its_region_and_the_whole_company(client, auth):
-    north = {"全國", "北區", "陳建宏小組"} | NORTH_PLACES
+    north = {"全國", "公司公告", "北區", "新品上市", "補貨問題", "陳建宏小組"} | NORTH_PLACES
     assert names(client, auth("U01")) == north
     assert names(client, auth("M01")) == north
-    # 南區兩組各看各的小組頻道，整區與地點一樣
-    assert names(client, auth("U04")) == {"全國", "南區", "許文彬小組", "高雄市", "台南市"}
-    assert names(client, auth("U05")) == {"全國", "南區", "蔡宗翰小組", "高雄市", "台南市"}
-    assert names(client, auth("M04")) == {"全國", "南區", "蔡宗翰小組", "高雄市", "台南市"}
+    # 南區兩組各看各的小組頻道，整區、地點與全國的文字頻道一樣
+    assert names(client, auth("U04")) == {"全國", "公司公告", "南區", "許文彬小組", "高雄市", "台南市"}
+    assert names(client, auth("U05")) == {"全國", "公司公告", "南區", "蔡宗翰小組", "高雄市", "台南市"}
+    assert names(client, auth("M04")) == {"全國", "公司公告", "南區", "蔡宗翰小組", "高雄市", "台南市"}
     # IT 坐在根節點上，全部看得到，包括各組的原始對話
     everything = listing(client, auth("A01"))
-    assert len(everything) == 25
-    # 全國在最前面，接著北區、北區的小組、北區的地點（照名稱排），再來中區、南區
+    assert len(everything) == 28
+    # 全國與它的文字頻道在最前面，接著北區、北區的文字頻道、小組、地點（照名稱排），再來中區、南區
     order = [c["name"] for c in everything]
-    assert order[:4] == ["全國", "北區", "陳建宏小組", "台北市・中山區"]
+    assert order[:7] == ["全國", "公司公告", "北區", "新品上市", "補貨問題", "陳建宏小組", "台北市・中山區"]
     assert order.index("台北市・萬華區") < order.index("新北市")
     assert order.index("中區") < order.index("南區")
 
@@ -88,7 +90,7 @@ def test_a_self_created_account_sees_what_the_demo_rep_sees(tx, client):
         "/api/auth/register", json={"name": "評審", "email": "judge@channels.test", "password": "judge-pass-1"}
     ).json()
     headers = {"Authorization": f"Bearer {created['token']}"}
-    assert names(client, headers) == {"全國", "北區", "陳建宏小組"} | NORTH_PLACES
+    assert names(client, headers) == {"全國", "公司公告", "北區", "新品上市", "補貨問題", "陳建宏小組"} | NORTH_PLACES
 
 
 def test_a_new_manager_gets_a_team_channel(tx, client, auth):
@@ -213,14 +215,15 @@ def test_the_badge_counts_my_team_my_region_and_my_customers_only(tx, client, au
     def badge(user_id):
         return client.get("/api/channels/unread", headers=auth(user_id)).json()["count"]
 
-    # 灌資料放的對話：陳建宏小組 5 則（林昱辰 2、陳建宏 2、王冠宇 1）、大安區 2 則、忠孝店討論串 2 則（林昱辰）
-    assert badge("U02") == 4          # 小組裡別人發的 4 則；地點頻道不算紅點
-    assert badge("U01") == 3          # 小組裡別人發的 3 則；忠孝店是自己負責、自己發的
-    assert badge("M01") == 5          # 小組 3 則，加上組員負責的忠孝店 2 則
-    assert badge("A01") == 0          # IT 只算全國與三個區
+    # 灌資料放的對話：陳建宏小組 5 則（林昱辰 2、陳建宏 2、王冠宇 1）、大安區 2 則、忠孝店討論串 2 則（林昱辰），
+    # 文字頻道：新品上市 2 則（陳建宏、王冠宇）、補貨問題 1 則（林昱辰）、公司公告 1 則（James）
+    assert badge("U02") == 7          # 小組裡別人發的 4 則、新品上市 1、補貨問題 1、公司公告 1；地點頻道不算紅點
+    assert badge("U01") == 6          # 小組裡別人發的 3 則、新品上市 2、公司公告 1；忠孝店與補貨問題是自己發的
+    assert badge("M01") == 8          # 小組 3 則、組員負責的忠孝店 2 則、新品上市 1、補貨問題 1、公司公告 1
+    assert badge("A01") == 3          # IT 只算全國與三個區，加上底下的文字頻道：新品上市 2、補貨問題 1
     national = channel_id(client, auth, "全國", "U04")
     post(client, auth("U04"), national, "南區這週辦檔期")
-    assert badge("U02") == 5 and badge("A01") == 1
+    assert badge("U02") == 8 and badge("A01") == 4
 
 
 def test_a_place_lists_only_threads_with_messages(tx, client, auth):

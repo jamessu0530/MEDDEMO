@@ -23,7 +23,7 @@ from app.services.scope import SELF, SHARING_LEVEL, Scope
 
 # 頻道列表的區順序，跟組織管理頁一樣由北到南
 REGION_ORDER = ("TW.N", "TW.C", "TW.S")
-KIND_ORDER = ("national", "region", "team", "place", "customer")
+KIND_ORDER = ("national", "region", "topic", "team", "place", "customer")
 LEVEL = {
     "national": SHARING_LEVEL["channel_national"],
     "region": SHARING_LEVEL["channel_region"],
@@ -47,7 +47,7 @@ class NotFound(Exception):
 
 
 class Archived(Exception):
-    """小組頻道的主管已經不是在職主管：只能看，不能發言。"""
+    """頻道封存了：主管不在的小組頻道，或有人封存的文字頻道。只能看，不能發言。"""
 
 
 @dataclass(frozen=True)
@@ -59,8 +59,9 @@ class ChannelInfo:
     path: str | None
     # 所在的區（地理節點 id），頻道列表依這個分組；全國與封存的頻道是 None
     region_id: str | None
-    # 上層頻道：客戶討論串 → 地點 → 整區 → 全國；小組 → 整區
+    # 上層頻道：客戶討論串 → 地點 → 整區 → 全國；小組 → 整區；文字頻道 → 它所在的整區或全國
     parent_id: int | None
+    # 不能發言：主管不在的小組頻道（只剩 IT 看得到），或有人封存的文字頻道（照樣看得到）
     archived: bool
     customer_id: str | None
     # 輸入框上的提示：誰看得到這裡的訊息
@@ -72,7 +73,7 @@ class ChannelInfo:
 def ensure_channels(session: Session) -> None:
     """補上缺的全國、整區、地點與小組頻道，可以重複呼叫。灌資料與每次組織異動後呼叫（services/org_admin.py）。
     客戶討論串不在這裡建：第一次有人打開才建（customer_thread）。"""
-    have_units = set(session.scalars(select(Channel.unit_id).where(Channel.unit_id.is_not(None))))
+    have_units = set(session.scalars(select(Channel.unit_id).where(Channel.kind.in_(("national", "region")))))
     for unit in session.scalars(select(OrgUnit)):
         if unit.id not in have_units:
             session.add(Channel(kind="national" if unit.kind == "root" else "region", unit_id=unit.id))
@@ -91,7 +92,10 @@ def describe(session: Session, channels: list[Channel]) -> list[ChannelInfo]:
     """算出每個頻道的名稱、路徑、所在的區與上層，順序跟傳進來的一樣。"""
     units = {u.id: u for u in session.scalars(select(OrgUnit))}
     places = {p.id: p for p in session.scalars(select(Place))}
-    by_unit = dict(session.execute(select(Channel.unit_id, Channel.id).where(Channel.unit_id.is_not(None))).all())
+    # 每個單位的全國或整區頻道。文字頻道也用 unit_id，要濾掉，不然會被當成那一區的頻道
+    by_unit = dict(session.execute(
+        select(Channel.unit_id, Channel.id).where(Channel.kind.in_(("national", "region")))
+    ).all())
     by_place = dict(session.execute(select(Channel.place_id, Channel.id).where(Channel.place_id.is_not(None))).all())
     root = next(u.id for u in units.values() if u.kind == "root")
     manager_ids = {c.manager_id for c in channels if c.manager_id}
@@ -133,6 +137,15 @@ def describe(session: Session, channels: list[Channel]) -> list[ChannelInfo]:
                 c.id, "place", place.name, place.unit_id, place.unit_id, by_unit[place.unit_id], False, None,
                 everyone_in(place.unit_id),
             ))
+        elif c.kind == "topic":
+            unit = units[c.unit_id]
+            archived = c.archived_at is not None
+            if unit.kind == "root":
+                infos.append(ChannelInfo(c.id, "topic", c.name, unit.id, None, by_unit[unit.id], archived, None, "全公司都看得到"))
+            else:
+                infos.append(ChannelInfo(
+                    c.id, "topic", c.name, unit.id, unit.id, by_unit[unit.id], archived, None, everyone_in(unit.id),
+                ))
         else:
             customer, owner_path = customers[c.customer_id]
             place = places[customer.place_id]
@@ -143,28 +156,36 @@ def describe(session: Session, channels: list[Channel]) -> list[ChannelInfo]:
     return infos
 
 
+def _level(info: ChannelInfo) -> int:
+    """共享層級。文字頻道跟著所在的單位：開在區裡同整區頻道，開在全國同全國頻道。"""
+    if info.kind == "topic":
+        return LEVEL["region"] if info.region_id else LEVEL["national"]
+    return LEVEL[info.kind]
+
+
 def can_see(user: AppUser, info: ChannelInfo) -> bool:
-    if info.archived:
-        # 主管已經不在，組員也都換到別組了，留給 IT 查
+    if info.archived and info.kind == "team":
+        # 主管已經不在，組員也都換到別組了，留給 IT 查。封存的文字頻道照樣看得到，只是不能發言
         return user.role == "it"
     scope = Scope.for_user(user)
-    if info.path is not None and scope.can_see(LEVEL[info.kind], info.path):
+    if info.path is not None and scope.can_see(_level(info), info.path):
         return True
     # IT 可以把客戶交給別區的業務（org_admin.reassign_customer 不限區），那位業務截到整區看不到這個地點
     return info.kind == "customer" and scope.can_see(SELF, info.owner_path)
 
 
-def _order(info: ChannelInfo) -> tuple[int, int, int, str, int]:
-    group = 0 if info.kind == "national" else 2 if info.archived else 1
+def _order(info: ChannelInfo) -> tuple[int, int, int, bool, str, int]:
+    national = info.kind == "national" or (info.kind == "topic" and info.region_id is None)
+    group = 0 if national else 2 if info.archived and info.kind == "team" else 1
     region = REGION_ORDER.index(info.region_id) if info.region_id in REGION_ORDER else len(REGION_ORDER)
-    # 地點照名稱排，台北市的行政區會排在一起；其他照建立的先後
+    # 地點照名稱排，台北市的行政區會排在一起；文字頻道沒封存的在前、照開的先後；其他照建立的先後
     name = info.name if info.kind == "place" else ""
-    return (group, region, KIND_ORDER.index(info.kind), name, info.id)
+    return (group, region, KIND_ORDER.index(info.kind), info.kind == "topic" and info.archived, name, info.id)
 
 
 def visible_channels(session: Session, user: AppUser) -> list[ChannelInfo]:
-    """看得到的頻道，不含客戶討論串（太多了，從地點頻道或客戶檔案進去）。
-    全國在最前面，接著各區由北到南（整區、小組、地點），封存的在最後。"""
+    """看得到的頻道，不含客戶討論串（太多了，從地點頻道或客戶檔案進去）。全國與全國的文字頻道在最前面，
+    接著各區由北到南（整區、文字頻道、小組、地點），封存的小組頻道在最後。"""
     rows = list(session.scalars(select(Channel).where(Channel.kind != "customer")))
     return sorted((info for info in describe(session, rows) if can_see(user, info)), key=_order)
 
@@ -332,9 +353,12 @@ def last_message_at(session: Session, channel_ids: list[int]) -> dict[int, dt.da
 
 def badge_count(session: Session, user: AppUser) -> int:
     """分頁列紅點的數字：全國、自己的區、自己的小組，加上自己負責（主管是組內業務負責）的客戶討論串。
+    文字頻道跟著上層：上層算進紅點的話，底下沒封存的文字頻道也算。
     地點頻道與別人客戶的討論串太多，只在列表上顯示未讀，不算進紅點。IT 看得到每一組，只算全國與三個區。"""
     kinds = ("national", "region") if user.role == "it" else ("national", "region", "team")
-    ids = [info.id for info in visible_channels(session, user) if info.kind in kinds and not info.archived]
+    visible = visible_channels(session, user)
+    counted = {info.id for info in visible if info.kind in kinds and not info.archived}
+    ids = [*counted, *(info.id for info in visible if info.kind == "topic" and not info.archived and info.parent_id in counted)]
     if user.role != "it":
         mine = Scope.for_user(user).customers_at(SELF)
         ids += list(session.scalars(select(Channel.id).join(Customer, Customer.id == Channel.customer_id).where(mine)))

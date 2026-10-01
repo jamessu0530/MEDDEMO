@@ -424,7 +424,8 @@ def test_the_sap_employee_master_covers_reps_and_managers_but_not_it(db):
 
 def test_seeded_conversations_sit_in_their_channels(db):
     found = dict(rows(db, """
-        SELECT CASE ch.kind WHEN 'team' THEN m.name || '小組' WHEN 'place' THEN p.name ELSE cu.name END, count(*)
+        SELECT CASE ch.kind WHEN 'team' THEN m.name || '小組' WHEN 'place' THEN p.name WHEN 'topic' THEN ch.name
+          ELSE cu.name END, count(*)
         FROM channel_message msg
         JOIN channel ch ON ch.id = msg.channel_id
         LEFT JOIN app_user m ON m.id = ch.manager_id
@@ -434,9 +435,10 @@ def test_seeded_conversations_sit_in_their_channels(db):
     """))
     assert found == {
         "陳建宏小組": 5, "台北市・大安區": 2, "康泰連鎖藥局 · 忠孝店": 2, "許文彬小組": 2, "蔡宗翰小組": 2,
+        "新品上市": 2, "補貨問題": 1, "公司公告": 1,
     }
-    # 全國 1、整區 3、小組 4、地點 17，加上灌資料建的忠孝店討論串
-    assert rows(db, "SELECT count(*) FROM channel")[0][0] == 26
+    # 全國 1、整區 3、小組 4、地點 17、文字頻道 3，加上灌資料建的忠孝店討論串
+    assert rows(db, "SELECT count(*) FROM channel")[0][0] == 29
     # 時間都在灌資料之前，同一個頻道裡編號越大越晚
     assert rows(db, "SELECT count(*) FROM channel_message WHERE created_at > now()")[0][0] == 0
     assert rows(db, """

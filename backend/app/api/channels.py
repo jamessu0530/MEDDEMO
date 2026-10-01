@@ -211,7 +211,7 @@ def post_message(
     try:
         message = channels.post(session, user, info, text)
     except channels.Archived:
-        raise HTTPException(409, "這個小組頻道已封存，不能再發言") from None
+        raise HTTPException(409, "這個頻道已封存，不能再發言") from None
     # @熊熊滾 跑的是跟問答頁一樣的查詢，算一次「提問」。middleware 只看網址分不出有沒有 @，在這裡另外扣；
     # 超過上限就整則不留（附件還沒寫），輸入框裡的字還在，提問的人看得到為什麼沒送出
     if message.mentions_ai and (blocked := usage.take("ask", request)) is not None:

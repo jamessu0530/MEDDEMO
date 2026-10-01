@@ -132,6 +132,13 @@ def restore_or_skip(session: Session, kept: KeptAccounts) -> tuple[int, int]:
         return 0, 0
 
 
+def seed_topics(session: Session) -> None:
+    """示範的文字頻道（catalog.TOPICS），照清單的順序建立，畫面上就照這個順序排。"""
+    for unit_id, name, created_by in catalog.TOPICS:
+        session.add(models.Channel(kind="topic", unit_id=unit_id, name=name, created_by=created_by))
+    session.flush()
+
+
 def seed_conversations(session: Session) -> int:
     """頻道裡預先寫好的對話（catalog.CONVERSATIONS）與整理好的記憶（catalog.MEMORY）。
     時間從灌資料的這一刻往前推，之後有人發言一定排在後面。
@@ -149,7 +156,7 @@ def seed_conversations(session: Session) -> int:
             session.add(channel)
             session.flush()
         else:
-            column = {"team": models.Channel.manager_id, "place": models.Channel.place_id}[kind]
+            column = {"team": models.Channel.manager_id, "place": models.Channel.place_id, "topic": models.Channel.name}[kind]
             channel = session.scalar(select(models.Channel).where(column == key))
         for days_ago, clock, author_id, body, *files in lines:
             hour, minute = map(int, clock.split(":"))
@@ -355,8 +362,9 @@ def seed(url: str | None, as_of: date) -> dict[str, int]:
         """))
         # 優惠與合約的申請單：歷史單的關卡與日誌，加上展示用五張的機率
         seed_approval_steps(session)
-        # 全國、整區、地點與小組頻道（客戶討論串第一次有人打開才建）
+        # 全國、整區、地點與小組頻道（客戶討論串第一次有人打開才建），再加上示範的文字頻道
         ensure_channels(session)
+        seed_topics(session)
         messages = seed_conversations(session)
         method_cards, method_feedback = seed_method_cards(session, data["method_card"], data["method_card_feedback"])
         # 假資料的拜訪編號是直接指定的，序號要接在後面，新拜訪才不會撞號

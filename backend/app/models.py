@@ -654,8 +654,11 @@ class Escalation(Base):
     created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
 
 
-# national：全國；region：整區；team：一位主管帶的小組；place：地點（縣市，台北市到行政區）；customer：一家客戶的討論串
-CHANNEL_KINDS = ("national", "region", "team", "place", "customer")
+# national：全國；region：整區；team：一位主管帶的小組；place：地點（縣市，台北市到行政區）；customer：一家客戶的討論串；
+# topic：文字頻道，區的主管與 IT 在整區頻道、IT 在全國頻道底下開的（docs/superpowers/specs/2026-10-01-channel-rail-design.md）
+CHANNEL_KINDS = ("national", "region", "team", "place", "customer", "topic")
+# 文字頻道的名稱最多幾個字（services/channel_topics.py、前端的新增對話框一樣）
+TOPIC_NAME_MAX = 20
 # user：人發的；ai：AI 主理發的；notice：拜訪的風險通報（見 docs/superpowers/specs/2026-09-28-channels-design.md）
 MESSAGE_KINDS = ("user", "ai", "notice")
 # 一則訊息最多幾個字。回報一件事用不到這麼多，再長多半是誤貼了一大段
@@ -664,12 +667,12 @@ MESSAGE_MAX_LENGTH = 2000
 
 class Channel(Base):
     """頻道。不存路徑，只記屬於誰：路徑每次從組織樹現算（services/channels.py），
-    主管調區、客戶換負責人都不必另外同步。"""
+    主管調區、客戶換負責人都不必另外同步。文字頻道另外存名稱、誰開的、封存時間。"""
 
     __tablename__ = "channel"
     __table_args__ = (
         one_of("kind", CHANNEL_KINDS, "kind"),
-        # 依種類只有一個歸屬欄位有值
+        # 依種類只有一個歸屬欄位有值；文字頻道用 unit_id 指它所在的區或根節點，另外一定要有名稱
         CheckConstraint(
             "(kind IN ('national', 'region')"
             "  AND unit_id IS NOT NULL AND manager_id IS NULL AND place_id IS NULL AND customer_id IS NULL)"
@@ -678,18 +681,36 @@ class Channel(Base):
             " OR (kind = 'place'"
             "  AND place_id IS NOT NULL AND unit_id IS NULL AND manager_id IS NULL AND customer_id IS NULL)"
             " OR (kind = 'customer'"
-            "  AND customer_id IS NOT NULL AND unit_id IS NULL AND manager_id IS NULL AND place_id IS NULL)",
+            "  AND customer_id IS NOT NULL AND unit_id IS NULL AND manager_id IS NULL AND place_id IS NULL)"
+            " OR (kind = 'topic'"
+            "  AND unit_id IS NOT NULL AND name IS NOT NULL AND manager_id IS NULL AND place_id IS NULL"
+            "  AND customer_id IS NULL)",
             name="owner",
+        ),
+        # 只有文字頻道有自己的名稱、開的人與封存時間；其他頻道的名稱從組織樹與地點現算
+        CheckConstraint(
+            "kind = 'topic' OR (name IS NULL AND created_by IS NULL AND archived_at IS NULL)", name="topic_fields"
+        ),
+        # 每個區（與根節點）只有一個整區（全國）頻道。文字頻道也用 unit_id，不算在內
+        Index("uq_channel_unit_id", "unit_id", unique=True, postgresql_where=text("kind IN ('national', 'region')")),
+        # 同一個單位的文字頻道不能重名，不分大小寫；封存的也算，要沿用舊名稱先把舊的改名
+        Index(
+            "uq_channel_topic_name", "unit_id", text("lower(name)"), unique=True,
+            postgresql_where=text("kind = 'topic'"),
         ),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     kind: Mapped[str]
-    # 每個歸屬只有一個頻道（NULL 不算重複）
-    unit_id: Mapped[str | None] = mapped_column(ForeignKey("org_unit.id"), unique=True)
+    # 每個歸屬只有一個頻道（NULL 不算重複）；unit_id 的唯一性只限全國與整區，見上面的索引
+    unit_id: Mapped[str | None] = mapped_column(ForeignKey("org_unit.id"))
     manager_id: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"), unique=True)
     place_id: Mapped[str | None] = mapped_column(ForeignKey("place.id"), unique=True)
     customer_id: Mapped[str | None] = mapped_column(ForeignKey("customer.id"), unique=True)
+    # 文字頻道的名稱、誰開的、封存時間（封存了還看得到，只是不能發言）
+    name: Mapped[str | None] = mapped_column(String(TOPIC_NAME_MAX))
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
+    archived_at: Mapped[dt.datetime | None]
     # 熊熊滾已經把對話整理到哪一則（services/channel_memory.py）；還沒整理過是 NULL
     memory_through_id: Mapped[int | None] = mapped_column(BigInteger)
     created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())

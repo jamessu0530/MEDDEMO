@@ -33,6 +33,7 @@ CONTEXT_MESSAGES = 50
 BOARD_ITEMS = 150
 KIND_LABEL = {
     "national": "全國頻道", "region": "整區頻道", "team": "小組頻道", "place": "地點頻道", "customer": "客戶討論串",
+    "topic": "文字頻道",
 }
 CUSTOMER_TYPE_LABEL = {"chain": "連鎖藥局", "independent": "獨立藥局", "clinic": "診所"}
 

@@ -119,7 +119,7 @@ def _guarded(action):
     except channels.NotFound:
         raise HTTPException(404, "找不到這條重點") from None
     except channels.Archived:
-        raise HTTPException(409, "這個小組頻道已封存，重點不能再改") from None
+        raise HTTPException(409, "這個頻道已封存，重點不能再改") from None
     except memory_board.Invalid as exc:
         raise HTTPException(422, str(exc)) from None
 
