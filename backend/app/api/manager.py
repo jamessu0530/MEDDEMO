@@ -1,9 +1,10 @@
-"""主管端：風險通報（原型回寫完成頁的「主管同步收到通報」）。
+"""主管端：風險通報（原型回寫完成頁的「主管同步收到通報」），以及團隊今天的行程（docs/superpowers/specs/2026-10-01-itinerary-planning-design.md〈主管端：行程分頁〉）。
 
 主管看自己底下業務的通報，IT 看全公司的（SHARING_LEVEL["manager_inbox"]）。
 依拜訪的業務在組織樹上的位置過濾，不看轄區，也不看通報當時記的 manager_id：業務換了主管，通報跟著人走。
 """
 
+import dataclasses
 import datetime as dt
 from typing import Annotated
 
@@ -15,8 +16,11 @@ from sqlalchemy.orm import Session, aliased
 from app.api.auth import ManagerUser
 from app.db import get_session
 from app.models import AppUser, Customer, ManagerNotice
+from app.services import customer_profile
+from app.services import team_itineraries as team
 from app.services.risk import RISK_MAX
 from app.services.scope import SHARING_LEVEL, Scope
+from app.timeutil import TAIPEI
 
 router = APIRouter(prefix="/api/manager", tags=["manager"])
 SessionDep = Annotated[Session, Depends(get_session)]
@@ -88,3 +92,114 @@ def mark_notice_seen(session: SessionDep, notice_id: int, manager: ManagerUser):
         notice.seen_at = dt.datetime.now(dt.UTC)
         session.commit()
     return _items(session, manager, ManagerNotice.id == notice_id)[0]
+
+
+# 團隊今天的行程：只能看、只看今天。業務今天還沒打開首頁時，主管一讀就照第一次讀取的規則建好，所以讀完要 commit
+
+
+class TeamRep(BaseModel):
+    id: str
+    name: str
+    region: str
+
+
+class LatLng(BaseModel):
+    lat: float
+    lng: float
+
+
+class TeamStop(BaseModel):
+    number: int
+    customer_id: str
+    customer_name: str
+    area: str
+    lat: float
+    lng: float
+    status: str
+    planned_time: str
+    duration_minutes: int
+    late_minutes: int
+    source: str
+    signal: str
+    reason: str
+    window_kind: str | None
+    window_time: str | None
+
+
+class TeamLeg(BaseModel):
+    polyline: str | None
+    done: bool
+
+
+class TeamRemovedStop(BaseModel):
+    customer_id: str
+    customer_name: str
+    area: str
+    lat: float
+    lng: float
+    label: str
+    reason: str
+
+
+class RepRoute(BaseModel):
+    rep: TeamRep
+    version: int
+    done: int
+    total: int
+    travel_minutes: int
+    travel_km: float
+    finish_time: str | None
+    estimated: bool
+    origin: LatLng | None
+    stops: list[TeamStop]
+    legs: list[TeamLeg]
+    removed: list[TeamRemovedStop]
+    added: list[str]
+    moved: list[str]
+    untouched: bool
+
+
+class TeamRoutes(BaseModel):
+    date: dt.date
+    updated_at: str  # 台北的真實時間 HH:MM
+    scope: str  # 主管是自己那一區（「北區」），IT 是「全公司」
+    reps: list[RepRoute]
+
+
+def _route_out(route: team.RepRoute) -> RepRoute:
+    view = route.view
+    return RepRoute(
+        rep=TeamRep(id=route.rep.id, name=route.rep.name, region=route.rep.region),
+        version=view.version, done=view.done, total=view.total, travel_minutes=view.travel_minutes,
+        travel_km=view.travel_km, finish_time=view.finish_time, estimated=view.estimated,
+        origin=LatLng(lat=route.origin[0], lng=route.origin[1]) if route.origin else None,
+        stops=[TeamStop(**dataclasses.asdict(stop)) for stop in route.stops],
+        legs=[TeamLeg(**dataclasses.asdict(leg)) for leg in route.legs],
+        removed=[TeamRemovedStop(**dataclasses.asdict(stop)) for stop in route.removed],
+        added=route.added, moved=route.moved, untouched=route.untouched,
+    )
+
+
+@router.get("/itineraries", response_model=TeamRoutes)
+def team_itineraries(session: SessionDep, manager: ManagerUser):
+    """團隊今天的行程：每位業務的路線、進度，以及跟系統早上的建議比改了什麼。"""
+    routes = [team.route(session, rep) for rep in team.reps(session, manager)]
+    result = TeamRoutes(
+        date=customer_profile.app_today(session),
+        updated_at=dt.datetime.now(TAIPEI).strftime("%H:%M"),
+        scope="全公司" if manager.role == "it" else manager.region,
+        reps=[_route_out(route) for route in routes],
+    )
+    session.commit()
+    return result
+
+
+@router.get("/itineraries/{user_id}", response_model=RepRoute)
+def rep_itinerary(session: SessionDep, user_id: str, manager: ManagerUser):
+    """一位業務今天的行程。看不到的人跟不存在一樣回 404，不透露有沒有這個帳號。"""
+    rep = team.find_rep(session, manager, user_id)
+    if rep is None:
+        raise HTTPException(404, "找不到這位業務")
+    result = _route_out(team.route(session, rep))
+    session.commit()
+    return result
