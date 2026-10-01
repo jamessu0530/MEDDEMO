@@ -4,8 +4,8 @@ import datetime as dt
 
 from sqlalchemy import delete, select
 
-from app.models import AppUser, Customer, Itinerary, OrgUnit, Visit
-from app.services import google_routes
+from app.models import AppUser, Customer, Itinerary, OrgUnit, UserLocation, Visit
+from app.services import google_routes, locations, travel
 from app.services import itinerary as itineraries
 from app.services import team_itineraries as team
 from app.services.today_route import SIGNAL_LABEL
@@ -115,3 +115,56 @@ def test_with_a_server_key_the_legs_carry_googles_lines(tx, monkeypatch, env):
     monkeypatch.setattr(google_routes, "route_legs", route_legs)
     route = team.route(tx, person(tx, "U01"))
     assert [leg.polyline for leg in route.legs] == [f"line{n}" for n in range(len(route.legs))]
+
+
+def test_the_route_says_where_the_rep_is(tx, env):
+    env(LOCATION_SHARE_HOURS="1-7 00:00-24:00")
+    first = team.route(tx, person(tx, "U01")).stops[0]
+    tx.add(UserLocation(user_id="U01", lat=first.lat, lng=first.lng, at=locations.now(), paused=False, denied=False))
+    tx.flush()
+    seen = team.route(tx, person(tx, "U01")).location
+    assert seen.text == f"在{team.short_name(tx.get(Customer, first.customer_id))}附近"
+    assert seen.live is True and (seen.lat, seen.lng) == (first.lat, first.lng)
+
+
+def test_off_hours_and_no_location_yet(tx, env):
+    env(LOCATION_SHARE_HOURS="1-7 00:00-00:00")
+    assert team.route(tx, person(tx, "U02")).location == locations.Seen("下班時間")
+    env(LOCATION_SHARE_HOURS="1-7 00:00-24:00")
+    assert team.route(tx, person(tx, "U02")).location == locations.Seen("今天還沒有位置")
+
+
+def test_locations_alone_say_the_same_without_recomputing_the_route(tx, env, monkeypatch):
+    env(LOCATION_SHARE_HOURS="1-7 00:00-24:00")
+    team.route(tx, person(tx, "U01"))
+    # 陽明山上：離每一站都遠，也不在任何客戶 3 公里內
+    tx.add(UserLocation(
+        user_id="U01", lat=25.16, lng=121.55, at=locations.now() - dt.timedelta(minutes=2), paused=False, denied=False,
+    ))
+    tx.flush()
+    full = team.route(tx, person(tx, "U01")).location.text
+    assert full.startswith("往第 1 站") and full.endswith("途中 · 2 分鐘前")
+
+    def no_driving(*args, **kwargs):
+        raise AssertionError("只拿位置不該重算車程")
+
+    monkeypatch.setattr(travel, "along", no_driving)
+    monkeypatch.setattr(travel, "matrix", no_driving)
+    found = team.locations_now(tx, person(tx, "M01"))
+    assert set(found) == {"U01", "U02"}
+    assert found["U01"].text == full
+
+
+def test_locations_alone_number_the_stops_like_the_route(tx, env):
+    env(LOCATION_SHARE_HOURS="1-7 00:00-24:00")
+    itinerary = itineraries.get_or_create(tx, "U01")
+    target = itineraries.view(tx, itinerary).stops[2]
+    at = dt.datetime(2026, 10, 28, 9, 40, tzinfo=TAIPEI)
+    tx.add(Visit(id="VTEAM2", customer_id=target.customer_id, user_id="U01", visited_at=at,
+                 transcript="測試", status="synced", confirmed_at=at))
+    tx.add(UserLocation(user_id="U01", lat=25.16, lng=121.55, at=locations.now(), paused=False, denied=False))
+    tx.flush()
+    # 跑完的那一家排第 1 站，下一站是第 2 站
+    full = team.route(tx, person(tx, "U01")).location.text
+    assert full.startswith("往第 2 站")
+    assert team.locations_now(tx, person(tx, "M01"))["U01"].text == full

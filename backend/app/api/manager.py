@@ -141,6 +141,17 @@ class TeamRemovedStop(BaseModel):
     reason: str
 
 
+class SeenLocation(BaseModel):
+    # 主管看到的那一行（services/locations.describe）
+    text: str
+    # 地圖上頭像畫在哪；沒有（下班、今天還沒有位置）就不畫
+    lat: float | None
+    lng: float | None
+    at: dt.datetime | None
+    # 分享中而且 5 分鐘內有更新；暫停、沒權限、太久沒更新的頭像是灰的
+    live: bool
+
+
 class RepRoute(BaseModel):
     rep: TeamRep
     version: int
@@ -157,6 +168,7 @@ class RepRoute(BaseModel):
     added: list[str]
     moved: list[str]
     untouched: bool
+    location: SeenLocation
 
 
 class TeamRoutes(BaseModel):
@@ -177,6 +189,7 @@ def _route_out(route: team.RepRoute) -> RepRoute:
         legs=[TeamLeg(**dataclasses.asdict(leg)) for leg in route.legs],
         removed=[TeamRemovedStop(**dataclasses.asdict(stop)) for stop in route.removed],
         added=route.added, moved=route.moved, untouched=route.untouched,
+        location=SeenLocation(**dataclasses.asdict(route.location)),
     )
 
 
@@ -203,3 +216,18 @@ def rep_itinerary(session: SessionDep, user_id: str, manager: ManagerUser):
     result = _route_out(team.route(session, rep))
     session.commit()
     return result
+
+
+class TeamLocations(BaseModel):
+    updated_at: str  # 台北的真實時間 HH:MM
+    locations: dict[str, SeenLocation]
+
+
+@router.get("/locations", response_model=TeamLocations)
+def team_locations(session: SessionDep, manager: ManagerUser):
+    """看得到的業務現在在哪。主管頁收到位置事件時只重拿這個：不重算行程、不問 Google。"""
+    found = team.locations_now(session, manager)
+    return TeamLocations(
+        updated_at=dt.datetime.now(TAIPEI).strftime("%H:%M"),
+        locations={rep_id: SeenLocation(**dataclasses.asdict(seen)) for rep_id, seen in found.items()},
+    )

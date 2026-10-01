@@ -4,18 +4,20 @@
 業務今天還沒打開首頁時，主管一讀就照第一次讀取的規則建好行程（itinerary.get_or_create）。
 行程怎麼存、怎麼排時間都在 services/itinerary.py，這裡只讀它的結果，再加上地圖要的座標與沿路的線，
 以及跟系統早上的建議（Itinerary.suggested）比改了什麼。
+位置那一行（services/locations.describe）也在這裡組：今天的站與這位業務的客戶地區。
 """
 
 from __future__ import annotations
 
+import datetime as dt
 from dataclasses import dataclass
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import AppUser, Customer, ItineraryStop, OrgUnit
+from app.models import AppUser, Customer, Itinerary, ItineraryStop, OrgUnit, UserLocation
+from app.services import customer_profile, locations, today_route, travel
 from app.services import itinerary as itineraries
-from app.services import travel
 from app.services.scope import SHARING_LEVEL, Scope
 from app.services.today_route import SIGNAL_LABEL
 
@@ -69,6 +71,7 @@ class RepRoute:
     added: list[str]  # 自己加的（店名）
     moved: list[str]  # 「德安藥局提到佑生藥局前面」
     untouched: bool  # 照系統建議，還沒動過
+    location: locations.Seen  # 主管看到的位置那一行，加上地圖上頭像畫在哪
 
 
 def reps(session: Session, viewer: AppUser) -> list[AppUser]:
@@ -119,9 +122,13 @@ def route(session: Session, rep: AppUser) -> RepRoute:
     in_suggestion = set(suggested_ids)
     added = [s.customer_name for s in view.stops if s.customer_id not in in_suggestion]
     moved = moved_sentences(suggested_ids, current_ids, {cid: short_name(c) for cid, c in customers.items()})
+    location = describe_location(session, rep, [
+        locations.StopPoint(s.number, _short(s.customer_name, s.area), s.lat, s.lng, s.status == "done") for s in stops
+    ])
     return RepRoute(
         rep=rep, view=view, origin=origin, stops=stops, legs=legs, removed=removed, added=added, moved=moved,
         untouched=itinerary.version == 1 and not removed and not added and not moved,
+        location=location,
     )
 
 
@@ -159,9 +166,54 @@ def moved_sentences(suggested: list[str], current: list[str], names: dict[str, s
     return sentences
 
 
+def describe_location(session: Session, rep: AppUser, stops: list[locations.StopPoint]) -> locations.Seen:
+    """這位業務現在在哪，一句話（卡片與詳細的那一行）。"""
+    return locations.describe(
+        locations.now(), locations.share_hours(), session.get(UserLocation, rep.id), stops, _areas(session, rep)
+    )
+
+
+def locations_now(session: Session, viewer: AppUser) -> dict[str, locations.Seen]:
+    """看得到的每位業務現在在哪。主管頁收到位置事件時只拿這個：不重算行程的時間與車程，也不問 Google。"""
+    today = customer_profile.app_today(session)
+    return {rep.id: describe_location(session, rep, _stop_points(session, rep, today)) for rep in reps(session, viewer)}
+
+
+def _stop_points(session: Session, rep: AppUser, today: dt.date) -> list[locations.StopPoint]:
+    """今天的站，站號跟 itinerary.view 一樣：跑完的在前（照拜訪時間），其他照存著的順序。今天還沒有行程就是沒有站。"""
+    itinerary = session.scalar(select(Itinerary).where(Itinerary.user_id == rep.id, Itinerary.date == today))
+    if itinerary is None:
+        return []
+    done = today_route.done_visits(session, rep.id, today)
+    done_ids = {customer.id for _, customer in done}
+    rows = session.scalars(
+        select(ItineraryStop).where(ItineraryStop.itinerary_id == itinerary.id)
+        .order_by(ItineraryStop.position, ItineraryStop.id)
+    )
+    open_ids = [row.customer_id for row in rows if row.customer_id not in done_ids]
+    customers = _customers(session, open_ids)
+    ordered = [(customer, True) for _, customer in done] + [(customers[cid], False) for cid in open_ids]
+    return [
+        locations.StopPoint(n + 1, _short(customer.name, customer.area), customer.lat, customer.lng, finished)
+        for n, (customer, finished) in enumerate(ordered)
+    ]
+
+
+def _areas(session: Session, rep: AppUser) -> list[locations.AreaPoint]:
+    """這位業務每一家客戶的位置與地區：「最後位置 10:41，在內湖區」用。"""
+    rows = session.execute(
+        select(Customer.lat, Customer.lng, Customer.area, Customer.city).where(Customer.owner_user_id == rep.id)
+    )
+    return [locations.AreaPoint(lat, lng, locations.area_label(area, city)) for lat, lng, area, city in rows]
+
+
 def short_name(customer: Customer) -> str:
     """店名去掉後面的地區（「杏林診所 · 大安」→「杏林診所」）；連鎖分店的「康泰 · 忠孝店」後面是分店，不去掉。"""
-    return customer.name.removesuffix(f" · {customer.area}")
+    return _short(customer.name, customer.area)
+
+
+def _short(name: str, area: str) -> str:
+    return name.removesuffix(f" · {area}")
 
 
 def _customers(session: Session, ids: list[str]) -> dict[str, Customer]:

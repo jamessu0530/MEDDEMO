@@ -11,7 +11,7 @@ from app.models import Itinerary
 
 ROUTE_FIELDS = {
     "rep", "version", "done", "total", "travel_minutes", "travel_km", "finish_time", "estimated", "origin",
-    "stops", "legs", "removed", "added", "moved", "untouched",
+    "stops", "legs", "removed", "added", "moved", "untouched", "location",
 }
 STOP_FIELDS = {
     "number", "customer_id", "customer_name", "area", "lat", "lng", "status", "planned_time", "duration_minutes",
@@ -67,3 +67,18 @@ def test_a_managers_read_saves_the_itinerary_it_built(client, auth, tx):
     tx.execute(delete(Itinerary).where(Itinerary.user_id == "U02"))
     assert client.get("/api/manager/itineraries/U02", headers=auth("M01")).status_code == 200
     assert tx.scalar(select(Itinerary).where(Itinerary.user_id == "U02")) is not None
+
+
+def test_the_route_carries_the_location_line(client, auth):
+    first = client.get("/api/manager/itineraries", headers=auth("M01")).json()["reps"][0]
+    assert set(first["location"]) == {"text", "lat", "lng", "at", "live"}
+
+
+def test_locations_alone_for_live_updates(client, auth):
+    response = client.get("/api/manager/locations", headers=auth("M01"))
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert re.fullmatch(r"\d\d:\d\d", data["updated_at"])
+    assert set(data["locations"]) == {"U01", "U02"}
+    assert set(data["locations"]["U01"]) == {"text", "lat", "lng", "at", "live"}
+    assert client.get("/api/manager/locations", headers=auth("U01")).status_code == 403
