@@ -11,6 +11,7 @@ import { ChannelsLink } from "@/components/channels-link"
 import { MethodCardForm } from "@/components/method-card-form"
 import { Notice } from "@/components/notice"
 import { OaModelNote } from "@/components/oa-model"
+import { MyStatusButton } from "@/components/my-status"
 import { SkinToggle } from "@/components/skin-toggle"
 import { PageHeader } from "@/components/page-header"
 import { Badge } from "@/components/ui/badge"
@@ -77,6 +78,7 @@ export function ManagerPage() {
         subtitle="主管端"
         trailing={
           <>
+            <MyStatusButton className="size-11" />
             <SkinToggle className="size-11" />
             <ChannelsLink />
             {user?.role === "it" && (

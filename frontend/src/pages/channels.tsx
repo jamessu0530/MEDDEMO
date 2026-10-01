@@ -9,6 +9,11 @@ import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
 import { homePath, useAuth } from "@/lib/auth"
 import { groupChannels } from "@/lib/channels"
+import { presence } from "@/lib/presence"
+import { realtime } from "@/lib/realtime"
+
+// 有新訊息或有人狀態變了，等這麼久再重新載入一次，一連串的變化併成一次
+const RELOAD_DELAY_MS = 3_000
 
 type LoadState = { status: "loading" } | { status: "error" } | { status: "ready"; channels: Channel[] }
 
@@ -31,9 +36,22 @@ export function ChannelsPage() {
     // 從頻道回來、手機切回前景時更新未讀數
     const onVisible = () => document.visibilityState === "visible" && void load()
     document.addEventListener("visibilitychange", onVisible)
+    // 未讀數與「N 人在線」跟著 WebSocket 的通知更新
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const soon = () => {
+      timer ??= setTimeout(() => {
+        timer = undefined
+        void load()
+      }, RELOAD_DELAY_MS)
+    }
+    const offRealtime = realtime.subscribe(soon)
+    const offPresence = presence.subscribe(soon)
     return () => {
       controller.abort()
       document.removeEventListener("visibilitychange", onVisible)
+      clearTimeout(timer)
+      offRealtime()
+      offPresence()
     }
   }, [attempt])
 
