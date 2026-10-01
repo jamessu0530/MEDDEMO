@@ -17,6 +17,7 @@ from collections import defaultdict
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from app import realtime
 from app.db import session_factory
 from app.llm import LLM, get_llm
 from app.models import AppUser, Attachment, Channel, ChannelMessage, MemoryItem
@@ -93,10 +94,11 @@ def _week_prompt(session: Session, info: channels.ChannelInfo, since: dt.datetim
     return "\n".join(parts)
 
 
-def weekly(session: Session, llm: LLM, now: dt.datetime | None = None) -> int:
-    """過去七天有人發言（或有風險通報）、沒封存的頻道，各貼一則週摘要。某個頻道失敗就記 log、跳過。回傳貼了幾則。"""
+def weekly(session: Session, llm: LLM, now: dt.datetime | None = None) -> list[int]:
+    """過去七天有人發言（或有風險通報）、沒封存的頻道，各貼一則週摘要。某個頻道失敗就記 log、跳過。
+    回傳貼了的頻道。"""
     since = (now or _now()) - WEEK
-    posted = 0
+    posted: list[int] = []
     for info in _active_channels(session, since):
         try:
             with session.begin_nested():
@@ -107,15 +109,15 @@ def weekly(session: Session, llm: LLM, now: dt.datetime | None = None) -> int:
                 summary = result["summary"].strip()
                 if summary:
                     channels.post_mascot(session, info.id, f"上週重點整理：\n{summary}", None)
-                    posted += 1
+                    posted.append(info.id)
         except Exception:
             log.exception("週摘要失敗 channel=%s", info.id)
     return posted
 
 
-def reminders(session: Session, now: dt.datetime | None = None) -> int:
+def reminders(session: Session, now: dt.datetime | None = None) -> list[int]:
     """還沒完成、已經過了到期日、三天內沒提醒過的待辦，依頻道各貼一則清單（固定文字，不呼叫模型）。
-    封存的頻道跳過。回傳貼了幾則。"""
+    封存的頻道跳過。回傳貼了的頻道。"""
     now = now or _now()
     today = now.astimezone(TAIPEI).date()
     overdue = session.scalars(
@@ -132,7 +134,7 @@ def reminders(session: Session, now: dt.datetime | None = None) -> int:
     by_channel: dict[int, list[MemoryItem]] = defaultdict(list)
     for item in overdue:
         by_channel[item.channel_id].append(item)
-    posted = 0
+    posted: list[int] = []
     for info in channels.describe(session, list(session.scalars(select(Channel).where(Channel.id.in_(list(by_channel)))))):
         if info.archived:
             continue
@@ -142,7 +144,7 @@ def reminders(session: Session, now: dt.datetime | None = None) -> int:
         channels.post_mascot(session, info.id, body, None)
         for item in items:
             item.reminded_at = now
-        posted += 1
+        posted.append(info.id)
     session.flush()
     return posted
 
@@ -154,7 +156,10 @@ def main(argv: list[str]) -> None:
     with session_factory()() as session:
         posted = weekly(session, get_llm()) if argv[0] == "weekly" else reminders(session)
         session.commit()
-    log.info("%s：貼了 %s 則", argv[0], posted)
+    # commit 之後才通知連著的手機（app/realtime.py），不然要等保險輪詢才看得到
+    for channel_id in posted:
+        realtime.message_posted(channel_id)
+    log.info("%s：貼了 %s 則", argv[0], len(posted))
 
 
 if __name__ == "__main__":

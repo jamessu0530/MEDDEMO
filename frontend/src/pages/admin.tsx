@@ -17,6 +17,7 @@ import {
 import { ChannelsLink } from "@/components/channels-link"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
+import { MyStatusButton } from "@/components/my-status"
 import { SkinToggle } from "@/components/skin-toggle"
 import { Button } from "@/components/ui/button"
 import {
@@ -88,6 +89,7 @@ export function AdminPage() {
         subtitle="IT"
         trailing={
           <>
+            <MyStatusButton className="size-11" />
             <SkinToggle className="size-11" />
             <ChannelsLink />
             <Link

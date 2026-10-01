@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.api.auth import CurrentUser
 from app.db import get_session
+from app import realtime
 from app.models import AppUser, WRITEBACK_TARGETS, ChannelMessage, Customer, FollowUpReminder, OaExpenseForm, Visit, VisitAudio, ManagerNotice
 from app.services import privacy, writeback
 from app.services import channel_memory, risk
@@ -265,6 +266,7 @@ def confirm(session: SessionDep, visit_id: str, user: CurrentUser):
         select(ChannelMessage.channel_id).where(ChannelMessage.visit_id == visit.id, ChannelMessage.kind == "notice")
     ):
         channel_memory.schedule(team)
+        realtime.message_posted(team)
 
     results = writeback.dispatch(visit.id)
     if all(r.status in ("success", "skipped") for r in results):

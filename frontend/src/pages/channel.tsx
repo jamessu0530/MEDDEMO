@@ -15,21 +15,26 @@ import {
 import { AttachmentGallery } from "@/components/attachments/attachment-gallery"
 import { AttachButton, DraftFiles } from "@/components/attachments/draft-files"
 import { ChannelBoard } from "@/components/channel-board"
+import { ChannelMembers } from "@/components/channel-members"
 import { Mascot } from "@/components/mascot"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
+import { LiveAvatar } from "@/components/user-avatar"
 import { addDraftFiles, removeDraftFile, shrinkPhoto, type DraftFile } from "@/lib/attachments"
 import { useAuth } from "@/lib/auth"
 import { channelUnread } from "@/lib/channel-unread"
 import { awaitingMascot, MESSAGE_PAGE, mergeMessages, withMascotMention } from "@/lib/channels"
 import { formatDateTime } from "@/lib/format"
+import { realtime, useRealtimeConnected } from "@/lib/realtime"
 import { cn } from "@/lib/utils"
 
-// 打開頻道時每 3 秒問一次新訊息；畫面在背景就不問
+// 新訊息靠 WebSocket 通知（lib/realtime.ts），收到才去拿；連著的時候另外每 30 秒保險問一次，
+// 斷線時回到每 3 秒輪詢。畫面在背景就不問
 const POLL_MS = 3_000
+const POLL_CONNECTED_MS = 30_000
 const MAX_LENGTH = 2000
 // 一則訊息最多附幾個檔案（跟後端一樣）
 const MAX_FILES = 4
@@ -69,6 +74,8 @@ export function ChannelPage() {
 
 function ChannelView({ id }: { id: number }) {
   const { backTo = "/channels" } = (useLocation().state as ChannelLocationState | null) ?? {}
+  const selfId = useAuth()?.user.id ?? ""
+  const connected = useRealtimeConnected()
   const [state, setState] = useState<LoadState>({ status: "loading" })
   // 上方兩個分頁：對話、記憶看板
   const [tab, setTab] = useState<"chat" | "board">("chat")
@@ -88,11 +95,14 @@ function ChannelView({ id }: { id: number }) {
   const [deleting, setDeleting] = useState<ChannelMessage | null>(null)
   const isIt = useAuth()?.user.role === "it"
   const bottom = useRef<HTMLDivElement>(null)
+  // 輪詢「這則之後的新訊息」從哪裡接：只跟著拿到的那一頁前進，不跟著自己剛送出的那則。
+  // 自己的那則可能比別人同時送出、還沒拿到的那則編號大，跟著它跳就永遠拿不到別人那則
+  const cursor = useRef(0)
   const main = useRef<HTMLElement>(null)
   const textarea = useRef<HTMLTextAreaElement>(null)
-  // 「熊熊滾正在想」要跟著時間消失：輪詢每 3 秒更新一次現在時間
+  // 「熊熊滾正在想」要跟著時間消失：每次去拿新訊息時更新現在時間（連著時至少 30 秒一次，斷線時 3 秒）
   const [now, setNow] = useState(() => Date.now())
-  // 使用者是不是還停在底部附近：只有這樣，或最新一則是自己剛送出的，3 秒一次的輪詢才把畫面捲到最下面；
+  // 使用者是不是還停在底部附近：只有這樣，或最新一則是自己剛送出的，拿到新訊息時才把畫面捲到最下面；
   // 不然使用者往上捲看舊訊息時會被強制拉回去
   const nearBottom = useRef(true)
   const seenFirstLoad = useRef(false)
@@ -121,6 +131,7 @@ function ChannelView({ id }: { id: number }) {
       .then(([channel, page]) => {
         setState({ status: "ready", channel })
         setMessages(page)
+        cursor.current = page.at(-1)?.id ?? 0
         setHasOlder(page.length === MESSAGE_PAGE)
       })
       .catch((error) => {
@@ -130,24 +141,56 @@ function ChannelView({ id }: { id: number }) {
     return () => controller.abort()
   }, [id])
 
-  // 輪詢新訊息
+  // 拿新訊息：收到這個頻道的通知、重連或切回前景時補漏掉的，加上輪詢。
+  // 一次只問一個；問的時候又來了通知，問完再問一次，不會漏也不會同時打好幾個
   useEffect(() => {
     if (state.status !== "ready") return
     const controller = new AbortController()
-    const timer = setInterval(() => {
+    let busy = false
+    let again = false
+    const fetchNew = () => {
       if (document.visibilityState === "hidden" || !navigator.onLine) return
       setNow(Date.now())
-      listMessages(id, { after: lastId ?? 0 }, controller.signal)
-        .then((page) => page.length && setMessages((current) => mergeMessages(current, page)))
+      if (busy) {
+        again = true
+        return
+      }
+      busy = true
+      listMessages(id, { after: cursor.current }, controller.signal)
+        .then((page) => {
+          if (!page.length) return
+          cursor.current = Math.max(cursor.current, page.at(-1)!.id)
+          setMessages((current) => mergeMessages(current, page))
+          // 一次最多一頁，滿了就是還有
+          if (page.length === MESSAGE_PAGE) again = true
+        })
         .catch(() => {
           // 連不上就等下一輪
         })
-    }, POLL_MS)
+        .finally(() => {
+          busy = false
+          if (again && !controller.signal.aborted) {
+            again = false
+            fetchNew()
+          }
+        })
+    }
+    // 連線狀態一變（剛重連上）這裡會重跑，先補一次：重連當下發的 resync 可能被上一輪的 abort 取消了
+    fetchNew()
+    const timer = setInterval(fetchNew, connected ? POLL_CONNECTED_MS : POLL_MS)
+    const unsubscribe = realtime.subscribe((event) => {
+      if (event.type === "resync" || event.channel_id === id) fetchNew()
+    })
+    // 連著但畫面在背景時收到的通知會被略過，切回前景補一次
+    const onVisible = () => document.visibilityState === "visible" && fetchNew()
+    document.addEventListener("visibilitychange", onVisible)
     return () => {
       clearInterval(timer)
+      unsubscribe()
+      document.removeEventListener("visibilitychange", onVisible)
       controller.abort()
     }
-  }, [id, lastId, state.status])
+  }, [id, state.status, connected])
 
   // 看到最新一則就算讀過，紅點跟著更新。只在還在底部附近、新的這則是自己剛送出的，或第一次載入時才標記，
   // 不然往上捲看歷史訊息時，輪詢進來的新訊息會被誤標成已經讀過（往回捲底部再標，見 handleScroll）。
@@ -267,7 +310,12 @@ function ChannelView({ id }: { id: number }) {
   const byId = new Map(messages.map((m) => [m.id, m]))
   return (
     <div className="flex h-svh flex-col">
-      <PageHeader title={channel.name} subtitle={KIND_LABEL[channel.kind]} backTo={backTo} />
+      <PageHeader
+        title={channel.name}
+        subtitle={KIND_LABEL[channel.kind]}
+        backTo={backTo}
+        trailing={channel.archived ? undefined : <ChannelMembers channelId={channel.id} selfId={selfId} />}
+      />
       {channel.kind === "place" && (
         <Link to={`/channels/${channel.id}/threads`} className="flex min-h-11 items-center gap-2 border-b px-4 text-sm text-primary">
           <Store className="size-4" />
@@ -463,11 +511,8 @@ function MessageBubble({
       </div>
     )
   }
-  return (
-    <div
-      id={`message-${message.id}`}
-      className={cn("flex max-w-[85%] flex-col gap-0.5", message.mine ? "self-end items-end" : "self-start", mark)}
-    >
+  const bubble = (
+    <div className={cn("flex min-w-0 flex-col gap-0.5", message.mine && "items-end")}>
       <p className="px-1 text-[11px] text-muted-foreground">
         {message.mine ? "" : `${message.author_name} · `}
         {formatDateTime(message.created_at)}
@@ -495,6 +540,16 @@ function MessageBubble({
         attachments={message.attachments}
         className={cn("w-64 max-w-full", message.mine && "items-end")}
       />
+    </div>
+  )
+  const anchor = `message-${message.id}`
+  if (message.mine) return <div id={anchor} className={cn("max-w-[85%] self-end", mark)}>{bubble}</div>
+  if (!message.author_id) return <div id={anchor} className={cn("max-w-[85%] self-start", mark)}>{bubble}</div>
+  // 別人的訊息左邊放頭像，右下角是他現在的狀態
+  return (
+    <div id={anchor} className={cn("flex max-w-[85%] items-end gap-2 self-start", mark)}>
+      <LiveAvatar id={message.author_id} name={message.author_name ?? "?"} />
+      {bubble}
     </div>
   )
 }

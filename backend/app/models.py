@@ -840,6 +840,27 @@ class AttachmentVector(Base):
     embedding: Mapped[Any] = mapped_column(Vector())
 
 
+# 跟 Teams 一樣能手動選的狀態（services/presence.py）：有空、忙碌、請勿打擾、馬上回來、顯示為離開、顯示為離線
+PRESENCE_CHOICES = ("available", "busy", "dnd", "brb", "away", "offline")
+
+
+class UserPresence(Base):
+    """在線狀態（docs/superpowers/specs/2026-10-01-presence-design.md）。一個帳號最多一列，
+    第一次連線或選狀態時建立。別人看到的狀態由這三個欄位現算，不存。"""
+
+    __tablename__ = "user_presence"
+    __table_args__ = (one_of("choice", PRESENCE_CHOICES, "choice"),)
+
+    user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), primary_key=True)
+    # 手動選的狀態，NULL 是自動。選了就一直維持到自己改掉
+    choice: Mapped[str | None]
+    # 最後一次心跳的時間，登出時清成 NULL。斷線不更新：伺服器可能很久之後才發現斷線，
+    # 那時候人早就離開了，從最後一次心跳起算 5 分鐘才是對的
+    last_seen_at: Mapped[dt.datetime | None]
+    # 最後一次「正在用」（畫面在前景、5 分鐘內碰過）的心跳
+    last_active_at: Mapped[dt.datetime | None]
+
+
 class SapEmployee(Base):
     """模擬 SAP 的人員主檔：一個公司帳號一列，存到職日與負責的產品線（新人第一週頁的「你賣什麼」）。
 

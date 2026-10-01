@@ -75,7 +75,7 @@ def test_the_weekly_summary_goes_to_channels_that_talked_this_week(tx):
     )
     llm = SummaryLLM()
     posted = channel_jobs.weekly(tx, llm)
-    assert posted >= 2  # 示範對話的頻道也都在七天內
+    assert busy.id in posted and len(posted) >= 2  # 示範對話的頻道也都在七天內
     [summary] = ai_messages(tx, busy.id)
     assert summary.body == "上週重點整理：\n忠孝店補貨延遲，御松田在搶陳列位。"
     assert summary.reply_to_id is None
@@ -88,12 +88,12 @@ def test_one_channel_failing_does_not_stop_the_others(tx):
     say(tx, channel_by_name(tx, "台北市・中山區"), "U01", "中山區")
     posted = channel_jobs.weekly(tx, SummaryLLM(fail_on="台北市・中山區"))
     assert ai_messages(tx, channel_by_name(tx, "台北市・中山區").id) == []
-    assert posted >= 1
+    assert channel_by_name(tx, "台北市・中山區").id not in posted and posted
 
 
 def test_messages_older_than_a_week_do_not_count(tx):
     later = dt.datetime.now(dt.UTC) + dt.timedelta(days=30)
-    assert channel_jobs.weekly(tx, SummaryLLM(), now=later) == 0
+    assert channel_jobs.weekly(tx, SummaryLLM(), now=later) == []
 
 
 # ---- 逾期提醒 ----
@@ -106,7 +106,7 @@ def test_overdue_todos_are_listed_once_every_three_days(tx):
     existing(tx, info, category="todo", text="明天才到期的拜訪", due_date=today + dt.timedelta(days=1))
     existing(tx, info, category="todo", text="早就完成的比價", due_date=today - dt.timedelta(days=5), status="done")
     now = dt.datetime.now(dt.UTC)
-    assert channel_jobs.reminders(tx, now) >= 1
+    assert info.id in channel_jobs.reminders(tx, now)
     [reminder] = ai_messages(tx, info.id)
     assert "回覆杏林診所的比價表" in reminder.body
     assert "明天才到期的拜訪" not in reminder.body and "早就完成的比價" not in reminder.body

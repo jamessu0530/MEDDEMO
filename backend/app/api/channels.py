@@ -17,12 +17,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from starlette.datastructures import UploadFile
 
-from app import usage
+from app import realtime, usage
 from app.api.attachments import AttachmentItem, attachment_item
 from app.api.auth import CurrentUser, ItUser
 from app.db import get_session
 from app.models import MESSAGE_MAX_LENGTH, AppUser, Attachment, ChannelMessage
-from app.services import attachment_processing, attachments, channel_ai, channel_memory, channels
+from app.services import attachment_processing, attachments, channel_ai, channel_memory, channels, presence
 from app.services.channels import ChannelInfo
 from app.tasks import channels_queue
 
@@ -43,6 +43,15 @@ class ChannelItem(BaseModel):
     audience: str
     unread: int
     last_message_at: dt.datetime | None
+    # 成員裡不是離線的人數，不算自己（services/presence.py）
+    online: int
+
+
+class Member(BaseModel):
+    id: str
+    name: str
+    # 別人看到的狀態：available、busy、dnd、brb、away、offline
+    status: str
 
 
 class MessageItem(BaseModel):
@@ -107,11 +116,12 @@ def _items(session: Session, user: AppUser, infos: list[ChannelInfo]) -> list[Ch
     ids = [info.id for info in infos]
     unread = channels.unread_counts(session, user, ids)
     latest = channels.last_message_at(session, ids)
+    online = presence.online_counts(session, user, infos)
     return [
         ChannelItem(
             id=i.id, kind=i.kind, name=i.name, region_id=i.region_id, parent_id=i.parent_id,
             archived=i.archived, customer_id=i.customer_id, audience=i.audience,
-            unread=unread.get(i.id, 0), last_message_at=latest.get(i.id),
+            unread=unread.get(i.id, 0), last_message_at=latest.get(i.id), online=online.get(i.id, 0),
         )
         for i in infos
     ]
@@ -209,6 +219,8 @@ def post_message(
         return blocked
     files = [attachments.add(session, user, p, context=text, message_id=message.id) for p in prepared]
     session.commit()
+    # commit 之後才通知：手機收到馬上來拿，要拿得到這一則
+    realtime.message_posted(info.id)
     # 寫說明、算向量在背景做；先回訊息，畫面上照片馬上看得到
     attachment_processing.enqueue([f.id for f in files])
     # 兩分鐘後熊熊滾把這段對話整理進記憶（同一個頻道兩分鐘內的訊息併成一次）
@@ -226,6 +238,7 @@ def _call_mascot(session: Session, message: ChannelMessage) -> None:
         log.exception("排入熊熊滾的背景工作失敗 message=%s", message.id)
         channels.post_mascot(session, message.channel_id, channel_ai.SORRY, message.id)
         session.commit()
+        realtime.message_posted(message.channel_id)
 
 
 @router.delete("/api/channels/messages/{message_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -243,6 +256,13 @@ def mark_read(session: SessionDep, user: CurrentUser, channel_id: int, body: Rea
     info = _visible(session, user, channel_id)
     channels.mark_read(session, user, info.id, body.message_id)
     session.commit()
+
+
+@router.get("/api/channels/{channel_id}/members", response_model=list[Member])
+def list_members(session: SessionDep, user: CurrentUser, channel_id: int):
+    """成員與狀態，依名字排。成員照組織位置算（services/presence.py）：IT 只算全國頻道的成員。"""
+    info = _visible(session, user, channel_id)
+    return [Member(id=p.id, name=p.name, status=s) for p, s in presence.members(session, info)]
 
 
 @router.get("/api/channels/{channel_id}/threads", response_model=list[ChannelItem])

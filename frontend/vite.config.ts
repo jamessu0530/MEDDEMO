@@ -14,6 +14,8 @@ export default defineConfig({
   // 本機開發時把 API 請求轉給 uvicorn；正式環境由 Nginx 轉（nginx.conf）
   server: {
     proxy: {
+      // WebSocket（在線狀態與新訊息通知）要寫在 /api 前面，不然被 /api 那條先接走、不會升級連線
+      "/api/ws": { target: "ws://127.0.0.1:8000", ws: true },
       "/api": "http://127.0.0.1:8000",
       "/health": "http://127.0.0.1:8000",
     },

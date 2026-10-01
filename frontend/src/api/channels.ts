@@ -1,5 +1,6 @@
 import type { Attachment } from "@/api/attachments"
 import { jsonBody, request, upload } from "@/api/client"
+import type { PresenceStatus } from "@/api/presence"
 
 // national 全國；region 整區；team 一位主管帶的小組；place 地點（縣市，台北市到行政區）；customer 一家客戶的討論串
 export type ChannelKind = "national" | "region" | "team" | "place" | "customer"
@@ -18,7 +19,12 @@ export type Channel = {
   audience: string
   unread: number
   last_message_at: string | null
+  // 成員裡不是離線的人數，不算自己
+  online: number
 }
+
+// 成員照組織位置算：主管與組員、整區的人；IT 只算全國頻道的成員
+export type ChannelMember = { id: string; name: string; status: PresenceStatus }
 
 export type ChannelMessage = {
   id: number
@@ -81,6 +87,11 @@ export function deleteMessage(messageId: number) {
 
 export function markRead(id: number, messageId: number) {
   return request<void>(`/api/channels/${id}/read`, jsonBody("POST", { message_id: messageId }))
+}
+
+/** 成員與狀態，依名字排。狀態之後的變化由 WebSocket 推來（lib/presence.ts） */
+export function listMembers(id: number, signal?: AbortSignal) {
+  return request<ChannelMember[]>(`/api/channels/${id}/members`, { signal })
 }
 
 /** 地點頻道底下有人發過言的客戶討論串 */

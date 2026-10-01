@@ -12,6 +12,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session, undefer
 
+from app import realtime
 from app.db import session_factory
 from app.embeddings import optional_embedder
 from app.llm import LLMOutputError, Media, get_llm
@@ -63,8 +64,11 @@ ROUTE_SCHEMA = {
 def run(message_id: int) -> None:
     """RQ 背景工作的進入點（channels 佇列）：開自己的連線，回答完 commit。"""
     with session_factory()() as session:
-        answer(session, message_id)
+        reply = answer(session, message_id)
         session.commit()
+        # commit 之後才通知連著的手機（app/realtime.py），不然要等 30 秒的保險輪詢才看得到回答
+        if reply is not None:
+            realtime.message_posted(reply.channel_id)
 
 
 def answer(session: Session, message_id: int) -> ChannelMessage | None:
