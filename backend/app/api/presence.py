@@ -209,6 +209,9 @@ class _Connection:
                 await self.send_presence()
             elif event.get("type") == "avatars":
                 await self.send({"type": "avatars"})
+            elif event.get("type") == "channels":
+                # 不帶內容：收到的人重新載入自己看得到的頻道列表，看不到的頻道不會因此透露
+                await self.send({"type": "channels"})
             elif event.get("type") == "message":
                 channel_id = int(event["channel_id"])
                 # 只通知看得到的人：看不到的頻道連「有新訊息」都不能透露

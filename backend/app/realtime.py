@@ -6,6 +6,7 @@ API 與背景工作不在同一個程序，API 之後也可能開到兩個以上
 - {"type": "message", "channel_id": 12}：這個頻道有新訊息，commit 之後才發，手機拿得到那一則
 - {"type": "presence"}：有人的狀態變了，每條連線重算一次
 - {"type": "avatars"}：有人換了或移除大頭貼，手機重拿一次網址
+- {"type": "channels"}：有人開了、改名或封存文字頻道，手機重新載入頻道列表
 """
 
 import json
@@ -42,3 +43,7 @@ def presence_changed() -> None:
 
 def avatars_changed() -> None:
     publish({"type": "avatars"})
+
+
+def channels_changed() -> None:
+    publish({"type": "channels"})

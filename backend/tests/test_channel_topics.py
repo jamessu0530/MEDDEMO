@@ -141,3 +141,153 @@ def test_only_topics_have_a_name_and_every_topic_has_one(tx):
         with pytest.raises(IntegrityError), tx.begin_nested():
             tx.add(bad)
             tx.flush()
+
+
+# 開、改名、封存
+
+
+def create(client, headers, parent_id: int, name: str):
+    return client.post("/api/channels", json={"parent_id": parent_id, "name": name}, headers=headers)
+
+
+def change(client, headers, channel_id: int, **body):
+    return client.patch(f"/api/channels/{channel_id}", json=body, headers=headers)
+
+
+def ids(client, auth) -> dict[str, int]:
+    return {name: c["id"] for name, c in by_name(client, auth("A01")).items()}
+
+
+def test_who_can_open_a_topic_where(tx, client, auth):
+    c = ids(client, auth)
+    made = create(client, auth("M01"), c["北區"], "  陳列競賽 ")
+    assert made.status_code == 201
+    topic = made.json()
+    assert (topic["kind"], topic["name"], topic["parent_id"], topic["region_id"]) == ("topic", "陳列競賽", c["北區"], "TW.N")
+    assert (topic["audience"], topic["archived"], topic["can_manage"]) == ("北區所有人都看得到", False, True)
+    assert "陳列競賽" in topic_names(client, auth("U02"))
+    assert "陳列競賽" not in topic_names(client, auth("U04"))
+    # 主管只管自己這一區，全國只有 IT
+    assert create(client, auth("M01"), c["全國"], "北區也想公告").status_code == 403
+    assert create(client, auth("M01"), c["南區"], "南區的事").status_code == 404
+    assert create(client, auth("M03"), c["南區"], "左營檔期").status_code == 201
+    assert create(client, auth("M04"), c["南區"], "台南診所").status_code == 201
+    assert create(client, auth("U01"), c["北區"], "業務自己開").status_code == 403
+    assert create(client, auth("A01"), c["全國"], "教育訓練").status_code == 201
+    assert create(client, auth("A01"), c["中區"], "中區檔期").status_code == 201
+    # 小組、地點、文字頻道底下不能再開
+    assert create(client, auth("M01"), c["陳建宏小組"], "小組裡開").status_code == 400
+    assert create(client, auth("A01"), c["台北市・大安區"], "地點裡開").status_code == 400
+    assert create(client, auth("A01"), c["新品上市"], "頻道裡開").status_code == 400
+    assert create(client, auth("A01"), 999_999, "不存在").status_code == 404
+
+
+def test_a_self_created_account_cannot_open_topics(tx, client):
+    created = client.post(
+        "/api/auth/register", json={"name": "評審", "email": "judge@topics.test", "password": "judge-pass-1"}
+    ).json()
+    headers = {"Authorization": f"Bearer {created['token']}"}
+    north = by_name(client, headers)["北區"]
+    assert north["can_manage"] is False
+    assert create(client, headers, north["id"], "評審開的").status_code == 403
+
+
+def test_topic_names_are_trimmed_limited_and_unique_within_a_unit(tx, client, auth):
+    c = ids(client, auth)
+    assert create(client, auth("M01"), c["北區"], "   ").status_code == 422
+    assert create(client, auth("M01"), c["北區"], "字" * 21).status_code == 422
+    assert create(client, auth("M01"), c["北區"], "字" * 20).status_code == 201
+    taken = create(client, auth("M01"), c["北區"], " 新品上市 ")
+    assert taken.status_code == 409
+    assert taken.json()["detail"] == "北區已經有叫「新品上市」的頻道"
+    assert create(client, auth("M01"), c["北區"], "Promo").status_code == 201
+    assert create(client, auth("M01"), c["北區"], "PROMO").status_code == 409
+    # 別區可以用同一個名字；全國的重名訊息寫「全國」
+    assert create(client, auth("M03"), c["南區"], "新品上市").status_code == 201
+    assert create(client, auth("A01"), c["全國"], "公司公告").json()["detail"] == "全國已經有叫「公司公告」的頻道"
+
+
+def test_managers_of_the_region_rename_and_archive_any_topic_there(tx, client, auth):
+    c = ids(client, auth)
+    topic = create(client, auth("A01"), c["北區"], "陳列競賽").json()["id"]
+    renamed = change(client, auth("M01"), topic, name="陳列比賽")
+    assert renamed.status_code == 200 and renamed.json()["name"] == "陳列比賽"
+    assert change(client, auth("M01"), topic, name="補貨問題").status_code == 409
+    assert change(client, auth("M01"), topic, name="  ").status_code == 422
+    assert change(client, auth("M03"), topic, archived=True).status_code == 404
+    assert change(client, auth("U01"), topic, archived=True).status_code == 403
+    archived = change(client, auth("M01"), topic, archived=True)
+    assert archived.status_code == 200 and archived.json()["archived"] is True
+    assert by_name(client, auth("U01"))["陳列比賽"]["archived"] is True
+    assert post(client, auth("U01"), topic, "還能說嗎").status_code == 409
+    restored = change(client, auth("M01"), topic, archived=False)
+    assert restored.json()["archived"] is False
+    assert post(client, auth("U01"), topic, "又能說了").status_code == 201
+    # 全國的文字頻道只有 IT 能動；整區頻道本身不能改名或封存
+    assert change(client, auth("M01"), c["公司公告"], archived=True).status_code == 403
+    assert change(client, auth("A01"), c["公司公告"], archived=True).status_code == 200
+    assert change(client, auth("A01"), c["北區"], name="北北區").status_code == 400
+
+
+def test_can_manage_follows_the_region(client, auth):
+    m01 = by_name(client, auth("M01"))
+    assert m01["北區"]["can_manage"] and m01["新品上市"]["can_manage"]
+    assert not m01["全國"]["can_manage"] and not m01["公司公告"]["can_manage"]
+    assert not m01["陳建宏小組"]["can_manage"] and not m01["台北市・大安區"]["can_manage"]
+    assert not any(c["can_manage"] for c in listing(client, auth("U01")))
+    m03 = by_name(client, auth("M03"))
+    assert m03["南區"]["can_manage"] and not m03["全國"]["can_manage"]
+    a01 = by_name(client, auth("A01"))
+    assert all(a01[name]["can_manage"] for name in ("全國", "北區", "中區", "南區", "公司公告", "新品上市"))
+    assert not a01["陳建宏小組"]["can_manage"]
+
+
+def test_an_archived_topics_memory_cannot_be_edited(tx, client, auth):
+    from app.models import MemoryItem
+
+    news = by_name(client, auth("U01"))["新品上市"]["id"]
+    memory = MemoryItem(channel_id=news, category="decision", text="新包裝下個月上市")
+    tx.add(memory)
+    tx.flush()
+    assert change(client, auth("M01"), news, archived=True).status_code == 200
+    refused = client.patch(f"/api/memory/{memory.id}", json={"text": "改一下"}, headers=auth("U01"))
+    assert refused.status_code == 409
+    assert refused.json()["detail"] == "這個頻道已封存，重點不能再改"
+
+
+def test_shared_topic_memory_reaches_the_region_and_national_boards(tx, client, auth):
+    from app.models import MemoryItem
+
+    c = ids(client, auth)
+    shared = MemoryItem(
+        channel_id=c["新品上市"], category="decision", text="固循魚油下個月換新包裝，舊包裝先清",
+        shared=True, shared_text="固循魚油下個月換新包裝",
+    )
+    tx.add(shared)
+    tx.flush()
+    for board in (c["北區"], c["全國"]):
+        below = client.get(f"/api/channels/{board}/board", headers=auth("U01")).json()["below"]
+        group = next(g for g in below if g["channel_id"] == c["新品上市"])
+        assert [i["text"] for i in group["items"] if i["id"] == shared.id] == ["固循魚油下個月換新包裝"]
+
+
+def test_opening_renaming_and_archiving_tell_every_socket(tx, client, engine, auth):
+    from conftest import token_for
+
+    def next_channels_event(ws) -> dict:
+        while True:
+            event = ws.receive_json()
+            if event["type"] == "channels":
+                return event
+
+    c = ids(client, auth)
+    with client.websocket_connect("/api/ws") as ws:
+        ws.send_json({"type": "auth", "token": token_for(engine, "U04"), "active": True})
+        assert ws.receive_json()["type"] == "ready"
+        topic = create(client, auth("M01"), c["北區"], "陳列競賽").json()["id"]
+        # 事件不帶內容，看不到北區的人也收得到；收到只是重新載入自己看得到的列表
+        assert next_channels_event(ws) == {"type": "channels"}
+        change(client, auth("M01"), topic, name="陳列比賽")
+        assert next_channels_event(ws) == {"type": "channels"}
+        change(client, auth("M01"), topic, archived=True)
+        assert next_channels_event(ws) == {"type": "channels"}

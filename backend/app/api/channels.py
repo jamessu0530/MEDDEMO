@@ -1,4 +1,4 @@
-"""頻道 API（docs/superpowers/specs/2026-09-28-channels-design.md）：頻道列表、訊息、已讀、客戶討論串。
+"""頻道 API（docs/superpowers/specs/2026-09-28-channels-design.md）：頻道列表、訊息、已讀、客戶討論串，以及文字頻道（2026-10-01-channel-rail-design.md）。
 
 誰看得到哪些頻道由 services/channels.py 決定；看不到的一律 404，不透露它存在。
 訊息靠畫面輪詢（打開頻道時每 3 秒問一次 after 之後的新訊息），不開長連線。
@@ -22,7 +22,7 @@ from app.api.attachments import AttachmentItem, attachment_item
 from app.api.auth import CurrentUser, ItUser
 from app.db import get_session
 from app.models import MESSAGE_MAX_LENGTH, AppUser, Attachment, ChannelMessage
-from app.services import attachment_processing, attachments, channel_ai, channel_memory, channels, presence
+from app.services import attachment_processing, attachments, channel_ai, channel_memory, channel_topics, channels, presence
 from app.services.channels import ChannelInfo
 from app.tasks import channels_queue
 
@@ -45,6 +45,8 @@ class ChannelItem(BaseModel):
     last_message_at: dt.datetime | None
     # 成員裡不是離線的人數，不算自己（services/presence.py）
     online: int
+    # 全國、整區：能不能在底下開文字頻道；文字頻道：能不能改名、封存（services/channel_topics.py）
+    can_manage: bool
 
 
 class Member(BaseModel):
@@ -72,6 +74,17 @@ class MessageItem(BaseModel):
     reply_to_id: int | None
     # 風險通報附的拜訪，點了進拜訪結果頁
     visit_id: str | None = None
+
+
+class TopicInput(BaseModel):
+    # 開在哪個全國或整區頻道底下
+    parent_id: int
+    name: str
+
+
+class TopicChange(BaseModel):
+    name: str | None = None
+    archived: bool | None = None
 
 
 class MessageInput(BaseModel):
@@ -122,6 +135,7 @@ def _items(session: Session, user: AppUser, infos: list[ChannelInfo]) -> list[Ch
             id=i.id, kind=i.kind, name=i.name, region_id=i.region_id, parent_id=i.parent_id,
             archived=i.archived, customer_id=i.customer_id, audience=i.audience,
             unread=unread.get(i.id, 0), last_message_at=latest.get(i.id), online=online.get(i.id, 0),
+            can_manage=channel_topics.can_manage(user, i),
         )
         for i in infos
     ]
@@ -166,6 +180,42 @@ def unread_badge(session: SessionDep, user: CurrentUser):
 @router.get("/api/channels/{channel_id}", response_model=ChannelItem)
 def get_channel(session: SessionDep, user: CurrentUser, channel_id: int):
     return _items(session, user, [_visible(session, user, channel_id)])[0]
+
+
+def _topic_action(action):
+    """開、改文字頻道共用的錯誤對照。"""
+    try:
+        return action()
+    except channels.NotFound:
+        raise HTTPException(404, "找不到這個頻道") from None
+    except channel_topics.NotHere as exc:
+        raise HTTPException(400, str(exc)) from None
+    except channel_topics.Forbidden as exc:
+        raise HTTPException(403, str(exc)) from None
+    except channel_topics.Invalid as exc:
+        raise HTTPException(422, str(exc)) from None
+    except channel_topics.Duplicate as exc:
+        raise HTTPException(409, str(exc)) from None
+
+
+@router.post("/api/channels", response_model=ChannelItem, status_code=status.HTTP_201_CREATED)
+def create_topic(session: SessionDep, user: CurrentUser, body: TopicInput):
+    """在全國或整區頻道底下開文字頻道：區的在職主管與 IT，全國只有 IT。"""
+    info = _topic_action(lambda: channel_topics.create(session, user, body.parent_id, body.name))
+    session.commit()
+    realtime.channels_changed()
+    return _items(session, user, [info])[0]
+
+
+@router.patch("/api/channels/{channel_id}", response_model=ChannelItem)
+def update_topic(session: SessionDep, user: CurrentUser, channel_id: int, body: TopicChange):
+    """文字頻道改名、封存或解除封存。封存了還看得到，只是不能發言。"""
+    info = _topic_action(
+        lambda: channel_topics.update(session, user, channel_id, name=body.name, archived=body.archived)
+    )
+    session.commit()
+    realtime.channels_changed()
+    return _items(session, user, [info])[0]
 
 
 @router.get("/api/channels/{channel_id}/messages", response_model=list[MessageItem])
