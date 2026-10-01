@@ -461,6 +461,15 @@ uv run --project backend python backend/scripts/eval_ask.py
 - **主管重新升回主管會看到舊小組的對話**：小組頻道封存與否看主管當下的狀態算，被降職或停用的主管再升回主管，原本的頻道會回來，新帶的組員也看得到以前的對話。這是預期行為。
 - **示範用的照片是程式畫的**（`backend/scripts/draw_seed_images.py`，產出在 `data/seed/attachments/`，要在 Mac 上跑才有中文字型）：御松田的海報、忠孝店的貨架、壓壞的魚油外盒、康普樂的報價單、瑞得生技的 DM、杏林診所的衛教單張 PDF，接在示範對話裡（`catalog.CONVERSATIONS`），說明手寫在 `catalog.SEED_ATTACHMENTS`。
 
+## 頻道的在線狀態
+
+設計見 [docs/superpowers/specs/2026-10-01-presence-design.md](docs/superpowers/specs/2026-10-01-presence-design.md)。
+
+- 跟 Teams 一樣：自動判斷有空、離開、離線，也可以手動選忙碌、請勿打擾、馬上回來、顯示為離開、顯示為離線。業務首頁、主管端、組織管理頁的頁首與帳號設定都有自己的頭像，點了換狀態。
+- 頻道頁的頁首疊出除了自己以外在線的人，點了看成員清單；別人每則訊息旁邊有頭像與狀態點；頻道列表每一列寫「N 人在線」。成員照組織位置算，IT 只算全國頻道的成員。
+- 登入後開一條 WebSocket（`/api/ws`），同時收狀態變化與「頻道有新訊息」的通知，頻道不必再每 3 秒輪詢；斷線時退回輪詢與 HTTP 心跳。熊熊滾在背景寫好回答後一樣發通知（`services/channel_ai.run`）。本機開發由 Vite 代理（`vite.config.ts`），正式環境由 Nginx 轉（`frontend/nginx.conf`）。
+- 選「顯示為離線」的人，在別人眼中跟真的離線一樣：伺服器只送算好的狀態，不送最後上線時間。
+
 ## 個資與保存期限（NFR-8）
 
 - **確認送出時把逐字稿去識別**：email、身分證字號、電話換成［email］［身分證字號］［電話］；系統裡業務與主管的姓名，以及「姓＋稱謂」（王藥師、陳小姐、林店長）遮成 ○。客戶名稱、品項、競品不遮。送出前業務看的是原文，才能核對。
