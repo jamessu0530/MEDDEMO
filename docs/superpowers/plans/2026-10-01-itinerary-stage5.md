@@ -1168,7 +1168,8 @@ export function routeColorVar(userId: string) {
 
 /** 總覽的頁首：「10/28（三）· 北區 2 位業務 · 11:02 更新」 */
 export function headerLine(data: TeamRoutes) {
-  return `${formatDayLabel(data.date)} · ${data.scope} ${data.reps.length} 位業務 · ${data.updated_at} 更新`
+  // 全形括號後面本來就有空白，「·」前面不再空一格（設計文件的寫法）
+  return `${formatDayLabel(data.date)}· ${data.scope} ${data.reps.length} 位業務 · ${data.updated_at} 更新`
 }
 
 /** 「1/3 站 · 共 18.2 公里 · 約 16:40 收工」。公里數跟業務自己看到的總里程同一個數字；跑完了就沒有收工時間 */
