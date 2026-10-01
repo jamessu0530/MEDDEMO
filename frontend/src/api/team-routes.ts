@@ -40,6 +40,10 @@ export type RemovedStop = LatLng & {
   reason: string
 }
 
+// 主管看到的位置（後端 services/locations.describe）：一句話，加上地圖上頭像畫在哪（沒有就不畫）；
+// live 是分享中而且 5 分鐘內有更新，不然頭像是灰的
+export type SeenLocation = { text: string; lat: number | null; lng: number | null; at: string | null; live: boolean }
+
 export type RepRoute = {
   rep: { id: string; name: string; region: string }
   version: number
@@ -60,6 +64,7 @@ export type RepRoute = {
   // 「德安藥局提到佑生藥局前面」
   moved: string[]
   untouched: boolean
+  location: SeenLocation
 }
 
 export type TeamRoutes = {
@@ -84,4 +89,11 @@ export function getRepRoute(userId: string, signal?: AbortSignal) {
 
 export function getMapsConfig(signal?: AbortSignal) {
   return request<MapsConfig>("/api/maps/config", { signal })
+}
+
+export type TeamLocations = { updated_at: string; locations: Record<string, SeenLocation> }
+
+/** 只拿位置：收到位置的通知時用，不重算行程、不問 Google */
+export function getTeamLocations(signal?: AbortSignal) {
+  return request<TeamLocations>("/api/manager/locations", { signal })
 }

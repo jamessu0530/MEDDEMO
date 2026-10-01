@@ -38,4 +38,9 @@ describe("RepRouteCard", () => {
     expect(html).toMatch(/text-warning[^>]*>(<svg[\s\S]*?<\/svg>)?1 站會晚到 25 分鐘/)
     expect(html).not.toContain("照系統建議，還沒動過")
   })
+
+  it("位置是紫色的一行", () => {
+    const html = render(repRoute({ location: { text: "在杏林診所附近", lat: 25.03, lng: 121.54, at: null, live: true } }))
+    expect(html).toMatch(/text-primary[^>]*>(<svg[\s\S]*?<\/svg>)?在杏林診所附近/)
+  })
 })

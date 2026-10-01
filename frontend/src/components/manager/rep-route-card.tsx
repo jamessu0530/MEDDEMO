@@ -1,11 +1,11 @@
-import { ChevronRight, CircleMinus, Clock } from "lucide-react"
+import { ChevronRight, CircleMinus, Clock, MapPin } from "lucide-react"
 import { Link } from "react-router"
 
 import type { RepRoute } from "@/api/team-routes"
 import { LiveAvatar } from "@/components/user-avatar"
 import { lateLine, nextStopLine, progressLine, removedLine, routeColorVar } from "@/lib/team-routes"
 
-/** 團隊總覽的一張卡：頭像、進度、下一站，以及要主管注意的事（拿掉系統排的站、會晚到、還沒動過）。點了進詳細 */
+/** 團隊總覽的一張卡：頭像、進度、現在在哪、下一站，以及要主管注意的事（拿掉系統排的站、會晚到、還沒動過）。點了進詳細 */
 export function RepRouteCard({ route }: { route: RepRoute }) {
   const removed = removedLine(route.removed)
   const late = lateLine(route.stops)
@@ -35,6 +35,10 @@ export function RepRouteCard({ route }: { route: RepRoute }) {
       >
         <div className="h-full rounded-full" style={{ width: `${percent}%`, background: `var(${routeColorVar(route.rep.id)})` }} />
       </div>
+      <p className="flex items-start gap-1.5 text-xs text-primary">
+        <MapPin className="mt-0.5 size-3.5 shrink-0" />
+        {route.location.text}
+      </p>
       {next && <p className="text-xs">{next}</p>}
       {removed && (
         <p className="flex items-start gap-1.5 text-xs text-destructive">

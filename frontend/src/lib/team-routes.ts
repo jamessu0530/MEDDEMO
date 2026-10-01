@@ -1,4 +1,4 @@
-import type { LatLng, RemovedStop, RepRoute, StopSource, TeamRoutes, TeamStop } from "@/api/team-routes"
+import type { LatLng, RemovedStop, RepRoute, StopSource, TeamLocations, TeamRoutes, TeamStop } from "@/api/team-routes"
 import { formatDayLabel } from "@/lib/format"
 import { avatarTone } from "@/lib/presence"
 
@@ -123,4 +123,14 @@ export function legPaths(route: RepRoute) {
     done: leg.done,
     path: leg.polyline ? decodePolyline(leg.polyline) : [points[n], points[n + 1]],
   }))
+}
+
+/** 收到位置的通知時只重拿位置：換掉每位業務的位置與頁首的更新時間，行程不動 */
+export function withLocations(data: TeamRoutes, update: TeamLocations): TeamRoutes {
+  return { ...data, updated_at: update.updated_at, reps: data.reps.map((route) => withLocation(route, update)) }
+}
+
+export function withLocation(route: RepRoute, update: TeamLocations): RepRoute {
+  const location = update.locations[route.rep.id]
+  return location ? { ...route, location } : route
 }

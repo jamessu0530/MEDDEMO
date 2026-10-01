@@ -44,6 +44,7 @@ export function repRoute(extra: Partial<RepRoute> = {}): RepRoute {
     added: [],
     moved: [],
     untouched: true,
+    location: { text: "今天還沒有位置", lat: null, lng: null, at: null, live: false },
     ...extra,
   }
 }

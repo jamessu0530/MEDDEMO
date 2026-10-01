@@ -1,18 +1,29 @@
 import { useEffect, useState } from "react"
-import { ChevronLeft, ChevronRight } from "lucide-react"
+import { ChevronLeft, ChevronRight, MapPin } from "lucide-react"
 import { Link, useNavigate, useSearchParams } from "react-router"
 
 import { ApiError } from "@/api/client"
-import { getRepRoute, getTeamRoutes, type RepRoute, type TeamRoutes, type TeamStop } from "@/api/team-routes"
+import {
+  getRepRoute,
+  getTeamLocations,
+  getTeamRoutes,
+  type RepRoute,
+  type TeamLocations,
+  type TeamRoutes,
+  type TeamStop,
+} from "@/api/team-routes"
 import { MapSlot } from "@/components/manager/map-slot"
 import { RepRouteCard } from "@/components/manager/rep-route-card"
 import { Notice } from "@/components/notice"
 import { LiveAvatar } from "@/components/user-avatar"
-import { headerLine, progressLine, SOURCE_LABEL, totalsLine, windowLabel } from "@/lib/team-routes"
+import { realtime, useRealtimeConnected } from "@/lib/realtime"
+import { headerLine, progressLine, SOURCE_LABEL, totalsLine, windowLabel, withLocation, withLocations } from "@/lib/team-routes"
 import { cn } from "@/lib/utils"
 import type { CustomerLocationState } from "@/pages/customer"
 
-// 畫面開著（在前景）就每 60 秒重拿一次；第 6 階段改成收到 WebSocket 事件才拿
+// 收到位置或行程的通知之後等這麼久再重拿，一連串的變化併成一次（跟頻道列表一樣）
+const RELOAD_DELAY_MS = 3_000
+// WebSocket 沒連上時，畫面在前景每 60 秒整份重拿一次
 const POLL_MS = 60_000
 
 type Load<T> = { status: "loading" } | { status: "error"; message: string } | { status: "ready"; data: T }
@@ -22,6 +33,7 @@ const LOAD_FAILED = "連不上伺服器，團隊行程沒有載入。"
 /**
  * 主管端的「行程」分頁（docs/superpowers/specs/2026-10-01-itinerary-planning-design.md〈主管端：行程分頁〉）：
  * 預設是團隊總覽，網址帶 rep 就是那位業務的詳細（/manager?view=routes&rep=U01）。只能看、只看今天。
+ * 位置與行程的變化跟著 WebSocket 的通知更新（useLiveLoad）。
  */
 export function RoutesPanel() {
   const [params] = useSearchParams()
@@ -29,36 +41,70 @@ export function RoutesPanel() {
   return rep ? <RepDetail key={rep} userId={rep} /> : <TeamOverview />
 }
 
-/** 畫面在前景時每 60 秒加一，拿來觸發重拿 */
-function usePollTick() {
-  const [tick, setTick] = useState(0)
-  useEffect(() => {
-    const timer = setInterval(() => {
-      if (document.visibilityState === "visible") setTick((n) => n + 1)
-    }, POLL_MS)
-    return () => clearInterval(timer)
-  }, [])
-  return tick
-}
-
-/** 載入一份資料；背景重拿失敗就留著上一份，不把畫面換成錯誤 */
-function useLoad<T>(load: (signal: AbortSignal) => Promise<T>, key: string) {
+/**
+ * 載入一份資料並跟著即時通知更新：看得到的業務位置變了，3 秒後只重拿位置（不重算行程、不問 Google）；
+ * 行程變了或 WebSocket 重連，3 秒後整份重拿。WebSocket 沒連上時改成每 60 秒整份重拿。
+ * 背景重拿失敗就留著上一份，不把畫面換成錯誤。watches 是這個畫面關心哪幾位業務的通知
+ */
+function useLiveLoad<T>(
+  load: (signal: AbortSignal) => Promise<T>,
+  mergeLocations: (data: T, update: TeamLocations) => T,
+  watches: (userId: string) => boolean,
+  key: string
+) {
   const [state, setState] = useState<Load<T>>({ status: "loading" })
   const [attempt, setAttempt] = useState(0)
-  const tick = usePollTick()
+  const connected = useRealtimeConnected()
   useEffect(() => {
     const controller = new AbortController()
-    load(controller.signal)
-      .then((data) => setState({ status: "ready", data }))
-      .catch((error: unknown) => {
-        if (controller.signal.aborted) return
-        const message = error instanceof ApiError && error.status === 404 ? error.message : LOAD_FAILED
-        setState((current) => (current.status === "ready" ? current : { status: "error", message }))
-      })
-    return () => controller.abort()
-    // load 每次 render 都是新的函式；要不要重拿只看 key、按了重新載入、輪詢
+    const full = () =>
+      load(controller.signal)
+        .then((data) => setState({ status: "ready", data }))
+        .catch((error: unknown) => {
+          if (controller.signal.aborted) return
+          const message = error instanceof ApiError && error.status === 404 ? error.message : LOAD_FAILED
+          setState((current) => (current.status === "ready" ? current : { status: "error", message }))
+        })
+    const locationsOnly = () =>
+      getTeamLocations(controller.signal)
+        .then((update) =>
+          setState((current) => (current.status === "ready" ? { status: "ready", data: mergeLocations(current.data, update) } : current))
+        )
+        .catch(() => {
+          // 拿不到就等下一次通知或整份重拿
+        })
+    void full()
+
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let wantFull = false
+    const soon = (fullReload: boolean) => {
+      wantFull ||= fullReload
+      timer ??= setTimeout(() => {
+        timer = undefined
+        const reloadFull = wantFull
+        wantFull = false
+        void (reloadFull ? full() : locationsOnly())
+      }, RELOAD_DELAY_MS)
+    }
+    const off = realtime.subscribe((event) => {
+      if (event.type === "resync") soon(true)
+      else if (event.type === "itinerary" && watches(event.user_id)) soon(true)
+      else if (event.type === "location" && watches(event.user_id)) soon(false)
+    })
+    const poll = connected
+      ? undefined
+      : setInterval(() => {
+          if (document.visibilityState === "visible") void full()
+        }, POLL_MS)
+    return () => {
+      controller.abort()
+      clearTimeout(timer)
+      clearInterval(poll)
+      off()
+    }
+    // load、mergeLocations、watches 每次 render 都是新的函式；要不要重拿只看 key、按了重新載入、連線狀態
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, attempt, tick])
+  }, [key, attempt, connected])
   const retry = () => {
     setState({ status: "loading" })
     setAttempt((n) => n + 1)
@@ -72,7 +118,7 @@ function Loading() {
 
 function TeamOverview() {
   const navigate = useNavigate()
-  const { state, retry } = useLoad<TeamRoutes>(getTeamRoutes, "team")
+  const { state, retry } = useLiveLoad<TeamRoutes>(getTeamRoutes, withLocations, () => true, "team")
   if (state.status === "loading") return <Loading />
   if (state.status === "error") {
     return (
@@ -104,7 +150,7 @@ function TeamOverview() {
 
 function RepDetail({ userId }: { userId: string }) {
   const navigate = useNavigate()
-  const { state, retry } = useLoad<RepRoute>((signal) => getRepRoute(userId, signal), userId)
+  const { state, retry } = useLiveLoad<RepRoute>((signal) => getRepRoute(userId, signal), withLocation, (id) => id === userId, userId)
   if (state.status === "loading") return <Loading />
   if (state.status === "error") {
     return (
@@ -133,6 +179,10 @@ function RepDetail({ userId }: { userId: string }) {
       </div>
       <MapSlot routes={[route]} removed={route.removed} />
       <p className="text-xs tabular-nums">{totalsLine(route)}</p>
+      <p className="flex items-start gap-1.5 text-xs text-primary">
+        <MapPin className="mt-0.5 size-3.5 shrink-0" />
+        {route.location.text}
+      </p>
       <section className="flex flex-col gap-1.5 rounded-2xl border-2 bg-card p-4 shadow-lip">
         <h2 className="text-sm font-semibold">跟系統早上的建議比</h2>
         <Changes route={route} />

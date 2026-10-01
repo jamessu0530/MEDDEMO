@@ -15,6 +15,8 @@ import {
   routeColorVar,
   totalsLine,
   windowLabel,
+  withLocation,
+  withLocations,
 } from "@/lib/team-routes"
 import { repRoute, teamRoutes, teamStop } from "@/lib/team-routes.fixtures"
 
@@ -122,5 +124,25 @@ describe("地圖", () => {
       east: 121.6,
       west: 121.4,
     })
+  })
+})
+
+describe("即時位置", () => {
+  const here = { text: "往第 2 站客戶2途中 · 1 分鐘前", lat: 25.04, lng: 121.55, at: "2026-10-01T03:00:00Z", live: true }
+
+  it("只換掉位置與更新時間，行程不動", () => {
+    const data = teamRoutes()
+    const next = withLocations(data, { updated_at: "11:05", locations: { U01: here } })
+    expect(next.updated_at).toBe("11:05")
+    expect(next.reps[0].location).toEqual(here)
+    expect(next.reps[0].stops).toBe(data.reps[0].stops)
+    // 沒給的業務照舊
+    expect(next.reps[1]).toBe(data.reps[1])
+  })
+
+  it("一位業務的詳細也一樣", () => {
+    const route = repRoute()
+    expect(withLocation(route, { updated_at: "11:05", locations: { U01: here } }).location).toEqual(here)
+    expect(withLocation(route, { updated_at: "11:05", locations: {} })).toBe(route)
   })
 })

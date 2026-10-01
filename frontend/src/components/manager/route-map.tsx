@@ -11,8 +11,10 @@ import {
 } from "@vis.gl/react-google-maps"
 
 import type { MapsConfig, RemovedStop, RepRoute, TeamStop } from "@/api/team-routes"
+import { UserAvatar } from "@/components/user-avatar"
 import { useSkin } from "@/lib/skin"
 import { boundsOf, legPaths, routeColorVar } from "@/lib/team-routes"
+import { cn } from "@/lib/utils"
 
 // 還沒有任何點時框住台灣本島
 const TAIWAN = { north: 25.35, south: 21.85, east: 122.05, west: 119.95 }
@@ -45,7 +47,11 @@ export default function RouteMap({ config, routes, removed = [], onFail }: Props
   const [selected, setSelected] = useState<Selected | null>(null)
   const skin = useSkin()
   const points = [
-    ...routes.flatMap((route) => [...(route.origin ? [route.origin] : []), ...route.stops]),
+    ...routes.flatMap((route) => [
+      ...(route.origin ? [route.origin] : []),
+      ...route.stops,
+      ...(route.location.lat != null && route.location.lng != null ? [{ lat: route.location.lat, lng: route.location.lng }] : []),
+    ]),
     ...removed,
   ]
   const bounds = boundsOf(points) ?? TAIWAN
@@ -160,7 +166,30 @@ function RouteLayer({ route, onSelect }: { route: RepRoute; onSelect: (stop: Tea
           </AdvancedMarker>
         )
       })}
+      <RepMarker route={route} />
     </>
+  )
+}
+
+/** 業務的頭像在他最新的位置；暫停、沒權限或超過 5 分鐘沒更新時變灰。下班時間或今天還沒有位置就不畫 */
+function RepMarker({ route }: { route: RepRoute }) {
+  const { location } = route
+  if (location.lat == null || location.lng == null) return null
+  return (
+    <AdvancedMarker
+      position={{ lat: location.lat, lng: location.lng }}
+      title={`${route.rep.name}：${location.text}`}
+      anchorLeft="-50%"
+      anchorTop="-50%"
+      zIndex={10}
+    >
+      <span
+        className={cn("block rounded-full border-[3px] bg-background shadow-sm", !location.live && "opacity-70 grayscale")}
+        style={{ borderColor: location.live ? `var(${routeColorVar(route.rep.id)})` : "var(--muted-foreground)" }}
+      >
+        <UserAvatar id={route.rep.id} name={route.rep.name} size="sm" />
+      </span>
+    </AdvancedMarker>
   )
 }
 
