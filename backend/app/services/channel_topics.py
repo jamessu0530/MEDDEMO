@@ -52,13 +52,14 @@ def clean_name(raw: str) -> str:
 def _save(session: Session, channel: Channel, name: str, unit_id: str) -> None:
     """寫進去；同一個單位已經有同名的，資料庫擋下來時換成 Duplicate。
 
-    用整個 session.rollback()，不是 begin_nested() 的 SAVEPOINT：SAVEPOINT 救得回 SQL，
-    救不回一個「本來就在 session 裡、剛被改過」的物件（update 改名、封存都是這種）——
-    flush 失敗後它還留著沒寫成功的狀態，同一個 session 再動一下（甚至只是查別的表）
-    就會被 SQLAlchemy 卡住重丟同一個例外。新建的物件（create 開新頻道）不會踩到這個問題，
-    但兩條路共用一個存檔函式，就都走比較保險的整個 rollback。
-    unit_id 另外傳進來，不是改完 rollback 之後才去讀 channel.unit_id：
-    rollback 之後那個物件的欄位可能又要重新查資料庫，傳值進來才不會又踩進同一個坑。"""
+    用整個 session.rollback()，不是 begin_nested() 的 SAVEPOINT：begin_nested() 會先把 session 裡
+    還沒寫進去的變動 flush 掉，才送出 SAVEPOINT。update 改名、封存是在進到這裡之前就改了物件的欄位，
+    那個 UPDATE 撞到唯一索引時是在 SAVEPOINT 建立之前失敗的（例外從 begin_nested() 本身丟出來），
+    沒有 SAVEPOINT 可以退，外層的交易已經壞了，同一個 session 再查什麼都會被擋（PendingRollbackError）。
+    新建的物件（create 開新頻道）在 SAVEPOINT 裡面才 add、flush，不會踩到這個問題，
+    但兩條路共用一個存檔函式，就都走整個 rollback。
+    unit_id 另外傳進來，不是 rollback 之後才去讀 channel.unit_id：rollback 之後 session 裡的物件都過期了，
+    再讀欄位要重新查一次資料庫，傳值進來就不必。"""
     session.add(channel)
     try:
         session.flush()
