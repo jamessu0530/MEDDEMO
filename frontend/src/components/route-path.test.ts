@@ -22,6 +22,11 @@ function stop(id: string, status: RouteStop["status"], extra: Partial<RouteStop>
     late_minutes: 0,
     travel_minutes: 10,
     travel_km: 3.2,
+    window_kind: null,
+    window_time: null,
+    note: null,
+    locked: false,
+    habit_ids: [],
     ...extra,
   }
 }
