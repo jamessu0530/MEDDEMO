@@ -5564,7 +5564,98 @@ EOF
 ```
 
 ---
-### Task 10: 文件、整體驗證、實機截圖
+### Task 10: IT 重置示範業務的行程時，排序習慣也回到一開始那三條
+
+（`main` 2026-10-01 的決定：評審代理示範業務時加的、停用的、刪掉的習慣，不能一直累積到下一批評審。）
+
+**Files:**
+- Modify: `backend/app/services/itinerary.py`（`reset_today`）
+- Modify: `frontend/src/pages/admin.tsx`（說明、確認、完成的三句話）
+- Test: `backend/tests/test_itinerary_api.py`（`test_it_resets_the_demo_reps_itinerary`）
+
+**Interfaces:**
+- Consumes: Task 2 的 `route_habits.reset_demo(session, user_id)`。
+- Produces: `POST /api/admin/demo-itinerary/reset` 之後，示範業務的排序習慣是 `DEMO_HABITS` 那三條、都啟用。
+
+- [ ] **Step 1: 寫失敗的測試**
+
+`backend/tests/test_itinerary_api.py` 的 `test_it_resets_the_demo_reps_itinerary` 裡，`assert feedback.status_code == 200, feedback.text` 下面加：
+
+```python
+    # 評審加的、停用的習慣也要清掉
+    added = client.post("/api/route-habits", json={"kind": "first", "subject": {"by": "area", "value": "板橋"}}, headers=auth())
+    assert added.status_code == 201, added.text
+    first = client.get("/api/route-habits", headers=auth()).json()["habits"][0]["id"]
+    assert client.patch(f"/api/route-habits/{first}", json={"active": False}, headers=auth()).status_code == 200
+```
+
+`rebuilt = today(client, auth)` 那兩行之後加：
+
+```python
+    habits = client.get("/api/route-habits", headers=auth()).json()["habits"]
+    assert [(h["text"], h["active"]) for h in habits] == [
+        ("康泰連鎖藥局的店排在診所前面", True),
+        ("星期三 敦南內科診所 · 大安 排最後", True),
+        ("杏林診所 · 大安 都 11:00 以前到", True),
+    ]
+```
+
+- [ ] **Step 2: 跑測試，確認失敗**
+
+Run: `TEST_DB_NAME=meddemo_test_edit TEST_REDIS_URL=redis://127.0.0.1:6379/8 uv run --project backend pytest backend/tests/test_itinerary_api.py -q -k resets`
+Expected: FAIL（重置之後還是四條，第一條停用）。
+
+- [ ] **Step 3: 重置時重建習慣**
+
+`backend/app/services/itinerary.py` 的 `reset_today` 換成：
+
+```python
+def reset_today(session: Session, user_id: str) -> None:
+    """IT 用：刪掉這位業務今天的行程（站與先後跟著 ON DELETE CASCADE 一起刪）、所有的暫緩與訊號權重，
+    排序習慣也回到一開始那三條（route_habits.DEMO_HABITS），下次讀取就照模型的建議重新建一份。
+
+    示範業務的行程給所有用第三方登入的評審共用：系統日期固定在決賽日不會換天，行程第一次建好之後
+    就一直是存著的那份，按過的暫緩、調整過的權重、加的或停用的習慣也會一直留著、累積影響之後的建議。
+    換一批評審之前，IT 用這個清掉，回到當天早上模型原本的建議。
+    """
+    today = customer_profile.app_today(session)
+    session.execute(delete(Itinerary).where(Itinerary.user_id == user_id, Itinerary.date == today))
+    session.execute(delete(RouteSnooze).where(RouteSnooze.user_id == user_id))
+    session.execute(delete(RouteSignalWeight).where(RouteSignalWeight.user_id == user_id))
+    route_habits.reset_demo(session, user_id)
+```
+
+- [ ] **Step 4: 組織管理頁的說明**
+
+`frontend/src/pages/admin.tsx`：
+
+1. 說明那一段 `評審用第三方登入看的都是示範業務的行程，大家共用一份：按過的暫緩、插入下一站、加進去的站都會留著。換一批評審前重置，回到系統早上的建議。` 換成
+   `評審用第三方登入看的都是示範業務的行程，大家共用一份：按過的暫緩、插入下一站、加進去的站、改過的排序習慣都會留著。換一批評審前重置，回到系統早上的建議與一開始的排序習慣。`
+2. 確認那一句 `確定要重置嗎？大家正在看的行程會回到系統的建議。` 換成 `確定要重置嗎？大家正在看的行程與排序習慣會回到系統的建議。`
+3. 完成的提示 `` `已重置${rep_name}今天的行程，下次打開首頁會照系統的建議重新排。` `` 換成 `` `已重置${rep_name}今天的行程與排序習慣，下次打開首頁會照系統的建議重新排。` ``
+
+按鈕上的字（「重置示範業務今天的行程」）不變。
+
+- [ ] **Step 5: 跑測試與檢查**
+
+Run: `TEST_DB_NAME=meddemo_test_edit TEST_REDIS_URL=redis://127.0.0.1:6379/8 uv run --project backend pytest backend/tests/test_itinerary_api.py backend/tests/test_admin.py -q`，再 `cd frontend && npm run typecheck && npm run lint`
+Expected: 全部通過。
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add backend/app/services/itinerary.py backend/tests/test_itinerary_api.py frontend/src/pages/admin.tsx
+git commit -m "$(cat <<'EOF'
+IT's reset of the demo rep's day also restores the three seeded habits
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+EOF
+)"
+```
+
+---
+
+### Task 11: 文件、整體驗證、實機截圖
 
 **Files:**
 - Modify: `README.md`（〈今日路線（首頁）〉「問答答案的『排入今天的路線』」那一點之前加一段；程式結構表 `itinerary.py` 那一列之後加兩列）
@@ -5585,7 +5676,7 @@ EOF
   - 示範業務林昱辰一開始有三條（康泰連鎖藥局的店排在診所前面、星期三 敦南內科診所 · 大安 排最後、杏林診所 · 大安 都 11:00 以前到）。
 ```
 
-（若 `main` 對「IT 重置也要重建習慣」回答「要」，〈行程存在伺服器〉那一點裡「IT 在組織管理頁按『重置示範業務今天的行程』，回到系統早上的建議」後面補「，示範業務的排序習慣也回到一開始那三條」。）
+〈行程存在伺服器〉那一點裡「IT 在組織管理頁按『重置示範業務今天的行程』，回到系統早上的建議」後面補「，示範業務的排序習慣也回到一開始那三條」。
 
 程式結構表 `backend/app/services/itinerary.py   今天的行程：存檔、版本、三顆鈕、加站` 換成並加一列：
 
@@ -5611,6 +5702,7 @@ frontend/src/lib/itinerary.ts       調整清單的純函式：草稿、換位�
    ```
 2. 〈示範資料〉第一點的「`安和內科 · 信義 排最後`（每個星期三，自己新增的）」改成「`敦南內科診所 · 大安 排最後`（每個星期三，自己新增的；安和內科診所 · 信義是王冠宇的客戶）」。
 3. 〈違反規則〉一節最後加一句：「沒處理就按『照這樣存』：以今天排的為準，違反的習慣記成今天不套用，違反的今天的先後拿掉。」
+4. 〈已定案的決定〉第 17 點「IT 按下去刪掉這份行程與所有暫緩、訊號權重」改成「IT 按下去刪掉這份行程與所有暫緩、訊號權重，示範業務的排序習慣也回到一開始那三條」；〈API〉表格 `POST /api/admin/demo-itinerary/reset` 那一列的說明同樣補上「、排序習慣回到一開始那三條」。
 
 - [ ] **Step 3: 全部重跑**
 
