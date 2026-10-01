@@ -1,19 +1,18 @@
 import { useEffect, useState } from "react"
-import { Bell, BookOpenText, Check, ChevronRight, CircleHelp, FileText, ListOrdered, Loader2, TriangleAlert } from "lucide-react"
+import { Bell, BookOpenText, ChevronRight, FileText, Flag, Loader2, TriangleAlert } from "lucide-react"
 import { Link, useNavigate } from "react-router"
 
-import { signOutSession } from "@/api/auth"
 import { ApiError } from "@/api/client"
-import { getTodayRoute, SIGNAL_LABEL, type RouteSignal, type RouteStop, type TodayRoute } from "@/api/route"
+import { getTodayRoute, type TodayRoute } from "@/api/route"
 import { BottomNav } from "@/components/bottom-nav"
 import { Mascot } from "@/components/mascot"
 import { Notice } from "@/components/notice"
+import { RoutePath } from "@/components/route-path"
 import { SkinToggle } from "@/components/skin-toggle"
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import { useAuth } from "@/lib/auth"
-import { formatDate } from "@/lib/format"
+import { formatDate, formatDayLabel } from "@/lib/format"
 import { useUnseenReplies } from "@/lib/manager-replies"
-import { openGuide } from "@/lib/onboarding"
 import { markMisjudged, pinCustomer, readFeedback, snoozeCustomer } from "@/lib/route-feedback"
 import { cn } from "@/lib/utils"
 import { FirstWeekEntry } from "@/pages/first-week"
@@ -25,14 +24,10 @@ type LoadState =
   | { status: "denied"; message: string }
   | { status: "ready"; route: TodayRoute; cached: boolean }
 
-const STATUS_LABEL: Record<RouteStop["status"], string> = {
-  done: "已完成",
-  next: "下一站",
-  todo: "待拜訪",
-}
-
 /**
  * 今日路線（首頁）：一天要跑哪幾家、順序、以及每一家為什麼被排進來。
+ * 版面照 Duolingo 的主畫面（docs/superpowers/specs/2026-10-01-duolingo-home-design.md）：
+ * 頂部是圖示加數字的狀態列和紫色橫幅，路線是一顆顆蛇行往下的圓鈕（components/route-path.tsx）。
  * 最上面是「需立即處理」，業務按三顆鈕給回饋（插入下一站／暫緩／誤判），
  * 回饋只存在這支手機（lib/route-feedback.ts），每次要路線時一起送出去重排。
  */
@@ -66,7 +61,6 @@ export function TodayPage() {
 
   const route = state.status === "ready" ? state.route : null
   const urgent = route?.urgent ?? null
-  const percent = route && route.total > 0 ? Math.round((route.done / route.total) * 100) : 0
 
   // 重新跟後端要一次路線；期間畫面仍顯示目前這份，只在上面標「重新排今天的順序…」
   function reload() {
@@ -98,11 +92,11 @@ export function TodayPage() {
 
   return (
     <div className="flex min-h-svh flex-col">
-      <header className="sticky top-0 z-10 border-b bg-background/95 px-4 pt-2 pb-3 backdrop-blur">
+      <header className="sticky top-0 z-10 bg-background/95 px-4 pt-2 pb-3 backdrop-blur">
         <div className="-mr-2 flex items-center justify-between gap-2">
-          {/* 點自己的名字進帳號設定：改密碼、登出 */}
+          {/* 點自己的名字進帳號設定：改密碼、登出、使用說明 */}
           <Link to="/settings" className="flex h-11 min-w-0 items-center gap-1 text-xs text-muted-foreground">
-            {/* 示範說明另起一行：標頭右邊有五顆圖示，接在名字後面的話手機上整句會被截掉 */}
+            {/* 示範說明另起一行：接在名字後面的話手機上整句會被截掉 */}
             <span className="flex min-w-0 flex-col leading-tight">
               <span className="truncate">
                 {user.region} · {user.name}
@@ -111,23 +105,24 @@ export function TodayPage() {
             </span>
             <ChevronRight className="size-3.5 shrink-0" />
           </Link>
+          {/* 像 Duolingo 的狀態列：圖示加數字。進度只是顯示，其他三顆可以按 */}
           <div className="flex shrink-0 items-center">
-            <SkinToggle className="size-10" />
-            <button
-              type="button"
-              aria-label="使用說明"
-              onClick={openGuide}
-              className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
-            >
-              <CircleHelp className="size-5" />
-            </button>
-            {/* 方法卡：主管教的做法，出門前或進門前翻一下 */}
+            {/* 今天沒排拜訪就不顯示 0/0 */}
+            {route && route.total > 0 && (
+              <span className="flex h-10 items-center gap-1 px-1.5 text-sm font-semibold tabular-nums">
+                <Flag className="size-5 fill-primary text-primary" />
+                <span className="sr-only">今日進度</span>
+                {route.done}/{route.total}
+              </span>
+            )}
+            {/* FR-8.4：主管回覆了，顯示還沒看的則數 */}
             <Link
-              to="/methods"
-              aria-label="方法卡"
-              className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
+              to="/escalations"
+              aria-label={unseen > 0 ? `主管回覆 ${unseen} 則，查看` : "轉給主管的提問"}
+              className="flex h-10 min-w-10 items-center justify-center gap-1 rounded-lg px-1.5 hover:bg-muted"
             >
-              <BookOpenText className="size-5" />
+              <Bell className={cn("size-5", unseen > 0 ? "fill-warning text-warning" : "text-muted-foreground")} />
+              {unseen > 0 && <span className="text-sm font-semibold text-warning tabular-nums">{unseen}</span>}
             </Link>
             <Link
               to="/oa/forms"
@@ -136,45 +131,32 @@ export function TodayPage() {
             >
               <FileText className="size-5" />
             </Link>
-            {/* FR-8.4：主管回覆了，首頁顯示還沒看的則數 */}
-            <Link
-              to="/escalations"
-              aria-label={unseen > 0 ? `主管回覆 ${unseen} 則，查看` : "轉給主管的提問"}
-              className="relative flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
-            >
-              <Bell className="size-5" />
-              {unseen > 0 && (
-                <span className="absolute top-1 right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-white">
-                  {unseen}
-                </span>
-              )}
-            </Link>
+            <SkinToggle className="size-10" />
           </div>
         </div>
-        <div className="-mr-2 flex items-center justify-between gap-2">
-          <h1 className="truncate text-lg font-semibold">今日路線{route ? ` · ${formatDate(route.date)}` : ""}</h1>
-          <button
-            type="button"
-            onClick={() => void signOutSession()}
-            className="flex h-11 shrink-0 items-center rounded-lg px-2 text-xs text-muted-foreground hover:bg-muted"
+        {/* 像 Duolingo 的單元橫幅；右邊的「指南」換成方法卡：主管教的做法，出門前或進門前翻一下 */}
+        <div className="mt-1 flex items-stretch overflow-hidden rounded-2xl bg-primary text-primary-foreground shadow-lip-primary">
+          <div className="min-w-0 flex-1 px-4 py-2.5">
+            {route && (
+              <p className="text-xs font-semibold opacity-85">
+                {formatDayLabel(route.date)}
+                {route.total > 0 && ` · ${route.total} 站`}
+              </p>
+            )}
+            <h1 className="text-lg leading-snug font-semibold">今日路線</h1>
+          </div>
+          <Link
+            to="/methods"
+            className="flex w-16 shrink-0 flex-col items-center justify-center gap-0.5 border-l-2 border-black/15 text-[11px] font-semibold active:bg-black/10"
           >
-            登出
-          </button>
+            <BookOpenText className="size-5" />
+            方法卡
+          </Link>
         </div>
-        {route && (
-          <div className="mt-2 flex items-center gap-3">
-            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted" aria-hidden>
-              <div className="h-full rounded-full bg-primary" style={{ width: `${percent}%` }} />
-            </div>
-            <span className="shrink-0 text-xs text-muted-foreground">
-              已完成 {route.done} / {route.total}
-            </span>
-          </div>
-        )}
       </header>
 
-      {/* 底下除了底部列（64px），右下角還浮著熊熊滾（再高 76px），留到 160px 最後一站才不會被熊蓋住 */}
-      <main className="flex-1 px-4 pt-3 pb-40">
+      {/* 底部分頁列約 64px，最後的終點要露出來 */}
+      <main className="flex-1 px-4 pt-3 pb-28">
         {/* 新人才有的入口卡；自己問自己的資料，載不到就不顯示，跟下面的路線互不影響 */}
         <FirstWeekEntry userId={user.id} />
         {state.status === "ready" && state.cached && (
@@ -194,7 +176,12 @@ export function TodayPage() {
             重新排今天的順序…
           </p>
         )}
-        {state.status === "loading" && <p className="py-10 text-center text-sm text-muted-foreground">載入今日路線中…</p>}
+        {state.status === "loading" && (
+          <div className="flex flex-col items-center gap-2 py-10">
+            <Mascot state="wait" size={96} />
+            <p className="text-sm text-muted-foreground">載入今日路線中…</p>
+          </div>
+        )}
         {state.status === "denied" && (
           <Notice
             text={state.message}
@@ -211,138 +198,47 @@ export function TodayPage() {
         )}
 
         {route && urgent && (
-          <section className="flex flex-col gap-2">
-            <div className="flex items-center gap-1.5 text-destructive">
-              <TriangleAlert className="size-3.5" />
-              <span className="text-xs font-semibold tracking-wide">需立即處理</span>
+          <article className="mb-2 flex flex-col gap-2 rounded-2xl border-2 border-destructive/30 bg-destructive/10 p-4 shadow-lip-destructive-soft">
+            <span className="flex items-center gap-1 self-start rounded-md bg-destructive px-2 py-1 text-[11px] font-semibold text-white">
+              <TriangleAlert className="size-3" />
+              需立即處理 · {urgent.headline}
+            </span>
+            <Link
+              to={`/customers/${urgent.customer_id}`}
+              className="flex min-h-11 items-center text-base leading-snug font-semibold"
+            >
+              {urgent.customer_name}
+            </Link>
+            <p className="text-xs leading-relaxed">{urgent.detail}</p>
+            {urgent.note && <p className="text-xs leading-relaxed text-muted-foreground">{urgent.note}</p>}
+            <div className="mt-1 flex gap-2">
+              <Button variant="danger" className="h-11 flex-1" disabled={busy} onClick={pin}>
+                插入下一站
+              </Button>
+              <Button variant="outline" className="h-11 w-16 shrink-0" disabled={busy} onClick={snooze}>
+                暫緩
+              </Button>
+              <Button variant="outline" className="h-11 w-16 shrink-0" disabled={busy} onClick={misjudge}>
+                誤判
+              </Button>
             </div>
-            <article className="flex flex-col gap-2 rounded-2xl border border-destructive/30 bg-destructive/10 p-4">
-              <span className="self-start rounded-md bg-destructive px-2 py-1 text-[11px] text-white">{urgent.headline}</span>
-              <Link
-                to={`/customers/${urgent.customer_id}`}
-                className="flex min-h-11 items-center text-[15px] leading-snug font-semibold"
-              >
-                {urgent.customer_name}
-              </Link>
-              <p className="text-xs leading-relaxed">{urgent.detail}</p>
-              {urgent.note && <p className="text-xs leading-relaxed text-muted-foreground">{urgent.note}</p>}
-              <div className="mt-1 flex gap-2">
-                <Button variant="ghost" className="h-11 flex-1 bg-destructive text-white hover:bg-destructive/90 hover:text-white" disabled={busy} onClick={pin}>
-                  插入下一站
-                </Button>
-                <Button variant="outline" className="h-11 w-16 shrink-0" disabled={busy} onClick={snooze}>
-                  暫緩
-                </Button>
-                <Button variant="outline" className="h-11 w-16 shrink-0" disabled={busy} onClick={misjudge}>
-                  誤判
-                </Button>
-              </div>
-            </article>
-          </section>
+          </article>
         )}
 
-        {route && (
-          <section className={cn("flex flex-col gap-2", urgent && "mt-4")}>
-            <div className="flex items-center gap-1.5 text-muted-foreground">
-              <ListOrdered className="size-3.5" />
-              <span className="text-xs font-semibold tracking-wide">今日順序</span>
+        {route &&
+          (route.stops.length === 0 ? (
+            <div className="flex flex-col items-center gap-3 py-8 text-center">
+              <Mascot state="think" size={96} />
+              <p className="text-sm text-muted-foreground">今天沒有排定的拜訪。</p>
+              <Link to="/customers" className={cn(buttonVariants(), "h-11 px-6")}>
+                自己挑一家
+              </Link>
             </div>
-            {route.stops.length === 0 ? (
-              <Notice
-                text="今天沒有排定的拜訪。"
-                action={{ label: "自己挑一家", onClick: () => navigate("/customers") }}
-              />
-            ) : (
-              route.stops.map((stop, index) => <StopRow key={stop.customer_id} stop={stop} index={index} />)
-            )}
-          </section>
-        )}
+          ) : (
+            <RoutePath stops={route.stops} />
+          ))}
       </main>
-      <AskMascot />
       <BottomNav />
     </div>
   )
-}
-
-/** 熊熊滾浮在右下角、底部分頁列上方，點了進問答頁。跟底部列一樣是浮起來的圓角卡片 */
-function AskMascot() {
-  return (
-    // 外層不吃點擊，跟底部列一樣：只有熊那一顆可以按，旁邊露出來的路線照樣點得到
-    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-20 mx-auto flex max-w-md justify-end px-4 pb-[calc(4.75rem+env(safe-area-inset-bottom))]">
-      <Link
-        to="/ask"
-        aria-label="問熊熊滾（問答）"
-        className="pointer-events-auto flex size-16 items-center justify-center rounded-full border bg-card shadow-lg shadow-black/10 transition-transform active:scale-95 motion-reduce:transition-none dark:shadow-black/50"
-      >
-        <Mascot size={62} />
-      </Link>
-    </div>
-  )
-}
-
-/** 今日的一站；點進去是客戶檔案（進門前三分鐘） */
-function StopRow({ stop, index }: { stop: RouteStop; index: number }) {
-  const done = stop.status === "done"
-  const next = stop.status === "next"
-
-  return (
-    <Link
-      to={`/customers/${stop.customer_id}`}
-      className={cn(
-        "flex flex-col gap-2.5 rounded-2xl border bg-card p-3 active:bg-muted",
-        next && "border-primary/40",
-        done && "opacity-60"
-      )}
-    >
-      <div className="flex items-center gap-3">
-        <span
-          className={cn(
-            "flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
-            done && "bg-primary/10 text-primary",
-            next && "bg-primary text-primary-foreground",
-            !done && !next && "bg-secondary text-secondary-foreground"
-          )}
-        >
-          {done ? <Check className="size-4" /> : index + 1}
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className={cn("truncate leading-snug font-medium", done && "line-through")}>{stop.customer_name}</p>
-          <p className="mt-0.5 truncate text-xs text-muted-foreground">
-            {done && `${stop.planned_time} 完成${stop.visit_id ? " · 已回寫" : ""}`}
-            {next && `${stop.planned_time} · 下一站`}
-            {!done && !next && (
-              <>
-                {stop.planned_time} · <SignalLabel signal={stop.signal} /> · {stop.reason}
-              </>
-            )}
-          </p>
-        </div>
-        <span
-          className={cn(
-            "shrink-0 rounded-md px-2 py-1 text-[11px]",
-            next ? "bg-primary/10 text-primary" : "bg-secondary text-secondary-foreground"
-          )}
-        >
-          {STATUS_LABEL[stop.status]}
-        </span>
-      </div>
-      {/* 下一站多寫一行為什麼排這家，並直接給進客戶檔案的入口 */}
-      {next && (
-        <>
-          <p className="text-xs leading-relaxed text-foreground/80">
-            <SignalLabel signal={stop.signal} /> · {stop.reason}
-          </p>
-          <span className="flex h-11 items-center justify-center rounded-lg bg-primary text-sm font-medium text-primary-foreground">
-            開啟拜訪準備
-          </span>
-        </>
-      )}
-    </Link>
-  )
-}
-
-/** 排進來的理由；商機是好消息，用綠色標出來，跟承諾逾期、帳款這些警示分開 */
-function SignalLabel({ signal }: { signal: RouteSignal }) {
-  if (signal !== "opportunity") return <>{SIGNAL_LABEL[signal]}</>
-  return <span className="font-medium text-success">{SIGNAL_LABEL[signal]}</span>
 }

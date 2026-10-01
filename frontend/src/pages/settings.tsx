@@ -28,6 +28,7 @@ import { Label } from "@/components/ui/label"
 import { changeSkin, playInk } from "@/ink/ink"
 import { canManage, homePath, refreshUser, signIn, useAuth, type AuthUser } from "@/lib/auth"
 import { PROVIDER_LABEL, useProviders, type OAuthProvider } from "@/lib/oauth"
+import { openGuide } from "@/lib/onboarding"
 import { useSkin, type Skin } from "@/lib/skin"
 import { cn } from "@/lib/utils"
 
@@ -395,7 +396,7 @@ function DeleteAccount() {
   )
 }
 
-/** 帳號設定：看自己的身分、綁定第三方登入、改密碼、登出。業務從今日路線標頭的姓名進來，主管與 IT 從各自首頁的標頭進來 */
+/** 帳號設定：看自己的身分、綁定第三方登入、改密碼、登出、再看一次使用說明。業務從今日路線標頭的姓名進來，主管與 IT 從各自首頁的標頭進來 */
 export function SettingsPage() {
   const session = useAuth()
   const user = session?.user
@@ -468,6 +469,18 @@ export function SettingsPage() {
             <span className="text-sm font-medium">新人第一週</span>
             <ChevronRight className="size-4 text-muted-foreground" />
           </Link>
+        )}
+
+        {user.role === "sales" && (
+          // 首頁的頁首放不下了，使用說明從這裡（和客戶清單的頁首）再打開；只講業務的操作，主管端也不顯示導覽
+          <button
+            type="button"
+            onClick={openGuide}
+            className="flex min-h-14 items-center justify-between rounded-2xl border-2 bg-card px-4 text-left shadow-lip press"
+          >
+            <span className="text-sm font-medium">看使用說明</span>
+            <ChevronRight className="size-4 text-muted-foreground" />
+          </button>
         )}
 
         <SkinPicker />
