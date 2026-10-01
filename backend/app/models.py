@@ -709,6 +709,9 @@ class ChannelMessage(Base):
     kind: Mapped[str] = mapped_column(server_default="user")
     body: Mapped[str] = mapped_column(Text)
     created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+    # IT 刪掉的訊息：內容換成固定的一句、附件整列刪掉，這一則本身留著，編號與已讀才不會亂
+    deleted_at: Mapped[dt.datetime | None]
+    deleted_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id", ondelete="SET NULL"))
 
 
 class ChannelRead(Base):
@@ -719,6 +722,62 @@ class ChannelRead(Base):
     user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), primary_key=True)
     channel_id: Mapped[int] = mapped_column(ForeignKey("channel.id", ondelete="CASCADE"), primary_key=True)
     last_read_id: Mapped[int] = mapped_column(BigInteger)
+
+
+ATTACHMENT_KINDS = ("image", "pdf")
+# pending：剛上傳，還沒請 AI 寫說明與算向量；ready：處理完（沒設定 AI 時也算處理完）；failed：重試後還是失敗
+ATTACHMENT_STATUSES = ("pending", "ready", "failed")
+
+
+class Attachment(Base):
+    """頻道訊息或提問附的照片與 PDF（docs/superpowers/specs/2026-10-01-attachments-design.md）。
+    存在資料庫裡，跟 VisitAudio 一樣：背景工作和 API 不必共用磁碟，刪訊息、刪帳號靠 CASCADE 一起清掉。"""
+
+    __tablename__ = "attachment"
+    __table_args__ = (
+        one_of("kind", ATTACHMENT_KINDS, "kind"),
+        one_of("status", ATTACHMENT_STATUSES, "status"),
+        # 不是附在訊息上就是附在提問上
+        CheckConstraint("(message_id IS NULL) <> (ask_id IS NULL)", name="owner"),
+        Index("ix_attachment_search_tokens", "search_tokens", postgresql_using="gin"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    message_id: Mapped[int | None] = mapped_column(ForeignKey("channel_message.id", ondelete="CASCADE"), index=True)
+    ask_id: Mapped[str | None] = mapped_column(ForeignKey("ask_record.id", ondelete="CASCADE"), index=True)
+    # 實際登入的帳號（自建帳號記自己，不是代理的示範業務），刪帳號時一起刪
+    uploader_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"))
+    kind: Mapped[str]
+    filename: Mapped[str]
+    mime_type: Mapped[str]
+    size_bytes: Mapped[int]
+    # 檔案本身與縮圖：列清單時用不到，延後到真的要送檔案時才讀
+    content: Mapped[bytes] = mapped_column(LargeBinary, deferred=True)
+    # 長邊 480px 的 JPEG；PDF 沒有
+    thumbnail: Mapped[bytes | None] = mapped_column(LargeBinary, deferred=True)
+    width: Mapped[int | None]
+    height: Mapped[int | None]
+    page_count: Mapped[int | None]
+    # AI 寫的說明（是什麼、圖上看得到的字）；還沒處理或處理失敗是 NULL
+    caption: Mapped[str | None] = mapped_column(Text)
+    # 關鍵字檢索用：檔名、說明、所屬訊息的文字（提問的附件用問題），切法同知識庫
+    search_tokens: Mapped[Any] = mapped_column(TSVECTOR)
+    status: Mapped[str] = mapped_column(server_default="pending")
+    created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+
+
+class AttachmentVector(Base):
+    """附件的向量（gemini-embedding-2）。圖片一張一列；PDF 每 6 頁一列（embedding-2 一次最多 6 頁）。"""
+
+    __tablename__ = "attachment_vector"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    attachment_id: Mapped[int] = mapped_column(ForeignKey("attachment.id", ondelete="CASCADE"), index=True)
+    # PDF 這一段的頁數（1 起算）；圖片是 NULL
+    page_from: Mapped[int | None]
+    page_to: Mapped[int | None]
+    # 不固定維度、不建近似索引，理由同 DocumentChunk.embedding
+    embedding: Mapped[Any] = mapped_column(Vector())
 
 
 class SapEmployee(Base):

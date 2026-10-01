@@ -1,4 +1,5 @@
-import { jsonBody, request } from "@/api/client"
+import type { Attachment } from "@/api/attachments"
+import { jsonBody, request, upload } from "@/api/client"
 
 // national 全國；region 整區；team 一位主管帶的小組；place 地點（縣市，台北市到行政區）；customer 一家客戶的討論串
 export type ChannelKind = "national" | "region" | "team" | "place" | "customer"
@@ -28,6 +29,9 @@ export type ChannelMessage = {
   body: string
   created_at: string
   mine: boolean
+  attachments: Attachment[]
+  // IT 刪掉的訊息：內容已經換成固定的一句
+  deleted: boolean
 }
 
 /** 看得到的頻道，不含客戶討論串；後端已經依全國 → 各區排好 */
@@ -53,8 +57,19 @@ export function listMessages(id: number, params: { after?: number; before?: numb
   return request<ChannelMessage[]>(`/api/channels/${id}/messages${suffix}`, { signal })
 }
 
-export function postMessage(id: number, body: string) {
-  return request<ChannelMessage>(`/api/channels/${id}/messages`, jsonBody("POST", { body }))
+/** 發言。有附檔案就用 multipart 上傳並回報進度，沒有就照舊送 JSON */
+export function postMessage(id: number, body: string, files: File[] = [], onProgress?: (fraction: number) => void) {
+  const path = `/api/channels/${id}/messages`
+  if (!files.length) return request<ChannelMessage>(path, jsonBody("POST", { body }))
+  const form = new FormData()
+  form.append("body", body)
+  for (const file of files) form.append("files", file, file.name)
+  return upload<ChannelMessage>(path, form, onProgress)
+}
+
+/** IT 刪訊息：附件刪掉、內容換成固定的一句 */
+export function deleteMessage(messageId: number) {
+  return request<void>(`/api/channels/messages/${messageId}`, { method: "DELETE" })
 }
 
 export function markRead(id: number, messageId: number) {

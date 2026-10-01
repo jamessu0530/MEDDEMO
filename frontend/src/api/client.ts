@@ -44,3 +44,28 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export function jsonBody(method: string, body: unknown): RequestInit {
   return { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
 }
+
+/** 上傳檔案（FormData）並回報進度。fetch 拿不到上傳進度，所以用 XMLHttpRequest；錯誤處理跟 request 一樣 */
+export function upload<T>(path: string, form: FormData, onProgress?: (fraction: number) => void): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open("POST", path)
+    withAuth().forEach((value, key) => xhr.setRequestHeader(key, value))
+    xhr.responseType = "json"
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress?.(event.loaded / event.total)
+    }
+    xhr.onerror = () => reject(new ApiError("連不上伺服器，請再試一次", 0))
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(xhr.response as T)
+        return
+      }
+      const message = describe(xhr.response?.detail, xhr.status)
+      if (xhr.status === 401) signOut(message)
+      reject(new ApiError(message, xhr.status))
+    }
+    xhr.send(form)
+  })
+}
+

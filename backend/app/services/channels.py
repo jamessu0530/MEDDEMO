@@ -12,12 +12,12 @@ from __future__ import annotations
 import datetime as dt
 from dataclasses import dataclass
 
-from sqlalchemy import Row, func, select
+from sqlalchemy import Row, delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models import AppUser, Channel, ChannelMessage, ChannelRead, Customer, OrgUnit, Place
+from app.models import AppUser, Attachment, Channel, ChannelMessage, ChannelRead, Customer, OrgUnit, Place
 from app.services.scope import SELF, SHARING_LEVEL, Scope
 
 # 頻道列表的區順序，跟組織管理頁一樣由北到南
@@ -32,6 +32,7 @@ LEVEL = {
 }
 # 一次給幾則訊息：打開頻道先給最新的一頁，往上捲再要前一頁
 MESSAGE_PAGE = 50
+DELETED_BODY = "（這則訊息已被 IT 刪除）"
 
 
 class NotFound(Exception):
@@ -208,15 +209,34 @@ def messages(
 
 
 def post(session: Session, user: AppUser, info: ChannelInfo, body: str) -> ChannelMessage:
-    """發言。記在實際登入的帳號上（自建帳號用自己的名字，不是代理的示範業務）；自己發的就算讀過了。"""
+    """發言。記在實際登入的帳號上（自建帳號用自己的名字，不是代理的示範業務）；自己發的就算讀過了。
+    附件由呼叫端接著寫（services/attachments.add），跟這則訊息在同一個交易裡。"""
     if info.archived:
         raise Archived
+    # 同一個頻道的寫入排隊到交易結束：編號的先後就等於寫入完成的先後。
+    # 不然後拿到編號的先寫完，畫面輪詢「這則之後的新訊息」會跳過還沒寫完、編號比較小的那則
+    session.execute(select(Channel.id).where(Channel.id == info.id).with_for_update())
     message = ChannelMessage(channel_id=info.id, author_id=user.id, kind="user", body=body)
     session.add(message)
     session.flush()
     mark_read(session, user, info.id, message.id)
     session.refresh(message)
     return message
+
+
+def delete_message(session: Session, it_user: AppUser, message_id: int) -> None:
+    """IT 刪訊息：附件整列刪掉（向量跟著 CASCADE），內容換成固定的一句。
+    這一則本身留著：編號、已讀位置不會亂，從它整理出來的記憶也還追得到來源。刪過的再刪一次不做事。"""
+    message = session.get(ChannelMessage, message_id)
+    if message is None:
+        raise NotFound
+    if message.deleted_at is not None:
+        return
+    session.execute(delete(Attachment).where(Attachment.message_id == message.id))
+    message.body = DELETED_BODY
+    message.deleted_at = func.now()
+    message.deleted_by = it_user.id
+    session.flush()
 
 
 def mark_read(session: Session, user: AppUser, channel_id: int, message_id: int) -> None:

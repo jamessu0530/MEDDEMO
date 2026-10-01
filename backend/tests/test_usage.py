@@ -70,25 +70,39 @@ def test_requests_still_go_through_when_redis_is_down(client, auth, monkeypatch)
 
 
 @pytest.mark.parametrize(
-    ("method", "path", "bucket"),
+    ("method", "path", "buckets"),
     [
-        ("POST", "/api/asks", "ask"),
-        ("POST", "/api/voice/session", "voice"),
-        ("POST", "/api/transcription/session", "transcription"),
-        ("POST", "/api/visits/audio", "visit"),
-        ("POST", "/api/visits/V00001/transcript", "visit"),
-        ("POST", "/api/visits/V00001/reprocess", "visit"),
-        ("POST", "/api/auth/register", "register"),
-        ("POST", "/api/channels/1/messages", "channel_post"),
-        ("POST", "/api/auth/login", None),
-        ("GET", "/api/asks/abc", None),
-        ("POST", "/api/asks/abc/escalate", None),
-        ("POST", "/api/visits/V00001/confirm", None),
-        ("POST", "/api/escalations/1/reply", None),
+        ("POST", "/api/asks", ["ask"]),
+        ("POST", "/api/voice/session", ["voice"]),
+        ("POST", "/api/transcription/session", ["transcription"]),
+        ("POST", "/api/visits/audio", ["visit"]),
+        ("POST", "/api/visits/V00001/transcript", ["visit"]),
+        ("POST", "/api/visits/V00001/reprocess", ["visit"]),
+        ("POST", "/api/auth/register", ["register"]),
+        ("POST", "/api/channels/1/messages", ["channel_post"]),
+        ("POST", "/api/channels/search", ["attachment_search"]),
+        ("POST", "/api/auth/login", []),
+        ("GET", "/api/asks/abc", []),
+        ("POST", "/api/asks/abc/escalate", []),
+        ("POST", "/api/visits/V00001/confirm", []),
+        ("POST", "/api/escalations/1/reply", []),
+        ("GET", "/api/attachments/1", []),
     ],
 )
-def test_every_route_that_calls_gemini_is_counted(method, path, bucket):
-    assert usage.bucket_for(method, path) == bucket
+def test_every_route_that_calls_gemini_is_counted(method, path, buckets):
+    assert usage.buckets_for(method, path, "application/json") == buckets
+
+
+@pytest.mark.parametrize(
+    ("path", "buckets"),
+    [
+        ("/api/channels/1/messages", ["channel_post", "attachment"]),
+        ("/api/asks", ["ask", "attachment"]),
+    ],
+)
+def test_uploads_also_count_as_attachments(path, buckets):
+    # 中介層讀內容之前只看得到標頭：multipart 才可能帶檔案，同一個請求兩項都算
+    assert usage.buckets_for("POST", path, "multipart/form-data; boundary=x") == buckets
 
 
 def test_channel_posts_are_limited_per_hour_even_though_they_never_call_gemini(client, auth, tx, monkeypatch):

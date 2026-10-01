@@ -444,6 +444,26 @@ def test_seeded_conversations_sit_in_their_channels(db):
     """)[0][0] == 0
 
 
+def test_seeded_conversations_carry_the_drawn_photos_and_pdf(db):
+    found = rows(db, """
+        SELECT a.filename, a.kind, a.status, a.caption, a.uploader_id = msg.author_id, a.thumbnail IS NOT NULL
+        FROM attachment a JOIN channel_message msg ON msg.id = a.message_id
+        ORDER BY a.filename
+    """)
+    assert [f[0] for f in found] == sorted(catalog.SEED_ATTACHMENTS)
+    for filename, kind, status, caption, by_author, has_thumbnail in found:
+        assert (status, caption, by_author) == ("ready", catalog.SEED_ATTACHMENTS[filename], True)
+        assert has_thumbnail == (kind == "image")
+    # 每個檔名都畫好了，也都接在某一則對話上
+    drawn = {path.name for path in seed.ATTACHMENTS_DIR.iterdir()}
+    attached = {name for _, lines in catalog.CONVERSATIONS for line in lines for name in (line[4] if len(line) > 4 else ())}
+    assert drawn == attached == set(catalog.SEED_ATTACHMENTS)
+    # 說明與所屬訊息的文字都搜得到
+    assert rows(db, "SELECT filename FROM attachment WHERE search_tokens @@ to_tsquery('simple', '買十 & 魚油')") == [
+        ("yushotian-poster.jpg",)
+    ]
+
+
 def test_method_cards_cover_every_tag_and_are_written_by_managers(db):
     assert rows(db, "SELECT count(*) FROM method_card WHERE status = 'published'")[0][0] == len(catalog.METHOD_CARDS)
     tags = Counter(tag for (card_tags,) in rows(db, "SELECT tags FROM method_card WHERE status = 'published'") for tag in card_tags)

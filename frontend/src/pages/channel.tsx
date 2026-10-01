@@ -3,12 +3,25 @@ import { SendHorizontal, Store } from "lucide-react"
 import { Link, useLocation, useParams } from "react-router"
 
 import { ApiError } from "@/api/client"
-import { getChannel, listMessages, markRead, postMessage, type Channel, type ChannelMessage } from "@/api/channels"
+import {
+  deleteMessage,
+  getChannel,
+  listMessages,
+  markRead,
+  postMessage,
+  type Channel,
+  type ChannelMessage,
+} from "@/api/channels"
+import { AttachmentGallery } from "@/components/attachments/attachment-gallery"
+import { AttachButton, DraftFiles } from "@/components/attachments/draft-files"
 import { Mascot } from "@/components/mascot"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
+import { addDraftFiles, removeDraftFile, shrinkPhoto, type DraftFile } from "@/lib/attachments"
+import { useAuth } from "@/lib/auth"
 import { channelUnread } from "@/lib/channel-unread"
 import { MESSAGE_PAGE, mergeMessages } from "@/lib/channels"
 import { formatDateTime } from "@/lib/format"
@@ -17,6 +30,10 @@ import { cn } from "@/lib/utils"
 // 打開頻道時每 3 秒問一次新訊息；畫面在背景就不問
 const POLL_MS = 3_000
 const MAX_LENGTH = 2000
+// 一則訊息最多附幾個檔案（跟後端一樣）
+const MAX_FILES = 4
+// IT 刪掉的訊息換成這一句（跟後端 services/channels.DELETED_BODY 一樣）
+const DELETED_BODY = "（這則訊息已被 IT 刪除）"
 // 捲動位置離底部多近算「還在底部」：在這個範圍內，新訊息進來才跟著捲到最下面
 const NEAR_BOTTOM_PX = 80
 const KIND_LABEL: Record<Channel["kind"], string> = {
@@ -57,8 +74,14 @@ function ChannelView({ id }: { id: number }) {
   const [loadingOlder, setLoadingOlder] = useState(false)
   const [olderError, setOlderError] = useState(false)
   const [draft, setDraft] = useState("")
+  const [files, setFiles] = useState<DraftFile[]>([])
+  const [pickError, setPickError] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
+  // 上傳進度（0–1）；沒有附檔案時是 null，不顯示進度條
+  const [progress, setProgress] = useState<number | null>(null)
   const [sendError, setSendError] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<ChannelMessage | null>(null)
+  const isIt = useAuth()?.user.role === "it"
   const bottom = useRef<HTMLDivElement>(null)
   const main = useRef<HTMLElement>(null)
   // 使用者是不是還停在底部附近：只有這樣，或最新一則是自己剛送出的，3 秒一次的輪詢才把畫面捲到最下面；
@@ -153,20 +176,39 @@ function ChannelView({ id }: { id: number }) {
     }
   }
 
+  function pick(picked: File[]) {
+    const result = addDraftFiles(files, picked, MAX_FILES)
+    setFiles(result.files)
+    setPickError(result.error)
+  }
+
   async function send() {
     const body = draft.trim()
-    if (!body || sending) return
+    if ((!body && !files.length) || sending) return
     setSending(true)
     setSendError(null)
+    setPickError(null)
+    setProgress(files.length ? 0 : null)
     try {
-      const message = await postMessage(id, body)
+      const ready = await Promise.all(files.map((draftFile) => shrinkPhoto(draftFile.file)))
+      const message = await postMessage(id, body, ready, setProgress)
       setMessages((current) => mergeMessages(current, [message]))
       setDraft("")
+      setFiles([])
     } catch (error) {
+      // 文字與檔案都留在輸入框，讓人直接重送
       setSendError(error instanceof ApiError ? error.message : "沒有送出，請再試一次")
     } finally {
       setSending(false)
+      setProgress(null)
     }
+  }
+
+  async function confirmDelete(message: ChannelMessage) {
+    await deleteMessage(message.id)
+    setMessages((current) =>
+      current.map((m) => (m.id === message.id ? { ...m, body: DELETED_BODY, deleted: true, attachments: [] } : m))
+    )
   }
 
   if (state.status !== "ready") {
@@ -204,7 +246,7 @@ function ChannelView({ id }: { id: number }) {
         )}
         {messages.length === 0 && <p className="py-10 text-center text-sm text-muted-foreground">還沒有人發言。</p>}
         {messages.map((message) => (
-          <MessageBubble key={message.id} message={message} />
+          <MessageBubble key={message.id} message={message} onDelete={isIt && !message.deleted ? setDeleting : undefined} />
         ))}
         <div ref={bottom} />
       </main>
@@ -214,8 +256,15 @@ function ChannelView({ id }: { id: number }) {
         ) : (
           <>
             <p className="pb-1 text-[11px] text-muted-foreground">{channel.audience}</p>
-            {sendError && <p className="pb-1 text-xs text-destructive">{sendError}</p>}
-            <div className="flex items-end gap-2">
+            {(sendError ?? pickError) && <p className="pb-1 text-xs text-destructive">{sendError ?? pickError}</p>}
+            <DraftFiles files={files} disabled={sending} onRemove={(key) => setFiles((current) => removeDraftFile(current, key))} />
+            {progress !== null && (
+              <div className="mb-2 h-1 overflow-hidden rounded-full bg-muted" role="progressbar" aria-label="上傳進度" aria-valuenow={Math.round(progress * 100)}>
+                <div className="h-full bg-primary transition-[width]" style={{ width: `${Math.round(progress * 100)}%` }} />
+              </div>
+            )}
+            <div className="flex items-end gap-1">
+              <AttachButton onPick={pick} disabled={sending || files.length >= MAX_FILES} />
               <Textarea
                 value={draft}
                 maxLength={MAX_LENGTH}
@@ -224,18 +273,74 @@ function ChannelView({ id }: { id: number }) {
                 className="max-h-32 min-h-11 flex-1 resize-none"
                 onChange={(event) => setDraft(event.target.value)}
               />
-              <Button className="size-11 shrink-0" aria-label="送出" disabled={!draft.trim() || sending} onClick={() => void send()}>
+              <Button
+                className="size-11 shrink-0"
+                aria-label="送出"
+                disabled={(!draft.trim() && !files.length) || sending}
+                onClick={() => void send()}
+              >
                 <SendHorizontal className="size-4" />
               </Button>
             </div>
           </>
         )}
       </footer>
+      {deleting && <DeleteDialog message={deleting} onConfirm={confirmDelete} onClose={() => setDeleting(null)} />}
     </div>
   )
 }
 
-function MessageBubble({ message }: { message: ChannelMessage }) {
+/** IT 刪訊息前再確認一次：刪掉就救不回來，附件也一起刪 */
+function DeleteDialog({
+  message,
+  onConfirm,
+  onClose,
+}: {
+  message: ChannelMessage
+  onConfirm: (message: ChannelMessage) => Promise<void>
+  onClose: () => void
+}) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function submit() {
+    setBusy(true)
+    setError(null)
+    try {
+      await onConfirm(message)
+      onClose()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "沒有刪掉，請再試一次")
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && !busy && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>刪除這則訊息？</DialogTitle>
+          <DialogDescription>
+            {message.author_name} · {formatDateTime(message.created_at)}。內容會換成「{DELETED_BODY}」，
+            {message.attachments.length ? `附的 ${message.attachments.length} 個檔案也會刪掉，` : ""}刪了就救不回來。
+          </DialogDescription>
+        </DialogHeader>
+        {message.body && <p className="line-clamp-4 rounded-xl bg-muted px-3 py-2 text-sm whitespace-pre-wrap">{message.body}</p>}
+        {error && <p className="text-sm text-destructive">{error}</p>}
+        <DialogFooter>
+          <Button variant="outline" className="h-11" disabled={busy} onClick={onClose}>
+            取消
+          </Button>
+          <Button variant="destructive" className="h-11" disabled={busy} onClick={() => void submit()}>
+            {busy ? "刪除中…" : "刪除"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function MessageBubble({ message, onDelete }: { message: ChannelMessage; onDelete?: (message: ChannelMessage) => void }) {
   if (message.kind !== "user") {
     // AI 主理與風險通報（第 3 階段）先用同一種樣式；AI 主理的左邊多一個熊熊滾的頭像
     const bubble = (
@@ -259,15 +364,30 @@ function MessageBubble({ message }: { message: ChannelMessage }) {
       <p className="px-1 text-[11px] text-muted-foreground">
         {message.mine ? "" : `${message.author_name} · `}
         {formatDateTime(message.created_at)}
-      </p>
-      <p
-        className={cn(
-          "rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap",
-          message.mine ? "bg-primary text-primary-foreground" : "border bg-card"
+        {onDelete && (
+          <button type="button" className="ml-2 text-destructive underline-offset-2 hover:underline" onClick={() => onDelete(message)}>
+            刪除
+          </button>
         )}
-      >
-        {message.body}
       </p>
+      {message.deleted ? (
+        <p className="rounded-2xl border border-dashed px-3 py-2 text-sm text-muted-foreground italic">{message.body}</p>
+      ) : (
+        message.body && (
+          <p
+            className={cn(
+              "rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap",
+              message.mine ? "bg-primary text-primary-foreground" : "border bg-card"
+            )}
+          >
+            {message.body}
+          </p>
+        )
+      )}
+      <AttachmentGallery
+        attachments={message.attachments}
+        className={cn("w-64 max-w-full", message.mine && "items-end")}
+      />
     </div>
   )
 }

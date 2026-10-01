@@ -5,16 +5,19 @@
 """
 
 import datetime as dt
+from dataclasses import dataclass
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.exceptions import RequestValidationError
+from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.orm import Session
+from starlette.datastructures import UploadFile
 
-from app.api.auth import CurrentUser
+from app.api.auth import CurrentUser, ItUser
 from app.db import get_session
-from app.models import MESSAGE_MAX_LENGTH, AppUser, ChannelMessage
-from app.services import channels
+from app.models import MESSAGE_MAX_LENGTH, AppUser, Attachment, ChannelMessage
+from app.services import attachments, channels
 from app.services.channels import ChannelInfo
 
 router = APIRouter(tags=["channels"])
@@ -35,6 +38,18 @@ class ChannelItem(BaseModel):
     last_message_at: dt.datetime | None
 
 
+class AttachmentItem(BaseModel):
+    id: int
+    kind: str
+    filename: str
+    width: int | None
+    height: int | None
+    page_count: int | None
+    # 簽過名的網址，<img> 直接用；PDF 沒有縮圖
+    url: str
+    thumb_url: str | None
+
+
 class MessageItem(BaseModel):
     id: int
     kind: str
@@ -44,10 +59,39 @@ class MessageItem(BaseModel):
     created_at: dt.datetime
     # 是不是登入者自己發的（自建帳號看的是示範業務的頻道，但發言記在自己名下）
     mine: bool
+    attachments: list[AttachmentItem] = Field(default_factory=list)
+    # IT 刪掉的訊息：內容已經換成固定的一句，畫面改用灰字
+    deleted: bool = False
 
 
 class MessageInput(BaseModel):
     body: str = Field(min_length=1, max_length=MESSAGE_MAX_LENGTH)
+
+
+@dataclass(frozen=True)
+class MessageForm:
+    body: str
+    # (檔名, 內容)；JSON 發言沒有檔案
+    files: list[tuple[str | None, bytes]]
+
+
+async def message_form(request: Request) -> MessageForm:
+    """發言可以送 JSON（只有文字），也可以送 multipart（文字加最多 4 個檔案）。"""
+    if not request.headers.get("content-type", "").startswith("multipart/form-data"):
+        try:
+            data = MessageInput.model_validate(await request.json())
+        except ValueError as exc:
+            errors = exc.errors() if isinstance(exc, ValidationError) else [{"msg": "格式不對", "loc": ("body",)}]
+            raise RequestValidationError(errors) from None
+        return MessageForm(data.body, [])
+    # 多收一個才知道是不是超過上限；超過的檔案根本不讀進來
+    form = await request.form(max_files=attachments.MAX_PER_MESSAGE + 1, max_fields=5)
+    uploads = [item for item in form.getlist("files") if isinstance(item, UploadFile)]
+    if len(uploads) > attachments.MAX_PER_MESSAGE:
+        raise HTTPException(422, f"一則訊息最多附 {attachments.MAX_PER_MESSAGE} 個檔案")
+    body = form.get("body")
+    files = [(upload.filename, await upload.read(attachments.MAX_FILE_BYTES + 1)) for upload in uploads]
+    return MessageForm(body if isinstance(body, str) else "", files)
 
 
 class ReadInput(BaseModel):
@@ -72,11 +116,27 @@ def _items(session: Session, user: AppUser, infos: list[ChannelInfo]) -> list[Ch
     ]
 
 
-def _message(message: ChannelMessage, author_name: str | None, user: AppUser) -> MessageItem:
+def _attachment(attachment: Attachment, user: AppUser) -> AttachmentItem:
+    url, thumb_url = attachments.urls(attachment, user)
+    return AttachmentItem(
+        id=attachment.id, kind=attachment.kind, filename=attachment.filename, width=attachment.width,
+        height=attachment.height, page_count=attachment.page_count, url=url, thumb_url=thumb_url,
+    )
+
+
+def _message(
+    message: ChannelMessage, author_name: str | None, user: AppUser, files: list[Attachment] | None = None
+) -> MessageItem:
     return MessageItem(
         id=message.id, kind=message.kind, author_id=message.author_id, author_name=author_name,
         body=message.body, created_at=message.created_at, mine=message.author_id == user.id,
+        attachments=[_attachment(a, user) for a in files or []], deleted=message.deleted_at is not None,
     )
+
+
+def _messages(session: Session, user: AppUser, rows: list) -> list[MessageItem]:
+    files = attachments.for_messages(session, [message.id for message, _ in rows])
+    return [_message(message, author_name, user, files.get(message.id)) for message, author_name in rows]
 
 
 def _visible(session: Session, user: AppUser, channel_id: int) -> ChannelInfo:
@@ -116,21 +176,41 @@ def list_messages(
     """由舊到新。after 給輪詢用，before 給往上捲；都沒給就是最新的一頁。"""
     info = _visible(session, user, channel_id)
     rows = channels.messages(session, info.id, after=after, before=before, limit=limit)
-    return [_message(message, author_name, user) for message, author_name in rows]
+    return _messages(session, user, rows)
 
 
 @router.post("/api/channels/{channel_id}/messages", response_model=MessageItem, status_code=status.HTTP_201_CREATED)
-def post_message(session: SessionDep, user: CurrentUser, channel_id: int, body: MessageInput):
+def post_message(
+    session: SessionDep, user: CurrentUser, channel_id: int, form: Annotated[MessageForm, Depends(message_form)]
+):
+    """發言。可以只有文字、只有檔案，或兩個都有；檔案先檢查完才寫入，有一個不收整則就不發。"""
     info = _visible(session, user, channel_id)
-    text = body.body.strip()
-    if not text:
+    text = form.body.strip()
+    if not text and not form.files:
         raise HTTPException(422, "訊息不能是空的")
+    if len(text) > MESSAGE_MAX_LENGTH:
+        raise HTTPException(422, f"一則訊息最多 {MESSAGE_MAX_LENGTH} 字")
+    try:
+        prepared = [attachments.prepare(raw, filename) for filename, raw in form.files]
+    except attachments.Rejected as exc:
+        raise HTTPException(exc.status, str(exc)) from None
     try:
         message = channels.post(session, user, info, text)
     except channels.Archived:
         raise HTTPException(409, "這個小組頻道已封存，不能再發言") from None
+    files = [attachments.add(session, user, p, context=text, message_id=message.id) for p in prepared]
     session.commit()
-    return _message(message, user.name, user)
+    return _message(message, user.name, user, files)
+
+
+@router.delete("/api/channels/messages/{message_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_message(session: SessionDep, user: ItUser, message_id: int):
+    """IT 刪訊息（擋濫用）：附件整列刪掉、內容換成固定的一句，這一則本身留著。發言的人自己不能刪。"""
+    try:
+        channels.delete_message(session, user, message_id)
+    except channels.NotFound:
+        raise HTTPException(404, "找不到這則訊息") from None
+    session.commit()
 
 
 @router.post("/api/channels/{channel_id}/read", status_code=status.HTTP_204_NO_CONTENT)

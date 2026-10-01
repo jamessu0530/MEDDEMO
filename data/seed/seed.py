@@ -25,11 +25,14 @@ import generate
 from app import models
 from app.db import make_engine, reset_schema, schema_version
 from app.embeddings import optional_embedder
-from app.services import approvals
+from app.services import approvals, attachments
 from app.services.auth import EXTERNAL_ACCOUNT_ACTS_AS
 from app.services.channels import ensure_channels
 from app.services.documents import index_documents
 from app.services.org import paths_from_reports, rebuild_org_paths, region_of
+
+# 示範對話附的照片與 PDF（backend/scripts/draw_seed_images.py 畫的）
+ATTACHMENTS_DIR = Path(__file__).resolve().parent / "attachments"
 
 # 決賽日。評測題庫的標準答案以這一天為「今天」計算
 DEFAULT_AS_OF = date(2026, 10, 28)
@@ -143,14 +146,30 @@ def seed_conversations(session: Session) -> int:
         else:
             column = {"team": models.Channel.manager_id, "place": models.Channel.place_id}[kind]
             channel = session.scalar(select(models.Channel).where(column == key))
-        for days_ago, clock, author_id, body in lines:
+        for days_ago, clock, author_id, body, *files in lines:
             hour, minute = map(int, clock.split(":"))
             at = (now - timedelta(days=days_ago)).replace(hour=hour, minute=minute, second=0, microsecond=0)
-            session.add(models.ChannelMessage(channel_id=channel.id, author_id=author_id, kind="user", body=body, created_at=at))
+            message = models.ChannelMessage(channel_id=channel.id, author_id=author_id, kind="user", body=body, created_at=at)
+            session.add(message)
             count += 1
+            if files:
+                session.flush()
+                seed_attachments(session, message, files[0])
         # 每個頻道寫完就送出去：編號照加入的順序，同一個頻道裡越晚的編號越大
         session.flush()
     return count
+
+
+def seed_attachments(session: Session, message: models.ChannelMessage, names: tuple[str, ...]) -> None:
+    """示範對話附的照片與 PDF，照上傳的流程整理（清 EXIF、縮圖）。說明是手寫的，所以直接算處理完；
+    向量等有設定 embedding 再算（灌資料不需要金鑰）。"""
+    author = session.get(models.AppUser, message.author_id)
+    for name in names:
+        prepared = attachments.prepare((ATTACHMENTS_DIR / name).read_bytes(), name)
+        attachments.add(
+            session, author, prepared, context=message.body, message_id=message.id,
+            caption=catalog.SEED_ATTACHMENTS[name], status="ready",
+        )
 
 
 def seed_approval_steps(session: Session) -> int:

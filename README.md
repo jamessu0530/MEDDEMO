@@ -444,6 +444,18 @@ uv run --project backend python backend/scripts/eval_ask.py
   - 主管與 IT 自己按的回饋也算進次數，沒有另外擋。
   - 主管在畫面上寫的卡跟其他資料一樣，留到下一次重建資料庫為止。
 
+## 頻道與附件
+
+頻道的設計在 `docs/superpowers/specs/2026-09-28-channels-design.md`，附件、看圖與圖片搜尋在 `docs/superpowers/specs/2026-10-01-attachments-design.md`。
+
+- **附件存在資料庫裡**（`attachment` 表，bytea），跟錄音一樣：API 與背景工作不必共用磁碟，刪訊息、刪帳號靠 CASCADE 一起清掉。只收照片（JPEG、PNG、WebP）與 PDF；一則訊息最多 4 個檔案、單檔 15MB。
+- **上傳時重新整理**（`backend/app/services/attachments.py`）：前端先縮到長邊 2048 再傳；後端用 Pillow 依 EXIF 轉正、**清掉全部 EXIF**（照片常在客戶店裡拍，GPS 位置不能留著）、縮到長邊 2048、存成 JPEG（有透明背景存 PNG），另存長邊 480 的縮圖。PDF 用 pypdf 檢查打得開、沒加密、不超過 60 頁。
+- **看附件靠簽名網址**：`<img>` 帶不了登入的 token，所以列訊息時 API 發一組簽過名的網址（`/api/attachments/{id}?sig=…`，到期時間取整點，同一小時內網址不變，瀏覽器才快取得到）。取檔時先驗簽名、再查一次權限，IT 刪了訊息就立刻打不開。
+- **IT 可以刪訊息**（`DELETE /api/channels/messages/{id}`）：附件整列刪掉，內容換成「（這則訊息已被 IT 刪除）」，這一則本身留著，編號與已讀位置不會亂。發言的人自己不能刪、不能改。
+- **同一個頻道的發言排隊寫入**：`post()` 先鎖住頻道那一列，編號的先後就等於寫入完成的先後，畫面輪詢「這則之後的新訊息」才不會跳過晚一步寫完的那則。
+- **主管重新升回主管會看到舊小組的對話**：小組頻道封存與否看主管當下的狀態算，被降職或停用的主管再升回主管，原本的頻道會回來，新帶的組員也看得到以前的對話。這是預期行為。
+- **示範用的照片是程式畫的**（`backend/scripts/draw_seed_images.py`，產出在 `data/seed/attachments/`，要在 Mac 上跑才有中文字型）：御松田的海報、忠孝店的貨架、壓壞的魚油外盒、康普樂的報價單、瑞得生技的 DM、杏林診所的衛教單張 PDF，接在示範對話裡（`catalog.CONVERSATIONS`），說明手寫在 `catalog.SEED_ATTACHMENTS`。
+
 ## 個資與保存期限（NFR-8）
 
 - **確認送出時把逐字稿去識別**：email、身分證字號、電話換成［email］［身分證字號］［電話］；系統裡業務與主管的姓名，以及「姓＋稱謂」（王藥師、陳小姐、林店長）遮成 ○。客戶名稱、品項、競品不遮。送出前業務看的是原文，才能核對。
@@ -485,7 +497,8 @@ uv run --project backend python backend/scripts/eval_ask.py
 - 語音問答照 `gemini-2.5-flash-native-audio` 的價格算；`gemini-3.1-flash-live-preview` 在官方價格頁只列了免費層。
 - 知識查詢另外會用到 Cohere 精排（每題 1～2 次）和 Firecrawl 網路搜尋（要上網的題目每題 1～3 次）。200 題全部上網的最壞情況，一天約 400 次 Cohere、600 次 Firecrawl，額度看各自的方案。
 - Redis 連不上時放行：問答與錄音整理本來就要靠 Redis 排背景工作，Redis 停了也花不到錢。
-- 建立帳號（見「登入」）與頻道發言這兩項不花 Gemini 的錢，不算進上面的美金估算，一樣用這裡的機制擋濫用：建立帳號每小時 20 個、全系統每天 200 個；頻道發言（`POST /api/channels/{id}/messages`）每小時 60 個、全系統每天 1000 個，發言不能編輯或刪除，擋的是洗版式的濫用。
+- 建立帳號（見「登入」）與頻道發言這兩項不花 Gemini 的錢，不算進上面的美金估算，一樣用這裡的機制擋濫用：建立帳號每小時 20 個、全系統每天 200 個；頻道發言（`POST /api/channels/{id}/messages`）每小時 60 個、全系統每天 1000 個，發言的人不能編輯或刪除，擋的是洗版式的濫用。
+- 附件另外算（見「頻道與附件」）：帶檔案的發言與提問同時算一次「上傳附件」，每個帳號每小時 30 個、全系統每天 500 個（照片一張約 0.3MB，一天最多約 150MB，資料庫跟 CARE 共用 VM 的磁碟）；搜尋附件（`POST /api/channels/search`）每小時 60 次、每天 1000 次。中介層讀內容之前只看得到標頭，所以「上傳附件」只算 `multipart/form-data` 的請求。
 
 ## 測試語料評測（第二週出場條件）
 

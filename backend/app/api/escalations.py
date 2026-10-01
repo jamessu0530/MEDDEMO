@@ -10,12 +10,12 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session, aliased
+from sqlalchemy.orm import Session
 
-from app.api.auth import MANAGER_SIDE_ROLES, CurrentUser, ManagerUser
+from app.api.auth import CurrentUser, ManagerUser
 from app.db import get_session
 from app.models import AppUser, AskRecord, Escalation
-from app.services.scope import SHARING_LEVEL, Scope
+from app.services.escalations import Asker, visible_to
 
 router = APIRouter(prefix="/api/escalations", tags=["escalations"])
 SessionDep = Annotated[Session, Depends(get_session)]
@@ -43,19 +43,6 @@ class ReplyInput(BaseModel):
 
 class Unseen(BaseModel):
     count: int
-
-
-# 提問的人。AppUser 在查詢裡已經拿來 join 回覆的主管，所以另外取別名
-Asker = aliased(AppUser)
-
-
-def _visible_to(user: AppUser) -> Any:
-    """業務只看得到自己轉出去的提問；主管看得到自己底下的人轉來的，IT 看得到全公司的
-    （SHARING_LEVEL["manager_inbox"]）。自建帳號不在組織樹上，換算成他代理的那位業務再看。"""
-    if user.role in MANAGER_SIDE_ROLES:
-        asker = func.coalesce(Asker.acts_as_user_id, Asker.id)
-        return Scope.for_user(user).includes(SHARING_LEVEL["manager_inbox"], asker)
-    return AskRecord.user_id == user.id
 
 
 def _items(session: Session, *criteria: Any) -> list[EscalationItem]:
@@ -86,7 +73,7 @@ def _items(session: Session, *criteria: Any) -> list[EscalationItem]:
 
 
 def _one(session: Session, escalation_id: int, user: AppUser) -> EscalationItem:
-    items = _items(session, Escalation.id == escalation_id, _visible_to(user))
+    items = _items(session, Escalation.id == escalation_id, visible_to(user))
     if not items:
         raise HTTPException(404, "找不到這個提問")
     return items[0]
@@ -95,7 +82,7 @@ def _one(session: Session, escalation_id: int, user: AppUser) -> EscalationItem:
 @router.get("", response_model=list[EscalationItem])
 def list_escalations(session: SessionDep, user: CurrentUser, status: Literal["open", "answered"] | None = None):
     """主管端分開看待回覆（open）與已回覆（answered）；業務端不帶條件，看全部。新的在前面。"""
-    return _items(session, _visible_to(user), *([Escalation.status == status] if status else []))
+    return _items(session, visible_to(user), *([Escalation.status == status] if status else []))
 
 
 @router.get("/unseen", response_model=Unseen)
@@ -117,7 +104,7 @@ def reply(session: SessionDep, escalation_id: int, body: ReplyInput, manager: Ma
     回覆者就是登入的主管（FR-12 之前是在畫面上自己選）。
     """
     escalation = session.get(Escalation, escalation_id, with_for_update=True)
-    if escalation is None or not _items(session, Escalation.id == escalation_id, _visible_to(manager)):
+    if escalation is None or not _items(session, Escalation.id == escalation_id, visible_to(manager)):
         raise HTTPException(404, "找不到這個提問")
     answer = body.answer.strip()
     if not answer:

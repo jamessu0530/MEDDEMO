@@ -55,33 +55,49 @@ LIMITS: dict[str, Limit] = {
     # 頻道發言也不花錢，但任何人都能自己開帳號發言，第一版又不能編輯、刪除：
     # 洗版式的濫用比額度更難處理，這裡擋的是濫用，不是成本
     "channel_post": Limit("頻道發言", per_client_hour=60, per_day=1000),
+    # 附件：每個要請 Gemini 寫說明、算一次向量，也佔資料庫的空間（跟 CARE 共用一台 VM 的磁碟）。
+    # 照片一張約 0.3MB，全系統一天 500 個約 150MB
+    "attachment": Limit("上傳附件", per_client_hour=30, per_day=500),
+    # 搜尋附件每次算一次向量（文字或照片），很便宜，擋的是程式一直送
+    "attachment_search": Limit("搜尋附件", per_client_hour=60, per_day=1000),
 }
 
 # 會呼叫 Gemini，或是不花錢但容易被濫用、做了無法復原的入口。提問與錄音整理在背景工作裡呼叫，
 # 這裡擋的是把工作排進去的請求；語音問答與即時文字由手機直連 Gemini，這裡擋的是發臨時金鑰；
-# 建立帳號、頻道發言不花 Gemini 的錢，純粹擋濫用
-ROUTES: list[tuple[str, re.Pattern[str], str]] = [
-    ("POST", re.compile(r"/api/asks"), "ask"),
-    ("POST", re.compile(r"/api/voice/session"), "voice"),
-    ("POST", re.compile(r"/api/transcription/session"), "transcription"),
-    ("POST", re.compile(r"/api/visits/audio"), "visit"),
-    ("POST", re.compile(r"/api/visits/[^/]+/(?:transcript|reprocess)"), "visit"),
-    ("POST", re.compile(r"/api/auth/register"), "register"),
-    ("POST", re.compile(r"/api/channels/\d+/messages"), "channel_post"),
+# 建立帳號、頻道發言不花 Gemini 的錢，純粹擋濫用。
+# 最後一欄是「只算帶檔案的請求」：中介層在讀內容之前就計數，只看得到標頭，multipart 才可能有檔案。
+# 一個請求可以同時算在好幾項裡（帶照片的發言同時算頻道發言與上傳附件）
+ROUTES: list[tuple[str, re.Pattern[str], str, bool]] = [
+    ("POST", re.compile(r"/api/asks"), "ask", False),
+    ("POST", re.compile(r"/api/asks"), "attachment", True),
+    ("POST", re.compile(r"/api/voice/session"), "voice", False),
+    ("POST", re.compile(r"/api/transcription/session"), "transcription", False),
+    ("POST", re.compile(r"/api/visits/audio"), "visit", False),
+    ("POST", re.compile(r"/api/visits/[^/]+/(?:transcript|reprocess)"), "visit", False),
+    ("POST", re.compile(r"/api/auth/register"), "register", False),
+    ("POST", re.compile(r"/api/channels/\d+/messages"), "channel_post", False),
+    ("POST", re.compile(r"/api/channels/\d+/messages"), "attachment", True),
+    ("POST", re.compile(r"/api/channels/search"), "attachment_search", False),
 ]
 
 
 @dataclass(frozen=True)
 class Counter:
+    bucket: str
     key: str
     limit: int
     resets_at: dt.datetime
     scope: Literal["client", "system"]
 
 
-def bucket_for(method: str, path: str) -> str | None:
-    """這個請求算不算在用量上限裡；算的話算在哪一項。"""
-    return next((bucket for m, pattern, bucket in ROUTES if m == method and pattern.fullmatch(path)), None)
+def buckets_for(method: str, path: str, content_type: str = "") -> list[str]:
+    """這個請求算在用量上限的哪幾項裡；不算就是空的。"""
+    multipart = content_type.startswith("multipart/form-data")
+    return [
+        bucket
+        for m, pattern, bucket, files_only in ROUTES
+        if m == method and pattern.fullmatch(path) and (multipart or not files_only)
+    ]
 
 
 def client_address(request: Request) -> str:
@@ -107,8 +123,8 @@ def counters(bucket: str, client: str, now: dt.datetime) -> tuple[Counter, Count
     hour = now.astimezone(TAIPEI).replace(minute=0, second=0, microsecond=0)
     day = hour.replace(hour=0)
     return (
-        Counter(f"usage:{bucket}:{client}:{hour:%Y%m%d%H}", limit.per_client_hour, hour + dt.timedelta(hours=1), "client"),
-        Counter(f"usage:{bucket}:all:{day:%Y%m%d}", limit.per_day, day + dt.timedelta(days=1), "system"),
+        Counter(bucket, f"usage:{bucket}:{client}:{hour:%Y%m%d%H}", limit.per_client_hour, hour + dt.timedelta(hours=1), "client"),
+        Counter(bucket, f"usage:{bucket}:all:{day:%Y%m%d}", limit.per_day, day + dt.timedelta(days=1), "system"),
     )
 
 
@@ -133,8 +149,8 @@ def _give_back(*items: Counter) -> None:
     pipe.execute()
 
 
-def _too_many(bucket: str, over: Counter, now: dt.datetime) -> JSONResponse:
-    label = LIMITS[bucket].label
+def _too_many(over: Counter, now: dt.datetime) -> JSONResponse:
+    label = LIMITS[over.bucket].label
     wait = max(1, math.ceil((over.resets_at - now).total_seconds()))
     if over.scope == "client":
         detail = f"這個網路這一小時的{label}已經 {over.limit} 次，到了上限，請 {math.ceil(wait / 60)} 分鐘後再試。"
@@ -145,18 +161,19 @@ def _too_many(bucket: str, over: Counter, now: dt.datetime) -> JSONResponse:
 
 async def limit_usage(request: Request, call_next):
     """HTTP middleware：會呼叫 Gemini 的請求先檢查用量上限。"""
-    bucket = bucket_for(request.method, request.url.path)
-    if bucket is None:
+    buckets = buckets_for(request.method, request.url.path, request.headers.get("content-type", ""))
+    if not buckets:
         return await call_next(request)
     now = dt.datetime.now(dt.UTC)
-    items = counters(bucket, client_address(request), now)
+    client = client_address(request)
+    items = [item for bucket in buckets for item in counters(bucket, client, now)]
     try:
         over = await run_in_threadpool(_take, *items)
     except RedisError:
         log.warning("用量計數連不上 Redis，這次放行", exc_info=True)
         return await call_next(request)
     if over:
-        return _too_many(bucket, over, now)
+        return _too_many(over, now)
     response = await call_next(request)
     if not 200 <= response.status_code < 300:
         try:
