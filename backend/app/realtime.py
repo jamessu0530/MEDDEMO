@@ -6,6 +6,8 @@ API 與背景工作不在同一個程序，API 之後也可能開到兩個以上
 - {"type": "message", "channel_id": 12}：這個頻道有新訊息，commit 之後才發，手機拿得到那一則
 - {"type": "presence"}：有人的狀態變了，每條連線重算一次
 - {"type": "avatars"}：有人換了或移除大頭貼，手機重拿一次網址
+- {"type": "location", "user_id": "U01"}：這位業務的位置或分享狀態變了，只送給看得到他的主管與 IT
+- {"type": "itinerary", "user_id": "U01"}：這位業務今天的行程變了（改了順序、跑完一站…），同上
 """
 
 import json
@@ -42,3 +44,11 @@ def presence_changed() -> None:
 
 def avatars_changed() -> None:
     publish({"type": "avatars"})
+
+
+def location_changed(user_id: str) -> None:
+    publish({"type": "location", "user_id": user_id})
+
+
+def itinerary_changed(user_id: str) -> None:
+    publish({"type": "itinerary", "user_id": user_id})
