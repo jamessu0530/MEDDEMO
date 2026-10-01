@@ -39,6 +39,29 @@ def test_the_share_hours_setting():
 
 
 @pytest.mark.parametrize(
+    "spec",
+    [
+        "8 08:30-18:30",  # 星期超過 7
+        "1-5 25:00-26:00",  # 小時超過 24
+        "1-5 18:30-08:30",  # 起晚於訖
+        "1-5 08:30",  # 沒有訖的時間
+    ],
+)
+def test_parse_hours_rejects_malformed_specs(spec):
+    with pytest.raises(ValueError):
+        locations.parse_hours(spec)
+
+
+def test_settings_rejects_a_malformed_location_share_hours():
+    from pydantic import ValidationError
+
+    from app.config import Settings
+
+    with pytest.raises(ValidationError):
+        Settings(location_share_hours="nonsense")
+
+
+@pytest.mark.parametrize(
     ("when", "inside"),
     [
         (dt.datetime(2026, 10, 1, 8, 29, tzinfo=TAIPEI), False),
@@ -114,6 +137,16 @@ def test_denied_is_recorded_once_and_cleared_by_the_next_position(tx):
     assert locations.record(tx, rep, *TAIPEI_101, 12.0, at=WORKING) == "U01"
     row = tx.get(UserLocation, "U01")
     assert row.denied is False and row.denied_at is None
+
+
+def test_deny_is_a_no_op_right_after_a_recorded_position(tx):
+    # 一位評審分享、另一位評審被拒絕，兩人代理同一位示範業務時不該一直把剛記下的位置蓋成「沒有權限」
+    rep = person(tx, "U01")
+    assert locations.record(tx, rep, *TAIPEI_101, 12.0, at=WORKING) == "U01"
+    assert locations.deny(tx, rep, at=WORKING + dt.timedelta(minutes=1)) is None
+    assert tx.get(UserLocation, "U01").denied is False
+    assert locations.deny(tx, rep, at=WORKING + dt.timedelta(minutes=3)) == "U01"
+    assert tx.get(UserLocation, "U01").denied is True
 
 
 def test_report_takes_a_position_or_a_denial(tx):

@@ -26,6 +26,8 @@ MIN_INTERVAL = dt.timedelta(minutes=2)
 STALE_AFTER = dt.timedelta(minutes=5)
 # 離某一站 200 公尺內算「在 X 附近」
 NEAR_METERS = 200
+# Wi-Fi／基地台定位誤差常常上看 1 公里，超過這個誤差就不說「在 X 附近」，免得人根本沒到卻顯示在店門口
+NEAR_MAX_ACCURACY_M = 300
 # 最後位置 3 公里內有自己的客戶，才寫是哪一區
 AREA_WITHIN_KM = 3
 
@@ -42,20 +44,39 @@ class ShareHours:
 
 
 def parse_hours(spec: str) -> ShareHours:
-    """「1-5 08:30-18:30」：星期一到五，08:30 起、18:30 前。星期也可以寫成「1,3,5」。"""
-    days, times = spec.split()
+    """「1-5 08:30-18:30」：星期一到五，08:30 起、18:30 前。星期也可以寫成「1,3,5」。
+    設定錯了（LOCATION_SHARE_HOURS 打錯）丟 ValueError：啟動時就驗過一次（config.py 的 field_validator），
+    不要等到每一次心跳才炸開，拖垮全部業務的位置分享。"""
+    try:
+        days, times = spec.split()
+    except ValueError:
+        raise ValueError(f"LOCATION_SHARE_HOURS 格式不對，要是「星期 起訖時間」：{spec!r}") from None
     if "-" in days:
         first, last = (int(day) for day in days.split("-"))
         weekdays = frozenset(range(first, last + 1))
     else:
         weekdays = frozenset(int(day) for day in days.split(","))
-    start, end = (_minutes(clock) for clock in times.split("-"))
+    if not weekdays or not weekdays.issubset(range(1, 8)):
+        raise ValueError(f"LOCATION_SHARE_HOURS 的星期要在 1（一）～7（日）之間：{spec!r}")
+    try:
+        clock_start, clock_end = times.split("-")
+    except ValueError:
+        raise ValueError(f"LOCATION_SHARE_HOURS 的時間要寫「起-訖」，例如 08:30-18:30：{spec!r}") from None
+    start, end = _minutes(clock_start), _minutes(clock_end)
+    if start > end:
+        raise ValueError(f"LOCATION_SHARE_HOURS 的起始時間不能晚於結束時間：{spec!r}")
     return ShareHours(weekdays, start, end)
 
 
 def _minutes(clock: str) -> int:
-    hours, minutes = clock.split(":")
-    return int(hours) * 60 + int(minutes)
+    try:
+        hours, minutes = clock.split(":")
+        hours, minutes = int(hours), int(minutes)
+    except ValueError:
+        raise ValueError(f"LOCATION_SHARE_HOURS 的時間格式不對，要是「時:分」：{clock!r}") from None
+    if not (0 <= hours <= 24) or not (0 <= minutes <= 59) or (hours == 24 and minutes != 0):
+        raise ValueError(f"LOCATION_SHARE_HOURS 的時間不對：{clock!r}")
+    return hours * 60 + minutes
 
 
 def share_hours() -> ShareHours:
@@ -118,6 +139,9 @@ def deny(session: Session, user: AppUser, at: dt.datetime | None = None) -> str 
         return None
     row = _row(session, rep.id)
     if row.denied:
+        return None
+    # 剛記過位置：大概是另一位評審代理同一位示範業務、這一支手機慢半拍才回報拒絕，不要把剛剛的位置蓋成「沒有權限」
+    if row.at is not None and row.lat is not None and at - row.at < MIN_INTERVAL:
         return None
     row.denied, row.denied_at = True, at
     session.flush()
@@ -204,7 +228,8 @@ def describe(
     now: dt.datetime, hours: ShareHours, row: UserLocation | None, stops: list[StopPoint], areas: list[AreaPoint]
 ) -> Seen:
     """依序：下班時間 → 暫停 → 沒有權限 → 今天還沒有位置 → 太久沒更新 → 在某一站附近 → 往下一站途中 → 今天跑完了。
-    位置的 at 不是今天（台北日期）就當作沒有。"""
+    位置的 at 不是今天（台北日期）就當作沒有；denied_at 不是今天也一樣，不然昨天拒絕過今天還沒開 App 也會一直顯示
+    「沒有開定位權限」。誤差超過 NEAR_MAX_ACCURACY_M 的定位（Wi-Fi、基地台）不說「在 X 附近」。"""
     if not within(now, hours):
         return Seen("下班時間")
     today = (
@@ -214,7 +239,8 @@ def describe(
     where = {"lat": row.lat, "lng": row.lng, "at": row.at} if today else {}
     if row is not None and row.paused:
         return Seen("暫停分享位置" + (f" · 最後位置 {_clock(row.at)}" if today else ""), **where)
-    if row is not None and row.denied:
+    # 拒絕是某一天當下發生的事：昨天拒絕過、今天還沒開過 App，不該一直顯示「沒有開定位權限」
+    if row is not None and row.denied and row.denied_at is not None and _date(row.denied_at) == _date(now):
         return Seen("沒有開定位權限", **where)
     if not today:
         return Seen("今天還沒有位置")
@@ -224,7 +250,9 @@ def describe(
         area = _nearest(here, areas, AREA_WITHIN_KM)
         return Seen(f"最後位置 {_clock(row.at)}" + (f"，在{area.label}" if area else ""), **where)
     ago = _ago(age)
-    near = _nearest(here, stops, NEAR_METERS / 1000)
+    # 誤差太大的粗略定位（Wi-Fi、基地台）不說「在 X 附近」：座標剛好落在店門口不代表人真的到了
+    coarse = row.accuracy_m is not None and row.accuracy_m > NEAR_MAX_ACCURACY_M
+    near = None if coarse else _nearest(here, stops, NEAR_METERS / 1000)
     if near:
         return Seen(f"在{near.name}附近{ago}", live=True, **where)
     upcoming = next((stop for stop in stops if not stop.done), None)

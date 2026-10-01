@@ -22,8 +22,11 @@ AREAS = [AreaPoint(25.0689, 121.5889, "內湖區")]
 FAR = (25.0330, 121.5654)
 
 
-def located(minutes_ago, lat=FAR[0], lng=FAR[1], paused=False, denied=False):
-    return UserLocation(lat=lat, lng=lng, at=NOW - dt.timedelta(minutes=minutes_ago), paused=paused, denied=denied)
+def located(minutes_ago, lat=FAR[0], lng=FAR[1], paused=False, denied=False, accuracy_m=None):
+    return UserLocation(
+        lat=lat, lng=lng, at=NOW - dt.timedelta(minutes=minutes_ago), paused=paused, denied=denied,
+        accuracy_m=accuracy_m,
+    )
 
 
 def say(row, stops=STOPS, now=NOW):
@@ -43,7 +46,15 @@ def test_paused_shows_the_last_place_greyed():
 
 
 def test_denied():
-    assert say(UserLocation(paused=False, denied=True)).text == "沒有開定位權限"
+    assert say(UserLocation(paused=False, denied=True, denied_at=NOW)).text == "沒有開定位權限"
+
+
+def test_a_denial_from_another_day_does_not_stick():
+    # 昨天拒絕過，今天還沒開過 App：不該一直顯示「沒有開定位權限」
+    yesterday = UserLocation(paused=False, denied=True, denied_at=NOW - dt.timedelta(days=1))
+    assert say(yesterday).text == "今天還沒有位置"
+    today = UserLocation(paused=False, denied=True, denied_at=NOW)
+    assert say(today).text == "沒有開定位權限"
 
 
 def test_no_location_today():
@@ -61,6 +72,14 @@ def test_stale_shows_the_last_time_and_the_district_within_three_km():
 def test_near_a_stop():
     seen = say(located(0, lat=25.0265, lng=121.5436))
     assert seen.text == "在杏林診所附近" and seen.live is True
+
+
+def test_a_coarse_fix_does_not_say_near_a_stop():
+    # Wi-Fi／基地台定位誤差大，即使座標落在某一站附近也不該說「在 X 附近」
+    coarse = say(located(0, lat=25.0265, lng=121.5436, accuracy_m=800))
+    assert coarse.text == "往第 2 站康泰 · 忠孝店途中"
+    precise = say(located(0, lat=25.0265, lng=121.5436, accuracy_m=20))
+    assert precise.text == "在杏林診所附近"
 
 
 def test_on_the_way_to_the_next_stop():

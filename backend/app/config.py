@@ -78,6 +78,17 @@ class Settings(BaseSettings):
         9/16 就這樣把線上八個帳號的密碼灌成空白，密碼欄留空就登入得進去。"""
         return value if value.strip() else DEFAULT_DEMO_PASSWORD
 
+    @field_validator("location_share_hours")
+    @classmethod
+    def _valid_location_share_hours(cls, value: str) -> str:
+        """打錯格式要在啟動時就炸開，不要等到第一個業務送心跳才發現，害全部人的位置分享都壞掉。
+        這裡才 import：app.services.locations 在模組最上面 import 了 app.config.settings，
+        搬到檔案最上面會變成循環引用。"""
+        from app.services import locations
+
+        locations.parse_hours(value)
+        return value
+
 
 @cache
 def settings() -> Settings:
