@@ -971,7 +971,7 @@ class Itinerary(Base):
     __tablename__ = "itinerary"
     __table_args__ = (UniqueConstraint("user_id", "date"),)
 
-    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"))
     date: Mapped[dt.date]
     # 每存一次加一：兩個人同時改同一位業務的行程時，後存的那一個擋下來，不默默蓋掉
@@ -998,7 +998,7 @@ class ItineraryStop(Base):
         CheckConstraint("duration_minutes > 0", name="duration_positive"),
     )
 
-    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     itinerary_id: Mapped[int] = mapped_column(ForeignKey("itinerary.id", ondelete="CASCADE"))
     position: Mapped[int]
     customer_id: Mapped[str] = mapped_column(ForeignKey("customer.id"))
