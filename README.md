@@ -465,7 +465,7 @@ uv run --project backend python backend/scripts/eval_ask.py
   - 誰能開：區裡是那一區的在職主管與 IT，全國只有 IT；小組、地點底下不能開，業務與自建帳號都不能開。同一區的主管都能改名、封存，不限原本開的那一位。右欄的「新增頻道」與每一列的「管理」只有能管的人看得到（`can_manage`）。
   - 開好整區都看得到、都能發言（全國的是全公司），有自己的記憶看板，重點照樣往上傳。名稱 1～20 字，同一個單位裡不能重名（封存的也算）。
   - 可以改名、封存與解除封存，**不能刪除**：封存後還看得到、變成唯讀（發言回 409，熊熊滾不回答也不整理）。
-  - API：`POST /api/channels`（`{parent_id, name}`）開、`PATCH /api/channels/{id}`（`{name?, archived?}`）改。開、改名、封存之後發 WebSocket 的 `channels` 事件，大家的頻道頁重新載入。
+  - API：`POST /api/channels`（`{parent_id, name}`）開、`PATCH /api/channels/{id}`（`{name?, archived?}`）改。開、改名、封存之後發 WebSocket 的 `channels` 事件，大家的頻道頁重新載入。IT 在組織管理改了組織（`/api/admin` 的開帳號、換主管、調區、改角色、停用、恢復、移交客戶，`backend/app/api/admin.py`）之後也發同一個事件：誰看得到哪些頻道可能變了，WebSocket 也跟著重算每個人看得到的頻道。
   - 示範資料：全國的「公司公告」（A01 開的），北區的「新品上市」「補貨問題」（M01 開的）。
 - **壓力測試**（`backend/scripts/stress_channels.py`）：demo 當天幾十個人同時在同一個文字頻道收發訊息。50 個帳號各開一條 WebSocket，同時在北區的「壓力測試」頻道各發 3 則；通過條件是沒有 5xx、每則發言都 201、每個人輪詢都拿齊、每條 WebSocket 都收到新訊息通知、發言的 p95 在 1 秒內，不通過時 exit code 1。只打本機（`--base-url` 不是 localhost 就拒絕），帳號直接寫進 `DATABASE_URL` 那個資料庫，所以用一個另外灌好資料的開發資料庫。照上面「本機開發」的指令把 API 開起來（加 `--port 8011`，不用 `--reload`），再跑：
 
