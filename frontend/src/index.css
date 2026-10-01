@@ -152,6 +152,18 @@
     --destructive-lip: #A63E2C;
 }
 
+/*
+ * 字體大小（設定頁，src/lib/text-size.ts）：放大根字級。Tailwind 的字級、間距、圓角都是 rem，整頁一起等比例放大；
+ * 標準是瀏覽器預設的 100%，不掛
+ */
+:root[data-text-size="large"] {
+    font-size: 112.5%;
+}
+
+:root[data-text-size="xlarge"] {
+    font-size: 125%;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

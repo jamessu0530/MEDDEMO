@@ -8,7 +8,9 @@ import { realtime } from "@/lib/realtime"
 export const channelUnread = new CountPoller(() => getChannelUnread())
 
 // 有新訊息的通知、重連之後，不等下一分鐘的輪詢
-realtime.subscribe(() => void channelUnread.refresh())
+realtime.subscribe((event) => {
+  if (event.type !== "avatars") void channelUnread.refresh()
+})
 
 export function useChannelUnread() {
   return useSyncExternalStore(channelUnread.subscribe, channelUnread.getSnapshot)

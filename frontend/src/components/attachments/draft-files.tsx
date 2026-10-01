@@ -48,7 +48,7 @@ export function DraftFiles({ files, onRemove, disabled }: { files: DraftFile[]; 
           ) : (
             <div className="flex size-16 flex-col items-center justify-center gap-1 rounded-lg border bg-muted px-1">
               <FileText className="size-5 text-muted-foreground" />
-              <span className="w-full truncate text-center text-[10px] text-muted-foreground">{draft.file.name}</span>
+              <span className="w-full truncate text-center text-[0.625rem] text-muted-foreground">{draft.file.name}</span>
             </div>
           )}
           <button

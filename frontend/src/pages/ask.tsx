@@ -196,8 +196,8 @@ export function AskPage() {
         >
           {/* 數字查詢只查得到登入者看得到的客戶；規定題查的是公司文件，不分客戶，不必提。
               會話活著時是模型自己選工具，這行文字才對不上；連線中或掛斷後打字仍走這條路，要照樣說清楚查得到誰 */}
-          {user && kind === "data" && !session && <p className="px-1 text-[11px] text-muted-foreground">{askScopeText(user)}</p>}
-          {pickError && <p className="px-1 text-[11px] text-destructive">{pickError}</p>}
+          {user && kind === "data" && !session && <p className="px-1 text-[0.6875rem] text-muted-foreground">{askScopeText(user)}</p>}
+          {pickError && <p className="px-1 text-[0.6875rem] text-destructive">{pickError}</p>}
           {!session && <DraftFiles files={files} onRemove={() => setFiles([])} disabled={sending} />}
           <div className="flex gap-2">
             {!session && <AttachButton onPick={pick} disabled={sending} multiple={false} />}

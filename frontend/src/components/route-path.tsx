@@ -143,7 +143,7 @@ function StopLabel({ stop, offset }: { stop: RouteStop; offset: number }) {
     : { left: `calc(50% + ${offset + HALF_NODE + LABEL_GAP}px)`, right: 0 }
   return (
     <div aria-hidden className={cn("absolute top-1 text-xs leading-snug", left && "text-right")} style={style}>
-      <p className={cn("line-clamp-2 text-[13px] font-semibold", done && "text-muted-foreground")}>{stop.customer_name}</p>
+      <p className={cn("line-clamp-2 text-[0.8125rem] font-semibold", done && "text-muted-foreground")}>{stop.customer_name}</p>
       <p className="mt-0.5 text-muted-foreground">
         {done ? (
           `${stop.planned_time} 完成${stop.visit_id ? " · 已回寫" : ""}`

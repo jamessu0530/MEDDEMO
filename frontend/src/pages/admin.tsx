@@ -89,13 +89,13 @@ export function AdminPage() {
         subtitle="IT"
         trailing={
           <>
-            <MyStatusButton className="size-11" />
-            <SkinToggle className="size-11" />
+            <MyStatusButton className="size-[44px]" />
+            <SkinToggle className="size-[44px]" />
             <ChannelsLink />
             <Link
               to="/settings"
               aria-label="帳號設定"
-              className="flex size-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
+              className="flex size-[44px] shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
             >
               <Settings className="size-5" />
             </Link>
@@ -327,7 +327,7 @@ function ChangeLog({ chart }: { chart: OrgChart }) {
           {chart.log.map((entry) => (
             <li key={entry.id} className="px-4 py-2.5">
               <p className="text-sm leading-relaxed">{entry.detail}</p>
-              <p className="mt-0.5 text-[11px] text-muted-foreground">
+              <p className="mt-0.5 text-[0.6875rem] text-muted-foreground">
                 {formatDateTime(entry.created_at)} · {entry.actor_name}
               </p>
             </li>

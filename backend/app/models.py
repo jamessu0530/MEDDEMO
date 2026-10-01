@@ -861,6 +861,21 @@ class UserPresence(Base):
     last_active_at: Mapped[dt.datetime | None]
 
 
+class UserAvatar(Base):
+    """大頭貼（docs/superpowers/specs/2026-10-01-avatars-text-size-design.md）。一個帳號最多一列，
+    存在資料庫裡跟附件一樣；沒有這一列就是用名字縮寫。"""
+
+    __tablename__ = "user_avatar"
+
+    user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), primary_key=True)
+    # 256×256 的 JPEG，EXIF 已經清掉。列清單時用不到，延後到真的要送圖時才讀
+    content: Mapped[bytes] = mapped_column(LargeBinary, deferred=True)
+    # 每換一次就換一個隨機值，網址跟著變：舊網址一律失效，新網址的內容永遠不變、可以一直快取。
+    # 不用遞增的數字：移除後再上傳會從頭數，拿到跟舊照片一樣的網址，瀏覽器就會顯示快取裡的舊照片
+    version: Mapped[str]
+    updated_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+
+
 class SapEmployee(Base):
     """模擬 SAP 的人員主檔：一個公司帳號一列，存到職日與負責的產品線（新人第一週頁的「你賣什麼」）。
 

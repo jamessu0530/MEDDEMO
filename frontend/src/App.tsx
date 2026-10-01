@@ -8,6 +8,7 @@ import { Notice } from "@/components/notice"
 import { Onboarding } from "@/components/onboarding"
 import { canManage, homePath, refreshUser, useAuth } from "@/lib/auth"
 import { uploadQueue } from "@/lib/offline-queue"
+import { clearAvatars, loadAvatars } from "@/lib/avatars"
 import { clearMyPresence, loadMyPresence } from "@/lib/presence"
 import { realtime } from "@/lib/realtime"
 import { AdminPage } from "@/pages/admin"
@@ -63,9 +64,12 @@ function RequireAuth() {
     if (!token) return
     realtime.start()
     void loadMyPresence()
+    // 連上 WebSocket 時會再拿一次（resync）；先拿，連不上的時候也看得到大家的照片
+    void loadAvatars()
     return () => {
       realtime.stop()
       clearMyPresence()
+      clearAvatars()
     }
   }, [token])
 

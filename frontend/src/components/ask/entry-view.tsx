@@ -20,7 +20,7 @@ export function EntryView({
       <div className="ml-10 flex flex-col items-end gap-1 self-end">
         <p className="rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-sm text-primary-foreground">{entry.text}</p>
         {entry.attachment && <AttachmentGallery attachments={[entry.attachment]} className="w-56 max-w-full items-end" />}
-        {entry.source === "voice" && <p className="text-[11px] text-muted-foreground">語音辨識，僅供參考</p>}
+        {entry.source === "voice" && <p className="text-[0.6875rem] text-muted-foreground">語音辨識，僅供參考</p>}
       </div>
     )
   }

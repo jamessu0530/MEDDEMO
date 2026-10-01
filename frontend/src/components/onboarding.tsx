@@ -73,7 +73,7 @@ export function Onboarding() {
         <h2 id="guide-title" className="text-xl font-semibold">
           {title}
         </h2>
-        <p className="text-[15px] leading-relaxed text-foreground/80">{body}</p>
+        <p className="text-[0.9375rem] leading-relaxed text-foreground/80">{body}</p>
       </div>
       <div className="flex flex-col items-center gap-5">
         <div className="flex gap-2" aria-hidden>

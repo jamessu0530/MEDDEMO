@@ -30,7 +30,7 @@ let lastIndex: number | null = null
 /**
  * 底部分頁列：照 CARE 的樣子，浮在畫面底部的一整條圓角列，目前這一格墊一塊主色的膠囊，換分頁時膠囊滑過去。
  * 只放在最上層的頁面，進到錄音、確認這些流程裡就不顯示，免得誤觸離開。
- * 整條連下面的空隙約 64px（不含 iPhone 的 home indicator），各分頁底下要留至少這麼高。
+ * 整條連下面的空隙約 64px（不含 iPhone 的 home indicator；放大字體時跟著等比例變高），各分頁底下要留至少這麼高。
  */
 export function BottomNav() {
   const { items } = useUploadQueue()
@@ -90,7 +90,7 @@ export function BottomNav() {
             end
             className={({ isActive }) =>
               cn(
-                "relative flex h-[46px] min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-full text-[0.72rem] font-semibold transition-colors",
+                "relative flex h-[2.875rem] min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-full text-[0.72rem] font-semibold transition-colors",
                 GLIDE,
                 isActive ? "text-primary-foreground" : "text-muted-foreground"
               )
@@ -101,7 +101,7 @@ export function BottomNav() {
               {to === "/customers" && pending > 0 && (
                 <span
                   aria-label={`待送出 ${pending} 筆`}
-                  className="absolute -top-1.5 -right-2.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-white"
+                  className="absolute -top-1.5 -right-2.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[0.625rem] font-semibold text-white"
                 >
                   {pending}
                 </span>

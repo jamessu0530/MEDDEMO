@@ -272,7 +272,7 @@ export function RecordVisit() {
             <p className="font-mono text-5xl font-semibold tabular-nums">{formatElapsed(elapsed)}</p>
             {/* FR-4.2：邊講邊看到文字。正式逐字稿還是錄完後由語音辨識產生 */}
             <div className="w-full max-w-sm rounded-2xl border-2 bg-card px-4 py-3 text-left shadow-lip">
-              <p className="text-[11px] tracking-wide text-muted-foreground">即時轉錄</p>
+              <p className="text-[0.6875rem] tracking-wide text-muted-foreground">即時轉錄</p>
               {live.status === "offline" && (
                 <p className="mt-1 text-sm text-muted-foreground">沒有網路：錄音會先存在手機，恢復連線後再整理。</p>
               )}

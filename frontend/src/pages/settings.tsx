@@ -13,6 +13,7 @@ import {
   type OAuthProviders,
 } from "@/api/auth"
 import { MyStatusSection } from "@/components/my-status"
+import { ProfilePhotoSection } from "@/components/profile-photo"
 import { FacebookButton, GitHubButton, GoogleButton, NotReadyButton } from "@/components/oauth-buttons"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
@@ -31,6 +32,7 @@ import { canManage, homePath, refreshUser, signIn, useAuth, type AuthUser } from
 import { PROVIDER_LABEL, useProviders, type OAuthProvider } from "@/lib/oauth"
 import { openGuide } from "@/lib/onboarding"
 import { useSkin, type Skin } from "@/lib/skin"
+import { setTextSize, useTextSize, type TextSize } from "@/lib/text-size"
 import { cn } from "@/lib/utils"
 
 const ROLE_LABEL = { sales: "業務", manager: "主管", it: "IT" } as const
@@ -71,6 +73,44 @@ function SkinPicker() {
             )}
           >
             <span aria-hidden className="size-4 rounded-full border" style={{ background: swatch }} />
+            {label}
+          </button>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+// 每個按鈕用自己的大小寫一個「字」，選之前就看得出差多少（16px 乘上 index.css 的倍率）。
+// 用像素寫死，不跟著目前的設定放大，三個才比得出差別
+const TEXT_SIZES: { id: TextSize; label: string; sample: number }[] = [
+  { id: "standard", label: "標準", sample: 16 },
+  { id: "large", label: "大", sample: 18 },
+  { id: "xlarge", label: "特大", sample: 20 },
+]
+
+/** 字體大小：整頁一起放大，記在這支手機裡（lib/text-size.ts） */
+function TextSizePicker() {
+  const size = useTextSize()
+  return (
+    <section className="flex flex-col gap-3">
+      <h2 className="text-sm font-semibold">字體大小</h2>
+      <div role="radiogroup" aria-label="字體大小" className="grid grid-cols-3 gap-2">
+        {TEXT_SIZES.map(({ id, label, sample }) => (
+          <button
+            key={id}
+            type="button"
+            role="radio"
+            aria-checked={size === id}
+            onClick={() => setTextSize(id)}
+            className={cn(
+              "flex h-14 items-center justify-center gap-1.5 rounded-xl border-2 bg-card text-sm font-medium shadow-lip press",
+              size === id && "border-primary ring-1 ring-primary"
+            )}
+          >
+            <span aria-hidden style={{ fontSize: sample }}>
+              字
+            </span>
             {label}
           </button>
         ))}
@@ -456,6 +496,7 @@ export function SettingsPage() {
           )}
         </section>
 
+        <ProfilePhotoSection />
         <MyStatusSection />
 
         <Link
@@ -487,6 +528,7 @@ export function SettingsPage() {
         )}
 
         <SkinPicker />
+        <TextSizePicker />
 
         {providers && <LinkedAccounts user={user} providers={providers} />}
 

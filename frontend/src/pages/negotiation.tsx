@@ -102,7 +102,7 @@ export function NegotiationPage() {
               <section className="rounded-2xl border-2 bg-card p-4 shadow-lip">
                 <p className="text-sm font-semibold">我方底線</p>
                 <p className="mt-1.5 text-sm leading-relaxed text-foreground/80">{card.margin.summary}。</p>
-                <p className="mt-1 text-[11px] text-muted-foreground">近 90 天，淨毛利＝毛利－上架費－通路獎勵</p>
+                <p className="mt-1 text-[0.6875rem] text-muted-foreground">近 90 天，淨毛利＝毛利－上架費－通路獎勵</p>
               </section>
             )}
             {card.deals && <DealsBlock deals={card.deals} festival={card.festival} />}
@@ -113,7 +113,7 @@ export function NegotiationPage() {
               <section className="flex flex-col gap-2">
                 <div className="flex items-baseline justify-between gap-2">
                   <h2 className="text-sm font-semibold">主管教的做法</h2>
-                  <p className="text-[11px] text-muted-foreground">用過之後點開，按一下有沒有幫上</p>
+                  <p className="text-[0.6875rem] text-muted-foreground">用過之後點開，按一下有沒有幫上</p>
                 </div>
                 {/* 回饋帶這家客戶：記的是「在這一家用了有沒有幫上」 */}
                 {card.methods.map((method) => (
@@ -150,7 +150,7 @@ function FestivalBlock({ festival }: { festival: Festival }) {
         <span className="ml-2 text-xs font-normal text-muted-foreground tabular-nums">{formatFullDate(festival.date)}</span>
       </p>
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        <span className="text-[11px] text-muted-foreground">主推</span>
+        <span className="text-[0.6875rem] text-muted-foreground">主推</span>
         {festival.categories.map((category) => (
           <Badge key={category} variant="outline" className="bg-card">
             {category}
@@ -174,14 +174,14 @@ function CampaignBlock({ campaign }: { campaign: Campaign }) {
       </p>
       <dl className="mt-3 grid grid-cols-2 gap-2 border-t pt-3">
         <div>
-          <dt className="text-[11px] text-muted-foreground">最晚送申請</dt>
+          <dt className="text-[0.6875rem] text-muted-foreground">最晚送申請</dt>
           <dd className="text-sm font-medium tabular-nums">{formatFullDate(campaign.apply_by)}</dd>
-          <dd className="text-[11px] text-muted-foreground">{applyCountdown(campaign.days_to_apply)}</dd>
+          <dd className="text-[0.6875rem] text-muted-foreground">{applyCountdown(campaign.days_to_apply)}</dd>
         </div>
         <div>
-          <dt className="text-[11px] text-muted-foreground">檔期費用上限</dt>
+          <dt className="text-[0.6875rem] text-muted-foreground">檔期費用上限</dt>
           <dd className="text-sm font-medium tabular-nums">{formatMoney(campaign.fee_cap)}</dd>
-          <dd className="text-[11px] text-muted-foreground">近 3 個月平均月進貨的 15%</dd>
+          <dd className="text-[0.6875rem] text-muted-foreground">近 3 個月平均月進貨的 15%</dd>
         </div>
       </dl>
     </section>
@@ -196,12 +196,12 @@ function ShelfBlock({ shelf, festival }: { shelf: Shelf; festival: Festival | nu
     <section className="rounded-2xl border-2 bg-card p-4 shadow-lip">
       <div className="flex items-baseline justify-between gap-2">
         <p className="text-sm font-semibold">架上有什麼</p>
-        <p className="text-[11px] text-muted-foreground">近 90 天每月進貨次數 · 灰線是同區平均</p>
+        <p className="text-[0.6875rem] text-muted-foreground">近 90 天每月進貨次數 · 灰線是同區平均</p>
       </div>
       {items.length === 0 && <p className="mt-2 text-sm text-muted-foreground">近半年沒有進貨紀錄。</p>}
       {/* 主推品類裡這家一項都沒進，後端退回不分品類，要讓業務知道下面列的不是主推品類 */}
       {items.length > 0 && festival && (
-        <p className="mt-1 text-[11px] text-muted-foreground">
+        <p className="mt-1 text-[0.6875rem] text-muted-foreground">
           {shelf.scoped
             ? `${festival.categories.join("、")}裡，這家近半年進貨金額最高的品項`
             : `${festival.categories.join("、")}這家近半年都沒有進，改列全部品類`}
@@ -240,7 +240,7 @@ function GapsBlock({ gaps }: { gaps: Gaps }) {
     <section className="rounded-2xl border-2 bg-card px-4 pb-1 shadow-lip">
       <div className="flex items-baseline justify-between gap-2 py-3">
         <p className="text-sm font-semibold">架上缺什麼</p>
-        <p className="text-[11px] text-muted-foreground">同區連鎖近 90 天有進 · 這家近半年沒進</p>
+        <p className="text-[0.6875rem] text-muted-foreground">同區連鎖近 90 天有進 · 這家近半年沒進</p>
       </div>
       {gaps.map((gap) => (
         <div key={gap.sku} className="flex min-h-12 items-center justify-between gap-3 border-t py-2">
@@ -260,11 +260,11 @@ function DealsBlock({ deals, festival }: { deals: Deals; festival: Festival | nu
     <section>
       <div className="flex items-baseline justify-between gap-2">
         <h2 className="text-sm font-semibold">這一檔的進價</h2>
-        {deals.promotion_name && <p className="truncate text-[11px] text-muted-foreground">{deals.promotion_name}</p>}
+        {deals.promotion_name && <p className="truncate text-[0.6875rem] text-muted-foreground">{deals.promotion_name}</p>}
       </div>
       {!deals.promotion_name && <p className="mt-2 text-sm text-muted-foreground">這一期沒有促銷。</p>}
       {deals.items.length > 0 && (
-        <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+        <p className="mt-1 text-[0.6875rem] leading-relaxed text-muted-foreground">
           {/* 主推品類裡沒有促銷品項，後端退回全部品類 */}
           {festival && !deals.scoped && `${festival.categories.join("、")}這一期沒有促銷品項，改列全部品類。`}
           每個品項取搭贈後每個最便宜的那一口，照建議售價賣一個的毛利率由高到低；另外加贈的品項與滿額贈不算在內。
@@ -280,20 +280,20 @@ function DealsBlock({ deals, festival }: { deals: Deals; festival: Festival | nu
             <p className="mt-1 text-xs text-muted-foreground">{item.deal}</p>
             <dl className="mt-3 grid grid-cols-3 gap-2 border-t pt-2 text-center">
               <div>
-                <dt className="text-[11px] text-muted-foreground">每口</dt>
+                <dt className="text-[0.6875rem] text-muted-foreground">每口</dt>
                 <dd className="text-sm font-medium tabular-nums">{formatMoney(item.deal_price)}</dd>
               </div>
               <div>
-                <dt className="text-[11px] text-muted-foreground">搭贈後每個</dt>
+                <dt className="text-[0.6875rem] text-muted-foreground">搭贈後每個</dt>
                 <dd className="text-sm font-medium tabular-nums">{formatUnitPrice(item.unit_deal_price)}</dd>
               </div>
               <div>
-                <dt className="text-[11px] text-muted-foreground">賣一個賺</dt>
+                <dt className="text-[0.6875rem] text-muted-foreground">賣一個賺</dt>
                 <dd className="text-sm font-medium text-primary tabular-nums">{formatUnitPrice(item.unit_profit)}</dd>
               </div>
             </dl>
             {/* 獨立店在意一次要壓多少貨：每個最便宜的那一口通常是大口，另外標出最小一口要多少錢 */}
-            <p className="mt-2 text-[11px] text-muted-foreground tabular-nums">
+            <p className="mt-2 text-[0.6875rem] text-muted-foreground tabular-nums">
               建議售價 {formatMoney(item.list_price)} · 最小一口 {formatMoney(item.smallest_deal_price)}
             </p>
           </li>
@@ -333,7 +333,7 @@ function TermsBlock({ terms }: { terms: Terms }) {
           <p className="shrink-0 text-xs text-muted-foreground">{row.label}</p>
           <div className="text-right">
             <p className="text-sm tabular-nums">{row.value}</p>
-            {row.note && <p className={cn("text-[11px]", row.alert ? "text-destructive" : "text-muted-foreground")}>{row.note}</p>}
+            {row.note && <p className={cn("text-[0.6875rem]", row.alert ? "text-destructive" : "text-muted-foreground")}>{row.note}</p>}
           </div>
         </div>
       ))}
@@ -350,10 +350,10 @@ function Tips({ tips }: { tips: NegotiationCard["tips"] }) {
       <ol className="mt-3 flex flex-col gap-4">
         {tips.map((tip) => (
           <li key={`${tip.source_name}-${tip.section}`} className="flex flex-col gap-1">
-            <span className="text-[11px] text-muted-foreground">因為{tip.reason}</span>
+            <span className="text-[0.6875rem] text-muted-foreground">因為{tip.reason}</span>
             <p className="text-sm font-medium">{tip.section}</p>
-            <p className="text-[13px] leading-relaxed text-foreground/80">{tip.content}</p>
-            <span className="text-[11px] text-muted-foreground">出處：{tip.doc_title}</span>
+            <p className="text-[0.8125rem] leading-relaxed text-foreground/80">{tip.content}</p>
+            <span className="text-[0.6875rem] text-muted-foreground">出處：{tip.doc_title}</span>
           </li>
         ))}
       </ol>

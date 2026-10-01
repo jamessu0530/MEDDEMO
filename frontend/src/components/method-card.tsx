@@ -61,7 +61,7 @@ export function MethodCardItem({ card, customerId, onChanged }: MethodCardItemPr
             </Badge>
           ))}
         </span>
-        <span className="text-[11px] text-muted-foreground">
+        <span className="text-[0.6875rem] text-muted-foreground">
           {card.author_name} · 採用 <span className="tabular-nums">{card.adopted}</span> 次
         </span>
       </button>

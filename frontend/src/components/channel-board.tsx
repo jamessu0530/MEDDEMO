@@ -97,7 +97,7 @@ export function ChannelBoard({ channel, onJump }: { channel: Channel; onJump: (m
               <p className="text-xs font-medium text-muted-foreground">{group.channel_name}</p>
               {group.items.map((item) => (
                 <article key={item.id} className="rounded-xl border bg-card p-3">
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-[0.6875rem] text-muted-foreground">
                     {CATEGORY_LABEL[item.category]}
                     {item.category === "todo" && item.status === "done" && " · 已完成"}
                     {item.category === "todo" && item.status === "open" && item.due_date && ` · ${dueText(item.due_date, today).text}`}
@@ -166,7 +166,7 @@ function OwnCard({
           </button>
         )}
         <div className="min-w-0 flex-1">
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-[0.6875rem] text-muted-foreground">
             {CATEGORY_LABEL[item.category]}
             {due && <span className={cn(due.overdue && "font-medium text-destructive")}> · {due.text}</span>}
             {" · "}
@@ -182,7 +182,7 @@ function OwnCard({
           </button>
           <AttachmentThumbs attachments={item.attachments} raised={item.shared && !item.withdrawn ? item.shared_attachment_ids : []} />
           {item.shared && !item.withdrawn && (
-            <div className="mt-2 flex items-start gap-2 rounded-lg bg-primary/10 px-2.5 py-1.5 text-[11px] text-primary">
+            <div className="mt-2 flex items-start gap-2 rounded-lg bg-primary/10 px-2.5 py-1.5 text-[0.6875rem] text-primary">
               <ArrowUpFromLine className="mt-0.5 size-3.5 shrink-0" />
               <p className="min-w-0 flex-1">已往上傳：{item.shared_text}</p>
               {!readOnly && (
@@ -192,7 +192,7 @@ function OwnCard({
               )}
             </div>
           )}
-          {item.withdrawn && <p className="mt-2 text-[11px] text-muted-foreground">已撤回往上傳</p>}
+          {item.withdrawn && <p className="mt-2 text-[0.6875rem] text-muted-foreground">已撤回往上傳</p>}
         </div>
         {!readOnly && (
           <Button variant="ghost" size="icon" className="size-9 shrink-0" aria-label="修改這條重點" onClick={onEdit}>

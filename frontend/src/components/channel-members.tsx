@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react"
 import { Users } from "lucide-react"
 
+import { removeAvatar } from "@/api/avatars"
 import { listMembers, type ChannelMember } from "@/api/channels"
 import type { PresenceStatus } from "@/api/presence"
 import { AvatarGroup, AvatarGroupCount } from "@/components/ui/avatar"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { StatusDot, UserAvatar } from "@/components/user-avatar"
+import { useAuth } from "@/lib/auth"
+import { avatars, useAvatarUrl } from "@/lib/avatars"
 import { presence, STATUS_LABEL, STATUS_ORDER, usePresenceMap } from "@/lib/presence"
 
 // 頁首最多疊幾個頭像，再多顯示 +N
@@ -17,7 +20,42 @@ type Listed = ChannelMember & { live: PresenceStatus }
  * 頻道頁首右邊：除了自己以外在線的人疊成一排，點了打開成員清單（依狀態分組）。
  * 成員打開頻道時問一次；狀態之後由 WebSocket 推來，收過完整的一份就用即時的（lib/presence.ts）
  */
+/** IT 移除別人的大頭貼（擋濫用）：按一下變成「確定移除」，再按一下才真的移除。沒有照片的人不顯示 */
+function RemovePhoto({ userId }: { userId: string }) {
+  const url = useAvatarUrl(userId)
+  const [confirming, setConfirming] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [failed, setFailed] = useState(false)
+  if (!url) return null
+
+  async function remove() {
+    setBusy(true)
+    setFailed(false)
+    try {
+      await removeAvatar(userId)
+      avatars.update(userId, null)
+    } catch {
+      setFailed(true)
+    } finally {
+      setBusy(false)
+      setConfirming(false)
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      disabled={busy}
+      onClick={() => (confirming ? void remove() : setConfirming(true))}
+      className="min-h-11 shrink-0 px-1 text-xs text-destructive underline-offset-2 hover:underline disabled:opacity-60"
+    >
+      {failed ? "沒有移除，再按一次" : confirming ? "確定移除照片" : "移除照片"}
+    </button>
+  )
+}
+
 export function ChannelMembers({ channelId, selfId }: { channelId: number; selfId: string }) {
+  const isIt = useAuth()?.user.role === "it"
   const [members, setMembers] = useState<ChannelMember[] | null>(null)
   const [failed, setFailed] = useState(false)
   const [open, setOpen] = useState(false)
@@ -102,6 +140,7 @@ export function ChannelMembers({ channelId, selfId }: { channelId: number; selfI
                         {m.name}
                         {m.id === selfId && <span className="text-muted-foreground">（你）</span>}
                       </span>
+                      {isIt && m.id !== selfId && <RemovePhoto userId={m.id} />}
                     </div>
                   ))}
                 </section>

@@ -133,7 +133,7 @@ export function ContractPage() {
                 <Term label="上架費率" value={formatRate(contract.listing_fee_rate)} />
                 <Term label="通路獎勵" value={formatRate(contract.channel_reward_rate)} />
               </dl>
-              <p className="mt-2 text-[11px] text-muted-foreground">費率是近 90 天交易的上架費、通路獎勵除以進貨金額，跟談判卡的毛利結構同一個算法。</p>
+              <p className="mt-2 text-[0.6875rem] text-muted-foreground">費率是近 90 天交易的上架費、通路獎勵除以進貨金額，跟談判卡的毛利結構同一個算法。</p>
             </section>
 
             {contract.pending_form_id ? (
@@ -199,7 +199,7 @@ export function ContractPage() {
 function Term({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
   return (
     <div>
-      <dt className="text-[11px] text-muted-foreground">{label}</dt>
+      <dt className="text-[0.6875rem] text-muted-foreground">{label}</dt>
       <dd className={cn("text-sm font-semibold tabular-nums", warn && "text-warning")}>{value}</dd>
     </div>
   )

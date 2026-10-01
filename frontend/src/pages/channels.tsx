@@ -44,7 +44,7 @@ export function ChannelsPage() {
         void load()
       }, RELOAD_DELAY_MS)
     }
-    const offRealtime = realtime.subscribe(soon)
+    const offRealtime = realtime.subscribe((event) => event.type !== "avatars" && soon())
     const offPresence = presence.subscribe(soon)
     return () => {
       controller.abort()

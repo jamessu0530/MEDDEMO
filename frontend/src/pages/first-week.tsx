@@ -178,7 +178,7 @@ function ProfileSection({ data }: { data: FirstWeek }) {
     <section className="rounded-2xl border-2 bg-card p-4 shadow-lip">
       <div className="flex items-baseline justify-between gap-3">
         <h2 className="text-sm font-semibold">你的資料</h2>
-        {employee.employee_no && <span className="text-[11px] text-muted-foreground">來自 SAP 人員主檔</span>}
+        {employee.employee_no && <span className="text-[0.6875rem] text-muted-foreground">來自 SAP 人員主檔</span>}
       </div>
       {/* 自建與第三方登入的帳號沒有人員主檔，下面列的是代理的那位示範業務的轄區與客戶 */}
       {employee.proxy_of && (
@@ -238,7 +238,7 @@ function ProductLines({ data }: { data: FirstWeek }) {
                     )}
                   </div>
                   <div className="shrink-0 text-right">
-                    <p className="text-[11px] text-muted-foreground">建議售價</p>
+                    <p className="text-[0.6875rem] text-muted-foreground">建議售價</p>
                     <p className="text-sm font-medium tabular-nums">{formatMoney(item.unit_price)}</p>
                   </div>
                 </li>
