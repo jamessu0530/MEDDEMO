@@ -244,7 +244,10 @@ class _Connection:
             if not isinstance(data, dict) or data.get("type") != "ping":
                 continue
             active = bool(data.get("active"))
-            if active == self.active and time.monotonic() - self.last_ping < MIN_PING_SECONDS:
+            # active 沒變、5 秒內不寫資料庫：但這則帶了位置或「沒有權限」就不能略過，
+            # 不然剛連上線那幾秒送的位置會被當成跟連線當下的心跳重複，直接丟掉
+            carries_location = "location" in data or "location_denied" in data
+            if active == self.active and not carries_location and time.monotonic() - self.last_ping < MIN_PING_SECONDS:
                 continue
             self.active = active
             self.last_ping = time.monotonic()

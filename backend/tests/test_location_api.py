@@ -141,6 +141,21 @@ def test_location_events_reach_only_managers_who_can_see_the_rep(client, engine,
         assert next_of(south, "location") == {"type": "location", "user_id": "U04"}
 
 
+def test_a_ping_carrying_a_location_is_not_deduped_even_right_after_connecting(client, engine, always):
+    """連上線時的 active=True 心跳跟緊接著送的 active=True 心跳 5 秒內會被當成重複略過，
+    但這一則帶了位置：不能因為 active 沒變就連位置也一起丟掉。"""
+    with client.websocket_connect("/api/ws") as rep:
+        connect(rep, engine, "U01")
+        rep.send_json({"type": "ping", "active": True, "location": {"lat": 25.034, "lng": 121.5645, "accuracy": 8}})
+        row = None
+        for _ in range(60):
+            row = location_of(engine, "U01")
+            if row is not None and row.lat is not None:
+                break
+            time.sleep(0.05)
+        assert (row.lat, row.lng, row.accuracy_m) == (25.034, 121.5645, 8)
+
+
 def test_a_websocket_heartbeat_can_carry_the_location(client, engine, always):
     with client.websocket_connect("/api/ws") as rep:
         connect(rep, engine, "U01")
