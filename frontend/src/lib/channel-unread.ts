@@ -9,7 +9,7 @@ export const channelUnread = new CountPoller(() => getChannelUnread())
 
 // 有新訊息的通知、重連之後，不等下一分鐘的輪詢
 realtime.subscribe((event) => {
-  if (event.type !== "avatars") void channelUnread.refresh()
+  if (event.type === "message" || event.type === "resync") void channelUnread.refresh()
 })
 
 export function useChannelUnread() {

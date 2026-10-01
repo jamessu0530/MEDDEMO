@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
+import type { HeartbeatLocation } from "@/api/presence"
 import { PresenceStore } from "@/lib/presence"
 import { IDLE_MS, PING_MS, RealtimeClient, RETRY_MS, type RealtimeEnv, type SocketLike } from "@/lib/realtime"
 
@@ -35,7 +36,7 @@ class FakeSocket implements SocketLike {
 function setup() {
   const sockets: FakeSocket[] = []
   const handlers: Record<string, () => void> = {}
-  const state = { token: "token-1" as string | null, visible: true, online: true }
+  const state = { token: "token-1" as string | null, visible: true, online: true, heartbeat: {} as HeartbeatLocation }
   const env: RealtimeEnv = {
     url: () => "ws://test/api/ws",
     token: () => state.token,
@@ -47,6 +48,7 @@ function setup() {
     visible: () => state.visible,
     online: () => state.online,
     ping: vi.fn().mockResolvedValue({ statuses: { M01: "busy" } }),
+    heartbeat: () => state.heartbeat,
     listen: (kind, callback) => {
       handlers[kind] = callback
       return () => delete handlers[kind]
@@ -83,6 +85,29 @@ describe("RealtimeClient", () => {
     ready()
     expect(client.isConnected()).toBe(true)
     expect(events).toEqual([{ type: "resync" }])
+  })
+
+  it("業務的心跳多帶位置，WebSocket 與 HTTP 心跳都是", async () => {
+    const { client, env, latest, ready, state } = setup()
+    state.heartbeat = { location: { lat: 25.034, lng: 121.5645, accuracy: 12 } }
+    client.start()
+    ready()
+    vi.advanceTimersByTime(PING_MS)
+    expect(latest().sent.at(-1)).toEqual({ type: "ping", active: true, location: { lat: 25.034, lng: 121.5645, accuracy: 12 } })
+    latest().drop()
+    expect(env.ping).toHaveBeenCalledWith(true, { location: { lat: 25.034, lng: 121.5645, accuracy: 12 } })
+  })
+
+  it("位置與行程的通知轉給訂閱的畫面", () => {
+    const { client, latest, ready, events } = setup()
+    client.start()
+    ready()
+    latest().push({ type: "location", user_id: "U01" })
+    latest().push({ type: "itinerary", user_id: "U02" })
+    expect(events.slice(-2)).toEqual([
+      { type: "location", user_id: "U01" },
+      { type: "itinerary", user_id: "U02" },
+    ])
   })
 
   it("狀態推來就更新 store，新訊息通知轉給訂閱的畫面", () => {
@@ -141,7 +166,7 @@ describe("RealtimeClient", () => {
     ready()
     latest().drop()
     expect(client.isConnected()).toBe(false)
-    expect(env.ping).toHaveBeenCalledWith(true)
+    expect(env.ping).toHaveBeenCalledWith(true, {})
     await vi.advanceTimersByTimeAsync(0)
     expect(store.statusOf("M01")).toBe("busy")
 

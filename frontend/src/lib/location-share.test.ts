@@ -1,0 +1,184 @@
+import { describe, expect, it, vi } from "vitest"
+
+import type { ShareState } from "@/api/location"
+import {
+  barState,
+  barText,
+  heartbeatPayload,
+  LocationShare,
+  withinHours,
+  type GeoEnv,
+  type Position,
+  type ShareSnapshot,
+} from "@/lib/location-share"
+
+const HOURS = { weekdays: [1, 2, 3, 4, 5], start: "08:30", end: "18:30" }
+const SHARE: ShareState = { applies: true, paused: false, denied: false, manager_name: "陳建宏", hours: HOURS }
+// 2026-10-01 是星期四
+const WORKING = new Date("2026-10-01T10:00:00+08:00")
+const HERE: Position = { lat: 25.034, lng: 121.5645, accuracy: 12 }
+
+const snapshot = (extra: Partial<ShareSnapshot> = {}): ShareSnapshot => ({
+  share: SHARE,
+  consented: true,
+  denied: false,
+  position: HERE,
+  ...extra,
+})
+
+describe("上班時間", () => {
+  it.each([
+    ["2026-10-01T08:29:00+08:00", false],
+    ["2026-10-01T08:30:00+08:00", true],
+    ["2026-10-01T18:29:00+08:00", true],
+    ["2026-10-01T18:30:00+08:00", false],
+    // 星期六
+    ["2026-10-03T10:00:00+08:00", false],
+    // 看的是台北時間，不是手機的時區
+    ["2026-10-01T00:30:00Z", true],
+  ])("%s → %s", (iso, inside) => {
+    expect(withinHours(new Date(iso), HOURS)).toBe(inside)
+  })
+})
+
+describe("分享列與心跳", () => {
+  it("不是業務、下班時間、還沒載入：不顯示也不帶", () => {
+    for (const s of [snapshot({ share: { ...SHARE, applies: false } }), snapshot({ share: null })]) {
+      expect(barState(s, WORKING)).toBe("hidden")
+      expect(heartbeatPayload(s, WORKING)).toEqual({})
+    }
+    expect(barState(snapshot(), new Date("2026-10-01T19:00:00+08:00"))).toBe("hidden")
+  })
+
+  it("還沒同意：先說明，什麼都不帶", () => {
+    expect(barState(snapshot({ consented: false }), WORKING)).toBe("consent")
+    expect(heartbeatPayload(snapshot({ consented: false }), WORKING)).toEqual({})
+  })
+
+  it("分享中帶最新的位置；還沒拿到位置就先不帶", () => {
+    expect(barState(snapshot(), WORKING)).toBe("sharing")
+    expect(heartbeatPayload(snapshot(), WORKING)).toEqual({ location: HERE })
+    expect(heartbeatPayload(snapshot({ position: null }), WORKING)).toEqual({})
+  })
+
+  it("暫停中不帶；暫停比沒有權限優先", () => {
+    const paused = snapshot({ share: { ...SHARE, paused: true }, denied: true })
+    expect(barState(paused, WORKING)).toBe("paused")
+    expect(heartbeatPayload(paused, WORKING)).toEqual({})
+  })
+
+  it("沒有權限：帶 location_denied", () => {
+    expect(barState(snapshot({ denied: true }), WORKING)).toBe("denied")
+    expect(heartbeatPayload(snapshot({ denied: true }), WORKING)).toEqual({ location_denied: true })
+  })
+
+  it("分享列的句子", () => {
+    expect(barText("sharing", "陳建宏", HOURS)).toBe("位置分享中，陳建宏看得到你在哪（到 18:30）")
+    expect(barText("paused", "陳建宏", HOURS)).toBe("已暫停分享，陳建宏會看到「暫停分享」")
+    expect(barText("denied", "陳建宏", HOURS)).toBe("沒有開定位權限，陳建宏看不到你在哪")
+    expect(barText("denied", null, HOURS)).toBe("沒有開定位權限，主管看不到你在哪")
+    expect(barText("hidden", "陳建宏", HOURS)).toBeNull()
+  })
+})
+
+function setup() {
+  const state = { now: WORKING, consent: false, permission: "prompt" as PermissionState, share: SHARE }
+  const watchers: Array<{ onPosition: (p: Position) => void; onDenied: () => void; stopped: boolean }> = []
+  const env: GeoEnv = {
+    now: () => state.now,
+    readConsent: () => state.consent,
+    writeConsent: () => {
+      state.consent = true
+    },
+    fetchState: vi.fn(async () => state.share),
+    permission: async () => state.permission,
+    watch: (onPosition, onDenied) => {
+      const watcher = { onPosition, onDenied, stopped: false }
+      watchers.push(watcher)
+      return () => {
+        watcher.stopped = true
+      }
+    },
+  }
+  return { env, state, watchers, store: new LocationShare(env) }
+}
+
+const settle = () => new Promise((resolve) => setTimeout(resolve, 0))
+
+describe("LocationShare", () => {
+  it("第一次心跳去問後端；還沒同意就不追蹤", async () => {
+    const { store, watchers, env } = setup()
+    expect(store.heartbeat()).toEqual({})
+    await settle()
+    expect(env.fetchState).toHaveBeenCalledTimes(1)
+    expect(barState(store.getSnapshot(), WORKING)).toBe("consent")
+    expect(watchers).toHaveLength(0)
+  })
+
+  it("同意之後才開始追蹤，拿到位置就帶在心跳裡", async () => {
+    const { store, watchers } = setup()
+    await store.load()
+    store.consent()
+    await settle()
+    expect(watchers).toHaveLength(1)
+    watchers[0].onPosition(HERE)
+    expect(store.heartbeat()).toEqual({ location: HERE })
+  })
+
+  it("瀏覽器拒絕：停止追蹤，心跳改帶 location_denied，不再一直跳詢問；設定裡打開之後再開始", async () => {
+    const { store, watchers, state } = setup()
+    state.consent = true
+    await store.load()
+    watchers[0].onDenied()
+    expect(watchers[0].stopped).toBe(true)
+    expect(store.heartbeat()).toEqual({ location_denied: true })
+    await settle()
+    expect(watchers).toHaveLength(1)
+    state.permission = "granted"
+    store.heartbeat()
+    await settle()
+    expect(watchers).toHaveLength(2)
+  })
+
+  it("權限早就被拒：不呼叫 watch，免得一直跳要權限", async () => {
+    const { store, watchers, state } = setup()
+    state.consent = true
+    state.permission = "denied"
+    await store.load()
+    expect(watchers).toHaveLength(0)
+    expect(store.heartbeat()).toEqual({ location_denied: true })
+  })
+
+  it("暫停就停止追蹤，繼續再開", async () => {
+    const { store, watchers, state } = setup()
+    state.consent = true
+    await store.load()
+    store.setShare({ ...SHARE, paused: true })
+    await settle()
+    expect(watchers[0].stopped).toBe(true)
+    expect(store.heartbeat()).toEqual({})
+    store.setShare(SHARE)
+    await settle()
+    expect(watchers).toHaveLength(2)
+    expect(watchers[1].stopped).toBe(false)
+  })
+
+  it("下班時間停止追蹤", async () => {
+    const { store, watchers, state } = setup()
+    state.consent = true
+    await store.load()
+    state.now = new Date("2026-10-01T18:31:00+08:00")
+    expect(store.heartbeat()).toEqual({})
+    await settle()
+    expect(watchers[0].stopped).toBe(true)
+  })
+
+  it("換人就全部清掉", async () => {
+    const { store, watchers, state } = setup()
+    state.consent = true
+    await store.load()
+    store.reset()
+    expect(watchers[0].stopped).toBe(true)
+    expect(store.getSnapshot().share).toBeNull()
+  })
+})

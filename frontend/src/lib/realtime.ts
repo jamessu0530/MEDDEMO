@@ -1,12 +1,14 @@
 import { useSyncExternalStore } from "react"
 
-import { pingPresence, type PresenceStatus } from "@/api/presence"
+import { pingPresence, type HeartbeatLocation, type PresenceStatus } from "@/api/presence"
 import { readToken } from "@/lib/auth"
+import { locationShare } from "@/lib/location-share"
 import { presence, type PresenceStore } from "@/lib/presence"
 
 /*
  * 一條 WebSocket（/api/ws）同時收兩件事：有人的狀態變了、看得到的頻道有新訊息
  * （docs/superpowers/specs/2026-10-01-presence-design.md）。
+ * 業務的心跳順便帶位置（lib/location-share.ts）；主管與 IT 另外會收到看得到的業務位置變了、行程變了的通知。
  * 新訊息只是通知，內容照舊用 API 拿（pages/channel.tsx）；斷線漏掉的通知，重連時發一個 resync 讓畫面自己補。
  * 連不上的期間改用 HTTP 心跳，別人才不會以為你離線了。
  */
@@ -21,8 +23,13 @@ export const RETRY_MS = [1_000, 2_000, 5_000, 10_000, 30_000]
 const CLOSE_UNAUTHORIZED = 4401
 const CLOSE_TOO_MANY = 4429
 
-// avatars：有人換了或移除大頭貼（lib/avatars.ts 重拿一次網址）
-export type RealtimeEvent = { type: "message"; channel_id: number } | { type: "resync" } | { type: "avatars" }
+// avatars：有人換了或移除大頭貼（lib/avatars.ts 重拿一次網址）；location、itinerary：這位業務的位置或今天的行程變了（主管頁）
+export type RealtimeEvent =
+  | { type: "message"; channel_id: number }
+  | { type: "resync" }
+  | { type: "avatars" }
+  | { type: "location"; user_id: string }
+  | { type: "itinerary"; user_id: string }
 
 type ServerEvent =
   | { type: "ready"; user_id: string }
@@ -33,6 +40,8 @@ type ServerEvent =
     }
   | { type: "message"; channel_id: number }
   | { type: "avatars" }
+  | { type: "location"; user_id: string }
+  | { type: "itinerary"; user_id: string }
 
 export type SocketLike = {
   send(data: string): void
@@ -49,9 +58,11 @@ export type RealtimeEnv = {
   createSocket(url: string): SocketLike
   visible(): boolean
   online(): boolean
-  ping(active: boolean): Promise<{ statuses: Record<string, PresenceStatus> }>
+  ping(active: boolean, extra: HeartbeatLocation): Promise<{ statuses: Record<string, PresenceStatus> }>
   /** 畫面切到前景或背景、恢復網路、碰螢幕時呼叫 callback；回傳取消監聽的函式 */
   listen(kind: "visibility" | "online" | "activity", callback: () => void): () => void
+  /** 心跳要多帶的（業務的位置），沒有就是空的 */
+  heartbeat(): HeartbeatLocation
 }
 
 export class RealtimeClient {
@@ -157,7 +168,7 @@ export class RealtimeClient {
       this.emit({ type: "resync" })
     } else if (event.type === "presence") {
       this.store.apply(event.full, event.statuses)
-    } else if (event.type === "message" || event.type === "avatars") {
+    } else if (event.type === "message" || event.type === "avatars" || event.type === "location" || event.type === "itinerary") {
       this.emit(event)
     }
   }
@@ -186,7 +197,7 @@ export class RealtimeClient {
   private readonly sendPing = () => {
     if (!this.socket || !this.connected) return
     const active = this.active()
-    this.socket.send(JSON.stringify({ type: "ping", active }))
+    this.socket.send(JSON.stringify({ type: "ping", active, ...this.env.heartbeat() }))
     this.lastSentActive = active
   }
 
@@ -226,7 +237,7 @@ export class RealtimeClient {
     // 畫面在背景就不送：人不在了，5 分鐘後讓別人看到離線
     if (this.connected || !this.running || !this.env.visible() || !this.env.online()) return
     this.env
-      .ping(this.active())
+      .ping(this.active(), this.env.heartbeat())
       .then(({ statuses }) => {
         if (this.running && !this.connected) this.store.apply(true, statuses)
       })
@@ -263,6 +274,7 @@ const browserEnv: RealtimeEnv = {
   visible: () => document.visibilityState === "visible",
   online: () => navigator.onLine,
   ping: pingPresence,
+  heartbeat: () => locationShare.heartbeat(),
   listen(kind, callback) {
     if (kind === "visibility") {
       document.addEventListener("visibilitychange", callback)
