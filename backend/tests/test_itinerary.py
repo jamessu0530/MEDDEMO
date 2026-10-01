@@ -369,3 +369,187 @@ def test_an_unknown_button_is_refused(tx):
     target = service.view(tx, itinerary).stops[1]
     with pytest.raises(ValueError):
         service.apply_feedback(tx, "U01", target.customer_id, "ignore", 1)
+
+
+def draft_of(view):
+    """讀到的行程原封不動地換成草稿（跟前端 lib/itinerary.ts 的 draftFrom 一樣）。"""
+    return service.Draft(
+        stops=[
+            service.DraftStop(
+                s.customer_id, s.duration_minutes, s.window_kind,
+                dt.time.fromisoformat(s.window_time) if s.window_time else None, s.note, s.locked,
+            )
+            for s in view.stops if s.status != "done"
+        ],
+        precedences=[(p.before, p.after) for p in view.precedences],
+        skipped_habit_ids=[h.id for h in view.skipped_habits],
+    )
+
+
+def not_on_route(tx, on_route, owner="U01", limit=1):
+    return tx.scalars(
+        select(Customer.id).where(Customer.owner_user_id == owner, Customer.id.not_in(on_route))
+        .order_by(Customer.id).limit(limit)
+    ).all()
+
+
+def test_preview_recomputes_times_without_saving(tx):
+    itinerary = service.get_or_create(tx, "U01")
+    before = service.view(tx, itinerary)
+    draft = draft_of(before)
+    draft.stops.reverse()
+    draft.stops[0].duration_minutes = 90
+    draft.stops[1].window_kind, draft.stops[1].window_time = "before", dt.time(9, 40)
+    shown = service.preview(tx, "U01", draft)
+    assert [s.customer_id for s in shown.stops] == [s.customer_id for s in draft.stops]
+    assert shown.stops[0].duration_minutes == 90
+    # 第一站停 90 分鐘，第二站 09:40 以前一定到不了
+    assert shown.stops[1].late_minutes > 0 and shown.stops[1].window_time == "09:40"
+    assert shown.estimated is True
+    assert service.view(tx, itinerary) == before
+
+
+def test_preview_inserts_a_new_stop_with_the_habit_defaults(tx):
+    itinerary = service.get_or_create(tx, "U01")
+    before = service.view(tx, itinerary)
+    on_route = [s.customer_id for s in before.stops]
+    [mine] = not_on_route(tx, on_route)
+    route_habits.create(tx, "U01", route_habits.HabitSpec("duration", by_customer(mine), duration_minutes=20), "manual")
+    shown = service.preview(tx, "U01", draft_of(before), insert=mine)
+    added = next(s for s in shown.stops if s.customer_id == mine)
+    assert added.source == "rep" and added.duration_minutes == 20 and added.reason
+    assert len(shown.stops) == 6 and shown.stops[0].customer_id == on_route[0]
+    assert shown.version == before.version
+
+
+def test_the_draft_is_checked(tx):
+    before = service.view(tx, service.get_or_create(tx, "U01"))
+    on_route = [s.customer_id for s in before.stops]
+    [theirs] = not_on_route(tx, on_route, owner="U02")
+    with pytest.raises(service.InvalidDraft, match="只能排自己的客戶"):
+        service.preview(tx, "U01", draft_of(before), insert=theirs)
+    with pytest.raises(service.InvalidDraft, match="已經在今天的行程裡"):
+        service.preview(tx, "U01", draft_of(before), insert=on_route[1])
+    extra = not_on_route(tx, on_route, limit=4)
+    draft = draft_of(before)
+    draft.stops += [service.DraftStop(cid) for cid in extra]
+    with pytest.raises(service.InvalidDraft, match="今天已經排了 8 站，要先刪掉一站"):
+        service.preview(tx, "U01", draft)
+    draft.stops = draft.stops[:8]
+    with pytest.raises(service.InvalidDraft, match="今天已經排了 8 站"):
+        service.preview(tx, "U01", draft, insert=extra[-1])
+    twice = draft_of(before)
+    twice.stops.append(twice.stops[0])
+    with pytest.raises(service.InvalidDraft, match="同一家不能排兩次"):
+        service.preview(tx, "U01", twice)
+
+
+def test_saving_the_list_writes_order_fields_and_precedences(tx):
+    itinerary = service.get_or_create(tx, "U01")
+    before = service.view(tx, itinerary)
+    draft = draft_of(before)
+    first, *rest = draft.stops
+    rest.reverse()
+    rest[0].note, rest[0].locked = "找王藥師", True
+    draft.stops = [first, *rest]
+    removed = draft.stops.pop()
+    draft.precedences = [(draft.stops[1].customer_id, draft.stops[2].customer_id)]
+    service.save(tx, "U01", before.version, draft)
+    after = service.view(tx, itinerary)
+    assert after.version == before.version + 1
+    assert [s.customer_id for s in after.stops] == [s.customer_id for s in draft.stops]
+    assert after.stops[1].note == "找王藥師" and after.stops[1].locked
+    assert removed.customer_id not in {s.customer_id for s in after.stops}
+    assert [(p.before, p.after) for p in after.precedences] == draft.precedences
+    assert after.violations == []
+
+
+def test_saving_with_a_stale_version_is_refused(tx):
+    before = service.view(tx, service.get_or_create(tx, "U01"))
+    with pytest.raises(service.VersionConflict):
+        service.save(tx, "U01", before.version + 1, draft_of(before))
+
+
+def test_saving_does_not_trust_the_screen_about_finished_stops(tx):
+    """確認拜訪不會改版本：讀到之後才跑完的那一站，畫面上不管是拿掉了還是當成還沒跑，都以伺服器為準。"""
+    itinerary = service.get_or_create(tx, "U01")
+    before = service.view(tx, itinerary)
+    target = before.stops[1]
+    at = dt.datetime(2026, 10, 28, 9, 40, tzinfo=TAIPEI)
+    tx.add(Visit(id="VTEST2", customer_id=target.customer_id, user_id="U01", visited_at=at,
+                 transcript="測試", status="synced", confirmed_at=at))
+    tx.flush()
+    removed = draft_of(before)
+    removed.stops = [s for s in removed.stops if s.customer_id != target.customer_id]
+    service.save(tx, "U01", before.version, removed)
+    after = service.view(tx, itinerary)
+    assert (after.stops[0].customer_id, after.stops[0].status, after.total) == (target.customer_id, "done", 5)
+    service.save(tx, "U01", after.version, draft_of(before))
+    again = service.view(tx, itinerary)
+    assert (again.done, again.total) == (1, 5) and again.stops[0].customer_id == target.customer_id
+
+
+def test_what_the_saved_order_still_breaks_gives_way_to_the_order(tx):
+    tx.execute(delete(RouteHabit).where(RouteHabit.user_id == "U01"))
+    itinerary = service.get_or_create(tx, "U01")
+    ids = [s.customer_id for s in service.view(tx, itinerary).stops]
+    habit = route_habits.create(
+        tx, "U01", route_habits.HabitSpec("precedence", by_customer(ids[1]), by_customer(ids[2])), "manual",
+    )
+    before = service.view(tx, itinerary)
+    draft = draft_of(before)
+    # 拖成違反習慣的順序，今天的先後也設成跟順序相反，紅框都沒處理就按「完成」
+    draft.stops[1], draft.stops[2] = draft.stops[2], draft.stops[1]
+    draft.precedences = [(ids[4], ids[3])]
+    service.save(tx, "U01", before.version, draft)
+    after = service.view(tx, itinerary)
+    assert [(h.id, h.reason, h.conflict) for h in after.skipped_habits] == [(habit.id, service.SKIP_BY_ORDER, False)]
+    assert after.precedences == [] and after.violations == []
+
+
+def test_skipping_a_habit_and_keeping_new_ones_when_saving(tx):
+    tx.execute(delete(RouteHabit).where(RouteHabit.user_id == "U01"))
+    itinerary = service.get_or_create(tx, "U01")
+    ids = [s.customer_id for s in service.view(tx, itinerary).stops]
+    spec = route_habits.HabitSpec
+    old = route_habits.create(tx, "U01", spec("precedence", by_customer(ids[3]), by_customer(ids[1])), "manual")
+    before = service.view(tx, itinerary)
+    assert f"habit:{old.id}" in before.violations
+    draft = draft_of(before)
+    # 紅框上按了「今天不套用這條」；拖完答應「每個星期三都這樣」；另一條答應了、但今天不套用
+    draft.skipped_habit_ids = [old.id]
+    draft.habits = [
+        service.PendingHabit(spec("precedence", by_customer(ids[2]), by_customer(ids[4]), weekday=2)),
+        service.PendingHabit(spec("last", by_customer(ids[1])), skip_today=True),
+    ]
+    shown = service.preview(tx, "U01", draft)
+    assert "new:0" in {r.id for r in shown.rules} and "new:1" not in {r.id for r in shown.rules}
+    service.save(tx, "U01", before.version, draft)
+    after = service.view(tx, itinerary)
+    weekly, skipped_new = route_habits.mine(tx, "U01")[-2:]
+    assert weekly.source == "prompt" and weekly.weekday == 2 and f"habit:{weekly.id}" in {r.id for r in after.rules}
+    assert {(h.id, h.reason) for h in after.skipped_habits} == {(old.id, service.SKIP_BY_REP), (skipped_new.id, service.SKIP_BY_REP)}
+    assert after.violations == []
+
+
+def test_candidates_put_the_nearest_first(tx):
+    itinerary = service.get_or_create(tx, "U01")
+    before = service.view(tx, itinerary)
+    on_route = [s.customer_id for s in before.stops]
+    found = service.candidates(tx, "U01")
+    listed = [c.customer_id for c in found.nearby + found.others]
+    assert len(listed) == len(set(listed)) == 45 and not set(listed) & set(on_route)
+    assert len(found.nearby) == service.NEARBY and not found.full
+    assert [c.extra_minutes for c in found.nearby] == sorted(c.extra_minutes for c in found.nearby)
+    assert all(c.signal and c.after_stop is not None for c in found.nearby)
+    assert [c.customer_name for c in found.others] == sorted(c.customer_name for c in found.others)
+    # 寫的「插在第 N 站後」跟真的加的時候一樣（測試環境的車程一律是直線估算）
+    best = found.nearby[0]
+    shown = service.preview(tx, "U01", draft_of(before), insert=best.customer_id)
+    assert [s.customer_id for s in shown.stops].index(best.customer_id) == best.after_stop
+    # 草稿上拿掉的那一站又能加回來；草稿已經 8 站就加不進去
+    fewer = service.candidates(tx, "U01", order=on_route[:4], locked=[on_route[0]])
+    assert on_route[4] in {c.customer_id for c in fewer.nearby + fewer.others}
+    full = service.candidates(tx, "U01", order=on_route + not_on_route(tx, on_route, limit=3))
+    assert full.full and full.nearby == []
+

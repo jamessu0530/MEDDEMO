@@ -35,6 +35,9 @@ SNOOZE_DAYS = 3
 # 今天不套用某條習慣的原因（Itinerary.skip_reasons）。每天建立建議時衝突的另外寫「跟『…』衝突」
 SKIP_BY_REP = "你選了今天不套用"
 SKIP_BY_ORDER = "跟今天排的順序不合"
+TOO_MANY = f"今天已經排了 {route_planner.MAX_OPEN_STOPS} 站，要先刪掉一站"
+# 加一站的候選裡「順路的」列幾家
+NEARBY = 5
 
 FeedbackAction = Literal["pin", "snooze", "misjudge"]
 
@@ -45,6 +48,10 @@ class VersionConflict(Exception):
 
 class NotOnItinerary(LookupError):
     """這家不在今天還沒跑的站裡。"""
+
+
+class InvalidDraft(ValueError):
+    """調整清單送來的內容不合：不是自己的客戶、同一家排兩次、超過 8 站、習慣的欄位不對。訊息寫給業務看。"""
 
 
 @dataclass
@@ -129,6 +136,46 @@ class PendingHabit:
 
     spec: route_habits.HabitSpec
     skip_today: bool = False
+
+
+@dataclass
+class DraftStop:
+    """調整清單上的一站（還沒跑的）。"""
+
+    customer_id: str
+    duration_minutes: int = DEFAULT_DURATION
+    window_kind: str | None = None
+    window_time: dt.time | None = None
+    note: str | None = None
+    locked: bool = False
+
+
+@dataclass
+class Draft:
+    """調整清單上改到一半的行程：還沒跑的站照畫面上的順序、今天的先後、今天不套用的習慣、這次答應要記的習慣。"""
+
+    stops: list[DraftStop]
+    precedences: list[tuple[str, str]] = field(default_factory=list)  # (前, 後)
+    skipped_habit_ids: list[int] = field(default_factory=list)
+    habits: list[PendingHabit] = field(default_factory=list)
+
+
+@dataclass
+class Candidate:
+    customer_id: str
+    customer_name: str
+    type: str
+    area: str
+    signal: str | None = None  # 順路的才有：目前的理由類別
+    after_stop: int | None = None  # 插在第幾站後（含跑完的站；0 是排第一站）
+    extra_minutes: int | None = None  # 估算多繞幾分鐘
+
+
+@dataclass
+class Candidates:
+    nearby: list[Candidate]  # 順路的前幾家，多繞最少的在前
+    others: list[Candidate]  # 其他客戶，照名稱
+    full: bool  # 還沒跑的站已經 8 站，加不進去
 
 
 @dataclass
@@ -275,6 +322,122 @@ def add_stops(
     return itinerary, added, skipped
 
 
+def preview(session: Session, user_id: str, draft: Draft, insert: str | None = None) -> ItineraryView:
+    """調整清單上的改動算時間、車程與違反的規則，不存。insert 是「加一站」點的那一家：
+    插在多繞最少、又不新增違反的位置，約的時間與停留照習慣給的預設值。
+    車程一律用直線估算（畫面寫「估計」）：拖一下就算一次，每次都打 Google 太貴；按「完成」存好之後讀到的才是正式的車程。"""
+    itinerary = get_or_create(session, user_id)
+    day = _day(session, itinerary)
+    open_, precedences, skipped, pending = _resolve(session, day, draft)
+    if insert is not None:
+        open_ = _inserted(session, day, open_, insert, precedences, skipped, pending)
+    return _compose(session, day, open_, precedences, skipped, _reasons(itinerary, skipped), pending, estimate=True)
+
+
+def save(session: Session, user_id: str, version: int, draft: Draft) -> Itinerary:
+    """調整清單按「完成」：整份還沒跑的站、今天的先後、今天不套用的習慣、這次答應要記的習慣一次存進去。
+    存的時候順序還違反的規則以今天排的為準（設計〈已定案的決定〉第 8 點）：習慣記成今天不套用，今天的先後拿掉。"""
+    itinerary = get_or_create(session, user_id)
+    _lock(session, itinerary)
+    if itinerary.version != version:
+        raise VersionConflict
+    day = _day(session, itinerary)
+    open_, precedences, skipped, pending = _resolve(session, day, draft)
+    reasons = _reasons(itinerary, skipped)
+    for item in pending:
+        habit = route_habits.create(session, day.rep.id, item.spec, "prompt")
+        if route_habits.applies_on(habit, itinerary.date):
+            day.habits.append(habit)
+            if item.skip_today:
+                skipped.add(habit.id)
+                reasons[str(habit.id)] = SKIP_BY_REP
+    order = [o.customer.id for o in open_]
+    for rule in route_planner.violations(order, _rules(open_, precedences, day.habits, skipped)):
+        kind, _, key = rule.id.partition(":")
+        if kind == "habit":
+            skipped.add(int(key))
+            reasons[key] = SKIP_BY_ORDER
+        elif kind == "today":
+            precedences.remove(rule.customer_ids)
+    _write(session, day, open_)
+    session.execute(delete(ItineraryPrecedence).where(ItineraryPrecedence.itinerary_id == itinerary.id))
+    if precedences:
+        # 用 Core 寫：同一個 session 裡可能已經載入過舊的那幾列，ORM 物件會撞到 identity map
+        session.execute(insert(ItineraryPrecedence).values([
+            {"itinerary_id": itinerary.id, "before_customer_id": a, "after_customer_id": b} for a, b in precedences
+        ]))
+    itinerary.skipped_habit_ids = sorted(skipped)
+    itinerary.skip_reasons = {str(i): reasons[str(i)] for i in sorted(skipped)}
+    _touch(itinerary)
+    session.flush()
+    return itinerary
+
+
+def candidates(
+    session: Session, user_id: str, order: list[str] | None = None, locked: Sequence[str] = ()
+) -> Candidates:
+    """加一站的候選：自己的客戶，草稿上已經有的、今天跑過的不列。順路的前幾家照估算的多繞分鐘數排
+    （插的位置跟真的加的時候一樣，用 cheapest_insert），其他照名稱排。order、locked 是調整清單上目前
+    還沒跑的站與鎖住的站，沒給 order 就用存著的。車程一律用直線估算：一次要算約 50 家，加進去之後才用正式的車程重算。"""
+    itinerary = get_or_create(session, user_id)
+    day = _day(session, itinerary)
+    saved = {o.customer.id: o for o in _saved_open(session, day)}
+    mine = list(session.scalars(select(Customer).where(Customer.owner_user_id == day.rep.id).order_by(Customer.name)))
+    own = {c.id: c for c in mine}
+    ids = [
+        cid for cid in dict.fromkeys(order if order is not None else list(saved))
+        if cid not in day.done_ids and (cid in saved or cid in own)
+    ]
+    # 沒給 order 就是存著的那份：鎖住的站也照存著的，不然「需立即處理」那家的鎖會被忽略，
+    # 插入位置就會跟 preview／_inserted 用的真鎖算出不一樣的站號
+    held = set(locked) | ({cid for cid, o in saved.items() if o.locked} if order is None else set())
+    open_ = [
+        dataclasses.replace(saved[cid], locked=cid in held) if cid in saved
+        else _new_open(own[cid], "rep", ("routine", ""), day.habits, locked=cid in held)
+        for cid in ids
+    ]
+    pool = [c for c in mine if c.id not in ids and c.id not in day.done_ids]
+    full = len(open_) >= route_planner.MAX_OPEN_STOPS
+    nearby: list[Candidate] = []
+    if pool and not full:
+        start, points = _points(
+            session, day.rep, itinerary.date, day.done, day.durations(), [*(o.customer for o in open_), *pool]
+        )
+        minutes = _estimated(points).minutes
+        ordered = [o.plan_stop(n + 1) for n, o in enumerate(open_)]
+        base = route_planner.schedule(start, 0, ordered, minutes).travel_minutes
+        precedences = [(a, b) for a, b in _precedences(session, itinerary) if a in ids and b in ids]
+        skipped = set(itinerary.skipped_habit_ids)
+        locks = _locks(open_, len(day.done))
+        scored = []
+        for k, customer in enumerate(pool):
+            new = _new_open(customer, "rep", ("routine", ""), day.habits)
+            stop = new.plan_stop(len(open_) + 1 + k)
+            rules = _rules([*open_, new], precedences, day.habits, skipped) + locks
+            index = route_planner.cheapest_insert(start, 0, ordered, stop, rules, minutes)
+            trial = [*ordered[:index], stop, *ordered[index:]]
+            extra = route_planner.schedule(start, 0, trial, minutes).travel_minutes - base
+            scored.append((extra, customer.name, customer, len(day.done) + index))
+        scored.sort(key=lambda item: (item[0], item[1]))
+        best = scored[:NEARBY]
+        labels = today_route.labels(session, day.rep.id, [c.id for _, _, c, _ in best])
+        nearby = [
+            Candidate(c.id, c.name, c.type, c.area, labels.get(c.id, ("routine", ""))[0], after, extra)
+            for extra, _, c, after in best
+        ]
+    near = {c.customer_id for c in nearby}
+    others = [Candidate(c.id, c.name, c.type, c.area) for c in pool if c.id not in near]
+    return Candidates(nearby, others, full)
+
+
+def today_skips(session: Session, user_id: str) -> dict[int, str]:
+    """今天的行程裡今天不套用的習慣與原因（習慣頁用）。今天還沒建行程就是沒有，也不為了這個去建。"""
+    found = _find(session, user_id, customer_profile.app_today(session))
+    if found is None:
+        return {}
+    return {int(key): reason for key, reason in _reasons(found, set(found.skipped_habit_ids)).items()}
+
+
 def reset_today(session: Session, user_id: str) -> None:
     """IT 用：刪掉這位業務今天的行程（站與先後跟著 ON DELETE CASCADE 一起刪），
     以及所有的暫緩、訊號權重，下次讀取就照模型的建議重新建一份。
@@ -394,6 +557,80 @@ def _fit_habits(
         reasons[str(by_key[oldest].id)] = f"跟『{live[partner][0].text}』衝突" if partner else "跟其他幾條一起排不出來"
 
 
+def _resolve(
+    session: Session, day: _Day, draft: Draft
+) -> tuple[list[_Open], list[tuple[str, str]], set[int], list[PendingHabit]]:
+    """草稿換成 _Open 並檢查。剛跑完的站以伺服器為準：確認拜訪不會改版本，畫面上可能還把它當成還沒跑的站，
+    送來的就略過；畫面上拿掉了也不刪（見 _write）。新加的站要是自己的客戶；先後只留兩家都在的；
+    今天不套用的只留這位業務自己的習慣。"""
+    by_row = {r.customer_id: r for r in day.rows}
+    stops = [s for s in draft.stops if s.customer_id not in day.done_ids]
+    ids = [s.customer_id for s in stops]
+    if len(set(ids)) != len(ids):
+        raise InvalidDraft("同一家不能排兩次")
+    if len(ids) > route_planner.MAX_OPEN_STOPS:
+        raise InvalidDraft(TOO_MANY)
+    if any((s.window_kind is None) != (s.window_time is None) for s in stops):
+        raise InvalidDraft("約的時間要選幾點到、以前或以後，再填時間")
+    customers = _customers(session, ids)
+    new_ids = [cid for cid in ids if cid not in by_row]
+    if any(cid not in customers or customers[cid].owner_user_id != day.rep.id for cid in new_ids):
+        raise InvalidDraft("只能排自己的客戶")
+    labels = today_route.labels(session, day.rep.id, new_ids) if new_ids else {}
+    open_ = []
+    for stop in stops:
+        row = by_row.get(stop.customer_id)
+        source, signal, reason = (row.source, row.signal, row.reason) if row else ("rep", *labels[stop.customer_id])
+        open_.append(_Open(
+            customers[stop.customer_id], source, signal, reason, stop.duration_minutes, stop.window_kind,
+            stop.window_time, (stop.note or "").strip() or None, stop.locked,
+        ))
+    present = set(ids)
+    precedences = list(dict.fromkeys(
+        (a, b) for a, b in draft.precedences if a != b and a in present and b in present
+    ))
+    mine = {habit.id for habit in route_habits.mine(session, day.rep.id)}
+    skipped = {i for i in draft.skipped_habit_ids if i in mine}
+    if draft.habits:
+        options = route_habits.targets(session, day.rep.id)
+        for item in draft.habits:
+            try:
+                route_habits.validate(item.spec, options)
+            except route_habits.InvalidHabit as exc:
+                raise InvalidDraft(str(exc)) from None
+    return open_, precedences, skipped, list(draft.habits)
+
+
+def _inserted(
+    session: Session, day: _Day, open_: list[_Open], customer_id: str, precedences: list[tuple[str, str]],
+    skipped: set[int], pending: Sequence[PendingHabit],
+) -> list[_Open]:
+    """「加一站」點的那一家插進草稿：多繞最少、又不新增違反的位置。"""
+    if any(o.customer.id == customer_id for o in open_):
+        raise InvalidDraft("已經在今天的行程裡")
+    if customer_id in day.done_ids:
+        raise InvalidDraft("今天已經去過了")
+    if len(open_) >= route_planner.MAX_OPEN_STOPS:
+        raise InvalidDraft(TOO_MANY)
+    customer = session.get(Customer, customer_id)
+    if customer is None or customer.owner_user_id != day.rep.id:
+        raise InvalidDraft("只能排自己的客戶")
+    # 草稿上拿掉、又加回來的那一家：來源與理由照存著的
+    row = next((r for r in day.rows if r.customer_id == customer_id), None)
+    label = (row.signal, row.reason) if row else today_route.labels(session, day.rep.id, [customer_id])[customer_id]
+    new = _new_open(customer, row.source if row else "rep", label, day.habits)
+    index = _cheapest_index(session, day, open_, new, precedences, skipped, pending)
+    return [*open_[:index], new, *open_[index:]]
+
+
+def _estimated(points: list[travel.Point]) -> travel.Matrix:
+    """直線估算的車程矩陣。調整清單的 preview（拖一下就算一次）與加一站的候選（一次約 50 家）只用估算，不打 Google。"""
+    pairs = [[travel.estimate(a, b) for b in points] for a in points]
+    return travel.Matrix(
+        minutes=[[m for m, _ in row] for row in pairs], km=[[k for _, k in row] for row in pairs], estimated=True,
+    )
+
+
 def _day(session: Session, itinerary: Itinerary) -> _Day:
     rep = session.get(AppUser, itinerary.user_id)
     return _Day(
@@ -469,10 +706,11 @@ def _points(
     return start, [origin or (points[0] if points else (0.0, 0.0)), *points]
 
 
-def _timed(points: list[travel.Point]) -> travel.Matrix:
+def _timed(points: list[travel.Point], estimate: bool = False) -> travel.Matrix:
     """照這個順序跑的車程（順序已經定了：讀取、調整清單的 preview 與存檔）。只會用到相鄰兩點
-    （第 n 點到第 n + 1 點）那幾格。順序還要由程式挑的地方（每天的建議、插入新的一站、排順路）直接用 travel.matrix。"""
-    return travel.matrix(points)
+    （第 n 點到第 n + 1 點）那幾格。順序還要由程式挑的地方（每天的建議、插入新的一站、排順路）直接用 travel.matrix。
+    estimate：只要直線估算（調整清單的 preview）。"""
+    return _estimated(points) if estimate else travel.matrix(points)
 
 
 def _rules(
@@ -552,12 +790,12 @@ def _write(session: Session, day: _Day, open_: list[_Open]) -> None:
 
 def _compose(
     session: Session, day: _Day, open_: list[_Open], precedences: list[tuple[str, str]], skipped: set[int],
-    reasons: dict[str, str], pending: Sequence[PendingHabit],
+    reasons: dict[str, str], pending: Sequence[PendingHabit], estimate: bool = False,
 ) -> ItineraryView:
     itinerary, rep = day.itinerary, day.rep
     durations = day.durations() | {o.customer.id: o.duration_minutes for o in open_}
     start, points = _points(session, rep, itinerary.date, day.done, durations, [o.customer for o in open_])
-    matrix = _timed(points)
+    matrix = _timed(points, estimate)
     planned = route_planner.schedule(start, 0, [o.plan_stop(n + 1) for n, o in enumerate(open_)], matrix.minutes)
     rules = _rules(open_, precedences, day.habits, skipped, pending)
     order = [o.customer.id for o in open_]
