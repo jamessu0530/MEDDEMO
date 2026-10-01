@@ -43,7 +43,7 @@ TEST_DB_NAME=meddemo_test_edit TEST_REDIS_URL=redis://127.0.0.1:6379/8 uv run --
 | `backend/app/models.py` | 改 | `Itinerary.skip_reasons`；最後加 `RouteHabit` |
 | `backend/app/services/route_habits.py` | 新 | 習慣的比對、那句話、換成規則、預設值、驗證與新增、示範業務的三條 |
 | `backend/app/services/today_route.py` | 改 | `labels`（一次算好幾家的理由） |
-| `backend/app/services/itinerary.py` | 改 | 建立時套習慣、`_Open`／`_compose`／`_frame`、`preview`、`save`、`candidates`、鎖的例外、三顆鈕的分支 |
+| `backend/app/services/itinerary.py` | 改 | 建立時套習慣、`_Open`／`_compose`／`_points`／`_timed`、`preview`、`save`、`candidates`、鎖的例外、三顆鈕的分支 |
 | `backend/app/api/itinerary.py` | 改 | 行程多欄位；`preview`、`PUT`、`candidates` |
 | `backend/app/api/route_habits.py` | 新 | `GET/POST /api/route-habits`、`PATCH/DELETE /api/route-habits/{id}` |
 | `backend/app/main.py` | 改 | 掛上習慣的 router |
@@ -806,7 +806,7 @@ EOF
   - `itinerary.ItineraryView` 多 `rules: list[RuleView]`、`violations: list[str]`（違反的規則 id）、`precedences: list[Precedence]`、`skipped_habits: list[SkippedHabit]`
   - `itinerary.PendingHabit(spec: route_habits.HabitSpec, skip_today: bool = False)`
   - `itinerary.SKIP_BY_REP = "你選了今天不套用"`、`itinerary.SKIP_BY_ORDER = "跟今天排的順序不合"`
-  - 內部（Task 4 用）：`_Open`、`_Day`、`_day`、`_saved_open`、`_precedences`、`_frame`、`_rules`、`_locks`、`_new_open`、`_row`、`_cheapest_index`、`_write`、`_compose`、`_reasons`、`_lock`
+  - 內部（Task 4 用）：`_Open`、`_Day`、`_day`、`_saved_open`、`_precedences`、`_points`、`_timed`、`_rules`、`_locks`、`_new_open`、`_row`、`_cheapest_index`、`_write`、`_compose`、`_reasons`、`_lock`
   - `_lock` 遇到行程已經被刪掉（IT 重置）時丟 `VersionConflict`；`apply_feedback` 收到不認得的動作丟 `ValueError`
 
 - [ ] **Step 1: 寫失敗的測試**
@@ -978,7 +978,7 @@ def label(session: Session, owner_id: str, customer_id: str) -> tuple[str, str]:
 
 - [ ] **Step 4: `itinerary.py` 整份換成下面這樣**
 
-（跟第 1 階段比：`view` 多了規則、違反、先後、今天不套用的習慣；建立時套習慣；加站時守今天的先後與習慣；出發點與車程矩陣只在 `_frame` 算一次；`_lock` 與 `apply_feedback` 補例外。）
+（跟第 1 階段比：`view` 多了規則、違反、先後、今天不套用的習慣；建立時套習慣；加站時守今天的先後與習慣；出發點與要算車程的點只在 `_points` 組一次；順序已經定了的車程走 `_timed`（Track B 接 Google 時把它換成 `travel.along`，只改這一支）；`_lock` 與 `apply_feedback` 補例外。）
 
 ```python
 """今天的行程（docs/superpowers/specs/2026-10-01-itinerary-planning-design.md）。
@@ -1296,7 +1296,9 @@ def _create(session: Session, rep: AppUser, today: dt.date) -> Itinerary:
         _new_open(customers[cid], "model", (item["signal"], item["reason"]), habits, locked=cid == urgent_id)
         for cid, item in items.items()
     ]
-    start, matrix = _frame(session, rep, today, picked.done, {}, [o.customer for o in open_])
+    start, points = _points(session, rep, today, picked.done, {}, [o.customer for o in open_])
+    # 順序還要由程式挑：要整張車程矩陣
+    minutes = travel.matrix(points).minutes
     stops = [o.plan_stop(n + 1) for n, o in enumerate(open_)]
     locks = []
     if picked.urgent:
@@ -1305,7 +1307,7 @@ def _create(session: Session, rep: AppUser, today: dt.date) -> Itinerary:
             id=f"lock:{urgent_id}", text=f"{picked.urgent.customer_name} 排第一站",
             kind="lock", customer_ids=(urgent_id,), position=0,
         ))
-    result, skipped, reasons = _fit_habits(start, stops, locks, habits, [o.customer for o in open_], matrix.minutes)
+    result, skipped, reasons = _fit_habits(start, stops, locks, habits, [o.customer for o in open_], minutes)
     # 只剩鎖也排不出來（不會發生）就照模型挑的順序
     order = [s.customer_id for s in result.slots] if isinstance(result, route_planner.Schedule) else list(items)
     by_id = {o.customer.id: o for o in open_}
@@ -1425,14 +1427,20 @@ def _start(
     return dt.datetime.combine(today, today_route.FIRST_STOP, TAIPEI), origin
 
 
-def _frame(
+def _points(
     session: Session, rep: AppUser, today: dt.date, done: list[tuple[Visit, Customer]], durations: dict[str, int],
     customers: list[Customer],
-) -> tuple[dt.datetime, travel.Matrix]:
-    """出發時間與車程矩陣：第 0 點是出發點，第 n + 1 點是 customers 的第 n 家。"""
+) -> tuple[dt.datetime, list[travel.Point]]:
+    """出發時間與要算車程的點：第 0 點是出發點，第 n + 1 點是 customers 的第 n 家。區處沒有位置時從第一家出發。"""
     start, origin = _start(session, rep, today, done, durations)
     points = [_point(c) for c in customers]
-    return start, travel.matrix([origin or (points[0] if points else (0.0, 0.0)), *points])
+    return start, [origin or (points[0] if points else (0.0, 0.0)), *points]
+
+
+def _timed(points: list[travel.Point]) -> travel.Matrix:
+    """照這個順序跑的車程（順序已經定了：讀取、調整清單的 preview 與存檔）。只會用到相鄰兩點
+    （第 n 點到第 n + 1 點）那幾格。順序還要由程式挑的地方（每天的建議、插入新的一站、排順路）直接用 travel.matrix。"""
+    return travel.matrix(points)
 
 
 def _rules(
@@ -1479,7 +1487,8 @@ def _cheapest_index(
     """新的一站插在還沒跑的站的第幾個位置：多繞最少、又不新增違反（鎖、今天的先後、習慣）。"""
     customers = [o.customer for o in open_] + [new.customer]
     durations = day.durations() | {o.customer.id: o.duration_minutes for o in open_}
-    start, matrix = _frame(session, day.rep, day.itinerary.date, day.done, durations, customers)
+    start, points = _points(session, day.rep, day.itinerary.date, day.done, durations, customers)
+    matrix = travel.matrix(points)
     ordered = [o.plan_stop(n + 1) for n, o in enumerate(open_)]
     rules = _rules([*open_, new], precedences, day.habits, skipped, pending) + _locks(open_, len(day.done))
     return route_planner.cheapest_insert(start, 0, ordered, new.plan_stop(len(open_) + 1), rules, matrix.minutes)
@@ -1515,7 +1524,8 @@ def _compose(
 ) -> ItineraryView:
     itinerary, rep = day.itinerary, day.rep
     durations = day.durations() | {o.customer.id: o.duration_minutes for o in open_}
-    start, matrix = _frame(session, rep, itinerary.date, day.done, durations, [o.customer for o in open_])
+    start, points = _points(session, rep, itinerary.date, day.done, durations, [o.customer for o in open_])
+    matrix = _timed(points)
     planned = route_planner.schedule(start, 0, [o.plan_stop(n + 1) for n, o in enumerate(open_)], matrix.minutes)
     rules = _rules(open_, precedences, day.habits, skipped, pending)
     order = [o.customer.id for o in open_]
@@ -1630,7 +1640,7 @@ def _touch(itinerary: Itinerary) -> None:
     itinerary.updated_at = func.now()
 ```
 
-說明：第 1 階段的 `_durations`、`_plan_stop`、`_cheapest_index` 舊寫法都由上面的 `_Day.durations`、`_Open.plan_stop`、新的 `_cheapest_index` 取代；其他檔案沒有用到這幾支私有函式（`grep -rn "_plan_stop\|_durations" backend` 確認一次）。
+說明：第 1 階段的 `_durations`、`_plan_stop`、`_cheapest_index` 舊寫法都由上面的 `_Day.durations`、`_Open.plan_stop`、新的 `_cheapest_index` 取代；三處重複的「出發點加各站的點、算車程矩陣」由 `_points` 取代；其他檔案沒有用到這幾支私有函式（`grep -rn "_plan_stop\|_durations" backend` 確認一次）。
 
 - [ ] **Step 5: 加站 API 也接版本衝突**
 
@@ -1681,7 +1691,7 @@ EOF
 - Test: `backend/tests/test_itinerary.py`
 
 **Interfaces:**
-- Consumes: Task 3 的 `_Day`、`_Open`、`_compose`、`_rules`、`_locks`、`_new_open`、`_cheapest_index`、`_write`、`_reasons`、`_lock`、`PendingHabit`、`SKIP_BY_REP`、`SKIP_BY_ORDER`；Task 2 的 `route_habits.validate`、`targets`、`create`、`applies_on`、`mine`。
+- Consumes: Task 3 的 `_Day`、`_Open`、`_compose`、`_points`、`_rules`、`_locks`、`_new_open`、`_cheapest_index`、`_write`、`_reasons`、`_lock`、`PendingHabit`、`SKIP_BY_REP`、`SKIP_BY_ORDER`；Task 2 的 `route_habits.validate`、`targets`、`create`、`applies_on`、`mine`。
 - Produces（Task 5 用）：
   - `class InvalidDraft(ValueError)`（訊息寫給業務看）、`TOO_MANY = "今天已經排了 8 站，要先刪掉一站"`、`NEARBY = 5`
   - `DraftStop(customer_id, duration_minutes=40, window_kind=None, window_time: dt.time | None = None, note=None, locked=False)`
@@ -2026,9 +2036,10 @@ def candidates(
     full = len(open_) >= route_planner.MAX_OPEN_STOPS
     nearby: list[Candidate] = []
     if pool and not full:
-        start, origin = _start(session, day.rep, itinerary.date, day.done, day.durations())
-        points = [_point(c) for c in [*(o.customer for o in open_), *pool]]
-        minutes = _estimated([origin or points[0], *points])
+        start, points = _points(
+            session, day.rep, itinerary.date, day.done, day.durations(), [*(o.customer for o in open_), *pool]
+        )
+        minutes = _estimated(points)
         ordered = [o.plan_stop(n + 1) for n, o in enumerate(open_)]
         base = route_planner.schedule(start, 0, ordered, minutes).travel_minutes
         precedences = [(a, b) for a, b in _precedences(session, itinerary) if a in ids and b in ids]
