@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "跟熊熊滾說要怎麼排：操作清單",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["operations"],
+  "properties": {
+    "operations": {
+      "type": "array",
+      "maxItems": 12,
+      "description": "照業務說的順序列出要做的操作",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["op"],
+        "properties": {
+          "op": {
+            "type": "string",
+            "enum": [
+              "move", "add", "remove", "set_window", "set_duration", "set_note", "lock", "unlock",
+              "add_precedence", "remove_precedence", "optimize", "add_habit", "disable_habit",
+              "ask_which", "not_found", "answer"
+            ]
+          },
+          "customer_id": {"type": "string", "description": "要動的那一家的客戶 id"},
+          "to_position": {"type": "integer", "minimum": 1, "maximum": 20, "description": "move：移到第幾站（行程上的站號，含已完成的站）"},
+          "before": {"type": "string", "description": "move：移到這一家的前面；add_precedence／remove_precedence：排前面的那一家"},
+          "after": {"type": "string", "description": "move：移到這一家的後面；add_precedence／remove_precedence：排後面的那一家"},
+          "kind": {"type": "string", "enum": ["at", "before", "after", "none"], "description": "set_window：at 幾點到、before 幾點以前、after 幾點以後、none 不約了"},
+          "time": {"type": "string", "description": "set_window：24 小時制 HH:MM"},
+          "minutes": {"type": "integer", "minimum": 5, "maximum": 480, "description": "set_duration：停留幾分鐘"},
+          "text": {"type": "string", "description": "set_note：備註；answer：回答的話"},
+          "habit": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "subject"],
+            "description": "add_habit：要記的習慣",
+            "properties": {
+              "kind": {"type": "string", "enum": ["precedence", "first", "last", "window", "duration"]},
+              "subject": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["by", "value"],
+                "properties": {
+                  "by": {"type": "string", "enum": ["customer", "chain", "type", "area"]},
+                  "value": {"type": "string"}
+                }
+              },
+              "object": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["by", "value"],
+                "properties": {
+                  "by": {"type": "string", "enum": ["customer", "chain", "type", "area"]},
+                  "value": {"type": "string"}
+                }
+              },
+              "window_kind": {"type": "string", "enum": ["at", "before", "after"]},
+              "window_time": {"type": "string", "description": "24 小時制 HH:MM"},
+              "duration_minutes": {"type": "integer", "minimum": 5, "maximum": 480},
+              "weekday": {"type": "integer", "minimum": 0, "maximum": 6, "description": "0 是星期一、6 是星期日；每天就不填"}
+            }
+          },
+          "habit_id": {"type": "integer", "description": "disable_habit：要停用的習慣 id"},
+          "mention": {"type": "string", "description": "ask_which／not_found：業務原話裡的名字"},
+          "candidates": {"type": "array", "maxItems": 5, "items": {"type": "string"}, "description": "ask_which：可能是哪幾家的客戶 id"}
+        }
+      }
+    }
+  }
+}
