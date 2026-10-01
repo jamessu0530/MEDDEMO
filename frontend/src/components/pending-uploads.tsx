@@ -12,7 +12,7 @@ export function PendingUploads() {
   const pending = items.filter((item) => item.state === "pending")
 
   return (
-    <section className="mb-3 rounded-xl border bg-card px-4 pb-1">
+    <section className="mb-3 rounded-xl border-2 bg-card px-4 pb-1 shadow-lip">
       <div className="flex min-h-12 items-center justify-between gap-2">
         <p className="text-sm font-semibold">{pending.length > 0 ? `待送出 ${pending.length} 筆` : "手機裡的錄音"}</p>
         {!online && <span className="rounded-md bg-destructive/10 px-2 py-1 text-xs text-destructive">目前離線</span>}

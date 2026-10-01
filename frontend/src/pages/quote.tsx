@@ -143,7 +143,7 @@ export function QuotePage() {
             <p className="text-xs text-muted-foreground">這家近半年常進的品項，單價是給這家的供貨價。填了數量的才會列進報價。</p>
             <ul className="flex flex-col gap-2">
               {lines.map(({ item, qty }) => (
-                <li key={item.sku} className={cn("rounded-xl border bg-card px-4 py-3", qty === 0 && "bg-muted/60")}>
+                <li key={item.sku} className={cn("rounded-xl border-2 bg-card px-4 py-3 shadow-lip", qty === 0 && "bg-muted/60")}>
                   <div className="flex items-baseline justify-between gap-3">
                     <p className={cn("min-w-0 text-sm font-medium", qty === 0 && "text-muted-foreground")}>
                       {item.name}

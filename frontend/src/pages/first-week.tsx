@@ -104,7 +104,7 @@ export function FirstWeekPage() {
                 {data.methods.map((method) => (
                   <MethodCardItem key={method.id} card={method} onChanged={methodChanged} />
                 ))}
-                <Link to="/methods" className="flex min-h-14 items-center justify-between gap-3 rounded-2xl border bg-card px-4 active:bg-muted">
+                <Link to="/methods" className="flex min-h-14 items-center justify-between gap-3 rounded-2xl border-2 bg-card px-4 shadow-lip press">
                   <span className="text-sm font-medium">看全部方法卡</span>
                   <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
                 </Link>
@@ -119,7 +119,7 @@ export function FirstWeekPage() {
                 </span>
               </div>
               {data.days.map((day) => (
-                <article key={day.day} className="rounded-2xl border bg-card">
+                <article key={day.day} className="rounded-2xl border-2 bg-card shadow-lip">
                   <h3 className="border-b px-4 py-2.5 text-sm font-medium">
                     第 {day.day} 天 · {day.title}
                   </h3>
@@ -141,7 +141,7 @@ export function FirstWeekPage() {
             {data.documents.length > 0 && (
               <section className="flex flex-col gap-2">
                 <h2 className="text-sm font-semibold">必讀文件</h2>
-                <ul className="divide-y rounded-2xl border bg-card">
+                <ul className="divide-y rounded-2xl border-2 bg-card shadow-lip">
                   {data.documents.map((doc) => (
                     <li key={doc.source_name}>
                       <Link to={documentPath(doc.source_name)} className="flex min-h-14 items-center gap-3 px-4 active:bg-muted">
@@ -175,7 +175,7 @@ function ProfileSection({ data }: { data: FirstWeek }) {
   const { employee, customers } = data
   const day = dayLabel(data)
   return (
-    <section className="rounded-2xl border bg-card p-4">
+    <section className="rounded-2xl border-2 bg-card p-4 shadow-lip">
       <div className="flex items-baseline justify-between gap-3">
         <h2 className="text-sm font-semibold">你的資料</h2>
         {employee.employee_no && <span className="text-[11px] text-muted-foreground">來自 SAP 人員主檔</span>}
@@ -217,7 +217,7 @@ function ProductLines({ data }: { data: FirstWeek }) {
         每條產品線列{data.employee.region}近 90 天進貨金額最高的三個品項。
       </p>
       {data.product_lines.map((line) => (
-        <article key={line.category} className="rounded-2xl border bg-card px-4 pt-3 pb-1">
+        <article key={line.category} className="rounded-2xl border-2 bg-card px-4 pt-3 pb-1 shadow-lip">
           <div className="flex items-baseline justify-between gap-3">
             <h3 className="font-medium">{line.category}</h3>
             <span className="text-xs text-muted-foreground">{line.sku_count} 個品項</span>
@@ -249,7 +249,7 @@ function ProductLines({ data }: { data: FirstWeek }) {
       ))}
       {/* 沒有進行中的促銷就不顯示這一列 */}
       {data.promotion && (
-        <Link to="/promotions" className="flex min-h-14 items-center justify-between gap-3 rounded-2xl border bg-card px-4 active:bg-muted">
+        <Link to="/promotions" className="flex min-h-14 items-center justify-between gap-3 rounded-2xl border-2 bg-card px-4 shadow-lip press">
           <span className="text-sm font-medium">這個月的促銷：{data.promotion.item_count} 個品項</span>
           <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
         </Link>
@@ -274,7 +274,7 @@ function KeyCustomers({ data }: { data: FirstWeek }) {
             <li key={customer.id}>
               <Link
                 to={`/customers/${customer.id}`}
-                className="flex items-center gap-2 rounded-xl border bg-card py-3 pr-2 pl-4 active:bg-muted"
+                className="flex items-center gap-2 rounded-xl border-2 bg-card py-3 pr-2 pl-4 shadow-lip press"
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-start justify-between gap-3">
@@ -351,7 +351,7 @@ export function FirstWeekEntry({ userId }: { userId: string }) {
   return (
     <Link
       to="/first-week"
-      className="mb-3 flex min-h-14 items-center gap-3 rounded-2xl border border-primary/30 bg-primary/10 px-4 py-2.5 active:bg-primary/15"
+      className="mb-3 flex min-h-14 items-center gap-3 rounded-2xl border-2 border-primary/30 bg-primary/10 px-4 py-2.5 shadow-lip-primary-soft press"
     >
       <GraduationCap className="size-5 shrink-0 text-primary" />
       <div className="min-w-0 flex-1">

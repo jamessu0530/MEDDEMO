@@ -189,7 +189,7 @@ function Field({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex flex-col gap-1">
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="rounded-xl border bg-card px-3 py-2.5 text-sm">{value}</p>
+      <p className="rounded-xl border-2 bg-card px-3 py-2.5 text-sm shadow-lip">{value}</p>
     </div>
   )
 }
@@ -207,7 +207,7 @@ function EmptyTab({
   return (
     <ul className="flex flex-col gap-2">
       {items.map((item) => (
-        <li key={item.id} className="rounded-xl border bg-card px-4 py-3">
+        <li key={item.id} className="rounded-xl border-2 bg-card px-4 py-3 shadow-lip">
           <p className="text-sm">{item.filename}</p>
           <p className="mt-1 text-[11px] text-muted-foreground">
             {item.uploaded_by} · {formatDateTime(item.created_at)}
@@ -231,7 +231,7 @@ function StepsTab({ form }: { form: OaFormDetail }) {
             )}
             {index < form.steps.length - 1 && <span className="w-px flex-1 bg-border" />}
           </div>
-          <div className={cn("mb-3 flex-1 rounded-xl border bg-card px-3 py-3", step.status === "pending" && "border-primary/40")}>
+          <div className={cn("mb-3 flex-1 rounded-xl border-2 bg-card px-3 py-3 shadow-lip", step.status === "pending" && "border-primary/40")}>
             <p className="text-sm font-medium">{step.role_label}</p>
             <p className="text-sm">
               {step.name}
@@ -296,7 +296,7 @@ function DecideBar({
   }
 
   return (
-    <div className="flex flex-col gap-2 rounded-2xl border bg-card p-4">
+    <div className="flex flex-col gap-2 rounded-2xl border-2 bg-card p-4 shadow-lip">
       <Textarea
         value={comment}
         onChange={(event) => setComment(event.target.value)}

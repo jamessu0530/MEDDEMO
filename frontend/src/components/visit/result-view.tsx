@@ -60,7 +60,7 @@ export function ResultView({ visit, onChange }: { visit: Visit; onChange: (visit
           const item = results.get(target)
           const failed = item?.status === "failed"
           return (
-            <li key={target} className={cn("rounded-xl border bg-card px-4 py-3", failed && "border-destructive/40")}>
+            <li key={target} className={cn("rounded-xl border-2 bg-card px-4 py-3 shadow-lip", failed && "border-destructive/40")}>
               <div className="flex items-center gap-3">
                 <span className="w-10 font-semibold">{label}</span>
                 <span className="flex-1 text-sm text-muted-foreground">{content}</span>
@@ -97,7 +97,7 @@ export function ResultView({ visit, onChange }: { visit: Visit; onChange: (visit
 
       {!complete && <p className="text-sm text-muted-foreground">其他幾套已經寫進去了，重送只會補上失敗的那一套。</p>}
       {visit.fields.competitor?.length ? (
-        <div className="flex items-start gap-3 rounded-xl border bg-card px-4 py-3 text-sm">
+        <div className="flex items-start gap-3 rounded-xl border-2 bg-card px-4 py-3 text-sm shadow-lip">
           <span className="w-10 shrink-0 text-muted-foreground">競品</span>
           <span className="min-w-0 flex-1 font-medium">
             <CompetitorNames visit={visit} />
@@ -130,7 +130,7 @@ export function ResultView({ visit, onChange }: { visit: Visit; onChange: (visit
 /** 原型「競品御松田已加入風險分，主管同步收到通報」：照後端算的結果寫，不寫死是競品 */
 function RiskNoticeCard({ notice }: { notice: RiskNotice }) {
   return (
-    <div className="flex gap-3 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3">
+    <div className="flex gap-3 rounded-xl border-2 border-destructive/30 bg-destructive/10 px-4 py-3 shadow-lip-destructive-soft">
       <TriangleAlert className="mt-0.5 size-4 shrink-0 text-destructive" />
       <div className="min-w-0 flex-1">
         <p className="text-sm leading-relaxed">

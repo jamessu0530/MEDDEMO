@@ -147,7 +147,7 @@ export function AskPage() {
                 key={example}
                 type="button"
                 onClick={() => submit(example)}
-                className="min-h-11 rounded-xl border bg-card px-4 py-2.5 text-left text-sm active:bg-muted"
+                className="min-h-11 rounded-xl border-2 bg-card px-4 py-2.5 text-left text-sm shadow-lip press"
               >
                 {example}
               </button>

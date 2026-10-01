@@ -168,7 +168,7 @@ function CompetitorEditor({ initial, saving, onSave }: EditorProps<Competitor[]>
   return (
     <>
       {rows.map((row, index) => (
-        <div key={index} className="flex flex-col gap-2 rounded-lg border p-3">
+        <div key={index} className="flex flex-col gap-2 rounded-xl border-2 bg-card p-3 shadow-lip">
           <div className="flex gap-2">
             <Input
               value={row.name}
@@ -229,7 +229,7 @@ function IntentEditor({ initial, saving, onSave }: EditorProps<IntentItem[]>) {
     <>
       <p className="text-xs text-muted-foreground">送出 SAP 報價草稿需要每一項都有品項和數量。</p>
       {rows.map((row, index) => (
-        <div key={index} className="flex flex-col gap-2 rounded-lg border p-3">
+        <div key={index} className="flex flex-col gap-2 rounded-xl border-2 bg-card p-3 shadow-lip">
           {row.product_text && <p className="text-xs text-muted-foreground">口述講法：{row.product_text}</p>}
           <div className="flex gap-2">
             <select
@@ -237,7 +237,7 @@ function IntentEditor({ initial, saving, onSave }: EditorProps<IntentItem[]>) {
               onChange={(e) => choose(index, e.target.value)}
               aria-label="品項"
               className={cn(
-                "h-11 min-w-0 flex-1 rounded-lg border bg-card px-3 text-sm",
+                "h-11 min-w-0 flex-1 rounded-xl border-2 border-input bg-card px-3 text-sm shadow-lip",
                 !row.sku && "border-destructive text-muted-foreground"
               )}
             >

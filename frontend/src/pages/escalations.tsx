@@ -60,7 +60,7 @@ export function EscalationsPage() {
           state.items.map((item) => {
             const fresh = state.fresh.includes(item.id)
             return (
-              <article key={item.id} className={cn("rounded-2xl border bg-card p-4", fresh && "border-primary/40")}>
+              <article key={item.id} className={cn("rounded-2xl border-2 bg-card p-4 shadow-lip", fresh && "border-primary/40")}>
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-[11px] text-muted-foreground">
                     {formatDateTime(item.created_at)} 轉出 · 單號 #{item.id}

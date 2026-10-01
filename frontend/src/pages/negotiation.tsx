@@ -99,7 +99,7 @@ export function NegotiationPage() {
             {card.shelf && <ShelfBlock shelf={card.shelf} festival={card.festival} />}
             {card.gaps && card.gaps.length > 0 && <GapsBlock gaps={card.gaps} />}
             {card.margin && (
-              <section className="rounded-2xl border bg-card p-4">
+              <section className="rounded-2xl border-2 bg-card p-4 shadow-lip">
                 <p className="text-sm font-semibold">我方底線</p>
                 <p className="mt-1.5 text-sm leading-relaxed text-foreground/80">{card.margin.summary}。</p>
                 <p className="mt-1 text-[11px] text-muted-foreground">近 90 天，淨毛利＝毛利－上架費－通路獎勵</p>
@@ -140,7 +140,7 @@ export function NegotiationPage() {
 /** 下一個節慶：名稱、日期、還有幾天、主推品類，下面是設定檔裡人寫的一句話（連鎖與其他客戶看到的不同） */
 function FestivalBlock({ festival }: { festival: Festival }) {
   return (
-    <section className="rounded-2xl border border-primary/20 bg-primary/10 p-4">
+    <section className="rounded-2xl border-2 border-primary/20 bg-primary/10 p-4 shadow-lip-primary-soft">
       <div className="flex items-baseline justify-between gap-2">
         <p className="text-xs font-semibold tracking-wide text-primary">下一個節慶</p>
         <p className="text-xs text-primary tabular-nums">{festivalCountdown(festival.days_left)}</p>
@@ -165,7 +165,7 @@ function FestivalBlock({ festival }: { festival: Festival }) {
 /** 檔期（連鎖）：還來得及申請的那個節慶、最晚哪天送、費用上限；下一個節慶來不及了就照實寫 */
 function CampaignBlock({ campaign }: { campaign: Campaign }) {
   return (
-    <section className="rounded-2xl border bg-card p-4">
+    <section className="rounded-2xl border-2 bg-card p-4 shadow-lip">
       <p className="text-sm font-semibold">檔期</p>
       {campaign.missed.length > 0 && <p className="mt-1.5 text-sm text-destructive">{missedText(campaign.missed)}。</p>}
       <p className="mt-1.5 text-sm leading-relaxed text-foreground/80">
@@ -193,7 +193,7 @@ function ShelfBlock({ shelf, festival }: { shelf: Shelf; festival: Festival | nu
   const { items } = shelf
   const scale = Math.max(0.1, ...items.flatMap((item) => [item.orders_per_month, item.region_orders_per_month ?? 0])) * 1.15
   return (
-    <section className="rounded-2xl border bg-card p-4">
+    <section className="rounded-2xl border-2 bg-card p-4 shadow-lip">
       <div className="flex items-baseline justify-between gap-2">
         <p className="text-sm font-semibold">架上有什麼</p>
         <p className="text-[11px] text-muted-foreground">近 90 天每月進貨次數 · 灰線是同區平均</p>
@@ -237,7 +237,7 @@ function ShelfBlock({ shelf, festival }: { shelf: Shelf; festival: Festival | nu
 /** 架上缺什麼（連鎖）：主推品類裡，同區其他連鎖超過一半有進、這家近半年沒進過的品項 */
 function GapsBlock({ gaps }: { gaps: Gaps }) {
   return (
-    <section className="rounded-2xl border bg-card px-4 pb-1">
+    <section className="rounded-2xl border-2 bg-card px-4 pb-1 shadow-lip">
       <div className="flex items-baseline justify-between gap-2 py-3">
         <p className="text-sm font-semibold">架上缺什麼</p>
         <p className="text-[11px] text-muted-foreground">同區連鎖近 90 天有進 · 這家近半年沒進</p>
@@ -272,7 +272,7 @@ function DealsBlock({ deals, festival }: { deals: Deals; festival: Festival | nu
       )}
       <ul className="mt-2 flex flex-col gap-2">
         {deals.items.map((item) => (
-          <li key={item.sku} className="rounded-xl border bg-card px-4 py-3">
+          <li key={item.sku} className="rounded-xl border-2 bg-card px-4 py-3 shadow-lip">
             <div className="flex items-start justify-between gap-3">
               <p className="leading-snug font-medium">{item.name}</p>
               <Badge variant="secondary">毛利 {formatRate(item.profit_rate, 1)}</Badge>
@@ -326,7 +326,7 @@ function TermsBlock({ terms }: { terms: Terms }) {
     },
   ]
   return (
-    <section className="rounded-2xl border bg-card px-4 pb-1">
+    <section className="rounded-2xl border-2 bg-card px-4 pb-1 shadow-lip">
       <p className="py-3 text-sm font-semibold">這家的條件</p>
       {rows.map((row) => (
         <div key={row.label} className="flex min-h-12 items-center justify-between gap-3 border-t py-2">
@@ -344,7 +344,7 @@ function TermsBlock({ terms }: { terms: Terms }) {
 /** FR-3.2：依這家客戶的情況，列出內部文件裡相關的規定原文 */
 function Tips({ tips }: { tips: NegotiationCard["tips"] }) {
   return (
-    <section className="rounded-2xl border border-primary/25 bg-primary/10 p-4">
+    <section className="rounded-2xl border-2 border-primary/25 bg-primary/10 p-4 shadow-lip-primary-soft">
       <p className="text-xs font-semibold tracking-wide text-primary">內部文件建議的切入點</p>
       {tips.length === 0 && <p className="mt-2 text-sm text-muted-foreground">內部文件裡沒有找到適用的段落。</p>}
       <ol className="mt-3 flex flex-col gap-4">

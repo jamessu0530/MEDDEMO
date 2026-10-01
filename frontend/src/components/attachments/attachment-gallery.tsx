@@ -63,7 +63,7 @@ export function AttachmentGallery({ attachments, className }: { attachments: Att
           href={pdf.url}
           target="_blank"
           rel="noopener"
-          className="flex min-h-11 items-center gap-3 rounded-xl border bg-card px-3 py-2 text-left text-sm"
+          className="flex min-h-11 items-center gap-3 rounded-xl border-2 bg-card px-3 py-2 text-left text-sm shadow-lip press"
         >
           <FileText className="size-6 shrink-0 text-destructive" />
           <span className="min-w-0 flex-1">

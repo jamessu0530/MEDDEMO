@@ -64,7 +64,7 @@ export function ReassignOwner({
 
   return (
     <>
-      <section className="flex items-center justify-between gap-3 rounded-2xl border bg-card px-4 py-3">
+      <section className="flex items-center justify-between gap-3 rounded-2xl border-2 bg-card px-4 py-3 shadow-lip">
         <div className="min-w-0">
           <p className="text-xs text-muted-foreground">負責業務</p>
           <p className="text-sm font-medium">{customer.owner_name}</p>

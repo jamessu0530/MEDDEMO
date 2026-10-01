@@ -59,8 +59,8 @@ export function OaFormsPage() {
                   setState({ status: "loading" })
                 }}
                 className={cn(
-                  "flex flex-col items-center rounded-xl border px-1 py-2 text-center",
-                  active ? "border-primary bg-primary/5" : "bg-card"
+                  "flex flex-col items-center rounded-xl border-2 px-1 py-2 text-center press",
+                  active ? "border-primary bg-primary/5 shadow-lip-primary-soft" : "bg-card shadow-lip"
                 )}
               >
                 <span className="text-sm font-semibold tabular-nums">{n > 99 ? "99+" : n}</span>
@@ -94,7 +94,7 @@ export function OaFormsPage() {
 
 function FormCard({ item }: { item: OaFormItem }) {
   return (
-    <Link to={`/oa/forms/${item.id}`} className="rounded-2xl border bg-card p-4">
+    <Link to={`/oa/forms/${item.id}`} className="rounded-2xl border-2 bg-card p-4 shadow-lip press">
       <div className="flex items-start justify-between gap-2">
         <p className="text-sm font-medium">
           {item.kind_label}

@@ -58,17 +58,17 @@ export function PromotionsPage() {
         <p className="text-xs text-muted-foreground">每月一期，品項的搭贈與整張訂單的活動</p>
         <h1 className="mt-0.5 text-lg font-semibold">促銷</h1>
         {promotions.length > 1 && (
-          <div className="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4">
+          <div className="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 pb-1.5">
             {promotions.map((p) => (
               <button
                 key={p.name}
                 type="button"
                 onClick={() => setSelected(p.name)}
                 className={cn(
-                  "h-9 shrink-0 rounded-full border px-4 text-sm",
+                  "h-9 shrink-0 rounded-full border-2 px-4 text-sm press",
                   p.name === current?.name
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "bg-card text-muted-foreground"
+                    ? "border-primary bg-primary text-primary-foreground shadow-lip-primary"
+                    : "bg-card text-muted-foreground shadow-lip"
                 )}
               >
                 {Number(p.start_date.slice(5, 7))} 月{p.status === "進行中" ? " · 進行中" : ""}
@@ -122,7 +122,7 @@ export function PromotionsPage() {
             {sections.length > 0 && (
               <section className="mt-4">
                 <h2 className="mb-2 text-sm font-semibold">整張訂單的活動</h2>
-                <div className="divide-y rounded-xl border bg-card">
+                <div className="divide-y rounded-xl border-2 bg-card shadow-lip">
                   {sections.map((section, index) => (
                     <details key={`${index}-${section.title}`} className="group px-4 py-3">
                       <summary className="flex min-h-6 cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium [&::-webkit-details-marker]:hidden">
@@ -166,7 +166,7 @@ export function PromotionsPage() {
 
 function ItemRow({ item }: { item: PromotionItem }) {
   return (
-    <li className="rounded-xl border bg-card px-4 py-3">
+    <li className="rounded-xl border-2 bg-card px-4 py-3 shadow-lip">
       <div className="flex items-start justify-between gap-3">
         <p className="leading-snug font-medium">{item.name}</p>
         <Badge variant="secondary">{dealLabel(item)}</Badge>

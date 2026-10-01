@@ -126,7 +126,7 @@ export function ContractPage() {
         )}
         {contract && (
           <>
-            <section className="rounded-2xl border bg-card px-4 py-3">
+            <section className="rounded-2xl border-2 bg-card px-4 py-3 shadow-lip">
               <p className="text-sm font-semibold">目前的條件</p>
               <dl className="mt-2 grid grid-cols-3 gap-2 text-center">
                 <Term label="到期日" value={contract.contract_end_date?.replaceAll("-", "/") ?? "—"} warn={contract.ending_soon} />
@@ -150,7 +150,7 @@ export function ContractPage() {
               />
             ) : (
               <>
-                <section className="flex flex-col gap-3 rounded-2xl border bg-card px-4 py-3">
+                <section className="flex flex-col gap-3 rounded-2xl border-2 bg-card px-4 py-3 shadow-lip">
                   <div>
                     <p className="text-sm font-medium">續約多久</p>
                     <div className="mt-2 grid grid-cols-2 rounded-lg bg-muted p-1 text-sm" role="radiogroup" aria-label="續約月數">

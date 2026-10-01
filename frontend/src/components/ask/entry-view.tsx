@@ -25,7 +25,7 @@ export function EntryView({
     )
   }
   return (
-    <p className="mr-10 self-start rounded-2xl rounded-bl-md border bg-card px-4 py-2.5 text-sm leading-relaxed">
+    <p className="mr-10 self-start rounded-2xl rounded-bl-md border-2 bg-card px-4 py-2.5 text-sm leading-relaxed">
       {entry.text}
     </p>
   )

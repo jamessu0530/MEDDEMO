@@ -101,7 +101,7 @@ export function CustomerPicker() {
         {unseen > 0 && (
           <Link
             to="/escalations"
-            className="mb-3 flex min-h-12 items-center gap-3 rounded-xl border border-primary/30 bg-primary/10 px-4 py-2 text-sm"
+            className="mb-3 flex min-h-12 items-center gap-3 rounded-xl border-2 border-primary/30 bg-primary/10 px-4 py-2 text-sm shadow-lip-primary-soft press"
           >
             <Bell className="size-4 shrink-0 text-primary" />
             <span className="flex-1">主管回覆了你轉過去的 {unseen} 個提問</span>
@@ -142,7 +142,7 @@ function CustomerRow({ customer }: { customer: Customer }) {
     <li>
       <Link
         to={`/customers/${customer.id}`}
-        className="flex items-center gap-2 rounded-xl border bg-card py-3 pr-2 pl-4 active:bg-muted"
+        className="flex items-center gap-2 rounded-xl border-2 bg-card py-3 pr-2 pl-4 shadow-lip press"
       >
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-3">

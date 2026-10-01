@@ -193,7 +193,7 @@ function QuickLink({
   return (
     <Link
       to={to}
-      className="flex min-h-12 items-center justify-center gap-1.5 rounded-2xl border bg-card text-sm font-medium"
+      className="flex min-h-12 items-center justify-center gap-1.5 rounded-2xl border-2 bg-card text-sm font-medium shadow-lip press"
     >
       {icon}
       {label}
@@ -215,7 +215,7 @@ function OrgTree({
     <>
       <section className="flex flex-col gap-2">
         <h2 className="text-sm font-semibold">全國</h2>
-        <div className="rounded-2xl border bg-card">
+        <div className="rounded-2xl border-2 bg-card shadow-lip">
           {it.map((person) => (
             <div
               key={person.id}
@@ -256,7 +256,7 @@ function OrgTree({
               return (
                 <div
                   key={manager.id}
-                  className="overflow-hidden rounded-2xl border bg-card"
+                  className="overflow-hidden rounded-2xl border-2 bg-card shadow-lip"
                 >
                   <PersonRow person={manager} onSelect={onSelect} />
                   <ul className="divide-y border-t bg-muted/30">
@@ -321,7 +321,7 @@ function ChangeLog({ chart }: { chart: OrgChart }) {
       {chart.log.length === 0 ? (
         <p className="text-xs text-muted-foreground">還沒有異動。</p>
       ) : (
-        <ul className="divide-y rounded-2xl border bg-card">
+        <ul className="divide-y rounded-2xl border-2 bg-card shadow-lip">
           {chart.log.map((entry) => (
             <li key={entry.id} className="px-4 py-2.5">
               <p className="text-sm leading-relaxed">{entry.detail}</p>

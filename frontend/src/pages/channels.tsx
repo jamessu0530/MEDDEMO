@@ -53,7 +53,7 @@ export function ChannelsPage() {
             return (
               <section key={section.key} className="flex flex-col gap-1">
                 <p className="px-1 text-xs font-semibold text-muted-foreground">{section.title}</p>
-                <div className="overflow-hidden rounded-2xl border bg-card">
+                <div className="overflow-hidden rounded-2xl border-2 bg-card shadow-lip">
                   {section.channels.map((channel) => (
                     <ChannelRow key={channel.id} channel={channel} />
                   ))}

@@ -213,7 +213,7 @@ function EscalationsPanel() {
       )}
       {state.status === "ready" &&
         state.items.map((item) => (
-          <article key={item.id} className="rounded-2xl border bg-card p-4">
+          <article key={item.id} className="rounded-2xl border-2 bg-card p-4 shadow-lip">
             <p className="text-[11px] text-muted-foreground">
               {formatDateTime(item.created_at)} · {item.kind === "data" ? "數字查詢" : "知識查詢"} · 單號 #{item.id}
             </p>
@@ -347,7 +347,7 @@ function NoticeCard({ item, onSeen }: { item: ManagerNotice; onSeen: (item: Mana
   }
 
   return (
-    <article className={cn("rounded-2xl border bg-card p-4", unseen && "border-destructive/40")}>
+    <article className={cn("rounded-2xl border-2 bg-card p-4 shadow-lip", unseen && "border-destructive/40")}>
       <div className="flex items-center justify-between gap-2">
         <p className="min-w-0 text-[11px] text-muted-foreground">
           {formatDateTime(item.created_at)} · 業務 {item.rep_name}
@@ -449,7 +449,7 @@ function OaInboxPanel() {
             規則上區處主管就能簽、模型有把握會過的申請，由系統直接核准，列在這裡給你事後查（最近 {automatic.length} 張）。
           </p>
           {automatic.map((item) => (
-            <Link key={item.id} to={`/oa/forms/${item.id}`} className="rounded-xl border bg-card px-4 py-3">
+            <Link key={item.id} to={`/oa/forms/${item.id}`} className="rounded-xl border-2 bg-card px-4 py-3 shadow-lip press">
               <div className="flex items-start justify-between gap-2">
                 <p className="text-sm">{item.summary}</p>
                 {item.model?.probability != null && (
@@ -470,7 +470,7 @@ function OaInboxPanel() {
 /** 簽核匣的一張單：種類標籤、一句摘要；優惠與合約多一塊模型的估計與理由 */
 function OaInboxCard({ item }: { item: OaFormItem }) {
   return (
-    <Link to={`/oa/forms/${item.id}`} className="rounded-2xl border bg-card p-4">
+    <Link to={`/oa/forms/${item.id}`} className="rounded-2xl border-2 bg-card p-4 shadow-lip press">
       <div className="flex items-start gap-2">
         <Badge variant={item.kind === "trip" ? "secondary" : "default"} className="mt-0.5">
           {item.kind_label}
@@ -607,7 +607,7 @@ function MyMethodCard({
   }
 
   return (
-    <article className={cn("rounded-2xl border bg-card p-4", retired && "bg-muted/50")}>
+    <article className={cn("rounded-2xl border-2 bg-card p-4 shadow-lip", retired && "bg-muted/50")}>
       <div className="flex items-start justify-between gap-3">
         <p className={cn("leading-snug font-medium", retired && "text-muted-foreground")}>{card.title}</p>
         {retired && <Badge variant="outline">已下架</Badge>}

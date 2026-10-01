@@ -129,8 +129,10 @@ export function MethodCardForm({ card, onClose, onSaved }: MethodCardFormProps) 
                     aria-pressed={selected}
                     onClick={() => toggleTag(tag)}
                     className={cn(
-                      "h-9 rounded-full border px-3 text-sm",
-                      selected ? "border-primary bg-primary text-primary-foreground" : "bg-card text-muted-foreground"
+                      "h-9 rounded-full border-2 px-3 text-sm press",
+                      selected
+                        ? "border-primary bg-primary text-primary-foreground shadow-lip-primary"
+                        : "bg-card text-muted-foreground shadow-lip"
                     )}
                   >
                     {TAG_LABELS[tag]}
