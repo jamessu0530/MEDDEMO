@@ -16,9 +16,10 @@ from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app import realtime
 from app.db import get_session
 from app.models import AppUser, SapQuotationDraft, UserIdentity
-from app.services import auth, oauth
+from app.services import auth, oauth, presence
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 SessionDep = Annotated[Session, Depends(get_session)]
@@ -195,7 +196,10 @@ def me(session: SessionDep, user: CurrentUser):
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 def logout(session: SessionDep, user: CurrentUser):
     auth.logout(session, user)
+    # 登出立刻變離線，不等連線斷掉 5 分鐘
+    presence.sign_out(session, user)
     session.commit()
+    realtime.presence_changed()
 
 
 @router.patch("/me/profile", response_model=UserPublic)
@@ -218,7 +222,7 @@ def update_profile(session: SessionDep, user: CurrentUser, body: ProfileUpdate):
 def delete_account(session: SessionDep, user: CurrentUser):
     """刪除自己的帳號（隱私權政策 /privacy 寫的刪除方式）。公司帳號不能自己刪，要由 IT 停用。
 
-    一起刪掉：帳號、綁定的第三方身分、自己的提問與轉給主管的提問、自己在頻道發的訊息與已讀位置、
+    一起刪掉：帳號、綁定的第三方身分、自己的提問與轉給主管的提問、自己在頻道發的訊息與已讀位置、在線狀態、
     對方法卡按的「有幫上／沒幫上」（外鍵 ON DELETE CASCADE）。
     自己開的報價草稿留在 SAP 模擬表，只把「誰開的」清掉：報價是交易紀錄，屬於客戶。
     拜訪紀錄記在示範業務名下（自己開的帳號沒有自己的客戶），不受影響。
@@ -228,6 +232,7 @@ def delete_account(session: SessionDep, user: CurrentUser):
     session.execute(update(SapQuotationDraft).where(SapQuotationDraft.created_by == user.id).values(created_by=None))
     session.delete(user)
     session.commit()
+    realtime.presence_changed()
 
 
 @router.post("/change-password", response_model=AuthResponse)
