@@ -10,6 +10,7 @@ import { Notice } from "@/components/notice"
 import { MyStatusButton } from "@/components/my-status"
 import { RoutePath } from "@/components/route-path"
 import { EditRouteLink, SkippedHabitsNote } from "@/components/route/home-extras"
+import { HomeAsk } from "@/components/route/home-ask"
 import { SkinToggle } from "@/components/skin-toggle"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { useAuth } from "@/lib/auth"
@@ -165,8 +166,8 @@ export function TodayPage() {
         </div>
       </header>
 
-      {/* 底部分頁列約 64px，最後的終點要露出來 */}
-      <main className="flex-1 px-4 pt-3 pb-28">
+      {/* 底部分頁列約 64px，上面再疊一條跟熊熊滾說的輸入列，最後的終點要露出來 */}
+      <main className="flex-1 px-4 pt-3 pb-48">
         {/* 新人才有的入口卡；自己問自己的資料，載不到就不顯示，跟下面的路線互不影響 */}
         <FirstWeekEntry userId={user.id} />
         {state.status === "ready" && state.cached && (
@@ -249,6 +250,16 @@ export function TodayPage() {
             <RoutePath stops={route.stops} />
           ))}
       </main>
+      {/* 跟熊熊滾說要怎麼排：連不上、用的是手機上的舊行程時不給問 */}
+      {state.status === "ready" && !state.cached && (
+        <HomeAsk
+          userId={user.id}
+          onApplied={(next) => {
+            setState({ status: "ready", route: next, cached: false })
+            setHint("已套用熊熊滾的提案。")
+          }}
+        />
+      )}
       <BottomNav />
     </div>
   )

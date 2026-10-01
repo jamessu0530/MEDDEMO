@@ -12,17 +12,27 @@ import {
 } from "@dnd-kit/core"
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
-import { Loader2, Plus, Repeat } from "lucide-react"
+import { Loader2, Plus, Repeat, WandSparkles } from "lucide-react"
 import { Link, useNavigate } from "react-router"
 
 import { ApiError } from "@/api/client"
-import { getTodayRoute, previewToday, saveToday, type DraftStop, type Precedence, type RouteDraft } from "@/api/route"
+import {
+  getTodayRoute,
+  previewToday,
+  saveToday,
+  type DraftStop,
+  type Precedence,
+  type RouteDraft,
+  type TodayRoute,
+} from "@/api/route"
 import { Mascot } from "@/components/mascot"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
+import { AskBar } from "@/components/route/ask-bar"
 import { DriveSource } from "@/components/route/drive-source"
 import { HabitPrompt, type HabitChoice } from "@/components/route/habit-prompt"
 import { SkippedHabitsNote } from "@/components/route/home-extras"
+import { ProposalSheet } from "@/components/route/proposal-sheet"
 import { StopCard, type StopHandle } from "@/components/route/stop-card"
 import { StopEditor } from "@/components/route/stop-editor"
 import { Button, buttonVariants } from "@/components/ui/button"
@@ -44,6 +54,7 @@ import {
   type RuleNote,
 } from "@/lib/itinerary"
 import { routeDraft, useRouteDraft } from "@/lib/route-draft"
+import { useProposal } from "@/lib/use-proposal"
 import { cn } from "@/lib/utils"
 
 type Prompt = HabitSuggestion & { id: number }
@@ -72,6 +83,20 @@ export function RouteEditPage() {
   const [prompt, setPrompt] = useState<Prompt | null>(null)
   const [confirming, setConfirming] = useState(false)
   const [saving, setSaving] = useState(false)
+  // 還沒存的改動時按「幫我排順一點」或跟熊熊滾說：先問要不要存起來（提案是照存著的行程算的）
+  const [unsavedAction, setUnsavedAction] = useState<(() => void) | null>(null)
+  // 存完要接著做的事（先存再排）；違反規則的確認框按「照這樣存」時也接著做
+  const [afterSave, setAfterSave] = useState<(() => void) | null>(null)
+  const flow = useProposal({
+    userId,
+    onApplied: (route: TodayRoute) => {
+      // 套用了：清單換成存好的那一份，從頭再改
+      routeDraft.start(route)
+      setExpanded(null)
+      setPrompt(null)
+      setHint("已套用熊熊滾的提案。")
+    },
+  })
   // 每一張「以後也這樣排嗎？」的編號：換一句就換一張，選項回到「只有今天」
   const promptCount = useRef(0)
   const sensors = useSensors(
@@ -98,17 +123,15 @@ export function RouteEditPage() {
   // 每次改動停 300ms 再算時間、車程與違反的規則；算好之前畫面先用上一次的時間。
   // 還沒改過就不算：畫面用進來時讀到的那一份（正式的車程），preview 一律是直線估算。
   // 例外：從加一站、習慣頁回來時草稿已經在（不是這次進頁面才建的），上面可能改了習慣或順路的候選，
-  // view 卻還是離開前那一份、沒有照最新的草稿重算，進頁面時先補跑一次 preview（immediateRef 只在那一次是 true）
+  // view 卻還是離開前那一份、沒有照最新的草稿重算，這次進頁面就要照最新的草稿算（returned）
   const draft = edit?.draft
   const changed = Boolean(edit && edit.history.length > 0)
-  const immediateRef = useRef(Boolean(routeDraft.get()))
+  // 從加一站、習慣頁回來時草稿已經在：上面可能改了習慣，view 卻還是離開前那一份，這次進頁面就要照最新的草稿算
+  const [returned] = useState(() => Boolean(routeDraft.get()))
   useEffect(() => {
-    if (!draft) return
-    const immediate = immediateRef.current
-    immediateRef.current = false
-    if (!changed && !immediate) return
+    if (!draft || (!changed && !returned)) return
     const controller = new AbortController()
-    const run = () => {
+    const timer = setTimeout(() => {
       previewToday(draft, undefined, controller.signal)
         .then((view) => {
           routeDraft.showView(view, draft)
@@ -118,17 +141,12 @@ export function RouteEditPage() {
           if (controller.signal.aborted) return
           setPreviewError(error instanceof ApiError ? error.message : "連不上伺服器，時間先不更新。")
         })
-    }
-    if (immediate) {
-      run()
-      return () => controller.abort()
-    }
-    const timer = setTimeout(run, 300)
+    }, 300)
     return () => {
       clearTimeout(timer)
       controller.abort()
     }
-  }, [draft, changed])
+  }, [draft, changed, returned])
 
   function cancel() {
     routeDraft.clear()
@@ -207,7 +225,7 @@ export function RouteEditPage() {
     setPrompt(null)
   }
 
-  function ask(suggestion: HabitSuggestion) {
+  function suggestHabit(suggestion: HabitSuggestion) {
     promptCount.current += 1
     setPrompt({ ...suggestion, id: promptCount.current })
   }
@@ -221,7 +239,7 @@ export function RouteEditPage() {
     const after = brokenRules(next.stops.map((stop) => stop.customer_id), draftRules(next, view.rules, names))
     if (after.some((rule) => !before.has(rule.id))) return
     const suggestion = dragHabit(order, from, to, names)
-    if (suggestion) ask(suggestion)
+    if (suggestion) suggestHabit(suggestion)
   }
 
   function onDragEnd({ active, over }: DragEndEvent) {
@@ -231,7 +249,7 @@ export function RouteEditPage() {
 
   function patch(customerId: string, values: Partial<DraftStop>, suggestion?: HabitSuggestion) {
     change({ ...current, stops: current.stops.map((stop) => (stop.customer_id === customerId ? { ...stop, ...values } : stop)) })
-    if (suggestion) ask(suggestion)
+    if (suggestion) suggestHabit(suggestion)
   }
 
   function addPrecedence(precedence: Precedence) {
@@ -272,16 +290,25 @@ export function RouteEditPage() {
     setPrompt(null)
   }
 
-  async function save() {
+  // then：存完不回首頁，清單換成存好的那一份，接著做（先存再請熊熊滾排）
+  async function save(then?: () => void) {
     if (!userId || !edit) return
     setConfirming(false)
     setSaving(true)
     try {
-      await saveToday(userId, base.version, current)
+      const saved = await saveToday(userId, base.version, current)
+      if (then) {
+        setSaving(false)
+        setAfterSave(null)
+        routeDraft.start(saved)
+        then()
+        return
+      }
       routeDraft.clear()
       navigate("/", { replace: true })
     } catch (error) {
       setSaving(false)
+      setAfterSave(null)
       if (error instanceof ApiError && error.status === 409) {
         // 行程剛被改過：剛才的改動不保留，載入最新的
         routeDraft.clear()
@@ -299,6 +326,32 @@ export function RouteEditPage() {
   function finish() {
     if (broken.length > 0) setConfirming(true)
     else void save()
+  }
+
+  // 請熊熊滾排之前：沒有還沒存的改動就直接做；有的話先問要不要存
+  function beforeAsking(action: () => void) {
+    if (changed) setUnsavedAction(() => action)
+    else action()
+  }
+
+  function saveThen(action: () => void) {
+    setUnsavedAction(null)
+    if (broken.length > 0) {
+      // 違反的規則還沒處理：照「完成」一樣先問一次，按「照這樣存」才存、才接著做
+      setAfterSave(() => action)
+      setConfirming(true)
+    } else void save(action)
+  }
+
+  function ask(question: string) {
+    return new Promise<boolean>((resolve) => {
+      if (!changed) {
+        void flow.ask(question).then(resolve)
+        return
+      }
+      setUnsavedAction(() => () => void flow.ask(question))
+      resolve(false)
+    })
   }
 
   return (
@@ -409,16 +462,68 @@ export function RouteEditPage() {
         </DndContext>
         {open.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">今天還沒有要跑的站。</p>}
 
-        <Link to="/route/edit/add" className={cn(buttonVariants({ variant: "outline" }), "mt-4 h-12 text-sm")}>
-          <Plus />
-          加一站
-        </Link>
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <Link to="/route/edit/add" className={cn(buttonVariants({ variant: "outline" }), "h-12 text-sm")}>
+            <Plus />
+            加一站
+          </Link>
+          <Button
+            variant="outline"
+            className="h-12 text-sm"
+            disabled={flow.state.status === "asking" || open.length < 2}
+            onClick={() => beforeAsking(() => void flow.optimize())}
+          >
+            <WandSparkles />
+            幫我排順一點
+          </Button>
+        </div>
+        <AskBar className="mt-3" busy={flow.state.status === "asking"} error={flow.error} onAsk={ask} />
       </main>
+
+      {flow.state.status === "open" && (
+        <ProposalSheet
+          proposal={flow.state.proposal}
+          applying={flow.state.applying}
+          stale={flow.state.stale}
+          error={flow.state.error}
+          onApply={() => void flow.apply()}
+          onClose={flow.close}
+          onPick={flow.pick}
+          onRetry={flow.retry}
+        />
+      )}
+
+      {unsavedAction && (
+        <Dialog open onOpenChange={(visible) => !visible && setUnsavedAction(null)}>
+          <DialogContent showCloseButton={false}>
+            <DialogHeader>
+              <DialogTitle>剛才的調整還沒存，要先存起來再請熊熊滾排嗎？</DialogTitle>
+              <DialogDescription>熊熊滾是照存著的行程排的；不先存的話，剛才的調整它看不到。</DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" className="h-11" onClick={() => setUnsavedAction(null)}>
+                取消
+              </Button>
+              <Button className="h-11" disabled={saving} onClick={() => saveThen(unsavedAction)}>
+                先存再排
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {prompt && <HabitPrompt key={prompt.id} text={prompt.text} weekday={weekday} onDone={answer} />}
 
       {confirming && (
-        <Dialog open onOpenChange={(visible) => !visible && setConfirming(false)}>
+        <Dialog
+          open
+          onOpenChange={(visible) => {
+            if (!visible) {
+              setConfirming(false)
+              setAfterSave(null)
+            }
+          }}
+        >
           <DialogContent showCloseButton={false}>
             <DialogHeader>
               <DialogTitle>還有 {broken.length} 條規則沒處理，要復原嗎？</DialogTitle>
@@ -437,7 +542,7 @@ export function RouteEditPage() {
                   復原
                 </Button>
               )}
-              <Button className="h-11" onClick={() => void save()}>
+              <Button className="h-11" onClick={() => void save(afterSave ?? undefined)}>
                 照這樣存
               </Button>
             </DialogFooter>
