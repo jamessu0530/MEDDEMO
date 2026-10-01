@@ -7,9 +7,10 @@ from route_fakes import FakeLLM
 from sqlalchemy import delete, select
 
 from app.config import NotConfigured
-from app.models import Customer, ItineraryProposal, RouteHabit
+from app.models import Customer, ItineraryProposal, RouteHabit, Visit
 from app.services import itinerary as service
 from app.services import itinerary_ai, route_habits
+from app.timeutil import TAIPEI
 
 
 def proposal(tx, itinerary, days_ago=0):
@@ -185,6 +186,26 @@ def test_adding_and_disabling_habits(tx):
     assert habits["星期一先跑板橋"].source == "ai" and not habits[old.text].active
 
 
+def test_a_habit_for_another_weekday_does_not_apply_today(tx):
+    # 今天是星期三：加一條只在星期五套用的習慣，今天的順序不該被它鎖住，也不該出現「今天不套用」的提示
+    itinerary, ids, names = route(tx)
+    proposal = ask(
+        tx,
+        {"op": "add_habit", "habit": {"kind": "first", "subject": {"by": "customer", "value": ids[4]}, "weekday": 4}},
+        {"op": "optimize"},
+    )
+    result = proposal.result
+    text = f"星期五先跑 {names[ids[4]]}"
+    assert result["kind"] == "proposal" and result["dropped"] == []
+    assert result["habits_added"] == [text]
+    assert order(result["after"]) == ids  # 星期五的習慣沒有把 ids[4] 排到第一站
+    itinerary_ai.apply(tx, "U01", proposal.id)
+    habit = tx.scalars(select(RouteHabit).where(RouteHabit.user_id == "U01", RouteHabit.text == text)).one()
+    assert habit.weekday == 4 and habit.source == "ai"
+    view = service.view(tx, itinerary)
+    assert view.skipped_habits == []
+
+
 def test_an_ambiguous_name_asks_which_one(tx):
     _, ids, names = route(tx)
     theirs = tx.scalars(select(Customer.id).where(Customer.owner_user_id == "U02")).first()
@@ -214,14 +235,33 @@ def test_applying_checks_the_version_owner_and_kind(tx):
 
 
 def test_applying_after_the_customer_changed_owner(tx):
-    # 問完之後那家被轉給別的業務了（同一天、版本沒變）：套用時不能因為查不到名字就炸掉（KeyError → 500）
+    # 問完之後那家被轉給別的業務了（同一天、版本沒變）：重新驗證後這個操作變成「找不到」，拿掉就沒有真的做，
+    # 重算出來的順序跟卡片上的「改成」（少了這家）不一樣，套用要擋下來，不能因為查不到名字就炸掉（KeyError → 500）
     itinerary, ids, _ = route(tx)
     proposal = ask(tx, {"op": "remove", "customer_id": ids[3]})
+    before_version = itinerary.version
     tx.get(Customer, ids[3]).owner_user_id = "U02"
     tx.flush()
-    itinerary_ai.apply(tx, "U01", proposal.id)
-    stops = {s.customer_id for s in service.view(tx, itinerary).stops}
-    assert ids[3] in stops  # 重新驗證後這個操作變成「找不到」，套用時沒有真的拿掉
+    with pytest.raises(service.VersionConflict):
+        itinerary_ai.apply(tx, "U01", proposal.id)
+    view = service.view(tx, itinerary)
+    stops = {s.customer_id for s in view.stops}
+    assert ids[3] in stops and view.version == before_version
+
+
+def test_applying_after_a_stop_was_confirmed_as_done(tx):
+    # 問完之後有一站確認拜訪了（確認不會改版本）：少了那一站，重算出來還沒跑的站跟卡片上的「改成」對不起來，
+    # 套用要擋下來，不能因為版本號沒變就直接存
+    itinerary, ids, _ = route(tx)
+    proposal = ask(tx, {"op": "move", "customer_id": ids[4], "to_position": 2})
+    at = dt.datetime(2026, 10, 28, 9, 40, tzinfo=TAIPEI)
+    tx.add(Visit(
+        id="VTEST9", customer_id=ids[0], user_id="U01", visited_at=at,
+        transcript="測試", status="synced", confirmed_at=at,
+    ))
+    tx.flush()
+    with pytest.raises(service.VersionConflict):
+        itinerary_ai.apply(tx, "U01", proposal.id)
 
 
 def test_asking_without_gemini_configured(tx):

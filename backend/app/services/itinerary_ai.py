@@ -114,6 +114,13 @@ def apply(session: Session, user_id: str, proposal_id: int) -> Itinerary:
     if draft is None:
         # 問完之後習慣改了（習慣頁不會改行程的版本），現在排不出來：當成行程改過了，請業務重算
         raise itinerary_service.VersionConflict
+    # 版本號沒變，但行程可能已經不一樣了：確認了拜訪、調整清單改了習慣、客戶換了業務、或 travel.matrix
+    # 讀到別人改過之後的即時路網資料，重算出來的順序都可能跟卡片上的「改成」不一樣。這種情況不能直接存，
+    # 不然業務按下去的就不是他在卡片上看到的那個結果：拿重算的順序跟卡片比一次，不一樣就當成版本衝突
+    after_ids = [s.customer_id for s in draft.stops]
+    card_ids = [s["customer_id"] for s in proposal.result["after"]["stops"]]
+    if after_ids != card_ids:
+        raise itinerary_service.VersionConflict
     return itinerary_service.save(session, user_id, proposal.base_version, draft, habit_source="ai")
 
 
@@ -424,11 +431,13 @@ def _add_habit(
     except route_habits.InvalidHabit as exc:
         built.notes.append(f"記不起來這條習慣：{exc}")
         return
-    built.draft.habits.append(itinerary_service.PendingHabit(spec))
+    # 這條習慣是不是今天就套用：挑星期幾的話，今天不是那天就先記下來、今天不套用（像紅框按了「今天不套用」）
+    applies_today = spec.weekday is None or spec.weekday == today.weekday()
+    built.draft.habits.append(itinerary_service.PendingHabit(spec, skip_today=not applies_today))
     text = route_habits.describe(spec, names)
     built.habits_added.append(text)
     built.phrases.append(f"記了一條習慣『{text}』")
-    if spec.kind in route_habits.RULE_KINDS and (spec.weekday is None or spec.weekday == today.weekday()):
+    if spec.kind in route_habits.RULE_KINDS and applies_today:
         new_rules.add(f"new:{len(built.draft.habits) - 1}")
 
 
