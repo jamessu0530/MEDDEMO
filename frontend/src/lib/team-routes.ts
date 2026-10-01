@@ -7,7 +7,7 @@ import { avatarTone } from "@/lib/presence"
  * 純函式，畫面（components/manager/）只負責排版。
  */
 
-// 路線的顏色跟頭像底色同一套、同一個順序（components/user-avatar.tsx 的 TONES）：地圖上的線一看就知道是誰。
+// 路線的顏色跟頭像底色同一套、同一個順序（components/user-avatar.tsx 的 AVATAR_TONES）：地圖上的線一看就知道是誰。
 // 寫成 CSS 變數，深色配色下跟著換；Google 地圖的線畫在 canvas 上，要用時再換成實際的顏色
 export const ROUTE_COLOR_VARS = ["--primary", "--chart-4", "--chart-5", "--warning", "--muted-foreground"] as const
 

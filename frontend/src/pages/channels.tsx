@@ -47,7 +47,10 @@ export function ChannelsPage() {
         void load()
       }, RELOAD_DELAY_MS)
     }
-    const offRealtime = realtime.subscribe((event) => (event.type === "message" || event.type === "resync") && soon())
+    // 主管頁的位置、行程通知跟這頁無關，不重新載入
+    const offRealtime = realtime.subscribe(
+      (event) => (event.type === "message" || event.type === "resync" || event.type === "channels") && soon()
+    )
     const offPresence = presence.subscribe(soon)
     return () => {
       controller.abort()

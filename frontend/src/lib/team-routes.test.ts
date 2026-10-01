@@ -82,7 +82,7 @@ describe("一位業務的詳細", () => {
 
 describe("地圖", () => {
   it("路線顏色跟頭像底色同一套、同一個順序", () => {
-    // 跟 components/user-avatar.tsx 的 TONES 同一個順序，改一邊沒跟著改的話這裡會壞
+    // 跟 components/user-avatar.tsx 的 AVATAR_TONES 同一個順序，改一邊沒跟著改的話這裡會壞
     expect(ROUTE_COLOR_VARS).toEqual(["--primary", "--chart-4", "--chart-5", "--warning", "--muted-foreground"])
     for (const id of ["U01", "U02", "U03", "M01"]) {
       expect(routeColorVar(id)).toBe(ROUTE_COLOR_VARS[avatarTone(id, ROUTE_COLOR_VARS.length)])
