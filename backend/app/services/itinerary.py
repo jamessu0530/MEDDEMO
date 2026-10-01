@@ -16,9 +16,9 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Literal
 
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, func, inspect, or_, select
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.exc import IntegrityError, InvalidRequestError
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -295,12 +295,16 @@ def _find(session: Session, user_id: str, today: dt.date) -> Itinerary | None:
 
 def _lock(session: Session, itinerary: Itinerary) -> None:
     """鎖住這份行程、重新讀一次。兩個人同時改同一位業務的行程：後到的等前一個存完，再看到版本已經變了。
-    讀到之後、鎖住之前行程被刪掉了（IT 重置示範業務的行程）：當成版本對不上，畫面重新載入就會照建議再建一份。"""
-    try:
-        session.refresh(itinerary, with_for_update=True)
-    except InvalidRequestError:
-        # session.refresh 找不到這一列時丟的是 InvalidRequestError，不是子類別 ObjectDeletedError
-        raise VersionConflict from None
+    讀到之後、鎖住之前行程被刪掉了（IT 重置示範業務的行程）：當成版本對不上，畫面重新載入就會照建議再建一份。
+    不用 session.refresh：那支找不到列時丟的例外（InvalidRequestError）太籠統，連「物件不是 persistent」
+    「交易狀態已經壞了」這類跟列被刪掉無關的錯誤都會一起被當成版本衝突吞掉。改自己查一次、鎖住、
+    刷新同一個 identity map 裡的物件（populate_existing），查無此列才是真的被刪了。"""
+    ident = inspect(itinerary).identity[0]  # 不會碰資料庫：物件過期了也拿得到 id
+    found = session.scalars(
+        select(Itinerary).where(Itinerary.id == ident).with_for_update().execution_options(populate_existing=True)
+    ).first()
+    if found is None:
+        raise VersionConflict
 
 
 def _create(session: Session, rep: AppUser, today: dt.date) -> Itinerary:
@@ -345,8 +349,16 @@ def _fit_habits(
     start: dt.datetime, stops: list[route_planner.PlanStop], locks: list[route_planner.Rule], habits: list[RouteHabit],
     customers: list[Customer], minutes: list[list[int]],
 ) -> tuple[route_planner.Schedule | route_planner.Conflict, list[int], dict[str, str]]:
-    """每天建立建議：守住鎖與今天套用的習慣排順路。排不出來就從最舊的習慣開始，一條一條記成今天不套用，直到排得出來。
-    原因寫它跟哪一條衝突：先找比它新的習慣（新的優先），再找鎖住的站。回傳 (排的結果, 今天不套用的習慣, 原因)。"""
+    """每天建立建議：守住鎖與今天套用的習慣排順路。排不出來就一條一條把真的卡住的習慣記成今天不套用，直到排得出來。
+
+    候選（真的卡住的那幾條，不是陪榜的）：優先找拿掉哪一條習慣單獨就能解決——自己一條一條試，不能直接拿
+    `route_planner.plan` 的 `Conflict.rules`：那支排不出單一條擋住的規則時，會把當下所有規則整組一起回報，
+    跟「真的只有這一條單獨擋住」沒辦法從回傳值分辨，直接當候選會錯殺沒參與衝突的習慣。找不到單獨一條，
+    就找跟別的規則（另一條習慣或鎖）兩兩對沖的習慣；兩種都找不到（三條以上的習慣綁在一起才卡住，沒有兩兩對沖）
+    才把目前還套用的習慣全部當候選。
+
+    候選裡最舊的那條先記成今天不套用；原因寫它跟哪一條衝突：先找比它新的習慣（新的優先，只找更新的，
+    舊的在更早的回合就處理過了），再找鎖住的站。回傳 (排的結果, 今天不套用的習慣, 原因)。"""
     by_key = {f"habit:{h.id}": h for h in habits}
     groups: dict[str, list[route_planner.Rule]] = {}
     entries = [(key, route_habits.spec_of(h), h.text) for key, h in by_key.items()]
@@ -356,25 +368,28 @@ def _fit_habits(
     def age(key: str) -> tuple[dt.datetime, int]:
         return by_key[key].created_at, by_key[key].id
 
+    def feasible(rules: list[route_planner.Rule]) -> bool:
+        return isinstance(route_planner.plan(start, 0, stops, rules, minutes), route_planner.Schedule)
+
     skipped: list[int] = []
     reasons: dict[str, str] = {}
     while True:
         live = {key: rules for key, rules in groups.items() if key not in by_key or by_key[key].id not in skipped}
-        result = route_planner.plan(start, 0, stops, [r for rules in live.values() for r in rules], minutes)
+        live_rules = [r for rules in live.values() for r in rules]
+        result = route_planner.plan(start, 0, stops, live_rules, minutes)
         if isinstance(result, route_planner.Schedule):
             return result, skipped, reasons
         live_habits = [key for key in live if key in by_key]
-        blocking = [r.id for r in result.rules if r.id in by_key] or live_habits
-        if not blocking:
+        single = [key for key in live_habits if feasible([r for k, rs in live.items() if k != key for r in rs])]
+        candidates = single or [
+            key for key in live_habits if any(not feasible(live[key] + live[other]) for other in live if other != key)
+        ] or live_habits
+        if not candidates:
             return result, skipped, reasons
-        oldest = min(blocking, key=age)
-        others = sorted((k for k in live_habits if k != oldest), key=age, reverse=True)
+        oldest = min(candidates, key=age)
+        others = sorted((k for k in live_habits if k != oldest and age(k) > age(oldest)), key=age, reverse=True)
         others += [k for k in live if k not in by_key]
-        partner = next(
-            (k for k in others
-             if isinstance(route_planner.plan(start, 0, stops, live[oldest] + live[k], minutes), route_planner.Conflict)),
-            None,
-        )
+        partner = next((k for k in others if not feasible(live[oldest] + live[k])), None)
         skipped.append(by_key[oldest].id)
         reasons[str(by_key[oldest].id)] = f"跟『{live[partner][0].text}』衝突" if partner else "跟其他幾條一起排不出來"
 

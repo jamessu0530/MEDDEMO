@@ -305,6 +305,27 @@ def test_habits_that_cannot_be_kept_are_skipped_today_with_the_reason(tx):
     assert view.violations == []
 
 
+def test_only_the_habits_that_actually_conflict_are_skipped(tx):
+    """整組規則一起排不出來、又找不到單獨一條擋住的時候，route_planner.Conflict 會把當下所有規則一起回報
+    （見 route_planner.plan 的說明）；_fit_habits 不能把這個「整組一起回報」直接當成「這幾條都卡住」，
+    不然完全沒參與衝突的 h1 也會被錯殺。"""
+    tx.execute(delete(RouteHabit).where(RouteHabit.user_id == "U01"))
+    plain = service.view(tx, service.get_or_create(tx, "U01"))
+    ids = [s.customer_id for s in plain.stops]
+    spec = route_habits.HabitSpec
+    # h1 跟鎖、跟 h2、h3 都不衝突，排得進去；h2、h3「排第一」兩兩衝突，也都各自跟「需立即處理那家排第一站」的鎖衝突
+    h1 = route_habits.create(tx, "U01", spec("precedence", by_customer(ids[3]), by_customer(ids[4])), "manual")
+    h2 = route_habits.create(tx, "U01", spec("first", by_customer(ids[1])), "manual")
+    h3 = route_habits.create(tx, "U01", spec("first", by_customer(ids[2])), "manual")
+    view = rebuild(tx)
+    skipped = {h.id: h for h in view.skipped_habits}
+    assert h1.id not in skipped
+    assert skipped[h2.id].reason == f"跟『{h3.text}』衝突"
+    assert skipped[h3.id].reason == f"跟『{plain.stops[0].customer_name} 排第一站』衝突"
+    assert view.stops[0].customer_id == ids[0]
+    assert view.violations == []
+
+
 def test_the_view_lists_todays_rules_and_what_the_order_breaks(tx):
     itinerary = service.get_or_create(tx, "U01")
     view = service.view(tx, itinerary)
