@@ -6,6 +6,7 @@ import { signOutSession } from "@/api/auth"
 import { ApiError } from "@/api/client"
 import { getTodayRoute, SIGNAL_LABEL, type RouteSignal, type RouteStop, type TodayRoute } from "@/api/route"
 import { BottomNav } from "@/components/bottom-nav"
+import { Mascot } from "@/components/mascot"
 import { Notice } from "@/components/notice"
 import { SkinToggle } from "@/components/skin-toggle"
 import { Button } from "@/components/ui/button"
@@ -172,7 +173,8 @@ export function TodayPage() {
         )}
       </header>
 
-      <main className="flex-1 px-4 pt-3 pb-20">
+      {/* 底下除了底部列（64px），右下角還浮著熊熊滾（再高 76px），留到 160px 最後一站才不會被熊蓋住 */}
+      <main className="flex-1 px-4 pt-3 pb-40">
         {/* 新人才有的入口卡；自己問自己的資料，載不到就不顯示，跟下面的路線互不影響 */}
         <FirstWeekEntry userId={user.id} />
         {state.status === "ready" && state.cached && (
@@ -256,7 +258,24 @@ export function TodayPage() {
           </section>
         )}
       </main>
+      <AskMascot />
       <BottomNav />
+    </div>
+  )
+}
+
+/** 熊熊滾浮在右下角、底部分頁列上方，點了進問答頁。跟底部列一樣是浮起來的圓角卡片 */
+function AskMascot() {
+  return (
+    // 外層不吃點擊，跟底部列一樣：只有熊那一顆可以按，旁邊露出來的路線照樣點得到
+    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-20 mx-auto flex max-w-md justify-end px-4 pb-[calc(4.75rem+env(safe-area-inset-bottom))]">
+      <Link
+        to="/ask"
+        aria-label="問熊熊滾（問答）"
+        className="pointer-events-auto flex size-16 items-center justify-center rounded-full border bg-card shadow-lg shadow-black/10 transition-transform active:scale-95 motion-reduce:transition-none dark:shadow-black/50"
+      >
+        <Mascot size={62} />
+      </Link>
     </div>
   )
 }
