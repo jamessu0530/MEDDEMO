@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import case, func, select, text
 from sqlalchemy.orm import Session
 
-from app.models import AppUser, Customer, Product, SalesTransaction, SapQuotationDraft, Visit
+from app.models import AppUser, Customer, Product, RouteSignalWeight, RouteSnooze, SalesTransaction, SapQuotationDraft, Visit
 from app.services import customer_profile, route_model
 from app.timeutil import TAIPEI, local_date
 
@@ -94,7 +94,18 @@ class TodayRoute:
     stops: list[Stop]
 
 
-def _done_visits(session: Session, user_id: str, today: dt.date) -> list[tuple[Visit, Customer]]:
+@dataclass
+class Pick:
+    """模型挑出來今天要去的幾家，分數高的在前；順序交給 services/itinerary.py 排順路。"""
+
+    today: dt.date
+    rep: AppUser
+    done: list[tuple[Visit, Customer]]
+    picked: list[dict]  # {"candidate", "signal", "reason", ...}
+    urgent: Urgent | None
+
+
+def done_visits(session: Session, user_id: str, today: dt.date) -> list[tuple[Visit, Customer]]:
     """今天已經確認送出的拜訪，照時間排。"""
     rows = session.execute(
         select(Visit, Customer)
@@ -260,14 +271,48 @@ def _urgent(session: Session, candidate: route_model.Candidate, signal: str, rea
     )
 
 
-def build(session: Session, user_id: str, feedback: Feedback | None = None) -> TodayRoute:
+def _label(candidate: route_model.Candidate, today: dt.date, due: dt.date | None, opportunity: str | None) -> tuple[str, str, bool]:
+    """這家為什麼排進來（訊號、一句理由），以及是不是還沒處理的逾期承諾。"""
+    # 承諾到期之後又去過，就當作處理完了：系統沒有結案紀錄，只能這樣判斷
+    unresolved = due is not None and (candidate.last_visit_date is None or due > candidate.last_visit_date)
+    signal, reason = _signal_and_reason(candidate, today)
+    # 商機的說明排在帳款與間隔這類壞消息後面：同一家兩種都有時，先講要處理的問題
+    if opportunity and signal not in ("ar", "interval"):
+        signal, reason = "opportunity", opportunity
+    if unresolved:
+        signal, reason = "commitment", f"答應的事 {due:%m/%d} 到期，已經過 {(today - due).days} 天"
+    return signal, reason, unresolved
+
+
+def label(session: Session, owner_id: str, customer_id: str) -> tuple[str, str]:
+    """業務自己加進行程的那一家，用跟模型挑的同一套說法寫理由。只能問這位業務自己的客戶。"""
+    today = customer_profile.app_today(session)
+    candidate = next(c for c in route_model.candidates(session, today, owner_id=owner_id) if c.customer_id == customer_id)
+    due = _overdue_commitments(session, owner_id, today).get(customer_id)
+    signal, reason, _ = _label(candidate, today, due, _opportunities(session, owner_id, today).get(customer_id))
+    return signal, reason
+
+
+def load_feedback(session: Session, user_id: str, today: dt.date) -> Feedback:
+    """業務按過的暫緩與誤判（services/itinerary.py 寫的），排每天的建議時用。過期的暫緩不算。"""
+    snoozed = dict(session.execute(
+        select(RouteSnooze.customer_id, RouteSnooze.until)
+        .where(RouteSnooze.user_id == user_id, RouteSnooze.until > today)
+    ).all())
+    weights = dict(session.execute(
+        select(RouteSignalWeight.signal, RouteSignalWeight.weight).where(RouteSignalWeight.user_id == user_id)
+    ).all())
+    return Feedback(snoozed=snoozed, signal_weights=weights)
+
+
+def pick(session: Session, user_id: str, feedback: Feedback | None = None) -> Pick:
     feedback = feedback or Feedback()
     today = customer_profile.app_today(session)
     rep = session.get(AppUser, user_id)
     if rep is None or rep.role != "sales":
         raise LookupError(user_id)
 
-    done = _done_visits(session, user_id, today)
+    done = done_visits(session, user_id, today)
     done_ids = {c.id for _, c in done}
     overdue = _overdue_commitments(session, user_id, today)
     opportunities = _opportunities(session, user_id, today)
@@ -277,20 +322,12 @@ def build(session: Session, user_id: str, feedback: Feedback | None = None) -> T
     for candidate in route_model.candidates(session, today, owner_id=user_id):
         if candidate.customer_id in done_ids:
             continue
-        due = overdue.get(candidate.customer_id)
-        # 承諾到期之後又去過，就當作處理完了：系統沒有結案紀錄，只能這樣判斷
-        unresolved = due is not None and (candidate.last_visit_date is None or due > candidate.last_visit_date)
         snooze_until = feedback.snoozed.get(candidate.customer_id)
         # 業務按了暫緩就不排，逾期的承諾也一樣：他知道自己今天去不去得了，按了沒反應更難解釋
         if snooze_until and snooze_until > today:
             continue
-        signal, reason = _signal_and_reason(candidate, today)
         opportunity = opportunities.get(candidate.customer_id)
-        # 商機的說明排在帳款與間隔這類壞消息後面：同一家兩種都有時，先講要處理的問題
-        if opportunity and signal not in ("ar", "interval"):
-            signal, reason = "opportunity", opportunity
-        if unresolved:
-            signal, reason = "commitment", f"答應的事 {due:%m/%d} 到期，已經過 {(today - due).days} 天"
+        signal, reason, unresolved = _label(candidate, today, overdue.get(candidate.customer_id), opportunity)
         base = route_model.score(candidate.features, model) if model else route_model.rule_score(candidate)
         weight = max(-PERSONAL_LIMIT, min(PERSONAL_LIMIT, feedback.signal_weights.get(signal, 0)))
         pool.append({
@@ -319,16 +356,25 @@ def build(session: Session, user_id: str, feedback: Feedback | None = None) -> T
             best = {**best, "signal": "opportunity", "reason": best["opportunity"]}
             picked[replaceable[-1]] = best
 
+    urgent = None
+    # 只有真的有事才給卡片：「很久沒拜訪」是排序的理由，但不值得用紅卡叫業務立刻處理
+    if picked and picked[0]["signal"] not in ("routine", "visit"):
+        urgent = _urgent(session, picked[0]["candidate"], picked[0]["signal"], picked[0]["reason"])
+    return Pick(today=today, rep=rep, done=done, picked=picked, urgent=urgent)
+
+
+def build(session: Session, user_id: str, feedback: Feedback | None = None) -> TodayRoute:
+    result = pick(session, user_id, feedback)
     stops = [
         Stop(
             customer_id=c.id, customer_name=c.name, type=c.type, grade=c.grade,
             planned_time=v.visited_at.astimezone(TAIPEI).strftime("%H:%M"),
             status="done", signal="routine", reason="已完成", visit_id=v.id,
         )
-        for v, c in done
+        for v, c in result.done
     ]
-    start = dt.datetime.combine(today, FIRST_STOP) + dt.timedelta(minutes=STOP_GAP_MINUTES * len(stops))
-    for n, item in enumerate(picked):
+    start = dt.datetime.combine(result.today, FIRST_STOP) + dt.timedelta(minutes=STOP_GAP_MINUTES * len(stops))
+    for n, item in enumerate(result.picked):
         candidate = item["candidate"]
         stops.append(Stop(
             customer_id=candidate.customer_id, customer_name=candidate.name, type=candidate.type,
@@ -336,9 +382,5 @@ def build(session: Session, user_id: str, feedback: Feedback | None = None) -> T
             planned_time=(start + dt.timedelta(minutes=STOP_GAP_MINUTES * n)).strftime("%H:%M"),
             status="next" if n == 0 else "todo", signal=item["signal"], reason=item["reason"],
         ))
-
-    urgent = None
-    # 只有真的有事才給卡片：「很久沒拜訪」是排序的理由，但不值得用紅卡叫業務立刻處理
-    if picked and picked[0]["signal"] not in ("routine", "visit"):
-        urgent = _urgent(session, picked[0]["candidate"], picked[0]["signal"], picked[0]["reason"])
-    return TodayRoute(date=today, rep=rep, done=len(done), total=len(stops), urgent=urgent, stops=stops)
+    return TodayRoute(date=result.today, rep=result.rep, done=len(result.done), total=len(stops),
+                      urgent=result.urgent, stops=stops)
