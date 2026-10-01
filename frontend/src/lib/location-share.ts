@@ -105,8 +105,12 @@ export type GeoEnv = {
   permission(): Promise<PermissionState>
   /** 開始追蹤，回傳停止的函式；使用者拒絕時呼叫 onDenied */
   watch(onPosition: (position: Position) => void, onDenied: () => void): () => void
-  /** 要一次性的最新位置（watchPosition 在有的瀏覽器站著不動就不會再回報）；使用者拒絕時呼叫 onDenied */
-  refresh(onPosition: (position: Position) => void, onDenied: () => void): void
+  /**
+   * 要一次性的最新位置（watchPosition 在有的瀏覽器站著不動就不會再回報）。一定剛好呼叫 onPosition、onDenied、
+   * onFailed 三個之一：使用者拒絕時呼叫 onDenied；逾時、室內拿不到位置這類不算拒絕的失敗呼叫 onFailed
+   * （不然等著要位置的旗標永遠清不掉，站著不動時只會成功要到這一次，之後都不再嘗試）。
+   */
+  refresh(onPosition: (position: Position) => void, onDenied: () => void, onFailed: () => void): void
 }
 
 const EMPTY: ShareSnapshot = { share: null, consented: false, denied: false, position: null }
@@ -208,6 +212,10 @@ export class LocationShare {
         this.refreshing = false
         this.stopWatching()
         this.set({ denied: true })
+      },
+      () => {
+        // 逾時、拿不到位置（室內）：不是拒絕，watch 繼續開著；只清掉旗標，位置還是舊的就下次心跳再要一次
+        this.refreshing = false
       }
     )
   }
@@ -309,13 +317,17 @@ const browserEnv: GeoEnv = {
     )
     return () => navigator.geolocation.clearWatch(id)
   },
-  refresh: (onPosition, onDenied) => {
-    if (!("geolocation" in navigator)) return
+  refresh: (onPosition, onDenied, onFailed) => {
+    if (!("geolocation" in navigator)) {
+      onFailed()
+      return
+    }
     navigator.geolocation.getCurrentPosition(
       ({ coords, timestamp }) =>
         onPosition({ lat: coords.latitude, lng: coords.longitude, accuracy: coords.accuracy ?? null, at: timestamp ?? Date.now() }),
       (error) => {
         if (error.code === error.PERMISSION_DENIED) onDenied()
+        else onFailed()
       },
       { enableHighAccuracy: true, maximumAge: 0, timeout: 15_000 }
     )

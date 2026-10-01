@@ -95,7 +95,7 @@ describe("分享列與心跳", () => {
 function setup() {
   const state = { now: WORKING, consent: false, permission: "prompt" as PermissionState, share: SHARE }
   const watchers: Array<{ onPosition: (p: Position) => void; onDenied: () => void; stopped: boolean }> = []
-  const refreshes: Array<{ onPosition: (p: Position) => void; onDenied: () => void }> = []
+  const refreshes: Array<{ onPosition: (p: Position) => void; onDenied: () => void; onFailed: () => void }> = []
   const env: GeoEnv = {
     now: () => state.now,
     readConsent: () => state.consent,
@@ -111,8 +111,8 @@ function setup() {
         watcher.stopped = true
       }
     },
-    refresh: (onPosition, onDenied) => {
-      refreshes.push({ onPosition, onDenied })
+    refresh: (onPosition, onDenied, onFailed) => {
+      refreshes.push({ onPosition, onDenied, onFailed })
     },
   }
   return { env, state, watchers, refreshes, store: new LocationShare(env) }
@@ -237,6 +237,22 @@ describe("LocationShare", () => {
     refreshes[0].onDenied()
     expect(watchers[0].stopped).toBe(true)
     expect(store.heartbeat()).toEqual({ location_denied: true })
+  })
+
+  it("主動要位置失敗（逾時、拿不到位置，不是拒絕）：清掉正在等的旗標，位置還是舊的就下次心跳再要一次", async () => {
+    const { store, watchers, refreshes, state } = setup()
+    state.consent = true
+    await store.load()
+    watchers[0].onPosition(HERE)
+    state.now = new Date(WORKING.getTime() + REFRESH_AFTER_MS + 1_000)
+    store.heartbeat()
+    expect(refreshes).toHaveLength(1)
+    refreshes[0].onFailed()
+    // 不是拒絕：watch 繼續開著，沒有改成 location_denied
+    expect(watchers[0].stopped).toBe(false)
+    expect(store.heartbeat()).toEqual({ location: LOCATION_PAYLOAD })
+    // 卡住的旗標已經清掉，位置還是一樣舊：這次心跳要再要一次，不會因為上一次失敗就永遠不再嘗試
+    expect(refreshes).toHaveLength(2)
   })
 
   it("暫停中或還沒同意：不會主動要位置", async () => {
