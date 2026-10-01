@@ -73,13 +73,14 @@ export function PrivacyPage() {
         <Section title="交給哪些服務處理">
           <ul className="list-disc pl-5">
             <li>
-              <b>Google Gemini</b>：語音辨識、回答提問、語音問答，以及讀懂頻道與提問附的照片、PDF。錄音、逐字稿、提問與附件會送到 Gemini 處理。
+              <b>Google Gemini</b>：語音辨識、回答提問、語音問答、讀懂頻道與提問附的照片與 PDF，以及在頻道裡 @熊熊滾 時的回答。
+              錄音、逐字稿、提問與附件會送到 Gemini 處理；在頻道裡 @熊熊滾 時，那個頻道最近 50 則對話（含發言人的顯示名稱）也會送過去。
             </li>
             <li>
-              <b>Cohere</b>：排序內部文件的段落，會收到提問與相關文件段落。
+              <b>Cohere</b>：排序內部文件的段落，會收到提問（包括頻道裡 @熊熊滾 的問題）與相關文件段落。
             </li>
             <li>
-              <b>Firecrawl</b>：內部文件答不出來時上網搜尋，只會收到從提問改寫出來的搜尋詞。
+              <b>Firecrawl</b>：內部文件答不出來時上網搜尋，只會收到從提問（包括頻道裡 @熊熊滾 的問題）改寫出來的搜尋詞。
             </li>
             <li>
               <b>Google Cloud</b>：主機與資料庫；<b>Cloudflare</b>：網路連線與 HTTPS。
