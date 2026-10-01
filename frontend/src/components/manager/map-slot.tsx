@@ -1,4 +1,4 @@
-import { Component, lazy, Suspense, useEffect, useState, type ReactNode } from "react"
+import { Component, lazy, Suspense, useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from "react"
 
 import { getMapsConfig, type MapsConfig, type RemovedStop, type RepRoute } from "@/api/team-routes"
 
@@ -11,9 +11,25 @@ declare global {
   }
 }
 
-// Google 只在金鑰被拒（金鑰錯、網域不對、沒開帳單）時呼叫全域的 gm_authFailure，而且整個頁面只呼叫一次；
-// 記在模組裡，之後每一個地圖區塊（總覽、詳細）都直接顯示說明，不再載入
+// Google 只在金鑰被拒（金鑰錯、網域不對、沒開帳單）時呼叫全域的 gm_authFailure，整個頁面只呼叫一次，
+// 而且可能在換頁的空檔才到：在模組載入時就裝好、不拆掉，記在模組裡，之後每一個地圖區塊都直接顯示說明
 let authFailed = false
+const authListeners = new Set<() => void>()
+if (typeof window !== "undefined") {
+  const previous = window.gm_authFailure
+  window.gm_authFailure = () => {
+    authFailed = true
+    authListeners.forEach((listener) => listener())
+    previous?.()
+  }
+}
+function subscribeAuth(listener: () => void) {
+  authListeners.add(listener)
+  return () => {
+    authListeners.delete(listener)
+  }
+}
+const readAuthFailed = () => authFailed
 
 /**
  * 主管頁的地圖區塊。先問後端有沒有瀏覽器金鑰（GET /api/maps/config，不寫進前端的建置）；
@@ -22,7 +38,10 @@ let authFailed = false
 export function MapSlot({ routes, removed }: { routes: RepRoute[]; removed?: RemovedStop[] }) {
   // undefined：還在問；null：沒有瀏覽器金鑰
   const [config, setConfig] = useState<MapsConfig | undefined>(undefined)
-  const [failed, setFailed] = useState(() => authFailed)
+  // load/chunk 失敗（地圖那包下載不下來、React 錯誤邊界接住的例外）；金鑰被拒走下面的 rejected，不記在這裡
+  const [failed, setFailed] = useState(false)
+  // 金鑰被拒：裝在模組裡的 gm_authFailure，整個頁面只會呼叫一次，可能發生在這個元件還沒掛上的空檔
+  const rejected = useSyncExternalStore(subscribeAuth, readAuthFailed, readAuthFailed)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -34,31 +53,16 @@ export function MapSlot({ routes, removed }: { routes: RepRoute[]; removed?: Rem
     return () => controller.abort()
   }, [])
 
-  // 金鑰被拒：@vis.gl/react-google-maps 目前這版不會把 loading status 設成 AUTH_FAILURE，
-  // Google 的程式碼直接呼叫這個全域函式；接住它，不然 Google 會自己畫一個「糟糕！」的灰底框
-  useEffect(() => {
-    const previous = window.gm_authFailure
-    window.gm_authFailure = () => {
-      authFailed = true
-      setFailed(true)
-    }
-    return () => {
-      window.gm_authFailure = previous
-    }
-  }, [])
+  const onFail = useCallback(() => setFailed(true), [])
 
+  // 先看金鑰有沒有被拒：頁面已經知道的話，不要先閃一下「還在問」的骨架
+  if (failed || rejected) return <MapFallback />
   if (config === undefined) return <MapPlaceholder />
-  if (config === null || failed) {
-    return (
-      <p data-map-fallback className="rounded-xl bg-muted px-3 py-2.5 text-center text-xs text-muted-foreground">
-        地圖暫時載入不了
-      </p>
-    )
-  }
+  if (config === null) return <MapFallback />
   return (
-    <MapBoundary onFail={() => setFailed(true)}>
+    <MapBoundary onFail={onFail}>
       <Suspense fallback={<MapPlaceholder />}>
-        <RouteMap config={config} routes={routes} removed={removed} onFail={() => setFailed(true)} />
+        <RouteMap config={config} routes={routes} removed={removed} onFail={onFail} />
       </Suspense>
     </MapBoundary>
   )
@@ -66,6 +70,14 @@ export function MapSlot({ routes, removed }: { routes: RepRoute[]; removed?: Rem
 
 function MapPlaceholder() {
   return <div aria-hidden className="h-64 animate-pulse rounded-2xl bg-muted" />
+}
+
+function MapFallback() {
+  return (
+    <p data-map-fallback className="rounded-xl bg-muted px-3 py-2.5 text-center text-xs text-muted-foreground">
+      地圖暫時載入不了
+    </p>
+  )
 }
 
 /**

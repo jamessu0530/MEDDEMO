@@ -110,11 +110,12 @@ export default function RouteMap({ config, routes, removed = [], onFail }: Props
   )
 }
 
-/** 程式載不下來（FAILED）交給外面換成說明；金鑰被拒由 map-slot.tsx 的 gm_authFailure 處理 */
+/** 程式載不下來（FAILED）交給外面換成說明；金鑰被拒（AUTH_FAILURE）理論上也會到這裡，
+ * 但這版 @vis.gl/react-google-maps 不會設這個狀態，實際由 map-slot.tsx 的 gm_authFailure 處理 */
 function LoadWatch({ onFail }: { onFail: () => void }) {
   const status = useApiLoadingStatus()
   useEffect(() => {
-    if (status === APILoadingStatus.FAILED) onFail()
+    if (status === APILoadingStatus.FAILED || status === APILoadingStatus.AUTH_FAILURE) onFail()
   }, [status, onFail])
   return null
 }
