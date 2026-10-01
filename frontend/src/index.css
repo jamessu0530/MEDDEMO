@@ -1,16 +1,15 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource/ibm-plex-sans/400.css";
-@import "@fontsource/ibm-plex-sans/500.css";
-@import "@fontsource/ibm-plex-sans/600.css";
+/* 粉圓體（jf open 粉圓，SIL OFL 1.1）：只有 400 一個字重，按字切成 111 塊，用到哪些字才下載哪幾塊 */
+@import "@fontsource/huninn/400.css";
 
 /* 元件裡的 dark: 樣式跟著深色配色走（<html data-skin="dark">，lib/skin.ts） */
 @custom-variant dark (&:where([data-skin="dark"], [data-skin="dark"] *));
 
 @theme inline {
-    /* 中文不另外下載字型，直接用手機內建的黑體，打開 App 不必多等字型檔 */
-    --font-sans: 'IBM Plex Sans', 'PingFang TC', 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
+    /* 粉圓體：中英文都是圓的（英文是 Varela Round），跟 Duolingo 那種圓圓厚厚的按鈕搭。還沒下載完或沒網路時先用手機內建的黑體 */
+    --font-sans: 'Huninn', 'PingFang TC', 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
     --font-heading: var(--font-sans);
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
@@ -52,6 +51,15 @@
     --radius-2xl: calc(var(--radius) * 1.8);
     --radius-3xl: calc(var(--radius) * 2.2);
     --radius-4xl: calc(var(--radius) * 2.6);
+    /* Duolingo 那種「厚」的樣子：底下墊 4px 的厚底（圓鈕 6px）。走 shadow，跟 focus 的 ring 可以同時存在 */
+    --shadow-lip: 0 4px 0 var(--lip);
+    --shadow-lip-primary: 0 4px 0 var(--primary-lip);
+    --shadow-lip-destructive: 0 4px 0 var(--destructive-lip);
+    --shadow-lip-primary-soft: 0 4px 0 color-mix(in oklab, var(--primary) 30%, var(--background));
+    --shadow-lip-destructive-soft: 0 4px 0 color-mix(in oklab, var(--destructive) 30%, var(--background));
+    --shadow-lip-node: 0 6px 0 var(--primary-lip);
+    --shadow-lip-node-idle: 0 6px 0 var(--lip-strong);
+    --animate-bob: bob 1.4s ease-in-out infinite;
 }
 
 /* 配色取自提案原型（index.html） */
@@ -91,6 +99,11 @@
     --sidebar-accent-foreground: #1A1626;
     --sidebar-border: #E6E2EC;
     --sidebar-ring: #A96FE6;
+    /* 厚底：卡片與白底按鈕、灰色圓鈕、主色、實心紅 */
+    --lip: #DCD6E4;
+    --lip-strong: #C9C3D3;
+    --primary-lip: #7A3BB8;
+    --destructive-lip: #84301B;
 }
 
 /*
@@ -133,6 +146,10 @@
     --sidebar-accent-foreground: #EDEDEB;
     --sidebar-border: #333332;
     --sidebar-ring: #8A8A87;
+    --lip: #333332;
+    --lip-strong: #2A2A29;
+    --primary-lip: #8A8A87;
+    --destructive-lip: #A63E2C;
 }
 
 @layer base {
@@ -145,4 +162,19 @@
   html {
     @apply font-sans;
   }
+}
+
+/* 能按的厚東西按下去陷 4px、厚底消失。用 transform 不改高度，下面的版面不會跟著跳；
+   跟 Tailwind 的 translate-* 是不同的屬性，置中用的 -translate-x-1/2 不受影響 */
+@utility press {
+    &:active {
+        transform: translateY(4px);
+        --tw-shadow: 0 0 #0000;
+    }
+}
+
+/* 下一站上面的「出發」泡泡輕輕上下跳 */
+@keyframes bob {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-4px); }
 }
