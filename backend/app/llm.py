@@ -1,6 +1,7 @@
 """AI 模型（SDD 的 LLMClient）。服務層只依賴 LLM 這個介面（json／ajson／atext），不直接依賴特定供應商。"""
 
 import json
+from collections.abc import Sequence
 from typing import Any, Protocol
 
 from google import genai
@@ -22,17 +23,26 @@ REQUEST_TIMEOUT_MS = 60_000
 # 429（用量上限）、5xx（模型忙線）這類暫時性錯誤最多重試兩次，跟換成 Gemini 之前 Anthropic SDK 的預設一樣；
 # 這個 SDK 不設定就完全不重試
 RETRY_ATTEMPTS = 3
+# 一次呼叫附的檔案加起來最多多大。inline 的請求上限是 20MB（含提示），留 2MB 給提示；
+# 有這個上限就不必走 files.upload。超過的由呼叫端改在提示裡給說明（services/attachments.inline_files）
+MEDIA_LIMIT_BYTES = 18 * 1024 * 1024
+
+# 附給模型看的檔案：(內容, MIME 類型)，照片或 PDF
+Media = tuple[bytes, str]
 
 
 class LLM(Protocol):
-    # effort 是推理強度 low／medium／high，對到 Gemini 的 thinking_level
-    def json(self, *, system: str, prompt: str, schema: dict[str, Any], effort: str = "medium") -> dict[str, Any]: ...
-
-    async def ajson(
-        self, *, system: str, prompt: str, schema: dict[str, Any], effort: str = "medium"
+    # effort 是推理強度 low／medium／high，對到 Gemini 的 thinking_level；
+    # media 是一起給模型看的照片與 PDF（頻道、提問的附件），放在提示前面
+    def json(
+        self, *, system: str, prompt: str, schema: dict[str, Any], effort: str = "medium", media: Sequence[Media] = ()
     ) -> dict[str, Any]: ...
 
-    async def atext(self, *, system: str, prompt: str, effort: str = "medium") -> str: ...
+    async def ajson(
+        self, *, system: str, prompt: str, schema: dict[str, Any], effort: str = "medium", media: Sequence[Media] = ()
+    ) -> dict[str, Any]: ...
+
+    async def atext(self, *, system: str, prompt: str, effort: str = "medium", media: Sequence[Media] = ()) -> str: ...
 
 
 class LLMOutputError(RuntimeError):
@@ -49,6 +59,13 @@ def api_schema(schema: dict[str, Any]) -> dict[str, Any]:
     if "anyOf" in node:
         node["anyOf"] = [api_schema(branch) for branch in node["anyOf"]]
     return node
+
+
+def contents(prompt: str, media: Sequence[Media]) -> str | list[types.Part]:
+    """檔案放在提示前面（Gemini 建議先給圖再給問題），跟 services/transcription.py 送錄音的寫法一樣。"""
+    if not media:
+        return prompt
+    return [*(types.Part.from_bytes(data=data, mime_type=mime_type) for data, mime_type in media), types.Part.from_text(text=prompt)]
 
 
 def check_output(schema: dict[str, Any], data: Any) -> None:
@@ -95,23 +112,25 @@ class GeminiLLM:
         check_output(schema, data)
         return data
 
-    def json(self, *, system: str, prompt: str, schema: dict[str, Any], effort: str = "medium") -> dict[str, Any]:
+    def json(
+        self, *, system: str, prompt: str, schema: dict[str, Any], effort: str = "medium", media: Sequence[Media] = ()
+    ) -> dict[str, Any]:
         response = self.client.models.generate_content(
-            model=self.model, contents=prompt, config=self._config(system, effort, schema)
+            model=self.model, contents=contents(prompt, media), config=self._config(system, effort, schema)
         )
         return self._parse_json(response, schema)
 
     async def ajson(
-        self, *, system: str, prompt: str, schema: dict[str, Any], effort: str = "medium"
+        self, *, system: str, prompt: str, schema: dict[str, Any], effort: str = "medium", media: Sequence[Media] = ()
     ) -> dict[str, Any]:
         response = await self.client.aio.models.generate_content(
-            model=self.model, contents=prompt, config=self._config(system, effort, schema)
+            model=self.model, contents=contents(prompt, media), config=self._config(system, effort, schema)
         )
         return self._parse_json(response, schema)
 
-    async def atext(self, *, system: str, prompt: str, effort: str = "medium") -> str:
+    async def atext(self, *, system: str, prompt: str, effort: str = "medium", media: Sequence[Media] = ()) -> str:
         response = await self.client.aio.models.generate_content(
-            model=self.model, contents=prompt, config=self._config(system, effort)
+            model=self.model, contents=contents(prompt, media), config=self._config(system, effort)
         )
         # 被擋或沒有候選回應就回空字串，呼叫端當成答不出來（照搬 CARE answer_service：空回應＝拒答標記）
         if response.prompt_feedback and response.prompt_feedback.block_reason:

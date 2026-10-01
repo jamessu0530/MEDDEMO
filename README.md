@@ -14,7 +14,7 @@ uv run --project backend python data/seed/seed.py   # 重建 schema 並灌假資
 uv run --project backend pytest backend/tests       # 測試另建 meddemo_test、用 Redis 第 15 號庫，不動開發環境
 
 uv run --project backend uvicorn app.main:app --app-dir backend --reload                  # API：http://127.0.0.1:8000
-uv run --project backend rq worker visits --path backend --worker-class rq.SimpleWorker   # 背景工作
+uv run --project backend rq worker visits channels --with-scheduler --path backend --worker-class rq.SimpleWorker   # 背景工作
 cd frontend && npm install && npm run dev                                                 # 前端：http://localhost:5173
 ```
 
@@ -34,7 +34,7 @@ cd frontend && npm install && npm run dev                                       
 | --- | --- | --- |
 | 語音辨識 | `ASR_PROVIDER=gemini`、`ASR_API_KEY`；或 `local`（CARE 的服務，另填 `ASR_URL`），見下方「語音辨識」 | `gemini-3.8-flash` |
 | AI 模型（抽欄位、問答） | `LLM_PROVIDER=gemini`、`LLM_API_KEY` | `gemini-3.8-flash` |
-| 語意檢索 | `EMBEDDING_PROVIDER=gemini`、`EMBEDDING_API_KEY` | `gemini-embedding-001` |
+| 語意檢索 | `EMBEDDING_PROVIDER=gemini`、`EMBEDDING_API_KEY` | `gemini-embedding-2`（文字、照片、PDF 同一個向量空間） |
 | 語音問答 | `VOICE_API_KEY`（沒填就沿用 `LLM_API_KEY`） | `gemini-2.5-flash-native-audio-preview-12-2025` |
 | 網路搜尋 | `FIRECRAWL_API_KEY` | — |
 | 精排 | `COHERE_API_KEY` | `rerank-v4.0-pro` |
@@ -334,7 +334,7 @@ IT 登入後的首頁是 `/admin`：全國 → 區 → 主管 → 業務，點�
   - 只有公司內部才有答案的問題（公司自己的規定、人事獎金、本公司的報價、供貨價與調價計畫、客戶跟我們的交易條件、競品給客戶的價格與條件）：一樣是知識庫答不出來也不上網查，回覆說明網路資料代表不了公司，可以轉給主管確認。健保給付價、藥價公告、市售價是公開資訊，照常上網。判斷也在改寫問句那次呼叫裡。
   - 整條流程 45 秒總逾時。沒有 Firecrawl 金鑰就不上網，知識庫答不出來直接回「查無依據」，業務可以轉給主管；網路搜尋本身出錯或整體逾時，畫面會顯示處理失敗、請業務稍後再問。
 - 兩條線都在背景跑（RQ），每一步都寫進 `query_trace`，畫面上可以展開查詢過程。
-- AI 模型用 Gemini：`LLM_PROVIDER=gemini`，模型預設 `gemini-3.8-flash`；遇到 429、5xx 這類暫時性錯誤會自動重試兩次。知識查詢裡評估、改寫問法用 thinking level `low`，生成答案用 `medium`。embedding 用 `gemini-embedding-001`，文件段落和提問分開算向量；沒設定時只走關鍵字檢索。
+- AI 模型用 Gemini：`LLM_PROVIDER=gemini`，模型預設 `gemini-3.8-flash`；遇到 429、5xx 這類暫時性錯誤會自動重試兩次。知識查詢裡評估、改寫問法用 thinking level `low`，生成答案用 `medium`。embedding 用 `gemini-embedding-2`：它沒有 task type，任務寫在文字前面，文件段落是 `title: {文件｜小節} | text: {內文}`、提問是 `task: search result | query: {問題}`；提問附了照片時，照片和問題放進同一個 Content 合成一個向量，文字不加前綴（官方文件的規定）。SDK 收到一串字串會併成同一個 Content、只回一個合成的向量，所以每段都自己包好再送（`backend/app/embeddings.py`）。沒設定時只走關鍵字檢索。
 - 改了 `data/documents/` 的文件，或是設定、更換了 embedding，要重建文件索引。下面這個指令只重建文件段落，不動其他資料：
 
 ```bash
@@ -450,6 +450,7 @@ uv run --project backend python backend/scripts/eval_ask.py
 
 - **附件存在資料庫裡**（`attachment` 表，bytea），跟錄音一樣：API 與背景工作不必共用磁碟，刪訊息、刪帳號靠 CASCADE 一起清掉。只收照片（JPEG、PNG、WebP）與 PDF；一則訊息最多 4 個檔案、單檔 15MB。
 - **上傳時重新整理**（`backend/app/services/attachments.py`）：前端先縮到長邊 2048 再傳；後端用 Pillow 依 EXIF 轉正、**清掉全部 EXIF**（照片常在客戶店裡拍，GPS 位置不能留著）、縮到長邊 2048、存成 JPEG（有透明背景存 PNG），另存長邊 480 的縮圖。PDF 用 pypdf 檢查打得開、沒加密、不超過 60 頁。
+- **上傳後在背景請 AI 看一次**（`backend/app/services/attachment_processing.py`，排在 `channels` 佇列）：Gemini 寫一段 200 字以內的說明（是什麼、圖上看得到的品名、價格、活動條件，不描述人的長相），再用 `gemini-embedding-2` 算向量（照片一張一個、PDF 每 6 頁一個，存在 `attachment_vector`）。之後搜尋、整理記憶都讀這段說明與向量，不必每次重看原檔。失敗隔 30 秒重試兩次，還是失敗就標 `failed`：照片照樣看得到，只是向量搜不到。worker 要開 `--with-scheduler` 重試才排得進去。示範照片的說明是手寫的，灌資料時有設定 embedding 才補向量。
 - **看附件靠簽名網址**：`<img>` 帶不了登入的 token，所以列訊息時 API 發一組簽過名的網址（`/api/attachments/{id}?sig=…`，到期時間取整點，同一小時內網址不變，瀏覽器才快取得到）。取檔時先驗簽名、再查一次權限，IT 刪了訊息就立刻打不開。
 - **IT 可以刪訊息**（`DELETE /api/channels/messages/{id}`）：附件整列刪掉，內容換成「（這則訊息已被 IT 刪除）」，這一則本身留著，編號與已讀位置不會亂。發言的人自己不能刪、不能改。
 - **同一個頻道的發言排隊寫入**：`post()` 先鎖住頻道那一列，編號的先後就等於寫入完成的先後，畫面輪詢「這則之後的新訊息」才不會跳過晚一步寫完的那則。
@@ -498,7 +499,7 @@ uv run --project backend python backend/scripts/eval_ask.py
 - 知識查詢另外會用到 Cohere 精排（每題 1～2 次）和 Firecrawl 網路搜尋（要上網的題目每題 1～3 次）。200 題全部上網的最壞情況，一天約 400 次 Cohere、600 次 Firecrawl，額度看各自的方案。
 - Redis 連不上時放行：問答與錄音整理本來就要靠 Redis 排背景工作，Redis 停了也花不到錢。
 - 建立帳號（見「登入」）與頻道發言這兩項不花 Gemini 的錢，不算進上面的美金估算，一樣用這裡的機制擋濫用：建立帳號每小時 20 個、全系統每天 200 個；頻道發言（`POST /api/channels/{id}/messages`）每小時 60 個、全系統每天 1000 個，發言的人不能編輯或刪除，擋的是洗版式的濫用。
-- 附件另外算（見「頻道與附件」）：帶檔案的發言與提問同時算一次「上傳附件」，每個帳號每小時 30 個、全系統每天 500 個（照片一張約 0.3MB，一天最多約 150MB，資料庫跟 CARE 共用 VM 的磁碟）；搜尋附件（`POST /api/channels/search`）每小時 60 次、每天 1000 次。中介層讀內容之前只看得到標頭，所以「上傳附件」只算 `multipart/form-data` 的請求。
+- 附件另外算（見「頻道與附件」）：每個附件一次 Flash 寫說明（約 US$0.001）加一次 embedding（照片每張 US$0.00012；PDF 官方價格頁沒有單獨列，依頁數另計），500 張照片約 US$0.6。帶檔案的發言與提問同時算一次「上傳附件」，每個帳號每小時 30 個、全系統每天 500 個（照片一張約 0.3MB，一天最多約 150MB，資料庫跟 CARE 共用 VM 的磁碟）；搜尋附件（`POST /api/channels/search`）每小時 60 次、每天 1000 次。中介層讀內容之前只看得到標頭，所以「上傳附件」只算 `multipart/form-data` 的請求。
 
 ## 測試語料評測（第二週出場條件）
 
@@ -592,7 +593,7 @@ MEDDEMO 跟 CARE 共用 GCP 上的 care-vm：K3s、Helm、Traefik、HTTPS 憑證
 不放 GitHub，寫在 [deploy/helm/meddemo/values.yaml](deploy/helm/meddemo/values.yaml) 的 `config`，跟 CARE-infra 的做法一樣：改檔、commit、推 main，部署時 pod 就會換上新值。
 
 - `config` 底下寫什麼鍵，就產生同名的環境變數，新增參數不必改模板。留空就用程式裡的預設值（見上方「金鑰與供應商」的表格）。
-- 換 embedding 模型之後，要手動執行一次部署並勾選「重灌假資料」，文件段落才會重算向量。
+- 在 `values.yaml` 換 embedding 模型之後，要手動執行一次部署並勾選「重灌假資料」，文件段落才會重算向量。改 `backend/app/embeddings.py`（預設模型、文字的寫法）不必：它算在資料表指紋裡，部署時會自動重灌。
 - 金鑰不要寫進 `config`：這個 repo 是公開的。
 
 ## 目錄

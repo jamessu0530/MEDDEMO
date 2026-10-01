@@ -98,6 +98,25 @@ def test_sends_schema_and_thinking_level_and_returns_the_json():
     assert call["config"].thinking_config.thinking_level == types.ThinkingLevel.LOW
 
 
+def test_files_go_in_front_of_the_prompt():
+    llm, models = gemini_returning(reply('{"query": "魚油", "reason": "從外盒讀出品名"}'))
+    llm.json(system="系統", prompt="這是什麼", schema=QUERY_SCHEMA, media=[(b"jpeg", "image/jpeg"), (b"%PDF", "application/pdf")])
+    image, pdf, prompt = models.calls[0]["contents"]
+    assert (image.inline_data.data, image.inline_data.mime_type) == (b"jpeg", "image/jpeg")
+    assert pdf.inline_data.mime_type == "application/pdf"
+    assert prompt.text == "這是什麼"
+    # 沒附檔案時照舊只送文字
+    llm.json(system="系統", prompt="純文字", schema=QUERY_SCHEMA)
+    assert models.calls[1]["contents"] == "純文字"
+
+
+async def test_atext_can_look_at_files_too():
+    llm, models = gemini_async_returning(reply("一張海報"))
+    assert await llm.atext(system="系統", prompt="寫說明", media=[(b"png", "image/png")]) == "一張海報"
+    image, prompt = models.calls[0]["contents"]
+    assert (image.inline_data.mime_type, prompt.text) == ("image/png", "寫說明")
+
+
 @pytest.mark.parametrize(
     ("response", "message"),
     [

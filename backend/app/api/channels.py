@@ -17,7 +17,7 @@ from starlette.datastructures import UploadFile
 from app.api.auth import CurrentUser, ItUser
 from app.db import get_session
 from app.models import MESSAGE_MAX_LENGTH, AppUser, Attachment, ChannelMessage
-from app.services import attachments, channels
+from app.services import attachment_processing, attachments, channels
 from app.services.channels import ChannelInfo
 
 router = APIRouter(tags=["channels"])
@@ -200,6 +200,8 @@ def post_message(
         raise HTTPException(409, "這個小組頻道已封存，不能再發言") from None
     files = [attachments.add(session, user, p, context=text, message_id=message.id) for p in prepared]
     session.commit()
+    # 寫說明、算向量在背景做；先回訊息，畫面上照片馬上看得到
+    attachment_processing.enqueue([f.id for f in files])
     return _message(message, user.name, user, files)
 
 

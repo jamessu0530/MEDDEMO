@@ -30,7 +30,9 @@ config:
   # AI 模型：抽欄位、數字查詢、知識查詢共用；語音問答查資料也靠它
   LLM_PROVIDER: gemini
   LLM_MODEL: ""
-  # 語意檢索。換模型之後文件段落要重算向量：手動執行部署並勾選「重灌假資料」
+  # 語意檢索。留空＝gemini-embedding-2：文字、照片、PDF 在同一個向量空間，拿照片找得到文件、拿文字找得到照片。
+  # 改回 gemini-embedding-001 只剩文字檢索，附件的向量與以圖找圖會失敗、退回關鍵字。
+  # 這裡換模型之後文件段落要重算向量：手動執行部署並勾選「重灌假資料」（改 backend/app/embeddings.py 會自動重灌）
   EMBEDDING_PROVIDER: gemini
   EMBEDDING_MODEL: ""
   # 語音問答的 Live 模型。9/14 改用 3.1，沒先用語音實測驗證（為什麼要注意見 README 的語音問答段）；留空就回到程式預設的 2.5

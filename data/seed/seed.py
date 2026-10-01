@@ -18,14 +18,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 
 from sqlalchemy import Connection, insert, select, text  # noqa: E402
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, undefer
 
 import catalog
 import generate
 from app import models
 from app.db import make_engine, reset_schema, schema_version
 from app.embeddings import optional_embedder
-from app.services import approvals, attachments
+from app.services import approvals, attachment_processing, attachments
 from app.services.auth import EXTERNAL_ACCOUNT_ACTS_AS
 from app.services.channels import ensure_channels
 from app.services.documents import index_documents
@@ -327,6 +327,10 @@ def seed(url: str | None, as_of: date) -> dict[str, int]:
         # 內部文件建索引；有設定 embedding 服務才一併算向量，否則只建關鍵字索引
         embedder = optional_embedder()
         chunks = index_documents(session, embed=embedder.embed_documents if embedder else None)
+        # 示範對話的照片與 PDF：說明是手寫的，有設定 embedding 才補向量（跟上面的文件一樣）
+        if embedder:
+            for attachment in session.scalars(select(models.Attachment).options(undefer(models.Attachment.content))):
+                attachment_processing.describe_and_embed(session, attachment, embedder=embedder, caption=False)
     engine.dispose()
     return {name: len(data[name]) for name, _ in TABLES} | {
         "document_chunk": chunks, "channel_message": messages,

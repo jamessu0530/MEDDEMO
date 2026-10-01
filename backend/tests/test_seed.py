@@ -83,6 +83,7 @@ def test_schema_version_matches_the_deploy_workflow_algorithm():
         "backend/app/models.py",
         "backend/app/sql/semantic_layer.sql",
         "backend/app/services/org.py",
+        "backend/app/embeddings.py",
         "data/seed/generate.py",
         "data/seed/catalog.py",
     ]

@@ -1,4 +1,6 @@
-# 背景工作：錄音轉文字、整理欄位、問答（全部排在 visits 佇列）。跟 API 用同一個映像，只是改跑 RQ worker。
+# 背景工作：錄音轉文字、整理欄位、問答排在 visits 佇列；附件的說明與向量（之後還有整理記憶、@AI）排在 channels 佇列。
+# 跟 API 用同一個映像，只是改跑 RQ worker。visits 寫在前面：先做完才輪到 channels，錄音轉文字不會被卡住。
+# --with-scheduler：附件處理失敗要隔 30 秒重試，RQ 的延後工作靠它
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -21,7 +23,7 @@ spec:
         - name: worker
           image: {{ include "meddemo.apiImage" . | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          command: ["rq", "worker", "visits", "--url", "redis://redis:6379/0"]
+          command: ["rq", "worker", "visits", "channels", "--with-scheduler", "--url", "redis://redis:6379/0"]
           env:
             {{- include "meddemo.databaseEnv" . | nindent 12 }}
             - name: REDIS_URL

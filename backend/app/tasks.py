@@ -23,6 +23,11 @@ def visit_queue() -> Queue:
     return Queue("visits", connection=redis())
 
 
+def channels_queue() -> Queue:
+    """頻道的背景工作（附件處理、整理記憶、@AI）。worker 先做完 visits 才輪到這裡，錄音轉文字不會被卡住。"""
+    return Queue("channels", connection=redis())
+
+
 def set_progress(visit_id: str, stage: str) -> None:
     redis().set(f"visit:{visit_id}:stage", stage, ex=PROGRESS_TTL_SECONDS)
 

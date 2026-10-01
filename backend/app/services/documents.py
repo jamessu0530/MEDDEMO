@@ -44,10 +44,11 @@ def chunk_text(section: Section) -> str:
 
 
 def index_documents(session: Session, embed=None, directory: Path = DOCUMENTS_DIR) -> int:
-    """重建全部切片。embed 是「一批文字 → 一批向量」的函式；沒有就只建關鍵字索引。"""
+    """重建全部切片。embed 是「一批 (標題, 內文) → 一批向量」的函式（Embedder.embed_documents）；沒有就只建關鍵字索引。"""
     sections = [s for path in sorted(directory.glob("*.md")) for s in parse_document(path)]
     texts = [chunk_text(s) for s in sections]
-    vectors = embed(texts) if (embed and texts) else [None] * len(texts)
+    documents = [(f"{s.doc_title}｜{s.section}", s.content) for s in sections]
+    vectors = embed(documents) if (embed and documents) else [None] * len(texts)
     session.execute(delete(DocumentChunk))
     for section, content, vector in zip(sections, texts, vectors):
         session.add(
