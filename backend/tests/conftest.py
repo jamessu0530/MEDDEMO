@@ -90,6 +90,16 @@ def _reset_google_pause(monkeypatch):
     monkeypatch.setattr(travel, "_google_paused_until", 0.0)
 
 
+@pytest.fixture(autouse=True)
+def _clear_route_lines():
+    """沿路的線快取在 Redis（travel.lines），測試之間不留：同一串點在下一個測試不該拿到上一個測試的假折線。"""
+    from app.services import travel
+
+    keys = redis().keys(f"{travel.LINES_CACHE_PREFIX}*")
+    if keys:
+        redis().delete(*keys)
+
+
 @pytest.fixture
 def env(monkeypatch):
     """在這個測試裡改環境變數（例如選 Gemini 當供應商），測完恢復原樣。"""

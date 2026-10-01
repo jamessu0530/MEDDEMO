@@ -1,10 +1,12 @@
 """車程：直線估算，以及設了金鑰時改問 Google（假的，不連網路）。"""
 
+import json
 import logging
 
 import pytest
 
 from app.services import google_routes, travel
+from app.tasks import redis
 
 
 def test_straight_distance_between_two_known_points():
@@ -217,3 +219,59 @@ def test_along_a_single_point_needs_no_google(monkeypatch, env):
     result = travel.along([POINTS[0]])
     assert result.minutes == [[0]] and result.estimated is False
     assert calls == []
+
+
+@pytest.fixture
+def google_lines(monkeypatch, env):
+    """設假金鑰，Google 的路線換成假的：第 n 段的折線是 "line{n}"。記下每次問了哪些點、要不要折線。"""
+    env(GOOGLE_MAPS_SERVER_KEY="server-key")
+    calls = []
+
+    def route_legs(key, points, http=None, polylines=True):
+        calls.append((points, polylines))
+        return [google_routes.Leg(seconds=60, meters=500, polyline=f"line{n}") for n in range(len(points) - 1)]
+
+    monkeypatch.setattr(google_routes, "route_legs", route_legs)
+    return calls
+
+
+def test_lines_come_from_google_once_then_from_the_cache(google_lines):
+    assert travel.lines(POINTS) == ["line0", "line1"]
+    assert travel.lines(POINTS) == ["line0", "line1"]
+    assert google_lines == [(POINTS, True)]
+    # 快取裡只有折線（經緯度），沒有車程的秒數與公尺：Google 的條款只允許快取經緯度
+    (key,) = redis().keys(f"{travel.LINES_CACHE_PREFIX}*")
+    assert json.loads(redis().get(key)) == ["line0", "line1"]
+    assert 0 < redis().ttl(key) <= travel.LINES_TTL_SECONDS
+
+
+def test_a_different_order_is_a_different_route(google_lines):
+    travel.lines(POINTS)
+    travel.lines(list(reversed(POINTS)))
+    assert len(google_lines) == 2
+
+
+def test_without_a_key_there_are_no_lines_and_the_map_draws_straight_ones(google_lines, env):
+    env(GOOGLE_MAPS_SERVER_KEY="")
+    assert travel.lines(POINTS) is None
+    assert google_lines == []
+
+
+def test_google_failing_means_no_lines_and_a_pause(monkeypatch, env):
+    env(GOOGLE_MAPS_SERVER_KEY="server-key")
+    calls = []
+
+    def broken(key, points, http=None, polylines=True):
+        calls.append(points)
+        raise google_routes.RoutesError("逾時")
+
+    monkeypatch.setattr(google_routes, "route_legs", broken)
+    assert travel.lines(POINTS) is None
+    # 暫停中：不再問 Google
+    assert travel.lines(POINTS) is None
+    assert len(calls) == 1
+
+
+def test_a_single_point_has_no_legs(google_lines):
+    assert travel.lines([POINTS[0]]) == []
+    assert google_lines == []

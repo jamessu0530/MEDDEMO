@@ -6,16 +6,22 @@
 車程的分鐘數與公里數不快取：Google 的條款只允許快取經緯度（docs/superpowers/plans/2026-10-01-itinerary-stage4.md）。
 所以分兩種問法：要排順序才問整份矩陣（matrix，按格計價）；照存著的順序算時間只要相鄰兩站（along，
 computeRoutes 按請求計價，一次拿到全部路段），讀行程、主管頁、調整清單的試算都走這條。
+主管頁沿路的線（經緯度）例外，可以快取，見 lines()。
 """
 
 import dataclasses
+import hashlib
+import json
 import logging
 import math
 import time
 from dataclasses import dataclass
 
+from redis.exceptions import RedisError
+
 from app.config import settings
 from app.services import google_routes
+from app.tasks import redis
 
 log = logging.getLogger(__name__)
 
@@ -31,6 +37,11 @@ PARKING_MINUTES = 5
 # 只記「剛失敗過」，不存 Google 的任何內容
 GOOGLE_RETRY_SECONDS = 60
 _google_paused_until = 0.0  # time.monotonic()
+
+# 沿路的線（主管頁的地圖）：折線就是一串經緯度，Google 的條款允許快取（最多 30 天）。
+# 同一串點畫出來的線一樣，放 Redis 一天；車程的分鐘、公里不放
+LINES_CACHE_PREFIX = "meddemo:route-lines:"
+LINES_TTL_SECONDS = 24 * 3600
 
 
 def _server_key() -> str:
@@ -102,6 +113,35 @@ def along(points: list[Point]) -> Matrix:
     cells = {(n, n + 1): road(google_routes.Cell(leg.seconds, leg.meters)) for n, leg in enumerate(legs)}
     # 不相鄰的格子本來就是估算的、也用不到；相鄰的每一段都是 Google 給的，所以不算估計
     return dataclasses.replace(fill(points, cells, google=True), estimated=False)
+
+
+def lines(points: list[Point]) -> list[str] | None:
+    """照這個順序開過去，每一段沿路的線（Google 的編碼折線，共 len(points) - 1 段），主管頁的地圖畫路線用。
+    沒設金鑰、Google 暫停中或失敗就回 None，地圖改畫直線。"""
+    if len(points) < 2:
+        return []
+    key = _server_key()
+    if not key:
+        return None
+    cache_key = LINES_CACHE_PREFIX + hashlib.sha256(json.dumps(points).encode()).hexdigest()
+    try:
+        cached = redis().get(cache_key)
+    except RedisError:
+        cached = None
+    if cached:
+        return json.loads(cached)
+    try:
+        legs = google_routes.route_legs(key, points)
+    except google_routes.RoutesError as exc:
+        _pause_google()
+        log.warning("Google 沿路的線沒有拿到，地圖改畫直線：%s", exc)
+        return None
+    found = [leg.polyline for leg in legs]
+    try:
+        redis().set(cache_key, json.dumps(found), ex=LINES_TTL_SECONDS)
+    except RedisError:
+        log.warning("沿路的線沒有存進 Redis，下次再問 Google", exc_info=True)
+    return found
 
 
 def road(cell: google_routes.Cell) -> tuple[int, float]:
