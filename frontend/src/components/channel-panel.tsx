@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { ChevronDown, ChevronRight, Hash, Images, MessagesSquare, NotebookText, type LucideIcon } from "lucide-react"
+import { ChevronDown, ChevronRight, EllipsisVertical, Hash, Images, MessagesSquare, NotebookText, Plus, type LucideIcon } from "lucide-react"
 import { Link } from "react-router"
 
 import { listThreads, type Channel } from "@/api/channels"
@@ -7,6 +7,8 @@ import { ChannelMembers } from "@/components/channel-members"
 import { ChannelRow, channelDetail } from "@/components/channel-row"
 import { UnreadDot } from "@/components/channels-link"
 import { Notice } from "@/components/notice"
+import { Button } from "@/components/ui/button"
+import { CreateTopicDialog, ManageTopicDialog } from "@/components/topic-dialogs"
 import { railPath, topicsOf } from "@/lib/channel-rail"
 import { KIND_LABEL } from "@/lib/channels"
 import { cn } from "@/lib/utils"
@@ -20,6 +22,7 @@ export function ChannelPanel({
   channels,
   selfId,
   refreshKey,
+  onChanged,
 }: {
   channel: Channel
   channels: Channel[]
@@ -28,6 +31,8 @@ export function ChannelPanel({
   onChanged: () => void
 }) {
   const back = railPath(channel)
+  const [creating, setCreating] = useState(false)
+  const [managing, setManaging] = useState<Channel | null>(null)
   return (
     <section aria-label={channel.name} className="flex min-w-0 flex-1 flex-col overflow-y-auto">
       <header className="flex items-start gap-1 border-b py-2 pr-1 pl-4">
@@ -48,10 +53,18 @@ export function ChannelPanel({
           <PanelLink to={`/channels/search?channel=${channel.id}`} state={{ backTo: back }} icon={Images} label="照片與檔案" />
         </div>
         {(channel.kind === "national" || channel.kind === "region") && (
-          <TopicSection topics={topicsOf(channels, channel.id)} back={back} />
+          <TopicSection
+            topics={topicsOf(channels, channel.id)}
+            back={back}
+            canCreate={channel.can_manage}
+            onCreate={() => setCreating(true)}
+            onManage={setManaging}
+          />
         )}
         {channel.kind === "place" && <ThreadSection place={channel} back={back} refreshKey={refreshKey} />}
       </div>
+      {creating && <CreateTopicDialog parent={channel} onClose={() => setCreating(false)} />}
+      {managing && <ManageTopicDialog topic={managing} onClose={() => setManaging(null)} onDone={onChanged} />}
     </section>
   )
 }
@@ -78,8 +91,20 @@ function PanelLink({
   )
 }
 
-/** 全國、整區底下的文字頻道：沒封存的照開的先後，封存的收在最下面 */
-function TopicSection({ topics, back }: { topics: Channel[]; back: string }) {
+/** 全國、整區底下的文字頻道：沒封存的照開的先後，封存的收在最下面。能管的人有「新增頻道」與每一列的「管理」 */
+function TopicSection({
+  topics,
+  back,
+  canCreate,
+  onCreate,
+  onManage,
+}: {
+  topics: Channel[]
+  back: string
+  canCreate: boolean
+  onCreate: () => void
+  onManage: (topic: Channel) => void
+}) {
   const [showArchived, setShowArchived] = useState(false)
   const active = topics.filter((t) => !t.archived)
   const archived = topics.filter((t) => t.archived)
@@ -87,13 +112,21 @@ function TopicSection({ topics, back }: { topics: Channel[]; back: string }) {
     <section className="flex flex-col gap-1">
       <div className="flex min-h-9 items-center justify-between px-1">
         <h3 className="text-xs font-semibold text-muted-foreground">文字頻道</h3>
+        {canCreate && (
+          <Button variant="ghost" size="sm" className="h-9 gap-1 px-2 text-xs text-primary" onClick={onCreate}>
+            <Plus className="size-4" />
+            新增頻道
+          </Button>
+        )}
       </div>
       {topics.length === 0 ? (
-        <p className="rounded-2xl border-2 border-dashed px-4 py-3 text-sm text-muted-foreground">還沒有文字頻道</p>
+        <p className="rounded-2xl border-2 border-dashed px-4 py-3 text-sm text-muted-foreground">
+          {canCreate ? "還沒有文字頻道，按「新增頻道」開一個" : "還沒有文字頻道"}
+        </p>
       ) : (
         <div className="overflow-hidden rounded-2xl border-2 bg-card shadow-lip">
           {active.map((topic) => (
-            <TopicRow key={topic.id} topic={topic} back={back} />
+            <TopicRow key={topic.id} topic={topic} back={back} onManage={onManage} />
           ))}
           {archived.length > 0 && (
             <button
@@ -106,14 +139,14 @@ function TopicSection({ topics, back }: { topics: Channel[]; back: string }) {
               已封存（{archived.length}）
             </button>
           )}
-          {showArchived && archived.map((topic) => <TopicRow key={topic.id} topic={topic} back={back} />)}
+          {showArchived && archived.map((topic) => <TopicRow key={topic.id} topic={topic} back={back} onManage={onManage} />)}
         </div>
       )}
     </section>
   )
 }
 
-function TopicRow({ topic, back }: { topic: Channel; back: string }) {
+function TopicRow({ topic, back, onManage }: { topic: Channel; back: string; onManage: (topic: Channel) => void }) {
   const detail = channelDetail(topic)
   return (
     <div className="flex min-h-12 items-center border-t first:border-t-0">
@@ -128,6 +161,16 @@ function TopicRow({ topic, back }: { topic: Channel; back: string }) {
         </div>
         {topic.unread > 0 && !topic.archived && <UnreadDot count={topic.unread} />}
       </Link>
+      {topic.can_manage && (
+        <button
+          type="button"
+          aria-label={`管理「${topic.name}」`}
+          onClick={() => onManage(topic)}
+          className="mr-1 flex size-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
+        >
+          <EllipsisVertical className="size-4" />
+        </button>
+      )}
     </div>
   )
 }
