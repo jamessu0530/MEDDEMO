@@ -14,7 +14,7 @@ import {
 } from "@/api/auth"
 import { MyStatusSection } from "@/components/my-status"
 import { ProfilePhotoSection } from "@/components/profile-photo"
-import { FacebookButton, GitHubButton, GoogleButton, NotReadyButton } from "@/components/oauth-buttons"
+import { FacebookButton, NotReadyButton, RedirectButton } from "@/components/oauth-buttons"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
 import {
@@ -208,7 +208,7 @@ function NameEditor({ user }: { user: AuthUser }) {
 function LinkedAccounts({ user, providers }: { user: AuthUser; providers: OAuthProviders }) {
   const location = useLocation()
   const navigate = useNavigate()
-  // GitHub 綁定是整頁導走再回來，callback 頁用 location.state 告訴這裡成功了
+  // Google、GitHub 綁定是整頁導走再回來，callback 頁用 location.state 告訴這裡成功了
   const [done, setDone] = useState<string | null>(() => {
     const linked = (location.state as { linked?: OAuthProvider } | null)?.linked
     return linked ? `已綁定 ${PROVIDER_LABEL[linked]}，下次在登入頁可以直接用它登入。` : null
@@ -298,20 +298,11 @@ function LinkedAccounts({ user, providers }: { user: AuthUser; providers: OAuthP
                 解除綁定
               </Button>
             )
-          else if (provider === "google" && providers.google)
+          else if ((provider === "google" || provider === "github") && providers[provider])
             action = (
-              <div className="w-full">
-                <GoogleButton
-                  clientId={providers.google.client_id}
-                  text="continue_with"
-                  onCredential={(credential) => void link({ provider: "google", body: { credential } })}
-                />
-              </div>
-            )
-          else if (provider === "github" && providers.github)
-            action = (
-              <GitHubButton
-                clientId={providers.github.client_id}
+              <RedirectButton
+                provider={provider}
+                clientId={providers[provider].client_id}
                 mode="link"
                 label="綁定"
                 className="h-11 px-4"

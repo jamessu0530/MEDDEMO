@@ -55,7 +55,7 @@ def configured() -> dict[str, dict[str, str] | None]:
 
 
 def verify_google(credential: str) -> ExternalIdentity:
-    """Google Identity Services 給的 ID token：驗簽章、發給誰（aud）、有沒有過期、發行者。"""
+    """Google 授權完導回時帶的 ID token：驗簽章、發給誰（aud）、有沒有過期、發行者。"""
     client_id = settings().google_client_id
     if not client_id:
         raise NotConfigured("伺服器沒有設定 Google 登入")

@@ -25,7 +25,7 @@ import { EscalationsPage } from "@/pages/escalations"
 import { FirstWeekPage } from "@/pages/first-week"
 import { OaFormPage } from "@/pages/oa-form"
 import { OaFormsPage } from "@/pages/oa-forms"
-import { GitHubCallbackPage } from "@/pages/github-callback"
+import { OAuthCallbackPage } from "@/pages/oauth-callback"
 import { LoginPage } from "@/pages/login"
 import { PrivacyPage } from "@/pages/privacy"
 import { PromotionsPage } from "@/pages/promotions"
@@ -152,8 +152,9 @@ export default function App() {
           <Route path="/register" element={<RegisterPage />} />
           {/* 隱私權政策不用登入就要看得到：Google 與 Facebook 審核時會直接打開這個網址 */}
           <Route path="/privacy" element={<PrivacyPage />} />
-          {/* GitHub 授權完導回來的頁面：登入流程也會走到，所以不能放在要登入的那一層裡 */}
-          <Route path="/auth/github/callback" element={<GitHubCallbackPage />} />
+          {/* Google、GitHub 授權完導回來的頁面：登入流程也會走到，所以不能放在要登入的那一層裡 */}
+          <Route path="/auth/github/callback" element={<OAuthCallbackPage provider="github" />} />
+          <Route path="/auth/google/callback" element={<OAuthCallbackPage provider="google" />} />
           <Route element={<RequireAuth />}>
             {/* 首頁是今日路線；客戶清單移到 /customers，要自己挑一家時從底部分頁進去 */}
             <Route path="/" element={<Home />} />

@@ -4,7 +4,7 @@ import { Link, Navigate, useLocation, useNavigate } from "react-router"
 
 import { login, oauthLogin, type OAuthCredential } from "@/api/auth"
 import { Mascot } from "@/components/mascot"
-import { FacebookButton, GitHubButton, GoogleButton, NotReadyButton } from "@/components/oauth-buttons"
+import { FacebookButton, NotReadyButton, RedirectButton } from "@/components/oauth-buttons"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -38,6 +38,8 @@ export function LoginPage() {
   const [oauthError, setOauthError] = useState<string | null>(null)
   // 上一次是被系統登出的（登入已過期、帳號已在其他裝置登入），把原因說清楚
   const signedOut = readSignedOutReason()
+  // 被擋下來之前要去的那一頁：登入後回去。Google、GitHub 是整頁導走，也帶著它走（lib/oauth.ts）
+  const from = (location.state as { from?: string } | null)?.from
 
   // 已經登入了還打開 /login（例如用書籤進來）：直接回自己的首頁
   if (session) return <Navigate to={homePath(session.user.role)} replace />
@@ -63,14 +65,13 @@ export function LoginPage() {
   function enter(result: Session) {
     playInk("splat", () => {
       signIn(result)
-      const from = (location.state as { from?: string } | null)?.from
       navigate(from ?? homePath(result.user.role), { replace: true })
     })
   }
 
   /**
-   * Google／Facebook 拿到憑證之後送去後端換登入。第一次來的第三方帳號後端會自動開帳號；驗證失敗回 401，
-   * 訊息會說明要先用 Email 登入再到帳號設定綁定，照原文顯示。GitHub 是整頁導走，結果在 callback 頁處理。
+   * Facebook 拿到憑證之後送去後端換登入。第一次來的第三方帳號後端會自動開帳號；驗證失敗回 401，
+   * 訊息會說明要先用 Email 登入再到帳號設定綁定，照原文顯示。Google、GitHub 是整頁導走，結果在 callback 頁處理。
    */
   async function submitOAuth(credential: OAuthCredential) {
     if (oauthBusy) return
@@ -163,10 +164,15 @@ export function LoginPage() {
           </div>
 
           {providers.google ? (
-            <GoogleButton
+            <RedirectButton
+              provider="google"
               clientId={providers.google.client_id}
-              text="signin_with"
-              onCredential={(credential) => void submitOAuth({ provider: "google", body: { credential } })}
+              mode="login"
+              label="使用 Google 帳戶登入"
+              className="h-12 w-full gap-2 text-base"
+              disabled={oauthBusy}
+              from={from}
+              onError={setOauthError}
             />
           ) : (
             <NotReadyButton
@@ -178,12 +184,14 @@ export function LoginPage() {
             />
           )}
           {providers.github ? (
-            <GitHubButton
+            <RedirectButton
+              provider="github"
               clientId={providers.github.client_id}
               mode="login"
               label="使用 GitHub 登入"
               className="h-12 w-full gap-2 text-base"
               disabled={oauthBusy}
+              from={from}
               onError={setOauthError}
             />
           ) : (

@@ -117,7 +117,7 @@ curl -X PUT localhost:8000/api/mock-systems/oa -H 'Content-Type: application/jso
 - 公司給的 Email 帳號也能到「帳號設定」綁第三方，之後用它登入就回到那個帳號。
 - 用各家給的使用者編號認人，不用 Email（Email 可以改、也可能沒給）。一個第三方帳號只屬於一個人。
 - 各家驗證：
-  - Google：Identity Services 給的 ID token，驗簽章、`aud` 是不是我們的 client id、有沒有過期。
+  - Google：整頁導去 Google 授權，導回 `/auth/google/callback` 時網址 `#` 後面帶著 ID token；前端比對 `state` 與 `nonce`，後端驗簽章、`aud` 是不是我們的 client id、有沒有過期。原本用 Identity Services 的按鈕（開彈出視窗），但在 LINE 的內建瀏覽器裡選完帳號，那個視窗會停在空白頁、登入結果交不回來，所以 10/1 改成跟 GitHub 一樣整頁導走。
   - GitHub：授權碼流程，前端用 `state` 防 CSRF，後端用 secret 換 access token 再拿使用者編號。
   - Facebook：用 `debug_token` 確認 access token 有效**而且是發給我們這個 App 的**。flutterproject4 只打 `/me`，別的 App 拿到的 token 也能冒用；它另外有一段「不驗簽章」的後備流程，這裡都不照抄。
 - 沒設定的那一家，登入頁與帳號設定就不出現它的按鈕（`GET /api/auth/providers`）。
@@ -619,7 +619,7 @@ MEDDEMO 跟 CARE 共用 GCP 上的 care-vm：K3s、Helm、Traefik、HTTPS 憑證
 | `POSTGRES_PASSWORD` | secret | 隨機字串，例如 `openssl rand -hex 24` 產生的。第一次部署後就不要再改：Postgres 只在第一次建資料庫時設定密碼。 |
 | `JWT_SECRET` | secret | 簽登入 token 用，例如 `openssl rand -hex 32`。沒設的話 API 每次重啟都換一把，所有人要重新登入。 |
 | `DEMO_PASSWORD` | secret | 灌資料建的公司帳號共用的登入密碼，至少 8 碼（太短灌資料會失敗）。沒設就是程式裡的預設值 `meddemo1234`，而這個 repo 是公開的，所以決賽前要設。改完要手動執行一次部署並勾選「重灌假資料」才會生效。 |
-| `GOOGLE_CLIENT_ID` | secret | 選填：Google 登入。Google Cloud Console 建「OAuth 用戶端 ID」（網頁應用程式），「已授權的 JavaScript 來源」填網站網址。 |
+| `GOOGLE_CLIENT_ID` | secret | 選填：Google 登入。Google Cloud Console 建「OAuth 用戶端 ID」（網頁應用程式），「已授權的重新導向 URI」填 `https://網址/auth/google/callback`（本機開發另加 `http://localhost:5173/auth/google/callback`）。 |
 | `GITHUB_CLIENT_ID`、`GITHUB_CLIENT_SECRET` | secret | 選填：GitHub 登入。GitHub Settings → Developer settings → OAuth Apps 建一個，Authorization callback URL 填 `https://網址/auth/github/callback`。 |
 | `FACEBOOK_APP_ID`、`FACEBOOK_APP_SECRET` | secret | 選填：Facebook 登入。Meta for Developers 建 App 並加上「Facebook 登入」，有效 OAuth 重新導向 URI 與 App 網域填網站網址。App 在開發模式時只有 App 的管理員與測試人員能登入。 |
 | `SITE_URL` | variable | `https://你的網址`，部署完會打它的 `/health` 確認網站正常 |

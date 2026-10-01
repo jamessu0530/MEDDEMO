@@ -1,22 +1,21 @@
-import { useEffect, useEffectEvent, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import { Loader2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import {
   FACEBOOK_SDK,
-  GOOGLE_SDK,
+  PROVIDER_LABEL,
   facebookLogin,
-  renderGoogleButton,
-  setGoogleHandler,
-  startGitHub,
+  startOAuthRedirect,
   useScript,
   type OAuthMode,
+  type RedirectProvider,
 } from "@/lib/oauth"
 
 /*
- * 登入頁與帳號設定共用的第三方按鈕。按下去之後拿到的憑證交給呼叫的頁面決定要「登入」還是「綁定」；
- * GitHub 是整頁導走，結果由 /auth/github/callback 處理，所以只需要知道這次是哪一種。
+ * 登入頁與帳號設定共用的第三方按鈕。Google、GitHub 是整頁導走，結果由 /auth/<provider>/callback 處理，
+ * 所以只需要知道這次是「登入」還是「綁定」；Facebook 拿到的憑證交給呼叫的頁面決定送去哪個 API。
  */
 
 /** SDK 載不下來時的說明：Email 登入不受影響，給一顆再試一次 */
@@ -29,45 +28,6 @@ function SdkFailed({ name, onRetry }: { name: string; onRetry: () => void }) {
       <Button variant="outline" className="h-11 self-start px-4" onClick={onRetry}>
         再試一次
       </Button>
-    </div>
-  )
-}
-
-type GoogleButtonProps = {
-  clientId: string
-  // 登入頁用「使用 Google 帳戶登入」，綁定用「使用 Google 帳戶繼續」；文字由 GIS 依語系自己產生
-  text: "signin_with" | "continue_with"
-  onCredential: (credential: string) => void
-}
-
-/**
- * Google 的按鈕依品牌規範只能用 GIS 自己畫的那顆（放在 iframe 裡），不能換成自己的樣式，
- * 也沒辦法從別的按鈕觸發同一個流程；高度固定 40px，外層補到 48px 跟其他按鈕對齊。
- */
-export function GoogleButton({ clientId, text, onCredential }: GoogleButtonProps) {
-  const { status, retry } = useScript(GOOGLE_SDK, true)
-  const container = useRef<HTMLDivElement>(null)
-  const handle = useEffectEvent((credential: string) => onCredential(credential))
-
-  useEffect(() => {
-    if (status !== "ready" || !container.current) return
-    setGoogleHandler((credential) => handle(credential))
-    try {
-      renderGoogleButton(container.current, clientId, text)
-    } catch (err) {
-      console.error(err)
-    }
-    return () => setGoogleHandler(null)
-  }, [status, clientId, text])
-
-  if (status === "error") return <SdkFailed name="Google" onRetry={retry} />
-  return (
-    <div className="relative flex min-h-12 w-full items-center justify-center">
-      {status !== "ready" && (
-        <Loader2 className="absolute size-5 animate-spin text-muted-foreground" aria-label="載入 Google 登入" />
-      )}
-      {/* 容器一開始就佔滿寬度：GIS 畫按鈕時照這個寬度決定按鈕多寬 */}
-      <div ref={container} className="flex w-full max-w-100 justify-center" />
     </div>
   )
 }
@@ -88,20 +48,26 @@ function FacebookMark() {
   )
 }
 
-type GitHubButtonProps = {
+type RedirectButtonProps = {
+  provider: RedirectProvider
   clientId: string
   mode: OAuthMode
   label: string
   className?: string
   disabled?: boolean
+  // 登入完要回去的那一頁（被擋下來之前要去的）
+  from?: string
   onError: (message: string) => void
 }
 
-/** 記下 state 之後整頁導去 GitHub；不需要先載任何 SDK */
-export function GitHubButton({ clientId, mode, label, className, disabled, onError }: GitHubButtonProps) {
+/**
+ * 記下 state 之後整頁導去 Google 或 GitHub 授權；不需要先載任何 SDK，也不開彈出視窗。
+ * 登入頁用各家品牌樣式（Google 白底加 G 標誌）的大按鈕；帳號設定裡跟其他列一樣用外框小按鈕。
+ */
+export function RedirectButton({ provider, clientId, mode, label, className, disabled, from, onError }: RedirectButtonProps) {
   const [leaving, setLeaving] = useState(false)
 
-  // 在 GitHub 頁面按上一頁回來時，瀏覽器可能直接還原離開前的畫面，按鈕會一直轉圈，要恢復可以按
+  // 在授權頁按上一頁回來時，瀏覽器可能直接還原離開前的畫面，按鈕會一直轉圈，要恢復可以按
   useEffect(() => {
     const restore = (event: PageTransitionEvent) => event.persisted && setLeaving(false)
     window.addEventListener("pageshow", restore)
@@ -111,16 +77,26 @@ export function GitHubButton({ clientId, mode, label, className, disabled, onErr
   function start() {
     try {
       setLeaving(true)
-      startGitHub(clientId, mode)
+      startOAuthRedirect(provider, clientId, mode, from)
     } catch (err) {
       setLeaving(false)
-      onError(err instanceof Error ? err.message : "沒辦法前往 GitHub，請再試一次")
+      onError(err instanceof Error ? err.message : `沒辦法前往 ${PROVIDER_LABEL[provider]}，請再試一次`)
     }
   }
 
+  const brand = mode === "login"
   return (
-    <Button variant="outline" className={className} disabled={disabled || leaving} onClick={start}>
-      {leaving ? <Loader2 className="size-5 animate-spin" /> : mode === "login" && <GitHubMark />}
+    <Button
+      variant="outline"
+      className={cn(brand && provider === "google" && "bg-white text-[#1f1f1f] hover:bg-white/90", className)}
+      disabled={disabled || leaving}
+      onClick={start}
+    >
+      {leaving ? (
+        <Loader2 className="size-5 animate-spin" />
+      ) : (
+        brand && (provider === "google" ? <GoogleMark /> : <GitHubMark />)
+      )}
       {label}
     </Button>
   )

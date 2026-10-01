@@ -260,7 +260,7 @@ Provider = Literal["google", "github", "facebook"]
 class OAuthCredential(BaseModel):
     """三家各自送來的憑證，只填自己那家用的欄位。"""
 
-    credential: str | None = None  # Google：Identity Services 給的 ID token
+    credential: str | None = None  # Google：授權完導回時帶的 ID token
     code: str | None = None  # GitHub：授權碼
     redirect_uri: str | None = None  # GitHub：換 token 時要跟授權時的一樣
     access_token: str | None = None  # Facebook：Facebook Login 給的 access token
