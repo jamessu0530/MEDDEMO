@@ -1,6 +1,5 @@
 import type { ReactNode } from "react"
-import type { DraggableAttributes } from "@dnd-kit/core"
-import type { SyntheticListenerMap } from "@dnd-kit/core/dist/hooks/utilities"
+import type { DraggableAttributes, DraggableSyntheticListeners } from "@dnd-kit/core"
 import {
   ArrowDownUp,
   Check,
@@ -25,7 +24,7 @@ import { cn } from "@/lib/utils"
 export type StopHandle = {
   ref: (element: HTMLElement | null) => void
   attributes: DraggableAttributes
-  listeners: SyntheticListenerMap | undefined
+  listeners: DraggableSyntheticListeners
 }
 
 export type StopCardProps = {
@@ -141,7 +140,7 @@ export function StopCard({
               aria-label={`上移 ${stop.customer_name}`}
               disabled={!canMoveUp}
               onClick={onMoveUp}
-              className="flex size-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted disabled:opacity-30"
+              className="flex size-11 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted disabled:opacity-30"
             >
               <ChevronUp className="size-5" />
             </button>
@@ -150,7 +149,7 @@ export function StopCard({
               aria-label={`下移 ${stop.customer_name}`}
               disabled={!canMoveDown}
               onClick={onMoveDown}
-              className="flex size-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted disabled:opacity-30"
+              className="flex size-11 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted disabled:opacity-30"
             >
               <ChevronDown className="size-5" />
             </button>
