@@ -133,7 +133,10 @@
 `travel_minutes(points) -> matrix`，兩種實作，介面一樣：
 
 - **Google**：Routes API 的 `computeRouteMatrix`（開車、不看即時路況），一次送行程的所有點（出發點加最多 8 站，
-  最多 81 格）。每一對點的結果放 Redis，同一天內重複使用。實作前查 Google Maps Platform 的快取規定，必要時縮短。
+  最多 81 格）。車程不快取：Google 的條款只允許快取經緯度（查證見 `docs/superpowers/plans/2026-10-01-itinerary-stage4.md`）。
+  照存著的順序算時間（讀行程、調整清單的試算）只要相鄰兩站，改用 `computeRoutes` 一次拿到全部路段
+  （`travel.along`，按請求計價）；要排順序（每天第一次建、加一站、排順路）才問整份矩陣（`travel.matrix`，
+  按格計價）。Google 失敗後 60 秒內直接用估算。
 - **估算**：直線距離 × 1.4 ÷ 時速 30 公里，加 5 分鐘停車。沒設 `GOOGLE_MAPS_SERVER_KEY`、Google 回錯或逾時（5 秒）
   時用這個，回應帶 `estimated: true`，畫面註明「車程為估計」。開發與測試一律走這條。
 
@@ -504,7 +507,8 @@ frontend/src/components/manager/routes-panel.tsx、route-map.tsx（import() 載�
 - `route_planner`：先後一定守；`at`／`before` 晚到算對、`after` 早到會等；鎖住的位置不動；已完成的不進排序；
   排第一、排最後；挑晚到最少、再挑車程最短；排不出來時回擋住的那幾條；`rule_costs` 的差值；`cheapest_insert`
   不違反規則；8 站在 1 秒內。
-- `travel`：估算的數字；Google 回應用假的；Google 失敗、逾時、沒金鑰時退回估算並標 `estimated`；Redis 快取命中。
+- `travel`：估算的數字；Google 回應用假的；Google 失敗、逾時、沒金鑰時退回估算並標 `estimated`；讀行程只問相鄰兩站、
+  不問整份矩陣；Google 失敗後 60 秒內不再問。
 - `route_habits`：四種對象的比對；星期幾；`window`、`duration` 只當預設值；習慣之間衝突時新的優先；
   今天的先後蓋過習慣。
 - `itinerary`：第一次讀才建、之後不重排；主管讀也會建；`suggested` 不變；`PUT` 的 `version` 409；

@@ -6,7 +6,7 @@
 
 **Architecture:** 新的 `services/google_routes.py` 是整個專案唯一知道 Google 格式的地方（`computeRouteMatrix`、`computeRoutes`，回秒數、公尺與編碼折線，失敗一律丟 `RoutesError`）。`services/travel.py` 決定什麼時候問 Google、什麼時候退回估算。`api/maps.py` 給前端瀏覽器金鑰。測試一律不連 Google：conftest 清空金鑰，Google 的回應用 `httpx.MockTransport` 或 monkeypatch 假造。
 
-**Tech Stack:** FastAPI、httpx、Redis、pytest。
+**Tech Stack:** FastAPI、httpx、pytest。
 
 **設計文件：** `docs/superpowers/specs/2026-10-01-itinerary-planning-design.md`（本計畫是〈分階段做〉的第 4 階段）。
 
