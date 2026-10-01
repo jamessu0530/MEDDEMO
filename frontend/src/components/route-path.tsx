@@ -5,7 +5,7 @@ import { Link } from "react-router"
 import { SIGNAL_LABEL, type RouteSignal, type RouteStop } from "@/api/route"
 import { Mascot } from "@/components/mascot"
 import { buttonVariants } from "@/components/ui/button"
-import { bearStopIndex, labelSide, pathOffset, signalTone } from "@/lib/route-path"
+import { bearStopIndex, labelSide, pathOffset, signalTone, TONE_CLASS } from "@/lib/route-path"
 import { cn } from "@/lib/utils"
 
 // 圓鈕 58×54（跟 Duolingo 一樣略寬），名字離圓鈕 12px
@@ -13,8 +13,6 @@ const HALF_NODE = 29
 const LABEL_GAP = 12
 
 const STATUS_LABEL: Record<RouteStop["status"], string> = { done: "已完成", next: "下一站", todo: "待拜訪" }
-
-const TONE_CLASS = { good: "text-success", alert: "text-destructive", plain: "text-muted-foreground" } as const
 
 function popoverId(stop: RouteStop) {
   return `stop-popover-${stop.customer_id}`

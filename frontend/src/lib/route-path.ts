@@ -37,3 +37,6 @@ export function signalTone(signal: RouteSignal): "good" | "alert" | "plain" {
   if (signal === "routine") return "plain"
   return "alert"
 }
+
+/** 理由類別的字色：商機綠、警示紅、例行灰 */
+export const TONE_CLASS = { good: "text-success", alert: "text-destructive", plain: "text-muted-foreground" } as const
