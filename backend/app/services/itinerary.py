@@ -152,12 +152,17 @@ class DraftStop:
 
 @dataclass
 class Draft:
-    """調整清單上改到一半的行程：還沒跑的站照畫面上的順序、今天的先後、今天不套用的習慣、這次答應要記的習慣。"""
+    """改到一半的行程（調整清單上的，或跟熊熊滾說的提案算出來的）：還沒跑的站照順序、今天的先後、
+    今天不套用的習慣、這次答應要記的習慣、要停用的習慣。"""
 
     stops: list[DraftStop]
     precedences: list[tuple[str, str]] = field(default_factory=list)  # (前, 後)
     skipped_habit_ids: list[int] = field(default_factory=list)
     habits: list[PendingHabit] = field(default_factory=list)
+    # 新加進來的站記成誰加的：調整清單是 rep，跟熊熊滾說的是 ai
+    new_source: str = "rep"
+    # 要停用的習慣（跟熊熊滾說「那條不要了」）：算規則時就不算，存檔時停用
+    disabled_habit_ids: list[int] = field(default_factory=list)
 
 
 @dataclass
@@ -176,6 +181,15 @@ class Candidates:
     nearby: list[Candidate]  # 順路的前幾家，多繞最少的在前
     others: list[Candidate]  # 其他客戶，照名稱
     full: bool  # 還沒跑的站已經 8 站，加不進去
+
+
+@dataclass
+class Optimized:
+    """整條重排的結果：新的草稿（排不出來時是 None）、擋住的規則（那句話）、每條規則讓路線多繞多少（對照卡的那一行）。"""
+
+    draft: Draft | None
+    conflict: list[str]
+    costs: list[str]
 
 
 @dataclass
@@ -334,18 +348,23 @@ def preview(session: Session, user_id: str, draft: Draft, insert: str | None = N
     return _compose(session, day, open_, precedences, skipped, _reasons(itinerary, skipped), pending, estimate=True)
 
 
-def save(session: Session, user_id: str, version: int, draft: Draft) -> Itinerary:
+def save(session: Session, user_id: str, version: int, draft: Draft, habit_source: str = "prompt") -> Itinerary:
     """調整清單按「完成」：整份還沒跑的站、今天的先後、今天不套用的習慣、這次答應要記的習慣一次存進去。
-    存的時候順序還違反的規則以今天排的為準（設計〈已定案的決定〉第 8 點）：習慣記成今天不套用，今天的先後拿掉。"""
+    存的時候順序還違反的規則以今天排的為準（設計〈已定案的決定〉第 8 點）：習慣記成今天不套用，今天的先後拿掉。
+    habit_source：答應要記的習慣從哪裡來（調整清單是 prompt，跟熊熊滾說的是 ai）；draft.disabled_habit_ids
+    裡這位業務的習慣停用。"""
     itinerary = get_or_create(session, user_id)
     _lock(session, itinerary)
     if itinerary.version != version:
         raise VersionConflict
     day = _day(session, itinerary)
     open_, precedences, skipped, pending = _resolve(session, day, draft)
+    for habit in route_habits.mine(session, day.rep.id):
+        if habit.id in draft.disabled_habit_ids:
+            habit.active = False
     reasons = _reasons(itinerary, skipped)
     for item in pending:
-        habit = route_habits.create(session, day.rep.id, item.spec, "prompt")
+        habit = route_habits.create(session, day.rep.id, item.spec, habit_source)
         if route_habits.applies_on(habit, itinerary.date):
             day.habits.append(habit)
             if item.skip_today:
@@ -436,6 +455,78 @@ def today_skips(session: Session, user_id: str) -> dict[int, str]:
     if found is None:
         return {}
     return {int(key): reason for key, reason in _reasons(found, set(found.skipped_habit_ids)).items()}
+
+
+def draft_of(session: Session, itinerary: Itinerary) -> Draft:
+    """存著的行程換成草稿（跟前端 lib/itinerary.ts 的 draftFrom 一樣）：還沒跑的站照存著的順序，先後與今天不套用的習慣照舊。"""
+    day = _day(session, itinerary)
+    return Draft(
+        stops=[_draft_stop(o) for o in _saved_open(session, day)],
+        precedences=_precedences(session, itinerary),
+        skipped_habit_ids=sorted(itinerary.skipped_habit_ids),
+    )
+
+
+def with_stop(session: Session, itinerary: Itinerary, draft: Draft, customer_id: str) -> Draft:
+    """草稿加一家，插在多繞最少、又不新增違反的位置；約的時間與停留照習慣給的預設值。
+    用正式的車程（跟熊熊滾說的提案，順序由程式挑）。不合（不是自己的客戶、已經在行程裡、今天去過了、已經 8 站）丟 InvalidDraft。"""
+    day = _day(session, itinerary)
+    open_, precedences, skipped, pending = _resolve(session, day, draft)
+    open_ = _inserted(
+        session, day, open_, customer_id, precedences, skipped, pending, source=draft.new_source, estimate=False,
+    )
+    by_id = {s.customer_id: s for s in draft.stops}
+    return dataclasses.replace(draft, stops=[by_id.get(o.customer.id) or _draft_stop(o) for o in open_])
+
+
+def optimized(session: Session, itinerary: Itinerary, draft: Draft) -> Optimized:
+    """草稿整條重排（「幫我排順一點」、跟熊熊滾說要排順路）：守住今天的先後、習慣與鎖住的位置，晚到最少、車程最短。
+    順序由程式挑，用 travel.matrix。排不出來時回擋住的那幾條規則。現在的順序已經一樣好就不動。"""
+    day = _day(session, itinerary)
+    open_, precedences, skipped, pending = _resolve(session, day, draft)
+    durations = day.durations() | {o.customer.id: o.duration_minutes for o in open_}
+    start, points = _points(session, day.rep, itinerary.date, day.done, durations, [o.customer for o in open_])
+    matrix = travel.matrix(points)
+    stops = [o.plan_stop(n + 1) for n, o in enumerate(open_)]
+    rules = _rules(open_, precedences, day.habits, skipped, pending) + _locks(open_, len(day.done))
+    result = route_planner.plan(start, 0, stops, rules, matrix.minutes)
+    if isinstance(result, route_planner.Conflict):
+        return Optimized(None, [rule.text for rule in result.rules], [])
+    order = [slot.customer_id for slot in result.slots]
+    # 現在的順序已經守住規則、而且一樣好（同分的排法不只一種）：不要為了換而換
+    current = [s.customer_id for s in stops]
+    now = route_planner.schedule(start, 0, stops, matrix.minutes)
+    if not route_planner.violations(current, rules) and (now.late_minutes, now.travel_minutes) <= (
+        result.late_minutes, result.travel_minutes
+    ):
+        order = current
+    index = {o.customer.id: n + 1 for n, o in enumerate(open_)}
+
+    def km(ids: list[str]) -> float:
+        path = [0, *(index[cid] for cid in ids)]
+        return sum(matrix.km[a][b] for a, b in zip(path, path[1:]))
+
+    costs = [
+        _cost_line(cost, km(order) - km(cost.without))
+        for cost in route_planner.rule_costs(start, 0, stops, rules, matrix.minutes)
+    ]
+    by_id = {o.customer.id: _draft_stop(o) for o in open_}
+    return Optimized(dataclasses.replace(draft, stops=[by_id[cid] for cid in order]), [], costs)
+
+
+def shown(session: Session, itinerary: Itinerary, draft: Draft) -> ItineraryView:
+    """草稿照正式車程算的樣子（提案的「改成」）：時間、車程、規則與違反，不存。"""
+    day = _day(session, itinerary)
+    open_, precedences, skipped, pending = _resolve(session, day, draft)
+    return _compose(session, day, open_, precedences, skipped, _reasons(itinerary, skipped), pending)
+
+
+def broken_rules(session: Session, itinerary: Itinerary, draft: Draft) -> list[str]:
+    """草稿的順序違反哪幾條規則（id），只看順序、不算車程。"""
+    day = _day(session, itinerary)
+    open_, precedences, skipped, pending = _resolve(session, day, draft)
+    rules = _rules(open_, precedences, day.habits, skipped, pending)
+    return [rule.id for rule in route_planner.violations([o.customer.id for o in open_], rules)]
 
 
 def reset_today(session: Session, user_id: str) -> None:
@@ -563,7 +654,7 @@ def _resolve(
 ) -> tuple[list[_Open], list[tuple[str, str]], set[int], list[PendingHabit]]:
     """草稿換成 _Open 並檢查。剛跑完的站以伺服器為準：確認拜訪不會改版本，畫面上可能還把它當成還沒跑的站，
     送來的就略過；畫面上拿掉了也不刪（見 _write）。新加的站要是自己的客戶；先後只留兩家都在的；
-    今天不套用的只留這位業務自己的習慣。"""
+    今天不套用的只留這位業務自己的習慣。要停用的習慣從 day.habits 拿掉，之後算規則就不算它。"""
     by_row = {r.customer_id: r for r in day.rows}
     stops = [s for s in draft.stops if s.customer_id not in day.done_ids]
     ids = [s.customer_id for s in stops]
@@ -581,7 +672,7 @@ def _resolve(
     open_ = []
     for stop in stops:
         row = by_row.get(stop.customer_id)
-        source, signal, reason = (row.source, row.signal, row.reason) if row else ("rep", *labels[stop.customer_id])
+        source, signal, reason = (row.source, row.signal, row.reason) if row else (draft.new_source, *labels[stop.customer_id])
         open_.append(_Open(
             customers[stop.customer_id], source, signal, reason, stop.duration_minutes, stop.window_kind,
             stop.window_time, (stop.note or "").strip() or None, stop.locked,
@@ -592,6 +683,9 @@ def _resolve(
     ))
     mine = {habit.id for habit in route_habits.mine(session, day.rep.id)}
     skipped = {i for i in draft.skipped_habit_ids if i in mine}
+    # 要停用的習慣：今天的規則就不算它（存檔時才真的停用，見 save）
+    disabled = {i for i in draft.disabled_habit_ids if i in mine}
+    day.habits = [h for h in day.habits if h.id not in disabled]
     if draft.habits:
         options = route_habits.targets(session, day.rep.id)
         for item in draft.habits:
@@ -604,9 +698,10 @@ def _resolve(
 
 def _inserted(
     session: Session, day: _Day, open_: list[_Open], customer_id: str, precedences: list[tuple[str, str]],
-    skipped: set[int], pending: Sequence[PendingHabit],
+    skipped: set[int], pending: Sequence[PendingHabit], source: str = "rep", estimate: bool = True,
 ) -> list[_Open]:
-    """「加一站」點的那一家插進草稿：多繞最少、又不新增違反的位置。"""
+    """「加一站」點的那一家插進草稿：多繞最少、又不新增違反的位置。
+    source：新的一家記成誰加的；estimate：用直線估算（調整清單的「加一站」）還是正式的車程（跟熊熊滾說的提案）。"""
     if any(o.customer.id == customer_id for o in open_):
         raise InvalidDraft("已經在今天的行程裡")
     if customer_id in day.done_ids:
@@ -619,8 +714,8 @@ def _inserted(
     # 草稿上拿掉、又加回來的那一家：來源與理由照存著的
     row = next((r for r in day.rows if r.customer_id == customer_id), None)
     label = (row.signal, row.reason) if row else today_route.labels(session, day.rep.id, [customer_id])[customer_id]
-    new = _new_open(customer, row.source if row else "rep", label, day.habits)
-    index = _cheapest_index(session, day, open_, new, precedences, skipped, pending, estimate=True)
+    new = _new_open(customer, row.source if row else source, label, day.habits)
+    index = _cheapest_index(session, day, open_, new, precedences, skipped, pending, estimate=estimate)
     return [*open_[:index], new, *open_[index:]]
 
 
@@ -630,6 +725,22 @@ def _estimated(points: list[travel.Point]) -> travel.Matrix:
     return travel.Matrix(
         minutes=[[m for m, _ in row] for row in pairs], km=[[k for _, k in row] for row in pairs], estimated=True,
     )
+
+
+def _draft_stop(stop: _Open) -> DraftStop:
+    return DraftStop(
+        stop.customer.id, stop.duration_minutes, stop.window_kind, stop.window_time, stop.note, stop.locked,
+    )
+
+
+def _cost_line(cost: route_planner.RuleCost, extra_km: float) -> str:
+    """對照卡上一條規則的代價：「守住『德安藥局 · 板橋 排在 佑生藥局 · 大安 前面』，比不守多繞 6 公里、15 分鐘」。"""
+    parts = []
+    if cost.travel_minutes > 0:
+        parts.append(f"多繞 {max(round(extra_km, 1), 0):g} 公里、{cost.travel_minutes} 分鐘")
+    if cost.late_minutes > 0:
+        parts.append(f"多晚到 {cost.late_minutes} 分")
+    return f"守住『{cost.rule.text}』，比不守" + "，".join(parts)
 
 
 def _day(session: Session, itinerary: Itinerary) -> _Day:

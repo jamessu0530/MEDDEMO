@@ -575,3 +575,60 @@ def test_candidates_put_the_nearest_first(tx):
     full = service.candidates(tx, "U01", order=on_route + not_on_route(tx, on_route, limit=3))
     assert full.full and full.nearby == []
 
+
+def test_the_saved_itinerary_as_a_draft(tx):
+    itinerary = service.get_or_create(tx, "U01")
+    assert service.draft_of(tx, itinerary) == draft_of(service.view(tx, itinerary))
+
+
+def test_with_stop_uses_the_habit_defaults_and_marks_who_added_it(tx):
+    itinerary = service.get_or_create(tx, "U01")
+    draft = service.draft_of(tx, itinerary)
+    draft.new_source = "ai"
+    [mine] = not_on_route(tx, [s.customer_id for s in draft.stops])
+    route_habits.create(tx, "U01", route_habits.HabitSpec("duration", by_customer(mine), duration_minutes=20), "manual")
+    added = service.with_stop(tx, itinerary, draft, mine)
+    assert len(added.stops) == 6 and next(s for s in added.stops if s.customer_id == mine).duration_minutes == 20
+    shown = {s.customer_id: s for s in service.shown(tx, itinerary, added).stops}
+    assert shown[mine].source == "ai"
+    [theirs] = not_on_route(tx, [], owner="U02")
+    with pytest.raises(service.InvalidDraft):
+        service.with_stop(tx, itinerary, draft, theirs)
+
+
+def test_optimized_keeps_the_rules_and_says_what_they_cost(tx):
+    tx.execute(delete(RouteHabit).where(RouteHabit.user_id == "U01"))
+    itinerary = service.get_or_create(tx, "U01")
+    draft = service.draft_of(tx, itinerary)
+    ids = [s.customer_id for s in draft.stops]
+    names = {s.customer_id: s.customer_name for s in service.view(tx, itinerary).stops}
+    draft.stops = [draft.stops[0], *reversed(draft.stops[1:])]
+    draft.precedences = [(ids[4], ids[1])]
+    result = service.optimized(tx, itinerary, draft)
+    order = [s.customer_id for s in result.draft.stops]
+    # 第一站是「需立即處理」那家，鎖著；今天的先後一定守
+    assert order[0] == ids[0] and order.index(ids[4]) < order.index(ids[1]) and result.conflict == []
+    assert any(line.startswith(f"守住『{names[ids[4]]} 排在 {names[ids[1]]} 前面』，比不守多") for line in result.costs)
+    assert service.broken_rules(tx, itinerary, result.draft) == []
+    # 要第三家排在鎖住的第一站前面：排不出來，講出是哪兩條
+    draft.precedences = [(ids[2], ids[0])]
+    stuck = service.optimized(tx, itinerary, draft)
+    assert stuck.draft is None and len(stuck.conflict) == 2
+    assert service.broken_rules(tx, itinerary, draft) == [f"today:{ids[2]}>{ids[0]}"]
+
+
+def test_saving_an_ai_draft_records_new_habits_as_ai_and_disables_old_ones(tx):
+    itinerary = service.get_or_create(tx, "U01")
+    ids = [s.customer_id for s in service.view(tx, itinerary).stops]
+    old = route_habits.create(
+        tx, "U01", route_habits.HabitSpec("precedence", by_customer(ids[1]), by_customer(ids[2])), "manual",
+    )
+    draft = service.draft_of(tx, itinerary)
+    draft.disabled_habit_ids = [old.id]
+    assert f"habit:{old.id}" not in {r.id for r in service.shown(tx, itinerary, draft).rules}
+    draft.habits = [service.PendingHabit(route_habits.HabitSpec("first", {"by": "area", "value": "板橋"}, weekday=0))]
+    service.save(tx, "U01", itinerary.version, draft, habit_source="ai")
+    habits = route_habits.mine(tx, "U01")
+    assert not next(h for h in habits if h.id == old.id).active
+    assert (habits[-1].source, habits[-1].text) == ("ai", "星期一先跑板橋")
+
