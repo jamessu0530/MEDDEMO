@@ -117,11 +117,11 @@ def along(points: list[Point]) -> Matrix:
 
 def lines(points: list[Point]) -> list[str] | None:
     """照這個順序開過去，每一段沿路的線（Google 的編碼折線，共 len(points) - 1 段），主管頁的地圖畫路線用。
-    沒設金鑰、Google 暫停中或失敗就回 None，地圖改畫直線。"""
+    沒設金鑰就回 None，地圖改畫直線；暫停中（Google 剛失敗過）也不是直接回 None——折線快取 30 天都有效，
+    先看快取有沒有命中，命中就照樣回，只有真的要問 Google 時才看暫停中要不要擋下來。"""
     if len(points) < 2:
         return []
-    key = _server_key()
-    if not key:
+    if not settings().google_maps_server_key:
         return None
     cache_key = LINES_CACHE_PREFIX + hashlib.sha256(json.dumps(points).encode()).hexdigest()
     try:
@@ -130,6 +130,9 @@ def lines(points: list[Point]) -> list[str] | None:
         cached = None
     if cached:
         return json.loads(cached)
+    key = _server_key()
+    if not key:
+        return None
     try:
         legs = google_routes.route_legs(key, points)
     except google_routes.RoutesError as exc:

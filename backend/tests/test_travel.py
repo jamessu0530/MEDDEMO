@@ -275,3 +275,17 @@ def test_google_failing_means_no_lines_and_a_pause(monkeypatch, env):
 def test_a_single_point_has_no_legs(google_lines):
     assert travel.lines([POINTS[0]]) == []
     assert google_lines == []
+
+
+def test_cached_lines_are_served_even_while_google_is_paused(google_lines):
+    assert travel.lines(POINTS) == ["line0", "line1"]
+    assert len(google_lines) == 1
+
+    travel._pause_google()
+    assert travel.lines(POINTS) == ["line0", "line1"]
+    # 還是暫停中：Google 沒有被多問一次，因為折線已經在快取裡
+    assert len(google_lines) == 1
+
+    # 換一個順序（沒快取過）：暫停中就不問 Google，回 None
+    assert travel.lines(list(reversed(POINTS))) is None
+    assert len(google_lines) == 1
