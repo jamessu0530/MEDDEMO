@@ -82,6 +82,14 @@ def engine():
     engine.dispose()
 
 
+@pytest.fixture(autouse=True)
+def _reset_google_pause(monkeypatch):
+    """Google 失敗後的暫停是 per-process 的模組狀態，不重設的話一個測試失敗會讓別的檔案也跳過 Google。"""
+    from app.services import travel
+
+    monkeypatch.setattr(travel, "_google_paused_until", 0.0)
+
+
 @pytest.fixture
 def env(monkeypatch):
     """在這個測試裡改環境變數（例如選 Gemini 當供應商），測完恢復原樣。"""

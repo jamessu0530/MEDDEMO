@@ -11,6 +11,7 @@ computeRoutes 按請求計價，一次拿到全部路段），讀行程、主管
 import dataclasses
 import logging
 import math
+import time
 from dataclasses import dataclass
 
 from app.config import settings
@@ -25,6 +26,24 @@ EARTH_RADIUS_KM = 6371.0
 DETOUR_FACTOR = 1.4
 SPEED_KMH = 30
 PARKING_MINUTES = 5
+
+# Google 失敗之後這麼久之內直接用估算：Google 掛掉或金鑰設錯時，不讓每次讀行程都等 5 秒、log 也不洗版。
+# 只記「剛失敗過」，不存 Google 的任何內容
+GOOGLE_RETRY_SECONDS = 60
+_google_paused_until = 0.0  # time.monotonic()
+
+
+def _server_key() -> str:
+    """伺服器金鑰；沒設，或 Google 剛失敗過還在暫停中，就回空字串（呼叫端當作沒有金鑰）。"""
+    key = settings().google_maps_server_key
+    if not key or time.monotonic() < _google_paused_until:
+        return ""
+    return key
+
+
+def _pause_google() -> None:
+    global _google_paused_until
+    _google_paused_until = time.monotonic() + GOOGLE_RETRY_SECONDS
 
 
 @dataclass(frozen=True)
@@ -51,15 +70,16 @@ def estimate(a: Point, b: Point) -> tuple[int, float]:
 
 def matrix(points: list[Point]) -> Matrix:
     """每兩點之間開車要多久。設了伺服器金鑰就問 Google；沒設或 Google 失敗就整份用直線估算。"""
-    key = settings().google_maps_server_key
+    key = _server_key()
     if not key:
         return fill(points, {}, google=False)
     if len(points) < 2:
         return fill(points, {}, google=True)
     try:
         cells = google_routes.route_matrix(key, points, points)
-    except google_routes.RoutesError:
-        log.warning("Google 路線矩陣沒有拿到，改用直線估算", exc_info=True)
+    except google_routes.RoutesError as exc:
+        _pause_google()
+        log.warning("Google 路線矩陣沒有拿到，改用直線估算：%s", exc)
         return fill(points, {}, google=False)
     return fill(points, {index: road(cell) for index, cell in cells.items()}, google=True)
 
@@ -68,15 +88,16 @@ def along(points: list[Point]) -> Matrix:
     """照這個順序開過去，相鄰兩點（points[i] → points[i + 1]）的車程。設了伺服器金鑰就用 Google 的
     computeRoutes 一次問完；其他格子用直線估算補上，所以這份只能照同一個順序算時間（route_planner.schedule），
     不能拿去排順序。沒設金鑰或 Google 失敗就整份用估算。"""
-    key = settings().google_maps_server_key
+    key = _server_key()
     if not key:
         return fill(points, {}, google=False)
     if len(points) < 2:
         return fill(points, {}, google=True)
     try:
-        legs = google_routes.route_legs(key, points)
-    except google_routes.RoutesError:
-        log.warning("Google 路線沒有拿到，改用直線估算", exc_info=True)
+        legs = google_routes.route_legs(key, points, polylines=False)
+    except google_routes.RoutesError as exc:
+        _pause_google()
+        log.warning("Google 路線沒有拿到，改用直線估算：%s", exc)
         return fill(points, {}, google=False)
     cells = {(n, n + 1): road(google_routes.Cell(leg.seconds, leg.meters)) for n, leg in enumerate(legs)}
     # 不相鄰的格子本來就是估算的、也用不到；相鄰的每一段都是 Google 給的，所以不算估計

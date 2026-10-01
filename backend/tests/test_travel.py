@@ -1,5 +1,7 @@
 """車程：直線估算，以及設了金鑰時改問 Google（假的，不連網路）。"""
 
+import logging
+
 import pytest
 
 from app.services import google_routes, travel
@@ -89,6 +91,44 @@ def test_google_failing_or_timing_out_falls_back_to_the_estimate(monkeypatch, en
     assert result.minutes[0][1] == 36 and result.km[0][1] == 15.6
 
 
+def test_matrix_failure_logs_one_line_without_a_traceback(monkeypatch, env, caplog):
+    env(GOOGLE_MAPS_SERVER_KEY="server-key")
+
+    def broken(*args, **kwargs):
+        raise google_routes.RoutesError("逾時")
+
+    monkeypatch.setattr(google_routes, "route_matrix", broken)
+    with caplog.at_level(logging.WARNING):
+        travel.matrix(POINTS)
+    [record] = caplog.records
+    assert record.exc_info is None
+    assert record.getMessage() == "Google 路線矩陣沒有拿到，改用直線估算：逾時"
+
+
+def test_google_failure_pauses_google_for_60_seconds_then_resumes(monkeypatch, env):
+    env(GOOGLE_MAPS_SERVER_KEY="server-key")
+
+    def broken(*args, **kwargs):
+        raise google_routes.RoutesError("逾時")
+
+    monkeypatch.setattr(google_routes, "route_matrix", broken)
+    first = travel.matrix(POINTS)
+    assert first.estimated is True
+
+    # 還在暫停窗內：就算把 route_matrix 換回假的成功實作，也不會被呼叫
+    calls = []
+    monkeypatch.setattr(google_routes, "route_matrix", fake_matrix(calls))
+    second = travel.matrix(POINTS)
+    assert second.estimated is True
+    assert calls == []
+
+    # 過了暫停窗：Google 又會被問
+    monkeypatch.setattr(travel, "_google_paused_until", 0.0)
+    third = travel.matrix(POINTS)
+    assert third.estimated is False
+    assert len(calls) == 1
+
+
 def test_cells_google_cannot_route_use_the_estimate_and_mark_the_matrix(monkeypatch, env):
     env(GOOGLE_MAPS_SERVER_KEY="server-key")
     monkeypatch.setattr(google_routes, "route_matrix", fake_matrix([], skip={(0, 2)}))
@@ -107,8 +147,8 @@ def test_a_single_point_needs_no_google(google):
 def fake_legs(calls):
     """假的 Google 路線：第 n 段開 (n + 1) × 10 分鐘、(n + 1) 公里。"""
 
-    def route_legs(key, points, http=None):
-        calls.append((key, points))
+    def route_legs(key, points, http=None, polylines=True):
+        calls.append((key, points, polylines))
         return [
             google_routes.Leg(seconds=600 * (n + 1), meters=1000 * (n + 1), polyline="")
             for n in range(len(points) - 1)
@@ -133,7 +173,7 @@ def test_along_asks_google_only_for_the_legs_in_order(monkeypatch, env):
     assert result.km[0][1] == 1.0 and result.km[1][2] == 2.0
     # 不相鄰的格子是估算的：這份只能照同一個順序算時間，不能拿去排順序
     assert result.minutes[0][2] == travel.estimate(POINTS[0], POINTS[2])[0]
-    assert calls == [("server-key", POINTS)]
+    assert calls == [("server-key", POINTS, False)]
 
 
 def test_along_without_a_key_or_when_google_fails_is_the_estimate(monkeypatch, env):
@@ -146,6 +186,28 @@ def test_along_without_a_key_or_when_google_fails_is_the_estimate(monkeypatch, e
     monkeypatch.setattr(google_routes, "route_legs", broken)
     result = travel.along(POINTS)
     assert result.estimated is True and result.minutes[0][1] == 36
+
+
+def test_along_failure_pauses_google_for_60_seconds_then_resumes(monkeypatch, env):
+    env(GOOGLE_MAPS_SERVER_KEY="server-key")
+
+    def broken(*args, **kwargs):
+        raise google_routes.RoutesError("逾時")
+
+    monkeypatch.setattr(google_routes, "route_legs", broken)
+    first = travel.along(POINTS)
+    assert first.estimated is True
+
+    calls = []
+    monkeypatch.setattr(google_routes, "route_legs", fake_legs(calls))
+    second = travel.along(POINTS)
+    assert second.estimated is True
+    assert calls == []
+
+    monkeypatch.setattr(travel, "_google_paused_until", 0.0)
+    third = travel.along(POINTS)
+    assert third.estimated is False
+    assert len(calls) == 1
 
 
 def test_along_a_single_point_needs_no_google(monkeypatch, env):
