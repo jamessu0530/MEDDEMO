@@ -7,12 +7,19 @@ AI 模型用照劇本回應的替身；CRAG 換成記下問題、回寫好結果
 import datetime as dt
 
 import pytest
-from sqlalchemy import func, select
+from fastapi.testclient import TestClient
+from redis.exceptions import ConnectionError as RedisConnectionError
+from rq import SimpleWorker
+from sqlalchemy import delete, func, select
 
+from app import usage
+from app.api import channels as channels_api
 from app.config import NotConfigured
-from app.models import AppUser, ChannelMessage, Customer
+from app.main import app
+from app.models import AppUser, ChannelMessage, ChannelRead, Customer
 from app.services import channel_ai, channels, knowledge
 from app.services.knowledge import KnowledgeAnswer
+from app.tasks import channels_queue, redis
 
 
 class RouteLLM:
@@ -161,3 +168,83 @@ def test_no_reply_once_the_team_channel_is_archived(tx, mascot):
     tx.flush()
     assert channel_ai.answer(tx, question.id) is None
     assert tx.scalar(select(func.count()).select_from(ChannelMessage).where(ChannelMessage.reply_to_id == question.id)) == 0
+
+
+@pytest.fixture
+def client():
+    return TestClient(app)
+
+
+@pytest.fixture
+def queue():
+    """channels 佇列，前後清空。用量計數也清掉：@熊熊滾 會扣「提問」，不受其他測試送過的請求影響。"""
+    redis().flushdb()
+    yield channels_queue()
+    redis().flushdb()
+
+
+def channel_id(client, auth, name, user_id="U01"):
+    return next(c["id"] for c in client.get("/api/channels", headers=auth(user_id)).json() if c["name"] == name)
+
+
+def post(client, headers, channel, body):
+    return client.post(f"/api/channels/{channel}/messages", json={"body": body}, headers=headers)
+
+
+def history(client, headers, channel, **params):
+    return client.get(f"/api/channels/{channel}/messages", params=params, headers=headers).json()
+
+
+def test_only_a_message_that_calls_the_mascot_queues_an_answer(tx, client, auth, queue):
+    team = channel_id(client, auth, "陳建宏小組")
+    plain = post(client, auth("U01"), team, "沒有叫熊熊滾").json()
+    called = post(client, auth("U01"), team, "@熊熊滾 在嗎").json()
+    assert (plain["mentions_ai"], called["mentions_ai"]) == (False, True)
+    assert [(job.func_name, job.args) for job in queue.jobs] == [("app.services.channel_ai.run", (called["id"],))]
+
+
+def test_calling_the_mascot_counts_as_an_ask(tx, client, auth, queue, monkeypatch):
+    monkeypatch.setitem(usage.LIMITS, "ask", usage.Limit("提問", per_client_hour=1, per_day=100))
+    team = channel_id(client, auth, "陳建宏小組")
+    assert post(client, auth("U01"), team, "@熊熊滾 第一次").status_code == 201
+    # 沒叫熊熊滾不算提問
+    assert post(client, auth("U01"), team, "一般的回報").status_code == 201
+    blocked = post(client, auth("U01"), team, "@熊熊滾 第二次")
+    assert blocked.status_code == 429
+    assert "提問" in blocked.json()["detail"]
+    # 被擋的那則沒留下，也沒排工作
+    assert "@熊熊滾 第二次" not in [m["body"] for m in history(client, auth("U01"), team)]
+    assert len(queue.jobs) == 1
+    # 被擋的那次沒有多扣：上限放寬到 2，下一次就過得了
+    monkeypatch.setitem(usage.LIMITS, "ask", usage.Limit("提問", per_client_hour=2, per_day=100))
+    assert post(client, auth("U01"), team, "@熊熊滾 第三次").status_code == 201
+
+
+def test_when_the_queue_is_down_the_mascot_apologises_at_once(tx, client, auth, queue, monkeypatch):
+    def down():
+        raise RedisConnectionError("連不上")
+
+    monkeypatch.setattr(channels_api, "channels_queue", down)
+    team = channel_id(client, auth, "陳建宏小組")
+    called = post(client, auth("U01"), team, "@熊熊滾 在嗎")
+    assert called.status_code == 201
+    latest = history(client, auth("U02"), team)[-2:]
+    assert [(m["kind"], m["body"], m["reply_to_id"]) for m in latest] == [
+        ("user", "@熊熊滾 在嗎", None), ("ai", channel_ai.SORRY, called.json()["id"])
+    ]
+
+
+def test_the_worker_posts_the_answer_where_everyone_polling_sees_it(engine, client, auth, queue, mascot):
+    """走真的佇列與背景工作，資料真的 commit，測完刪掉。
+    用台北市・信義區：地點頻道不算進紅點，也沒有灌資料的對話。"""
+    mascot(chat("在喔，有什麼要問的？"))
+    place = channel_id(client, auth, "台北市・信義區")
+    try:
+        called = post(client, auth("U01"), place, "@熊熊滾 在嗎").json()
+        SimpleWorker([queue], connection=redis()).work(burst=True)
+        replies = history(client, auth("U02"), place, after=called["id"])
+        assert [(m["kind"], m["body"], m["reply_to_id"]) for m in replies] == [("ai", "在喔，有什麼要問的？", called["id"])]
+    finally:
+        with engine.begin() as conn:
+            conn.execute(delete(ChannelMessage).where(ChannelMessage.channel_id == place))
+            conn.execute(delete(ChannelRead).where(ChannelRead.channel_id == place))

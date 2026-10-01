@@ -2,9 +2,11 @@
 
 誰看得到哪些頻道由 services/channels.py 決定；看不到的一律 404，不透露它存在。
 訊息靠畫面輪詢（打開頻道時每 3 秒問一次 after 之後的新訊息），不開長連線。
+訊息裡 @熊熊滾 就排背景工作回答（services/channel_ai.py）。
 """
 
 import datetime as dt
+import logging
 from dataclasses import dataclass
 from typing import Annotated
 
@@ -14,12 +16,15 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.orm import Session
 from starlette.datastructures import UploadFile
 
+from app import usage
 from app.api.auth import CurrentUser, ItUser
 from app.db import get_session
 from app.models import MESSAGE_MAX_LENGTH, AppUser, Attachment, ChannelMessage
-from app.services import attachment_processing, attachments, channels
+from app.services import attachment_processing, attachments, channel_ai, channels
 from app.services.channels import ChannelInfo
+from app.tasks import channels_queue
 
+log = logging.getLogger(__name__)
 router = APIRouter(tags=["channels"])
 SessionDep = Annotated[Session, Depends(get_session)]
 
@@ -186,7 +191,11 @@ def list_messages(
 
 @router.post("/api/channels/{channel_id}/messages", response_model=MessageItem, status_code=status.HTTP_201_CREATED)
 def post_message(
-    session: SessionDep, user: CurrentUser, channel_id: int, form: Annotated[MessageForm, Depends(message_form)]
+    request: Request,
+    session: SessionDep,
+    user: CurrentUser,
+    channel_id: int,
+    form: Annotated[MessageForm, Depends(message_form)],
 ):
     """發言。可以只有文字、只有檔案，或兩個都有；檔案先檢查完才寫入，有一個不收整則就不發。"""
     info = _visible(session, user, channel_id)
@@ -203,11 +212,28 @@ def post_message(
         message = channels.post(session, user, info, text)
     except channels.Archived:
         raise HTTPException(409, "這個小組頻道已封存，不能再發言") from None
+    # @熊熊滾 跑的是跟問答頁一樣的查詢，算一次「提問」。middleware 只看網址分不出有沒有 @，在這裡另外扣；
+    # 超過上限就整則不留（附件還沒寫），輸入框裡的字還在，提問的人看得到為什麼沒送出
+    if message.mentions_ai and (blocked := usage.take("ask", request)) is not None:
+        session.rollback()
+        return blocked
     files = [attachments.add(session, user, p, context=text, message_id=message.id) for p in prepared]
     session.commit()
     # 寫說明、算向量在背景做；先回訊息，畫面上照片馬上看得到
     attachment_processing.enqueue([f.id for f in files])
+    if message.mentions_ai:
+        _call_mascot(session, message)
     return _message(message, user.name, user, files)
+
+
+def _call_mascot(session: Session, message: ChannelMessage) -> None:
+    """排熊熊滾的背景工作。排不進去（Redis 連不上）就直接道歉，提問那一則照樣留著，可以再 @ 一次。"""
+    try:
+        channels_queue().enqueue("app.services.channel_ai.run", message.id)
+    except Exception:
+        log.exception("排入熊熊滾的背景工作失敗 message=%s", message.id)
+        channels.post_mascot(session, message.channel_id, channel_ai.SORRY, message.id)
+        session.commit()
 
 
 @router.delete("/api/channels/messages/{message_id}", status_code=status.HTTP_204_NO_CONTENT)
