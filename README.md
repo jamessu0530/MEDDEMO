@@ -38,8 +38,9 @@ cd frontend && npm install && npm run dev                                       
 | 語音問答 | `VOICE_API_KEY`（沒填就沿用 `LLM_API_KEY`） | `gemini-2.5-flash-native-audio-preview-12-2025` |
 | 網路搜尋 | `FIRECRAWL_API_KEY` | — |
 | 精排 | `COHERE_API_KEY` | `rerank-v4.0-pro` |
+| 道路車程、主管頁的地圖 | `GOOGLE_MAPS_SERVER_KEY`（Routes API）、`GOOGLE_MAPS_BROWSER_KEY`（Maps JavaScript API），見下方部署的表格 | — |
 
-沒設定也能用：錄音會停在「轉文字失敗」，業務可以手動輸入逐字稿；欄位會留白，讓業務手動填。整條「口述 → 確認 → 寫回三套系統」照樣走得完。沒設定 embedding 時，知識檢索只走關鍵字。
+沒設定也能用：錄音會停在「轉文字失敗」，業務可以手動輸入逐字稿；欄位會留白，讓業務手動填。整條「口述 → 確認 → 寫回三套系統」照樣走得完。沒設定 embedding 時，知識檢索只走關鍵字。沒設 Google 地圖的金鑰時，車程用直線估算並標明「估計」，主管頁的地圖換成一行說明。
 
 ## 口述到回寫
 
@@ -208,7 +209,7 @@ IT 登入後的首頁是 `/admin`：全國 → 區 → 主管 → 業務，點�
 - **最上面「需立即處理」那張卡**，說明文字直接取客戶檔案的「進門前三分鐘」，不另外生成。只有真的有事才出現；今天沒有特別急的（最急的只是「很久沒去」）就不給卡片。
 - **行程存在伺服器**（設計見 [docs/superpowers/specs/2026-10-01-itinerary-planning-design.md](docs/superpowers/specs/2026-10-01-itinerary-planning-design.md)）：
   - 當天第一次打開時，模型挑好幾家，再由排序程式（`backend/app/services/route_planner.py`）排順路：把所有排法試過，挑總車程最短的那條；「需立即處理」那家鎖在第一站。之後一律讀存著的這份，模型不再重排。
-  - 客戶沒有真的地址：位置是所在行政區的中心點，依客戶編號錯開幾百公尺（`data/seed/catalog.py` 的 `DISTRICT_COORDS`）。從區處辦公室 9:30 出發，車程用直線距離 × 1.4 ÷ 時速 30 公里再加 5 分鐘停車估算，每站停 40 分鐘。
+  - 客戶沒有真的地址：位置是所在行政區的中心點，依客戶編號錯開幾百公尺（`data/seed/catalog.py` 的 `DISTRICT_COORDS`）。從區處辦公室 9:30 出發，車程設了 Google 金鑰就用 Google Routes API 的道路車程（不看即時路況，再加 5 分鐘停車），沒設、Google 回錯或 5 秒沒回應就用直線距離 × 1.4 ÷ 時速 30 公里再加 5 分鐘停車估算，每站停 40 分鐘。
   - 兩個人同時改同一位業務的行程時，後送出的那一個會被擋下來（版本號），畫面重新載入最新的。
   - 評審用第三方登入都看示範業務（林昱辰）的行程，大家共用一份，改動會累積（系統日期固定在決賽日，不會換天）。換一批評審前，IT 在組織管理頁按「重置示範業務今天的行程」，回到系統早上的建議。
 - **三顆鈕**（插入下一站／暫緩／誤判）直接改今天的行程：
@@ -634,6 +635,8 @@ MEDDEMO 跟 CARE 共用 GCP 上的 care-vm：K3s、Helm、Traefik、HTTPS 憑證
 | `VOICE_API_KEY` | secret | 選填：語音問答用的 Gemini 金鑰，沒填就沿用 `LLM_API_KEY` |
 | `FIRECRAWL_API_KEY` | secret | 選填：知識查詢上網搜尋 |
 | `COHERE_API_KEY` | secret | 選填：知識查詢精排 |
+| `GOOGLE_MAPS_SERVER_KEY` | secret | 選填：行程的道路車程（Google Routes API）。Google Cloud 專案要開帳單；API 限制只開 Routes API，應用程式限制填 VM 的對外 IP。沒填就用直線估算。 |
+| `GOOGLE_MAPS_BROWSER_KEY` | secret | 選填：主管頁的地圖（Maps JavaScript API）。API 限制只開 Maps JavaScript API，網站限制填 `https://網址/*`。沒填主管頁就不畫地圖、只列清單。 |
 
 ### 改參數（用哪家服務、哪個模型）
 

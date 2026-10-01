@@ -61,6 +61,11 @@ class Settings(BaseSettings):
     # Google Routes API：行程的道路車程與主管頁的沿路路線。留空就用直線估算，畫面註明「估計」。
     # 只在後端用；在 Google Cloud 限制只開 Routes API（docs/superpowers/plans/2026-10-01-itinerary-stage4.md）
     google_maps_server_key: str = ""
+    # 主管頁的地圖（Maps JavaScript API）。會出現在網頁上，安全靠 Google Cloud 的限制：只開 Maps JavaScript API、
+    # 只認我們的網域。不寫進前端的建置，由 GET /api/maps/config 給，換金鑰不必重建映像檔
+    google_maps_browser_key: str = ""
+    # 地圖上的頭像與編號圓點用進階標記，要一個 Map ID；留空就用 Google 給測試用的 DEMO_MAP_ID
+    google_maps_map_id: str = ""
 
     @field_validator("demo_password")
     @classmethod

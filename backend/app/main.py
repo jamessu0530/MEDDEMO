@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app import usage
 from app.api import admin, asks, attachments, auth, avatars, channel_search, channels, customers, documents, escalations, first_week, itinerary, manager, memory, methods, mock_systems, oa, presence, products, promotions, transcription, visits, voice
+from app.api import maps  # 行程第 4 階段：主管頁的地圖金鑰
 from app.config import settings
 from app.db import get_session
 
@@ -41,6 +42,7 @@ app.include_router(documents.router)
 app.include_router(methods.router)
 app.include_router(presence.router)
 app.include_router(avatars.router)
+app.include_router(maps.router)
 
 
 @app.get("/health")

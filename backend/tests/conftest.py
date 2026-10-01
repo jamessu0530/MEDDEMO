@@ -59,6 +59,8 @@ for key in (
     "FIRECRAWL_API_KEY",
     "COHERE_API_KEY",
     "GOOGLE_MAPS_SERVER_KEY",
+    "GOOGLE_MAPS_BROWSER_KEY",
+    "GOOGLE_MAPS_MAP_ID",
 ):
     os.environ[key] = ""
 settings.cache_clear()

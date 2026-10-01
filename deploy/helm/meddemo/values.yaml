@@ -37,10 +37,12 @@ config:
   EMBEDDING_MODEL: ""
   # 語音問答的 Live 模型。9/14 改用 3.1，沒先用語音實測驗證（為什麼要注意見 README 的語音問答段）；留空就回到程式預設的 2.5
   VOICE_MODEL: gemini-3.1-flash-live-preview
+  # 主管頁地圖的 Map ID（Google Cloud Console → Map Management 建一個 JavaScript 的）。留空＝Google 給測試用的 DEMO_MAP_ID
+  GOOGLE_MAPS_MAP_ID: ""
 
 # 金鑰：Secret 由部署流程從 GitHub Secrets 建立，不放進 chart（跟 CARE 的 care-backend-secret 一樣）
 secrets:
   # POSTGRES_PASSWORD
   database: meddemo-secrets
-  # ASR_API_KEY、LLM_API_KEY、EMBEDDING_API_KEY、VOICE_API_KEY；還沒建時照樣啟動，沒有金鑰的功能改走手動輸入
+  # ASR_API_KEY、LLM_API_KEY、EMBEDDING_API_KEY、VOICE_API_KEY、GOOGLE_MAPS_SERVER_KEY、GOOGLE_MAPS_BROWSER_KEY；還沒建時照樣啟動，沒有金鑰的功能改走手動輸入或估算
   ai: meddemo-ai
