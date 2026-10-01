@@ -6,6 +6,8 @@
 
 規則分兩級：先後、排第一、排最後、鎖住的位置一定要守，守不住就不排（回 Conflict，講出是哪幾條）；
 約的時間盡量守，趕不上照樣排，記下晚到幾分鐘。
+
+`rule_costs` 算每條規則讓路線多繞多少，對照卡用。
 """
 
 from __future__ import annotations
@@ -62,6 +64,16 @@ class Conflict:
     同一個 id 的規則只列一條。"""
 
     rules: list[Rule]
+
+
+@dataclass(frozen=True)
+class RuleCost:
+    """守住這條規則讓路線多花多少：跟拿掉這條（同一個 id 一起拿掉）重排的最好排法比。"""
+
+    rule: Rule
+    travel_minutes: int  # 多開幾分鐘（晚到變少時可能是負的）
+    late_minutes: int  # 多晚到幾分鐘
+    without: list[str]  # 不守這條時最好的順序
 
 
 def _visit(t: dt.datetime, travel: int, stop: PlanStop) -> tuple[dt.datetime, dt.datetime, int]:
@@ -213,6 +225,28 @@ def plan(
         if _search(start, start_point, stops, [r for r in rules if r.id != rule_id], minutes) is not None
     ]
     return Conflict(blocking or list(first_of.values()))
+
+
+def rule_costs(
+    start: dt.datetime, start_point: int, stops: list[PlanStop], rules: list[Rule], minutes: list[list[int]]
+) -> list[RuleCost]:
+    """每條規則讓路線多繞多少（對照卡上「守住『…』，比不守多繞 N 分鐘」）。只列拿掉之後真的排得更好的；
+    守住全部規則就排不出來時回空的（那是 plan 的 Conflict 要講的事）。"""
+    best = _search(start, start_point, stops, rules, minutes)
+    if best is None:
+        return []
+    costs = []
+    for rule_id in dict.fromkeys(rule.id for rule in rules):
+        without = _search(start, start_point, stops, [r for r in rules if r.id != rule_id], minutes)
+        if without is None or (without.late_minutes, without.travel_minutes) >= (best.late_minutes, best.travel_minutes):
+            continue
+        costs.append(RuleCost(
+            rule=next(r for r in rules if r.id == rule_id),
+            travel_minutes=best.travel_minutes - without.travel_minutes,
+            late_minutes=best.late_minutes - without.late_minutes,
+            without=[s.customer_id for s in without.slots],
+        ))
+    return costs
 
 
 def cheapest_insert(

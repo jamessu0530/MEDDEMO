@@ -216,3 +216,31 @@ def test_one_rule_split_into_pairs_is_reported_once():
     # 整條習慣拿掉就排得出來，所以它也是擋住的那幾條之一；只列一次
     assert sorted(r.id for r in result.rules) == ["habit:7", "lock:A"]
     assert [r.id for r in rp.violations(["A", "B", "C"], pairs)] == ["habit:7"]
+
+
+def test_rule_costs_say_how_much_each_rule_adds():
+    # 先 B 再 A：0 → B(2) → A(1) 開 20 + 10 = 30 分鐘；不守的話 0 → A → B 只要 20 分鐘
+    before_a = rp.Rule(id="today:B>A", text="先 B 再 A", kind="precedence", customer_ids=("B", "A"))
+    harmless = rp.Rule(id="today:A>C", text="先 A 再 C", kind="precedence", customer_ids=("A", "C"))
+    stops = [stop("A", 1), stop("B", 2), stop("C", 3)]
+    costs = rp.rule_costs(START, 0, stops, [before_a, harmless], LINE)
+    assert [(c.rule.id, c.travel_minutes, c.late_minutes) for c in costs] == [("today:B>A", 20, 0)]
+    assert costs[0].without == ["A", "B", "C"]
+
+
+def test_rule_costs_count_a_split_rule_once_and_report_lateness():
+    pairs = [
+        rp.Rule(id="habit:7", text="C 排在 A、B 前面", kind="precedence", customer_ids=("C", "A")),
+        rp.Rule(id="habit:7", text="C 排在 A、B 前面", kind="precedence", customer_ids=("C", "B")),
+    ]
+    # A 約 09:15 以前到：先跑 C（30 分鐘外）一定晚到
+    stops = [stop("A", 1, window=("before", dt.time(9, 15))), stop("B", 2), stop("C", 3)]
+    costs = rp.rule_costs(START, 0, stops, pairs, LINE)
+    assert len(costs) == 1 and costs[0].rule.id == "habit:7"
+    assert costs[0].late_minutes > 0
+
+
+def test_rule_costs_are_empty_when_the_rules_cannot_be_kept():
+    a_first = rp.Rule(id="today:A>B", text="先 A 再 B", kind="precedence", customer_ids=("A", "B"))
+    b_first = rp.Rule(id="today:B>A", text="先 B 再 A", kind="precedence", customer_ids=("B", "A"))
+    assert rp.rule_costs(START, 0, [stop("A", 1), stop("B", 2)], [a_first, b_first], LINE) == []
