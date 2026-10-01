@@ -62,6 +62,10 @@ class MessageItem(BaseModel):
     attachments: list[AttachmentItem] = Field(default_factory=list)
     # IT 刪掉的訊息：內容已經換成固定的一句，畫面改用灰字
     deleted: bool = False
+    # 有沒有叫熊熊滾；畫面靠它和 reply_to_id 判斷熊熊滾是不是還在想
+    mentions_ai: bool
+    # 熊熊滾的回答指向提問那一則
+    reply_to_id: int | None
 
 
 class MessageInput(BaseModel):
@@ -131,6 +135,7 @@ def _message(
         id=message.id, kind=message.kind, author_id=message.author_id, author_name=author_name,
         body=message.body, created_at=message.created_at, mine=message.author_id == user.id,
         attachments=[_attachment(a, user) for a in files or []], deleted=message.deleted_at is not None,
+        mentions_ai=message.mentions_ai, reply_to_id=message.reply_to_id,
     )
 
 
