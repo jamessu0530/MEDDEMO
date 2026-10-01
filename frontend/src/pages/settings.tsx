@@ -515,6 +515,18 @@ export function SettingsPage() {
           </Link>
         )}
 
+        {/* 業務自己的排序習慣；調整行程的頁首也進得去 */}
+        {user.role === "sales" && (
+          <Link
+            to="/route/habits"
+            state={{ from: "/settings" }}
+            className="flex min-h-14 items-center justify-between rounded-2xl border-2 bg-card px-4 shadow-lip press"
+          >
+            <span className="text-sm font-medium">我的排序習慣</span>
+            <ChevronRight className="size-4 text-muted-foreground" />
+          </Link>
+        )}
+
         {user.role === "sales" && (
           // 首頁的頁首放不下了，使用說明從這裡（和客戶清單的頁首）再打開；只講業務的操作，主管端也不顯示導覽
           <button
