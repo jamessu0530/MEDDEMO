@@ -179,7 +179,7 @@ git commit -m "Switch to the Huninn font and give buttons, fields and dialogs a 
   - `labelSide(offset: number): "left" | "right"`
   - `bearStopIndex(stops: { status: "done" | "next" | "todo" }[]): number | null`
   - `signalTone(signal: RouteSignal): "good" | "alert" | "plain"`
-  - `formatDayLabel(iso: string): string`（`"2026-10-01"` → `"10/1（三）"`）
+  - `formatDayLabel(iso: string): string`（`"2026-10-01"` → `"10/1（四）"`）
 
 - [ ] **Step 1: 寫會失敗的測試**
 
@@ -248,7 +248,7 @@ import { formatDayLabel } from "@/lib/format"
 
 describe("formatDayLabel", () => {
   it("月/日加星期幾", () => {
-    expect(formatDayLabel("2026-10-01")).toBe("10/1（三）")
+    expect(formatDayLabel("2026-10-01")).toBe("10/1（四）")
     expect(formatDayLabel("2026-10-04")).toBe("10/4（日）")
   })
 })

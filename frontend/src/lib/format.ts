@@ -4,6 +4,14 @@ export function formatDate(iso: string) {
   return `${Number(month)}/${Number(day)}`
 }
 
+const WEEKDAYS = "日一二三四五六"
+
+/** 2026-10-01 → 10/1（三），首頁橫幅用。用當地時間的午夜算星期，免得時區把日期推到前一天 */
+export function formatDayLabel(iso: string) {
+  const weekday = WEEKDAYS[new Date(`${iso}T00:00:00`).getDay()]
+  return `${formatDate(iso)}（${weekday}）`
+}
+
 /** 2026-09-15T06:05:00Z → 9/15 14:05（手機的時區），列表上看得出是哪天的幾點 */
 export function formatDateTime(iso: string) {
   return new Date(iso).toLocaleString("zh-TW", {
