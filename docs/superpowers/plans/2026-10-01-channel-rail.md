@@ -2290,3 +2290,325 @@ git commit -m "Stress-test a busy text channel locally and describe the channel 
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
+
+---
+
+### Task 7: 50 人同時連線不卡死（連線池與 WebSocket 的資料庫查詢）
+
+Task 6 的壓力測試在 50 人時每次都失敗（10 人、25 人會過）。原因是**原本就在 main 上的程式**，不是這次改出來的：
+
+- API 的同步端點與相依（`get_session`、`current_user`、端點本身、結束時關 session）分好幾次進 anyio 的 threadpool（預設 40 條執行緒）。
+  一個請求在兩次換執行緒之間會一直拿著它的資料庫連線（交易還沒結束，`idle in transaction`）。
+- 連線池是 SQLAlchemy 預設的 5 + 10 = 15 條，比執行緒少。
+- WebSocket 每收到一則新訊息事件，**每條連線**各開一個 session 跑 `_can_see`；每個狀態事件，**每條連線**各跑一次 `_statuses`。
+  50 條連線就是 50 次資料庫查詢，跟發言的請求搶同一批執行緒與連線。
+- 結果：15 個請求拿著全部連線在等執行緒，40 條執行緒全部在等連線，卡到 30 秒的連線池逾時，回 500。
+
+證據在 `.superpowers/sdd/2026-10-01-channel-rail/task-6-report.md`。實驗結果：只加大連線池不會壞但 p95 1.5 秒（太慢）；只快取 WebSocket 的查詢還是卡死；**兩個一起做**：p50 0.44 秒、p95 0.71 秒，通過。
+
+**Files:**
+- Modify: `backend/app/db.py:32-34`（`make_engine`）
+- Modify: `backend/app/services/channels.py`（加 `visible_ids`）
+- Modify: `backend/app/api/presence.py`（共用的狀態快取、每條連線的可見頻道快取）
+- Modify: `backend/scripts/stress_channels.py`（docstring 寫明 `JWT_SECRET`；列表請求 `raise_for_status()`）
+- Modify: `docs/superpowers/specs/2026-10-01-channel-rail-design.md`（「測試」的壓力測試段落後面補一段找到的問題與修法）
+- Test: `backend/tests/test_presence.py`
+
+**Interfaces:**
+- Consumes: `channels.describe`、`channels.can_see`（Task 1）、既有的 `_statuses()`、`_can_see(user_id, channel_id)`、`_Connection`。
+- Produces:
+  - `app.db.POOL_SIZE = 20`、`app.db.MAX_OVERFLOW = 40`
+  - `channels.visible_ids(session, user) -> set[int]`（含客戶討論串）
+  - `api.presence._StatusCache`（`async get(since: float) -> dict[str, str]`）與模組層級的 `_status_cache`
+  - `api.presence._visible_ids(user_id: str) -> frozenset[int]`
+  - `_Connection.can_see(channel_id: int) -> bool`（async）
+
+- [ ] **Step 1: 寫失敗的測試** — 接在 `backend/tests/test_presence.py` 的 WebSocket 測試後面（檔案已經有 `connect`、`next_of`、`channel_id` 這些輔助函式與 `presence_api` 的 import；`asyncio_mode = "auto"`，async 測試函式直接能跑）：
+
+```python
+# WebSocket 不能讓每條連線、每個事件都各查一次資料庫：50 個人同時發言時會跟發言的請求搶 threadpool 與連線池，
+# 整個 API 卡死（docs/superpowers/specs/2026-10-01-channel-rail-design.md「壓力測試」）
+
+
+async def test_status_requests_after_the_same_event_share_one_query(monkeypatch):
+    import asyncio
+
+    calls = 0
+
+    def slow_statuses():
+        nonlocal calls
+        calls += 1
+        time.sleep(0.05)
+        return {"U01": "available"}
+
+    monkeypatch.setattr(presence_api, "_statuses", slow_statuses)
+    cache = presence_api._StatusCache()
+    since = time.monotonic()
+    results = await asyncio.gather(*(cache.get(since) for _ in range(50)))
+    assert calls == 1 and all(r == {"U01": "available"} for r in results)
+    # 事件之後才開始算的那一份可以共用；比它晚的事件要重算，才看得到新的變動
+    await cache.get(since)
+    assert calls == 1
+    await cache.get(time.monotonic())
+    assert calls == 2
+
+
+async def test_a_failed_status_query_is_not_shared_afterwards(monkeypatch):
+    attempts = iter([RuntimeError("資料庫斷了"), {"U01": "busy"}])
+
+    def flaky():
+        result = next(attempts)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    monkeypatch.setattr(presence_api, "_statuses", flaky)
+    cache = presence_api._StatusCache()
+    since = time.monotonic()
+    with pytest.raises(RuntimeError):
+        await cache.get(since)
+    assert await cache.get(since) == {"U01": "busy"}
+
+
+def test_message_notifications_do_not_query_the_database_per_message(tx, client, engine, auth, monkeypatch):
+    north = channel_id(client, auth, "陳建宏小組")
+    checks = []
+    original = presence_api._can_see
+    monkeypatch.setattr(presence_api, "_can_see", lambda *args: checks.append(args) or original(*args))
+    with client.websocket_connect("/api/ws") as ws:
+        connect(ws, engine, "U01")
+        for body in ("一", "二", "三"):
+            assert client.post(f"/api/channels/{north}/messages", json={"body": body}, headers=auth("M01")).status_code == 201
+            assert next_of(ws, "message") == {"type": "message", "channel_id": north}
+    # 看得到哪些頻道是連上時一次算好的，三則訊息都不必再查
+    assert checks == []
+
+
+def test_a_channel_opened_after_connecting_still_notifies(tx, client, engine, auth):
+    north_region = channel_id(client, auth, "北區")
+    south_region = channel_id(client, auth, "南區")
+    with client.websocket_connect("/api/ws") as u01, client.websocket_connect("/api/ws") as u04:
+        connect(u01, engine, "U01")
+        connect(u04, engine, "U04")
+        north_topic = client.post("/api/channels", json={"parent_id": north_region, "name": "陳列競賽"}, headers=auth("M01")).json()["id"]
+        south_topic = client.post("/api/channels", json={"parent_id": south_region, "name": "左營檔期"}, headers=auth("M03")).json()["id"]
+        client.post(f"/api/channels/{north_topic}/messages", json={"body": "北區開跑"}, headers=auth("M01"))
+        client.post(f"/api/channels/{south_topic}/messages", json={"body": "南區開跑"}, headers=auth("M03"))
+        assert next_of(u01, "message") == {"type": "message", "channel_id": north_topic}
+        # 北區的先發，吳承翰卻先收到南區的：連上之後才開的北區頻道，一樣不會通知看不到的人
+        assert next_of(u04, "message") == {"type": "message", "channel_id": south_topic}
+
+
+def test_the_pool_has_room_for_every_threadpool_worker():
+    import anyio.to_thread
+
+    from app.db import MAX_OVERFLOW, POOL_SIZE, make_engine
+
+    async def threads() -> int:
+        return int(anyio.to_thread.current_default_thread_limiter().total_tokens)
+
+    engine = make_engine()
+    try:
+        assert (engine.pool.size(), engine.pool._max_overflow) == (POOL_SIZE, MAX_OVERFLOW)
+    finally:
+        engine.dispose()
+    # 請求在換執行緒之間會拿著連線：連線池比執行緒少就可能互卡
+    assert POOL_SIZE + MAX_OVERFLOW > anyio.run(threads)
+```
+
+如果 `test_presence.py` 還沒有 `import time`，在檔案開頭的 import 加上。
+
+- [ ] **Step 2: 跑測試確認失敗**
+
+Run: `TEST_DB_NAME=meddemo_test_rail TEST_REDIS_URL=redis://127.0.0.1:6379/7 uv run --project backend pytest backend/tests/test_presence.py -q`
+Expected: 新的五個 FAIL（`_StatusCache` 不存在、`_can_see` 每則都被呼叫、`POOL_SIZE` 不存在）；`test_a_channel_opened_after_connecting_still_notifies` 現在可能就會過（原本每則都查），沒關係，它是防止快取做錯的回歸測試。
+
+- [ ] **Step 3: 連線池** — `backend/app/db.py`，`make_engine` 前面加常數並改 `make_engine`：
+
+```python
+# API 的同步端點與相依（get_session、current_user）在 anyio 的 threadpool 裡跑（預設 40 條執行緒），
+# 一個請求在兩次換執行緒之間會一直拿著它的資料庫連線。連線池比執行緒少，很多人同時發言時，
+# 拿著連線的請求等執行緒、佔著執行緒的請求等連線，整個 API 卡到連線池逾時（壓力測試找到的，
+# docs/superpowers/specs/2026-10-01-channel-rail-design.md）。所以連線池要比執行緒多。
+# Postgres 預設 max_connections 是 100：API 最多 60 條，背景工作與 CronJob 平常各用一兩條
+POOL_SIZE = 20
+MAX_OVERFLOW = 40
+
+
+def make_engine(url: str | None = None) -> Engine:
+    # pool_pre_ping：資料庫重啟後，連線池裡失效的舊連線會先被換掉，API 不會因此回 500
+    return create_engine(url or database_url(), pool_pre_ping=True, pool_size=POOL_SIZE, max_overflow=MAX_OVERFLOW)
+```
+
+- [ ] **Step 4: 看得到的頻道編號** — `backend/app/services/channels.py`，`visible_channels` 後面加：
+
+```python
+def visible_ids(session: Session, user: AppUser) -> set[int]:
+    """看得到的每個頻道的編號，含客戶討論串。WebSocket 連上時算一次，決定新訊息通知送給誰（api/presence.py）。"""
+    return {info.id for info in describe(session, list(session.scalars(select(Channel)))) if can_see(user, info)}
+```
+
+- [ ] **Step 5: WebSocket 不再每條連線、每個事件各查一次** — `backend/app/api/presence.py`
+
+import 加 `import math`、`import random`。常數區（`MAX_CONNECTIONS` 後面）加：
+
+```python
+# 每條連線記住自己看得到哪些頻道，隔這麼久（再乘上 1～1.5 倍，讓同時連上的連線錯開）重算一次：
+# 調區、停用這類權限變動最慢這麼久生效。這段時間內新出現的頻道（剛開的文字頻道、第一次有人打開的客戶討論串）
+# 第一次有訊息時單獨查一次
+VISIBLE_TTL_SECONDS = 60
+# 定時重算狀態時，別條連線這麼近才算好的那一份可以直接用
+SWEEP_SHARE_SECONDS = 1.0
+```
+
+`_statuses`、`_can_see` 保留不動，在 `_can_see` 後面加：
+
+```python
+def _visible_ids(user_id: str) -> frozenset[int]:
+    """這個人看得到的頻道編號；帳號不在或停用是空的。"""
+    with session_factory()() as session:
+        user = session.get(AppUser, user_id)
+        if user is None or user.deactivated_at is not None:
+            return frozenset()
+        return frozenset(channels.visible_ids(session, user))
+
+
+class _StatusCache:
+    """大家的狀態，同一個程序裡的連線共用。一個狀態事件會讓每條連線都要一次，以前每條各查一次資料庫，
+    50 條連線就是 50 次，跟發言的請求搶 threadpool 與連線池（docs/superpowers/specs/2026-10-01-channel-rail-design.md）。
+
+    get(since)：since 之後才開始算的那一份（算好的或正在算的）直接共用，不然才重算。
+    since 是呼叫的人收到事件的時間；事件是 commit 之後才發的，之後才開始算的一定看得到那次變動。
+    算失敗的那一份不共用，下一個人重算。不同的 event loop（測試裡每個 TestClient 各一個）各算各的。"""
+
+    def __init__(self) -> None:
+        self._started = -math.inf
+        self._task: asyncio.Task[dict[str, str]] | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
+
+    async def get(self, since: float) -> dict[str, str]:
+        loop = asyncio.get_running_loop()
+        task = self._task
+        stale = (
+            task is None
+            or self._loop is not loop
+            or self._started < since
+            or (task.done() and (task.cancelled() or task.exception() is not None))
+        )
+        if stale:
+            self._started = time.monotonic()
+            self._loop = loop
+            self._task = task = loop.create_task(run_in_threadpool(_statuses))
+        # shield：等的那條連線斷了被取消，不能把大家共用的那一份一起取消
+        return await asyncio.shield(task)
+
+
+_status_cache = _StatusCache()
+```
+
+`_Connection.__init__` 最後加：
+
+```python
+        # 看得到的頻道：連上時算一次，之後隔一陣子重算；中間出現的新頻道第一次有訊息時單獨查一次並記住
+        self.visible: frozenset[int] = frozenset()
+        self.hidden: set[int] = set()
+        self.visible_at = -math.inf
+        self.visible_ttl = VISIBLE_TTL_SECONDS * random.uniform(1, 1.5)
+```
+
+`send_presence` 改成收 `since`，從共用的快取拿：
+
+```python
+    async def send_presence(self, since: float, full: bool = False) -> None:
+        async with self.presence_lock:
+            current = await _status_cache.get(since)
+            ...（以下不變）
+```
+
+加一個方法（放在 `send_presence` 後面）：
+
+```python
+    async def can_see(self, channel_id: int) -> bool:
+        """新訊息通知要不要送給這條連線。看得到的頻道記在連線上，不必每則訊息都查資料庫。"""
+        if time.monotonic() - self.visible_at > self.visible_ttl:
+            self.visible = await run_in_threadpool(_visible_ids, self.user_id)
+            self.hidden = set()
+            self.visible_at = time.monotonic()
+        if channel_id in self.visible:
+            return True
+        if channel_id in self.hidden:
+            return False
+        # 連上之後才出現的頻道：查一次，結果記下來
+        if await run_in_threadpool(_can_see, self.user_id, channel_id):
+            self.visible = self.visible | {channel_id}
+            return True
+        self.hidden.add(channel_id)
+        return False
+```
+
+`listen` 裡：
+
+```python
+            if event.get("type") == "presence":
+                await self.send_presence(time.monotonic())
+            ...
+            elif event.get("type") == "message":
+                channel_id = int(event["channel_id"])
+                # 只通知看得到的人：看不到的頻道連「有新訊息」都不能透露
+                if await self.can_see(channel_id):
+                    await self.send({"type": "message", "channel_id": channel_id})
+```
+
+`sweep` 裡 `await self.send_presence()` 改成 `await self.send_presence(time.monotonic() - SWEEP_SHARE_SECONDS)`。
+
+`run` 裡，`await pubsub.get_message(timeout=5)` 後面、送 `ready` 前面先算一次看得到的頻道（不然第一則訊息時 50 條連線會同時去查）：
+
+```python
+            await self.can_see(0)  # 先把看得到的頻道算好；頻道編號從 1 開始，0 只是觸發
+```
+
+不要用 `can_see(0)` 這種寫法——改成一個明確的方法比較清楚：在 `can_see` 前面把重算抽成 `async def refresh_visible(self) -> None`（`can_see` 過期時呼叫它），`run` 裡呼叫 `await self.refresh_visible()`。
+
+`run` 裡的 `await self.send_presence(full=True)` 改成 `await self.send_presence(time.monotonic(), full=True)`。
+
+模組 docstring 最後加一段：
+
+```
+同一個事件會送到每一條連線：每條連線各查一次資料庫，連線一多就跟發言的請求搶 threadpool 與連線池，
+所以看得到哪些頻道記在連線上、大家的狀態同一個程序裡共用一份（_StatusCache）。
+```
+
+- [ ] **Step 6: 壓力測試腳本的兩個小修** — `backend/scripts/stress_channels.py`
+
+docstring 的指令段落後面加一句：
+`API 與這支腳本要用同一把 JWT_SECRET（backend/.env 沒設的話，API 每次啟動隨機產生一把，腳本簽的 token 會被當成無效）：兩邊的指令前面都加上同一個 JWT_SECRET=…。`
+`topic_id` 裡 `listed = client.get(...)` 改成先 `response = client.get(...)`、`response.raise_for_status()`、再 `listed = response.json()`。
+
+- [ ] **Step 7: 跑測試確認通過**
+
+Run: `TEST_DB_NAME=meddemo_test_rail TEST_REDIS_URL=redis://127.0.0.1:6379/7 uv run --project backend pytest backend/tests/test_presence.py backend/tests/test_channel_topics.py backend/tests/test_channels.py -q`
+Expected: PASS。再跑全套後端測試一次，全部 PASS。
+
+- [ ] **Step 8: 重跑壓力測試**（跟 Task 6 同一套本機環境：`meddemo_rail_dev`、Redis DB 11、API 在 8011，兩邊同一個 `JWT_SECRET`；複製來的 `backend/.env` 跑完刪掉）
+
+Run（API 用目前的程式重新啟動之後）: `JWT_SECRET=… DATABASE_URL=…/meddemo_rail_dev REDIS_URL=redis://127.0.0.1:6379/11 uv run --project backend python backend/scripts/stress_channels.py --base-url http://127.0.0.1:8011`
+Expected: 「通過」，**連跑兩次**都通過；把兩次的輸出原文記進報告。Redis DB 11 的發言用量當天已經用掉約 705/1000，跑之前先清掉這個庫的用量計數（`docker exec meddemo-redis-1 redis-cli -n 11 --scan --pattern 'usage:*'` 找到後 `DEL`；只動 DB 11）。沒通過就照 superpowers:systematic-debugging 找原因，不要調鬆通過條件。
+
+- [ ] **Step 9: 設計文件** — `docs/superpowers/specs/2026-10-01-channel-rail-design.md` 的「測試」段落，壓力測試那一條後面加：
+
+```markdown
+  第一次跑在 50 人時卡死（原本就在 main 上的問題）：請求在換執行緒之間會拿著資料庫連線，連線池（預設 15 條）
+  比 threadpool（40 條）小，WebSocket 又每條連線、每個事件各查一次資料庫，兩邊互等到連線池逾時。
+  修法：連線池加到 20 + 40（`app/db.py`）；每條連線連上時算好看得到的頻道、之後只查新出現的頻道；
+  大家的狀態同一個程序裡共用一份（`api/presence.py`）。
+```
+
+- [ ] **Step 10: Commit**
+
+```bash
+git add backend/app/db.py backend/app/services/channels.py backend/app/api/presence.py backend/scripts/stress_channels.py \
+  backend/tests/test_presence.py docs/superpowers/specs/2026-10-01-channel-rail-design.md
+git commit -m "Keep the API responsive when fifty people post at once
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
