@@ -10,10 +10,12 @@ import {
   durationHabit,
   formatMinutes,
   moveItem,
+  proposalMarks,
   ruleNotes,
   shownStops,
   undoTarget,
   weekdayOf,
+  whichQuestion,
   windowHabit,
   windowLabel,
   withoutStop,
@@ -204,5 +206,27 @@ describe("寫法", () => {
     expect(formatMinutes(50)).toBe("50 分")
     expect(windowLabel("at", "10:30")).toBe("約 10:30 到")
     expect(windowLabel("before", "11:00")).toBe("11:00 以前")
+  })
+})
+
+describe("對照卡", () => {
+  it("只動了一站就只標那一站", () => {
+    expect([...proposalMarks(["A", "B", "C", "D"], ["A", "D", "B", "C"])]).toEqual(["D"])
+  })
+
+  it("新加的站要標，拿掉的不用", () => {
+    expect([...proposalMarks(["A", "B"], ["A", "X", "B"])]).toEqual(["X"])
+    expect([...proposalMarks(["A", "B", "C"], ["A", "C"])]).toEqual([])
+  })
+
+  it("沒動就都不標；整條倒過來只留一站不標", () => {
+    expect(proposalMarks(["A", "B", "C"], ["A", "B", "C"]).size).toBe(0)
+    expect(proposalMarks(["A", "B", "C"], ["C", "B", "A"]).size).toBe(2)
+  })
+
+  it("要選一個的問句", () => {
+    expect(whichQuestion(["康泰 · 忠孝店", "康泰 · 大安店"])).toBe("你是說康泰 · 忠孝店，還是康泰 · 大安店？")
+    expect(whichQuestion(["甲", "乙", "丙"])).toBe("你是說甲、乙，還是丙？")
+    expect(whichQuestion(["甲"])).toBe("你是說甲嗎？")
   })
 })

@@ -9,6 +9,7 @@ export type TranscriptionSession = {
   config: Record<string, unknown>
 }
 
-export function startTranscriptionSession(customerId: string) {
+// 跟熊熊滾說要怎麼排時沒有特定客戶，傳 null
+export function startTranscriptionSession(customerId: string | null) {
   return request<TranscriptionSession>("/api/transcription/session", jsonBody("POST", { customer_id: customerId }))
 }

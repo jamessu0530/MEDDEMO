@@ -216,3 +216,33 @@ export function shownStops(draft: RouteDraft, view: TodayRoute, base: TodayRoute
     return shown ? [{ ...shown, ...stop }] : []
   })
 }
+
+/**
+ * 對照卡「改成」那一欄哪幾站標成換了位置（主色加粗）：新加的站，加上順序跟原本對不上的站。
+ * 原本就照順序的那一長串（最長遞增子序列）不標，所以只動了一站時只標那一站。
+ */
+export function proposalMarks(before: string[], after: string[]): Set<string> {
+  const was = new Map(before.map((id, index) => [id, index]))
+  const kept = after.filter((id) => was.has(id))
+  const ranks = kept.map((id) => was.get(id)!)
+  // 一天最多 8 站，用 O(n²) 的寫法就好
+  const length = ranks.map(() => 1)
+  const previous = ranks.map(() => -1)
+  for (let i = 0; i < ranks.length; i++) {
+    for (let j = 0; j < i; j++) {
+      if (ranks[j] < ranks[i] && length[j] + 1 > length[i]) {
+        length[i] = length[j] + 1
+        previous[i] = j
+      }
+    }
+  }
+  const steady = new Set<string>()
+  for (let at = length.indexOf(Math.max(0, ...length)); at >= 0; at = previous[at]) steady.add(kept[at])
+  return new Set(after.filter((id) => !steady.has(id)))
+}
+
+/** 名字對到好幾家時問的那一句：「你是說康泰 · 忠孝店，還是康泰 · 大安店？」 */
+export function whichQuestion(names: string[]) {
+  if (names.length <= 1) return `你是說${names[0] ?? ""}嗎？`
+  return `你是說${names.slice(0, -1).join("、")}，還是${names[names.length - 1]}？`
+}

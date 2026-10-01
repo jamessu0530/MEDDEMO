@@ -140,6 +140,35 @@ export type RouteCandidate = {
 
 export type RouteCandidates = { nearby: RouteCandidate[]; others: RouteCandidate[]; full: boolean }
 
+export type ProposalStop = { customer_id: string; customer_name: string; planned_time: string; late_minutes: number }
+
+export type ProposalSide = { stops: ProposalStop[]; travel_minutes: number; travel_km: number }
+
+// 跟熊熊滾說要怎麼排、「幫我排順一點」回來的對照卡（後端 api/itinerary.py 的 ProposalOut）。
+// 一行一行的字（規則的代價、會晚到、做不到的部分…）都是後端寫好的
+export type RouteProposal = {
+  id: number
+  // 業務說的那句話；按「幫我排順一點」是 null
+  question: string | null
+  // proposal：提案（changed 是 false 時沒有「套用」）；conflict：規則互相衝突排不出來；ask_which：要選一個；answer：只回答
+  kind: "proposal" | "conflict" | "ask_which" | "answer"
+  summary: string
+  changed: boolean
+  before: ProposalSide | null
+  after: ProposalSide | null
+  rule_costs: string[]
+  late: string[]
+  habits_added: string[]
+  habits_disabled: string[]
+  dropped: string[]
+  notes: string[]
+  conflict: string[]
+  mention: string | null
+  candidates: { customer_id: string; customer_name: string }[]
+  text: string | null
+  estimated: boolean
+}
+
 // 跟客戶清單一樣（FR-4.3）：載入成功就記在手機裡，路上沒訊號時至少看得到上次那份
 const ROUTE_CACHE_KEY = "meddemo:route"
 
@@ -221,6 +250,26 @@ export async function saveToday(userId: string, version: number, draft: RouteDra
 export function getCandidates(order: string[], locked: string[], signal?: AbortSignal) {
   const query = new URLSearchParams({ order: order.join(","), locked: locked.join(",") })
   return request<RouteCandidates>(`/api/itinerary/today/candidates?${query}`, { signal })
+}
+
+/** 跟熊熊滾說要怎麼排（同步，通常 3～5 秒）：回對照卡，還沒套用。customerId 是「要選一個」時按的那一家 */
+export function askRoute(question: string, customerId?: string) {
+  return request<RouteProposal>(
+    "/api/itinerary/today/ask",
+    jsonBody("POST", { question, customer_id: customerId ?? null })
+  )
+}
+
+/** 「幫我排順一點」：整條重排，回同一種對照卡 */
+export function optimizeRoute() {
+  return request<RouteProposal>("/api/itinerary/today/optimize", { method: "POST" })
+}
+
+/** 套用提案：後端照存下來的操作在最新的行程上再做一次；行程在問完之後改過了回 409 */
+export async function applyProposal(userId: string, id: number) {
+  const route = await request<TodayRoute>(`/api/itinerary/proposals/${id}/apply`, { method: "POST" })
+  writeCache(routeKey(userId), route)
+  return route
 }
 
 /** 還沒跑的站數（不算剛回寫完的那一家）；回寫完成頁的「回今日路線 · 還有 N 站」用 */
