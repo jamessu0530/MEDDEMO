@@ -166,10 +166,11 @@ export function FacebookButton({ appId, label, variant, className, disabled, onT
   }
 
   const brand = variant === "brand"
+  // Facebook 藍的按鈕：厚底也換成深一點的藍（default 的厚底讀 --primary-lip，在按鈕上蓋掉）
   return (
     <Button
       variant={brand ? "default" : "outline"}
-      className={cn(brand && "bg-[#1877F2] text-white hover:bg-[#1877F2]/90", className)}
+      className={cn(brand && "bg-[#1877F2] text-white [--primary-lip:#0F5BC4] hover:bg-[#1877F2]/90", className)}
       disabled={disabled || waiting || status !== "ready"}
       onClick={start}
     >
@@ -213,7 +214,7 @@ export function NotReadyButton({ provider, label, variant, className, onNotReady
     <Button
       variant={brand && provider === "facebook" ? "default" : "outline"}
       className={cn(
-        brand && provider === "facebook" && "bg-[#1877F2] text-white hover:bg-[#1877F2]/90",
+        brand && provider === "facebook" && "bg-[#1877F2] text-white [--primary-lip:#0F5BC4] hover:bg-[#1877F2]/90",
         brand && provider === "google" && "bg-white text-[#1f1f1f] hover:bg-white/90",
         className
       )}

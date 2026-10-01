@@ -100,7 +100,7 @@ export function MethodsPage() {
               </NativeSelect>
             </div>
             {/* 「情況」標籤，一排橫向捲動；再點一次已選的那個就取消 */}
-            <div className="-mx-4 flex gap-2 overflow-x-auto px-4">
+            <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1.5">
               {[null, ...TAGS].map((value) => (
                 <button
                   key={value ?? "all"}
@@ -108,8 +108,10 @@ export function MethodsPage() {
                   aria-pressed={tag === value}
                   onClick={() => setTag(value === tag ? null : value)}
                   className={cn(
-                    "h-9 shrink-0 rounded-full border px-4 text-sm",
-                    tag === value ? "border-primary bg-primary text-primary-foreground" : "bg-card text-muted-foreground"
+                    "h-9 shrink-0 rounded-full border-2 px-4 text-sm press",
+                    tag === value
+                      ? "border-primary bg-primary text-primary-foreground shadow-lip-primary"
+                      : "bg-card text-muted-foreground shadow-lip"
                   )}
                 >
                   {value ? TAG_LABELS[value] : "全部"}

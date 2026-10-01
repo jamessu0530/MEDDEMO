@@ -29,6 +29,7 @@ import { Label } from "@/components/ui/label"
 import { changeSkin, playInk } from "@/ink/ink"
 import { canManage, homePath, refreshUser, signIn, useAuth, type AuthUser } from "@/lib/auth"
 import { PROVIDER_LABEL, useProviders, type OAuthProvider } from "@/lib/oauth"
+import { openGuide } from "@/lib/onboarding"
 import { useSkin, type Skin } from "@/lib/skin"
 import { cn } from "@/lib/utils"
 
@@ -65,7 +66,7 @@ function SkinPicker() {
             aria-checked={skin === id}
             onClick={() => changeSkin(id)}
             className={cn(
-              "flex h-12 items-center justify-center gap-2 rounded-xl border bg-card text-sm font-medium",
+              "flex h-12 items-center justify-center gap-2 rounded-xl border-2 bg-card text-sm font-medium shadow-lip press",
               skin === id && "border-primary ring-1 ring-primary"
             )}
           >
@@ -230,7 +231,7 @@ function LinkedAccounts({ user, providers }: { user: AuthUser; providers: OAuthP
         </p>
       </div>
 
-      <ul className="divide-y rounded-2xl border bg-card">
+      <ul className="divide-y rounded-2xl border-2 bg-card shadow-lip">
         {PROVIDERS.map((provider) => {
           const linked = user.linked?.find((account) => account.provider === provider)
           const label = PROVIDER_LABEL[provider]
@@ -396,7 +397,7 @@ function DeleteAccount() {
   )
 }
 
-/** 帳號設定：看自己的身分、綁定第三方登入、改密碼、登出。業務從今日路線標頭的姓名進來，主管與 IT 從各自首頁的標頭進來 */
+/** 帳號設定：看自己的身分、綁定第三方登入、改密碼、登出、再看一次使用說明。業務從今日路線標頭的姓名進來，主管與 IT 從各自首頁的標頭進來 */
 export function SettingsPage() {
   const session = useAuth()
   const user = session?.user
@@ -442,7 +443,7 @@ export function SettingsPage() {
     <div className="flex min-h-svh flex-col">
       <PageHeader title="帳號設定" backTo={homePath(user.role)} />
       <main className="flex flex-1 flex-col gap-5 px-4 pt-4 pb-10">
-        <section className="rounded-2xl border bg-card p-4">
+        <section className="rounded-2xl border-2 bg-card p-4 shadow-lip">
           <NameEditor user={user} />
           <p className="mt-1 text-sm text-muted-foreground">
             {user.region} · {ROLE_LABEL[user.role]}
@@ -459,7 +460,7 @@ export function SettingsPage() {
 
         <Link
           to={canManage(user.role) ? "/manager?view=oa" : "/oa/forms"}
-          className="flex min-h-14 items-center justify-between rounded-2xl border bg-card px-4"
+          className="flex min-h-14 items-center justify-between rounded-2xl border-2 bg-card px-4 shadow-lip press"
         >
           <span className="text-sm font-medium">{canManage(user.role) ? "OA 簽核匣" : "我的申請單"}</span>
           <ChevronRight className="size-4 text-muted-foreground" />
@@ -467,10 +468,22 @@ export function SettingsPage() {
 
         {/* 業務帳號隨時可以回去看；過了新人期首頁不再顯示入口卡，這裡是唯一的入口 */}
         {user.role === "sales" && (
-          <Link to="/first-week" className="flex min-h-14 items-center justify-between rounded-2xl border bg-card px-4">
+          <Link to="/first-week" className="flex min-h-14 items-center justify-between rounded-2xl border-2 bg-card px-4 shadow-lip press">
             <span className="text-sm font-medium">新人第一週</span>
             <ChevronRight className="size-4 text-muted-foreground" />
           </Link>
+        )}
+
+        {user.role === "sales" && (
+          // 首頁的頁首放不下了，使用說明從這裡（和客戶清單的頁首）再打開；只講業務的操作，主管端也不顯示導覽
+          <button
+            type="button"
+            onClick={openGuide}
+            className="flex min-h-14 items-center justify-between rounded-2xl border-2 bg-card px-4 text-left shadow-lip press"
+          >
+            <span className="text-sm font-medium">看使用說明</span>
+            <ChevronRight className="size-4 text-muted-foreground" />
+          </button>
         )}
 
         <SkinPicker />

@@ -39,7 +39,7 @@ export function MethodCardItem({ card, customerId, onChanged }: MethodCardItemPr
   }
 
   return (
-    <article className="rounded-2xl border bg-card">
+    <article className="rounded-2xl border-2 bg-card shadow-lip">
       <button
         type="button"
         aria-expanded={open}

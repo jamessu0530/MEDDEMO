@@ -140,7 +140,7 @@ export function MyStatusSection() {
   return (
     <section className="flex flex-col gap-3">
       <h2 className="text-sm font-semibold">狀態</h2>
-      <div className="flex items-center gap-3 rounded-2xl border bg-card p-4">
+      <div className="flex items-center gap-3 rounded-2xl border-2 bg-card p-4 shadow-lip">
         <UserAvatar id={user.id} name={user.name} status={status} size="lg" />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium">{label}</p>

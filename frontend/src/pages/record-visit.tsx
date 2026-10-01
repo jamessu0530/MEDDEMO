@@ -250,7 +250,7 @@ export function RecordVisit() {
               type="button"
               onClick={start}
               aria-label="開始錄音"
-              className="flex size-28 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 active:scale-95"
+              className="flex size-28 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lip-node press"
             >
               <Mic className="size-10" />
             </button>
@@ -271,7 +271,7 @@ export function RecordVisit() {
             </div>
             <p className="font-mono text-5xl font-semibold tabular-nums">{formatElapsed(elapsed)}</p>
             {/* FR-4.2：邊講邊看到文字。正式逐字稿還是錄完後由語音辨識產生 */}
-            <div className="w-full max-w-sm rounded-2xl border bg-card px-4 py-3 text-left">
+            <div className="w-full max-w-sm rounded-2xl border-2 bg-card px-4 py-3 text-left shadow-lip">
               <p className="text-[11px] tracking-wide text-muted-foreground">即時轉錄</p>
               {live.status === "offline" && (
                 <p className="mt-1 text-sm text-muted-foreground">沒有網路：錄音會先存在手機，恢復連線後再整理。</p>
@@ -366,7 +366,7 @@ function SavedOnPhone({ offline, reason, onContinue }: { offline: boolean; reaso
           {reason ?? (offline ? "這個位置沒有訊號，紀錄不會遺失" : "現在連不上伺服器，紀錄不會遺失")}
         </p>
       </div>
-      <div className="w-full rounded-xl border bg-card px-4 text-left">
+      <div className="w-full rounded-xl border-2 bg-card px-4 text-left shadow-lip">
         {pending.map((item) => (
           <div key={item.clientRef} className="flex min-h-14 items-center gap-3 border-b py-2">
             <div className="min-w-0 flex-1">
@@ -384,7 +384,7 @@ function SavedOnPhone({ offline, reason, onContinue }: { offline: boolean; reaso
           <span className="text-sm font-semibold">{pending.length} 筆</span>
         </div>
       </div>
-      <p className="w-full rounded-xl border bg-card px-4 py-3 text-left text-sm text-muted-foreground">
+      <p className="w-full rounded-xl border-2 bg-card px-4 py-3 text-left text-sm text-muted-foreground shadow-lip">
         {reason ? "錄音先存在手機，過了上限的時間會自動送出，不需要再操作一次。" : "回到有收訊的地方會自動送出，不需要再操作一次。"}
       </p>
       <Button className="h-12 w-full text-base" onClick={onContinue}>

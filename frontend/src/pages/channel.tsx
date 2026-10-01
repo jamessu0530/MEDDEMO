@@ -529,7 +529,7 @@ function MessageBubble({
           <p
             className={cn(
               "rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap",
-              message.mine ? "bg-primary text-primary-foreground" : "border bg-card"
+              message.mine ? "bg-primary text-primary-foreground" : "border-2 bg-card"
             )}
           >
             {message.body}

@@ -109,7 +109,7 @@ type FieldRowProps = {
 function FieldRow({ label, value, unsourced, onEdit, children }: FieldRowProps) {
   return (
     <li>
-      <button type="button" onClick={onEdit} className="w-full rounded-xl border bg-card px-4 py-3 text-left active:bg-muted">
+      <button type="button" onClick={onEdit} className="w-full rounded-xl border-2 bg-card px-4 py-3 text-left shadow-lip press">
         <div className="flex items-start gap-3">
           <span className="w-9 shrink-0 pt-0.5 text-sm text-muted-foreground">{label}</span>
           <span className={cn("min-w-0 flex-1 text-sm", value ? "font-medium" : "text-muted-foreground")}>
@@ -127,7 +127,7 @@ function FieldRow({ label, value, unsourced, onEdit, children }: FieldRowProps) 
 function TranscriptPanel({ transcript, sources }: { transcript: string; sources: Visit["sources"] }) {
   const [open, setOpen] = useState(false)
   return (
-    <section className="rounded-xl border bg-card">
+    <section className="rounded-xl border-2 bg-card shadow-lip">
       <button type="button" onClick={() => setOpen(!open)} className="flex h-12 w-full items-center gap-2 px-4 text-sm">
         <span className="font-medium">逐字稿</span>
         <span className="flex-1 text-left text-muted-foreground">對照每個欄位的來源</span>

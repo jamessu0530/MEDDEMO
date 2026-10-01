@@ -59,7 +59,7 @@ export function ChannelThreadsPage() {
           <Notice text="這裡的客戶還沒有人開討論串。要開一個，從客戶檔案右上角的「討論串」進去。" />
         )}
         {state.status === "ready" && state.threads.length > 0 && (
-          <div className="overflow-hidden rounded-2xl border bg-card">
+          <div className="overflow-hidden rounded-2xl border-2 bg-card shadow-lip">
             {state.threads.map((thread) => (
               <ChannelRow key={thread.id} channel={thread} backTo={`/channels/${id}/threads`} />
             ))}

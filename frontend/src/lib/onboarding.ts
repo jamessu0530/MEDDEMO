@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react"
 
-// FR-11：第一次打開 App 時說明三個主要操作；看過就記在手機裡，之後從首頁的「使用說明」再打開
+// FR-11：第一次打開 App 時說明三個主要操作；看過就記在手機裡，之後從帳號設定或客戶清單頁首的「使用說明」再打開
 const STORAGE_KEY = "meddemo:onboarded"
 const listeners = new Set<() => void>()
 let open = !hasSeen()

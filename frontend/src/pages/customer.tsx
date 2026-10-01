@@ -151,7 +151,7 @@ export function CustomerPage() {
         {threadError && <p className="rounded-xl bg-destructive/10 px-3 py-2 text-sm text-destructive">{threadError}</p>}
         {/* IT 可以把這家交給別的業務；換完重新載入，負責人就是新的那位 */}
         {user?.role === "it" && <ReassignOwner customer={customer} onDone={() => setAttempt((n) => n + 1)} />}
-        <section className="rounded-2xl border border-primary/20 bg-primary/10 p-4">
+        <section className="rounded-2xl border-2 border-primary/20 bg-primary/10 p-4 shadow-lip-primary-soft">
           <p className="text-xs font-semibold tracking-wide text-primary">進門前三分鐘</p>
           <ul className="mt-2 flex list-disc flex-col gap-1.5 pl-4 text-sm leading-relaxed">
             {profile.highlights.map((line) => (
@@ -218,7 +218,7 @@ function arTone(days: number | null): Tone {
 
 function StatCard({ label, value, unit, note, tone }: { label: string; value: string | number; unit: string; note?: string; tone?: Tone }) {
   return (
-    <div className="flex flex-col gap-1 rounded-xl border bg-card p-3">
+    <div className="flex flex-col gap-1 rounded-xl border-2 bg-card p-3 shadow-lip">
       <p className="text-[11px] text-muted-foreground">{label}</p>
       <p className={cn("text-lg font-semibold tabular-nums", tone === "alert" && "text-destructive", tone === "warn" && "text-warning")}>
         {value}
@@ -233,7 +233,7 @@ function StatCard({ label, value, unit, note, tone }: { label: string; value: st
 function IntervalChart({ intervals, alert }: { intervals: CustomerProfile["intervals"]; alert: boolean }) {
   const max = Math.max(1, ...intervals.map((item) => item.gap_days ?? 0))
   return (
-    <section className="rounded-2xl border bg-card p-4">
+    <section className="rounded-2xl border-2 bg-card p-4 shadow-lip">
       <p className="text-sm font-semibold">每月進貨間隔</p>
       <p className="text-[11px] text-muted-foreground">每次進貨距離上一次幾天，算在進貨的那個月</p>
       <div className="mt-3 flex h-36 items-end gap-2">
@@ -266,7 +266,7 @@ function ContractRow({ customerId, contract }: { customerId: string; contract: C
   const left = contract.days_left ?? 0
   return (
     <section
-      className={cn("flex items-center gap-3 rounded-2xl border bg-card px-4 py-3", contract.ending_soon && "border-warning/60")}
+      className={cn("flex items-center gap-3 rounded-2xl border-2 bg-card px-4 py-3 shadow-lip", contract.ending_soon && "border-warning/60")}
     >
       <div className="min-w-0 flex-1">
         <p className="text-sm font-semibold">
@@ -325,7 +325,7 @@ function PendingItems({ profile }: { profile: CustomerProfile }) {
     })),
   ]
   return (
-    <section className="rounded-2xl border bg-card px-4 pb-1">
+    <section className="rounded-2xl border-2 bg-card px-4 pb-1 shadow-lip">
       <p className="py-3 text-sm font-semibold">待處理事項</p>
       {rows.length === 0 && <p className="pb-3 text-sm text-muted-foreground">沒有待處理的事項。</p>}
       {rows.map((row) => (
@@ -354,7 +354,7 @@ function PendingItems({ profile }: { profile: CustomerProfile }) {
 /** FR-2.3：過去拜訪提到過的競品 */
 function Competitors({ competitors }: { competitors: CustomerProfile["competitors"] }) {
   return (
-    <section className="rounded-2xl border bg-card px-4 pb-1">
+    <section className="rounded-2xl border-2 bg-card px-4 pb-1 shadow-lip">
       <p className="py-3 text-sm font-semibold">競品紀錄</p>
       {competitors.length === 0 && <p className="pb-3 text-sm text-muted-foreground">過去的拜訪沒有提到競品。</p>}
       {competitors.map((item) => (
