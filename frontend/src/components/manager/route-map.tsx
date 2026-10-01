@@ -103,11 +103,11 @@ export default function RouteMap({ config, routes, removed = [], onFail }: Props
   )
 }
 
-/** 金鑰被拒（AUTH_FAILURE）或程式載不下來（FAILED）：交給外面換成說明 */
+/** 程式載不下來（FAILED）交給外面換成說明；金鑰被拒由 map-slot.tsx 的 gm_authFailure 處理 */
 function LoadWatch({ onFail }: { onFail: () => void }) {
   const status = useApiLoadingStatus()
   useEffect(() => {
-    if (status === APILoadingStatus.FAILED || status === APILoadingStatus.AUTH_FAILURE) onFail()
+    if (status === APILoadingStatus.FAILED) onFail()
   }, [status, onFail])
   return null
 }

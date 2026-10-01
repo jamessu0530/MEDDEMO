@@ -5,6 +5,16 @@ import { getMapsConfig, type MapsConfig, type RemovedStop, type RepRoute } from 
 // 用 import() 另外打包：Google 地圖與 @vis.gl/react-google-maps 只有主管頁的行程分頁用得到
 const RouteMap = lazy(() => import("@/components/manager/route-map"))
 
+declare global {
+  interface Window {
+    gm_authFailure?: () => void
+  }
+}
+
+// Google 只在金鑰被拒（金鑰錯、網域不對、沒開帳單）時呼叫全域的 gm_authFailure，而且整個頁面只呼叫一次；
+// 記在模組裡，之後每一個地圖區塊（總覽、詳細）都直接顯示說明，不再載入
+let authFailed = false
+
 /**
  * 主管頁的地圖區塊。先問後端有沒有瀏覽器金鑰（GET /api/maps/config，不寫進前端的建置）；
  * 沒有金鑰、Google 的程式載不下來或金鑰被拒，就換成一行「地圖暫時載入不了」，下面的清單照常。
@@ -12,7 +22,7 @@ const RouteMap = lazy(() => import("@/components/manager/route-map"))
 export function MapSlot({ routes, removed }: { routes: RepRoute[]; removed?: RemovedStop[] }) {
   // undefined：還在問；null：沒有瀏覽器金鑰
   const [config, setConfig] = useState<MapsConfig | undefined>(undefined)
-  const [failed, setFailed] = useState(false)
+  const [failed, setFailed] = useState(() => authFailed)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -22,6 +32,19 @@ export function MapSlot({ routes, removed }: { routes: RepRoute[]; removed?: Rem
         if (!controller.signal.aborted) setConfig(null)
       })
     return () => controller.abort()
+  }, [])
+
+  // 金鑰被拒：@vis.gl/react-google-maps 目前這版不會把 loading status 設成 AUTH_FAILURE，
+  // Google 的程式碼直接呼叫這個全域函式；接住它，不然 Google 會自己畫一個「糟糕！」的灰底框
+  useEffect(() => {
+    const previous = window.gm_authFailure
+    window.gm_authFailure = () => {
+      authFailed = true
+      setFailed(true)
+    }
+    return () => {
+      window.gm_authFailure = previous
+    }
   }, [])
 
   if (config === undefined) return <MapPlaceholder />
