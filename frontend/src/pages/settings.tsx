@@ -42,11 +42,14 @@ const NAME_MAX = 32
 
 // 色票是固定的顏色，不跟著目前的配色變：要讓人看得出另一個選項長什麼樣子
 const SKINS: { id: Skin; label: string; swatch: string }[] = [
-  { id: "purple", label: "紫色", swatch: "#9B51E0" },
-  { id: "mono", label: "黑白灰", swatch: "linear-gradient(90deg, #121212 0 34%, #8E8E8C 34% 67%, #F4F4F2 67%)" },
+  { id: "light", label: "淺色", swatch: "#9B51E0" },
+  { id: "dark", label: "深色", swatch: "linear-gradient(90deg, #141414 0 50%, #8C8C89 50%)" },
 ]
 
-/** 配色：紫色或黑白灰，記在這支手機裡。換的時候用噴漆把整個畫面染成新的顏色（ink/ink.ts 的 changeSkin） */
+/**
+ * 配色：淺色（紫）或深色（黑灰），記在這支手機裡。首頁的頁首也有一顆切換鈕（components/skin-toggle.tsx）。
+ * 換的時候用噴漆把整個畫面染成新的顏色（ink/ink.ts 的 changeSkin）
+ */
 function SkinPicker() {
   const skin = useSkin()
   return (

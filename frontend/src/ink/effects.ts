@@ -22,7 +22,7 @@ function trim(pathname: string) {
 
 /**
  * 從 from 換到 to 要播哪一種：底部分頁之間是墨暈，進出登入那幾頁是潑墨，其餘（進入或返回內頁）是刷痕。
- * 同一頁（只換查詢參數或 state）回 null，不播。噴漆不在這裡，留給設定頁換配色（ink/ink.ts 的 changeSkin）。
+ * 同一頁（只換查詢參數或 state）回 null，不播。噴漆不在這裡，留給換深色、淺色（ink/ink.ts 的 changeSkin）。
  */
 export function pickEffect(from: string, to: string): InkEffect | null {
   const a = trim(from)
@@ -42,10 +42,11 @@ function rgb(hex: number): Rgb {
   return [((hex >> 16) & 255) / 255, ((hex >> 8) & 255) / 255, (hex & 255) / 255]
 }
 
-// 主色跟 index.css 的 --primary 一致；aged 是同一個配色裡墨放久一點的顏色
+// 淺色的主色跟 index.css 的 --primary 一致；aged 是同一個配色裡墨放久一點的顏色
+// 深色不用主色（近白）當墨：每換一頁整個畫面閃一下白太刺眼，改用中灰，放久了沉到接近底色
 const INK: Record<Skin, { primary: Rgb; aged: Rgb; wash: Rgb }> = {
-  purple: { primary: rgb(0x9b51e0), aged: rgb(0x6a2bbe), wash: rgb(0xc9a2f5) },
-  mono: { primary: rgb(0x141414), aged: rgb(0x4a4a48), wash: rgb(0xa8a8a5) },
+  light: { primary: rgb(0x9b51e0), aged: rgb(0x6a2bbe), wash: rgb(0xc9a2f5) },
+  dark: { primary: rgb(0x5c5c5a), aged: rgb(0x2e2e2d), wash: rgb(0x8c8c89) },
 }
 
 /** 墨的顏色跟著配色；換配色的那一次（to 跟 from 不同）從舊配色的主色染到新配色的主色 */

@@ -17,6 +17,7 @@ import {
 import { ChannelsLink } from "@/components/channels-link"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
+import { SkinToggle } from "@/components/skin-toggle"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -87,6 +88,7 @@ export function AdminPage() {
         subtitle="IT"
         trailing={
           <>
+            <SkinToggle className="size-11" />
             <ChannelsLink />
             <Link
               to="/settings"

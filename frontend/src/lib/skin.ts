@@ -1,29 +1,31 @@
 import { useSyncExternalStore } from "react"
 
-// 配色：紫色是原本的樣子，黑白灰在設定頁切換。選了什麼記在這支手機裡，跟帳號無關
-export type Skin = "purple" | "mono"
+// 配色：淺色是原本的紫色，深色是黑灰底。首頁的頁首與設定頁都能切換。選了什麼記在這支手機裡，跟帳號無關
+export type Skin = "light" | "dark"
 
 const STORAGE_KEY = "meddemo:skin"
 const listeners = new Set<() => void>()
 
 function read(): Skin {
   try {
-    return localStorage.getItem(STORAGE_KEY) === "mono" ? "mono" : "purple"
+    const stored = localStorage.getItem(STORAGE_KEY)
+    // "mono" 是之前的黑白灰：選過它的人換成深色
+    return stored === "dark" || stored === "mono" ? "dark" : "light"
   } catch {
-    return "purple" // 讀不到（無痕模式）就用原本的紫色
+    return "light" // 讀不到（無痕模式）就用原本的淺色
   }
 }
 
 let current = read()
 
-/** 掛到 <html data-skin>，index.css 黑白灰那一組顏色靠它生效；紫色是預設，不掛 */
+/** 掛到 <html data-skin>，index.css 深色那一組顏色靠它生效；淺色是預設，不掛 */
 function apply() {
   if (typeof document === "undefined") return
-  if (current === "mono") document.documentElement.dataset.skin = "mono"
+  if (current === "dark") document.documentElement.dataset.skin = "dark"
   else delete document.documentElement.dataset.skin
 }
 
-// 一載入就掛：main.tsx 在畫第一個畫面之前就會載到這裡，不會先閃一下紫色
+// 一載入就掛：main.tsx 在畫第一個畫面之前就會載到這裡。index.html 裡另有一小段更早就掛，免得先閃一下淺色
 apply()
 
 export function readSkin() {
@@ -38,7 +40,7 @@ export function setSkin(skin: Skin) {
   try {
     localStorage.setItem(STORAGE_KEY, skin)
   } catch {
-    // 存不進去：這次打開照樣換，下次打開回到紫色
+    // 存不進去：這次打開照樣換，下次打開回到淺色
   }
   listeners.forEach((listener) => listener())
 }

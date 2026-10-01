@@ -7,6 +7,7 @@ import { ApiError } from "@/api/client"
 import { getTodayRoute, SIGNAL_LABEL, type RouteSignal, type RouteStop, type TodayRoute } from "@/api/route"
 import { BottomNav } from "@/components/bottom-nav"
 import { Notice } from "@/components/notice"
+import { SkinToggle } from "@/components/skin-toggle"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/lib/auth"
 import { formatDate } from "@/lib/format"
@@ -100,7 +101,7 @@ export function TodayPage() {
         <div className="-mr-2 flex items-center justify-between gap-2">
           {/* 點自己的名字進帳號設定：改密碼、登出 */}
           <Link to="/settings" className="flex h-11 min-w-0 items-center gap-1 text-xs text-muted-foreground">
-            {/* 示範說明另起一行：標頭右邊有四顆圖示，接在名字後面的話手機上整句會被截掉 */}
+            {/* 示範說明另起一行：標頭右邊有五顆圖示，接在名字後面的話手機上整句會被截掉 */}
             <span className="flex min-w-0 flex-col leading-tight">
               <span className="truncate">
                 {user.region} · {user.name}
@@ -110,6 +111,7 @@ export function TodayPage() {
             <ChevronRight className="size-3.5 shrink-0" />
           </Link>
           <div className="flex shrink-0 items-center">
+            <SkinToggle className="size-10" />
             <button
               type="button"
               aria-label="使用說明"

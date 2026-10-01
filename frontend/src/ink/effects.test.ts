@@ -43,24 +43,24 @@ describe("INK_DURATION", () => {
 
 describe("inkColors", () => {
   it("同一個配色裡，墨從主色走到同色系較深或較淺的顏色", () => {
-    const purple = inkColors("purple")
-    expect(purple.from).toEqual([0x9b / 255, 0x51 / 255, 0xe0 / 255])
-    expect(purple.to).not.toEqual(purple.from)
-    expect(purple.washFrom).toEqual(purple.washTo)
+    const light = inkColors("light")
+    expect(light.from).toEqual([0x9b / 255, 0x51 / 255, 0xe0 / 255])
+    expect(light.to).not.toEqual(light.from)
+    expect(light.washFrom).toEqual(light.washTo)
 
-    const mono = inkColors("mono")
-    // 黑白灰的墨三個色版一樣，沒有顏色
-    for (const color of [mono.from, mono.to, mono.washFrom]) {
+    const dark = inkColors("dark")
+    // 深色的墨三個色版一樣，是灰的，沒有顏色
+    for (const color of [dark.from, dark.to, dark.washFrom]) {
       expect(Math.max(...color) - Math.min(...color)).toBeLessThan(0.02)
     }
   })
 
   it("換配色那一次，從舊配色的主色染到新配色的主色", () => {
-    const colors = inkColors("purple", "mono")
-    expect(colors.from).toEqual(inkColors("purple").from)
-    expect(colors.to).toEqual(inkColors("mono").from)
-    expect(colors.washFrom).toEqual(inkColors("purple").washFrom)
-    expect(colors.washTo).toEqual(inkColors("mono").washFrom)
+    const colors = inkColors("light", "dark")
+    expect(colors.from).toEqual(inkColors("light").from)
+    expect(colors.to).toEqual(inkColors("dark").from)
+    expect(colors.washFrom).toEqual(inkColors("light").washFrom)
+    expect(colors.washTo).toEqual(inkColors("dark").washFrom)
   })
 })
 

@@ -23,23 +23,30 @@ afterEach(() => {
 const load = () => import("@/lib/skin")
 
 describe("skin", () => {
-  it("沒選過就是紫色，<html> 上不掛東西", async () => {
+  it("沒選過就是淺色，<html> 上不掛東西", async () => {
     const { readSkin } = await load()
-    expect(readSkin()).toBe("purple")
+    expect(readSkin()).toBe("light")
     expect(dataset.skin).toBeUndefined()
   })
 
-  it("選過黑白灰，一載入就掛上 data-skin", async () => {
-    stored["meddemo:skin"] = "mono"
+  it("選過深色，一載入就掛上 data-skin", async () => {
+    stored["meddemo:skin"] = "dark"
     const { readSkin } = await load()
-    expect(readSkin()).toBe("mono")
-    expect(dataset.skin).toBe("mono")
+    expect(readSkin()).toBe("dark")
+    expect(dataset.skin).toBe("dark")
   })
 
-  it("存的值看不懂就當作紫色", async () => {
+  it("之前選了黑白灰的人換成深色", async () => {
+    stored["meddemo:skin"] = "mono"
+    const { readSkin } = await load()
+    expect(readSkin()).toBe("dark")
+    expect(dataset.skin).toBe("dark")
+  })
+
+  it("存的值看不懂就當作淺色", async () => {
     stored["meddemo:skin"] = "rainbow"
     const { readSkin } = await load()
-    expect(readSkin()).toBe("purple")
+    expect(readSkin()).toBe("light")
   })
 
   it("setSkin 會換掉 data-skin、記在手機裡，並通知畫面", async () => {
@@ -47,22 +54,22 @@ describe("skin", () => {
     const listener = vi.fn()
     onSkinChange(listener)
 
-    setSkin("mono")
-    expect(readSkin()).toBe("mono")
-    expect(dataset.skin).toBe("mono")
-    expect(stored["meddemo:skin"]).toBe("mono")
+    setSkin("dark")
+    expect(readSkin()).toBe("dark")
+    expect(dataset.skin).toBe("dark")
+    expect(stored["meddemo:skin"]).toBe("dark")
     expect(listener).toHaveBeenCalledTimes(1)
 
-    setSkin("mono") // 沒變就不通知
+    setSkin("dark") // 沒變就不通知
     expect(listener).toHaveBeenCalledTimes(1)
 
-    setSkin("purple")
+    setSkin("light")
     expect(dataset.skin).toBeUndefined()
-    expect(stored["meddemo:skin"]).toBe("purple")
+    expect(stored["meddemo:skin"]).toBe("light")
     expect(listener).toHaveBeenCalledTimes(2)
   })
 
-  it("手機存不進去（無痕模式）也照樣換，只是下次打開會回到紫色", async () => {
+  it("手機存不進去（無痕模式）也照樣換，只是下次打開會回到淺色", async () => {
     vi.stubGlobal("localStorage", {
       getItem: () => {
         throw new Error("blocked")
@@ -72,9 +79,9 @@ describe("skin", () => {
       },
     })
     const { readSkin, setSkin } = await load()
-    expect(readSkin()).toBe("purple")
-    setSkin("mono")
-    expect(readSkin()).toBe("mono")
-    expect(dataset.skin).toBe("mono")
+    expect(readSkin()).toBe("light")
+    setSkin("dark")
+    expect(readSkin()).toBe("dark")
+    expect(dataset.skin).toBe("dark")
   })
 })

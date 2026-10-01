@@ -10,6 +10,7 @@ import { ChannelsLink } from "@/components/channels-link"
 import { MethodCardForm } from "@/components/method-card-form"
 import { Notice } from "@/components/notice"
 import { OaModelNote } from "@/components/oa-model"
+import { SkinToggle } from "@/components/skin-toggle"
 import { PageHeader } from "@/components/page-header"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -75,6 +76,7 @@ export function ManagerPage() {
         subtitle="主管端"
         trailing={
           <>
+            <SkinToggle className="size-11" />
             <ChannelsLink />
             {user?.role === "it" && (
               <Link to="/admin" aria-label="組織管理" className={HEADER_BUTTON}>

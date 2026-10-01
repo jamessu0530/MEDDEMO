@@ -51,7 +51,7 @@ function setup({ canAnimate = true, attach = true } = {}) {
     for (let i = 0; i < 500 && !done(); i++) await step(ms)
     expect(done()).toBe(true)
   }
-  const request = (extra: Partial<InkRequest> = {}): InkRequest => ({ effect: "brush", colors: inkColors("purple"), ...extra })
+  const request = (extra: Partial<InkRequest> = {}): InkRequest => ({ effect: "brush", colors: inkColors("light"), ...extra })
   return { ink, surface, drawn, step, until, request }
 }
 
