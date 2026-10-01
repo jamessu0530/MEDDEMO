@@ -3,7 +3,7 @@ import { Bell, BookOpenText, ChevronRight, FileText, Flag, Loader2, TriangleAler
 import { Link, useNavigate } from "react-router"
 
 import { ApiError } from "@/api/client"
-import { getTodayRoute, type TodayRoute } from "@/api/route"
+import { getTodayRoute, sendRouteFeedback, type RouteAction, type TodayRoute } from "@/api/route"
 import { BottomNav } from "@/components/bottom-nav"
 import { Mascot } from "@/components/mascot"
 import { Notice } from "@/components/notice"
@@ -14,7 +14,6 @@ import { Button, buttonVariants } from "@/components/ui/button"
 import { useAuth } from "@/lib/auth"
 import { formatDate, formatDayLabel } from "@/lib/format"
 import { useUnseenReplies } from "@/lib/manager-replies"
-import { markMisjudged, pinCustomer, readFeedback, snoozeCustomer } from "@/lib/route-feedback"
 import { cn } from "@/lib/utils"
 import { FirstWeekEntry } from "@/pages/first-week"
 
@@ -30,7 +29,7 @@ type LoadState =
  * 版面照 Duolingo 的主畫面（docs/superpowers/specs/2026-10-01-duolingo-home-design.md）：
  * 頂部是圖示加數字的狀態列和紫色橫幅，路線是一顆顆蛇行往下的圓鈕（components/route-path.tsx）。
  * 最上面是「需立即處理」，業務按三顆鈕給回饋（插入下一站／暫緩／誤判），
- * 回饋只存在這支手機（lib/route-feedback.ts），每次要路線時一起送出去重排。
+ * 後端直接改存著的今日行程（services/itinerary.py），回來的就是改好的那一份。
  */
 export function TodayPage() {
   const navigate = useNavigate()
@@ -45,7 +44,7 @@ export function TodayPage() {
   useEffect(() => {
     if (!userId) return
     const controller = new AbortController()
-    getTodayRoute(userId, readFeedback(userId), controller.signal)
+    getTodayRoute(userId, controller.signal)
       .then(({ route, cached }) => setState({ status: "ready", route, cached }))
       .catch((error: unknown) => {
         if (controller.signal.aborted) return
@@ -63,33 +62,35 @@ export function TodayPage() {
   const route = state.status === "ready" ? state.route : null
   const urgent = route?.urgent ?? null
 
-  // 重新跟後端要一次路線；期間畫面仍顯示目前這份，只在上面標「重新排今天的順序…」
+  // 重新跟後端要一次路線；期間畫面仍顯示目前這份，只在上面標「更新今天的行程…」
   function reload() {
     setBusy(true)
     setAttempt((n) => n + 1)
   }
 
-  // 三顆鈕：只改這支手機記著的回饋，然後重新跟後端要一次路線
-  function pin() {
-    if (!user || !urgent) return
-    pinCustomer(user.id, urgent.customer_id, urgent.signal)
-    setHint("已插到下一站，之後這類提醒會排前面一點。")
-    reload()
+  // 三顆鈕：後端改今天的行程，回來的就是改好的那一份。行程剛被別人改過（409）就重新載入最新的
+  async function feedback(action: RouteAction, message: string) {
+    if (!user || !urgent || !route) return
+    setBusy(true)
+    try {
+      const next = await sendRouteFeedback(user.id, urgent.customer_id, action, route.version)
+      setState({ status: "ready", route: next, cached: false })
+      setHint(message)
+      setBusy(false)
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409) {
+        setHint(error.message)
+        reload()
+        return
+      }
+      setHint(error instanceof ApiError ? error.message : "連不上伺服器，這次沒有改到，請再試一次。")
+      setBusy(false)
+    }
   }
 
-  function snooze() {
-    if (!user || !urgent || !route) return
-    snoozeCustomer(user.id, urgent.customer_id, route.date)
-    setHint("先暫緩，三天內不會再排這家。")
-    reload()
-  }
-
-  function misjudge() {
-    if (!user || !urgent || !route) return
-    markMisjudged(user.id, urgent.customer_id, urgent.signal, route.date)
-    setHint("知道了，這類提醒會少排一點。")
-    reload()
-  }
+  const pin = () => feedback("pin", "已插到下一站，之後這類提醒會排前面一點。")
+  const snooze = () => feedback("snooze", "先暫緩，三天內不會再排這家。")
+  const misjudge = () => feedback("misjudge", "知道了，這類提醒會少排一點。")
 
   return (
     <div className="flex min-h-svh flex-col">
@@ -179,7 +180,7 @@ export function TodayPage() {
         {busy && route && (
           <p className="mb-3 flex items-center gap-1.5 text-xs text-muted-foreground">
             <Loader2 className="size-3.5 animate-spin" />
-            重新排今天的順序…
+            更新今天的行程…
           </p>
         )}
         {state.status === "loading" && (

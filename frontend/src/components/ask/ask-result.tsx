@@ -3,11 +3,12 @@ import { CalendarPlus, Check, ChevronDown } from "lucide-react"
 import { Link } from "react-router"
 
 import { escalateAsk, isFinished, type Ask, type MemoryFile, type TraceItem } from "@/api/asks"
+import { ApiError } from "@/api/client"
+import { addStopsToToday } from "@/api/route"
 import { AttachmentThumbs } from "@/components/attachments/attachment-thumbs"
 import { Mascot } from "@/components/mascot"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/lib/auth"
-import { pinCustomers, readFeedback } from "@/lib/route-feedback"
 import { cn } from "@/lib/utils"
 
 const STEP_LABEL: Record<TraceItem["step"], string> = {
@@ -135,25 +136,35 @@ function MemorySources({ items, files }: { items: NonNullable<Ask["evidence"]>["
   )
 }
 
+type PinState =
+  | { status: "idle" }
+  | { status: "busy" }
+  | { status: "done"; added: string[]; skipped: { customer_id: string; customer_name: string; reason: string }[] }
+  | { status: "error"; message: string }
+
 /**
- * 原型的「排入拜訪」：答案提到的客戶排進今天的路線。系統只有今日路線、沒有排日期的拜訪計畫，按鈕照實說「今天」。
- * 只有業務看得到：主管沒有路線。調整跟「插入下一站」一樣只存在這支手機，下次打開今日路線時送出重排。
+ * 原型的「排入拜訪」：答案提到的客戶加進今天的行程，各自插在多繞最少的位置。系統只有今天的行程、
+ * 沒有排日期的拜訪計畫，按鈕照實說「今天」。只有業務看得到：主管沒有路線。
  */
 function PinToRoute({ customers }: { customers: Ask["customers"] }) {
   const user = useAuth()?.user
-  // 之前已經排過（例如同一個問題問第二次）就直接顯示已排入
-  const [pinned, setPinned] = useState(() =>
-    user ? customers.every((customer) => readFeedback(user.id).pinned.includes(customer.id)) : false
-  )
+  const [state, setState] = useState<PinState>({ status: "idle" })
   if (!user || user.role !== "sales") return null
 
-  if (pinned) {
+  if (state.status === "done") {
     return (
-      <div className="flex flex-col items-start rounded-lg bg-primary/10 px-3 pt-2.5 text-sm text-primary">
-        <span className="flex items-center gap-1.5">
-          <Check className="size-4 shrink-0" />
-          已排入，今日路線會排在最前面
-        </span>
+      <div className="flex flex-col items-start gap-0.5 rounded-lg bg-primary/10 px-3 pt-2.5 text-sm text-primary">
+        {state.added.length > 0 && (
+          <span className="flex items-center gap-1.5">
+            <Check className="size-4 shrink-0" />
+            已加進今天的行程，插在順路的位置
+          </span>
+        )}
+        {state.skipped.map((item) => (
+          <span key={item.customer_id} className="text-xs text-muted-foreground">
+            {item.customer_name}沒加進去：{item.reason}
+          </span>
+        ))}
         <Link to="/" className="flex min-h-11 items-center font-medium underline underline-offset-4">
           去今日路線
         </Link>
@@ -165,14 +176,21 @@ function PinToRoute({ customers }: { customers: Ask["customers"] }) {
       <p className="text-xs text-muted-foreground">答案提到的客戶：{customers.map((customer) => customer.name).join("、")}</p>
       <Button
         className="h-11"
-        onClick={() => {
-          pinCustomers(user.id, customers.map((customer) => customer.id))
-          setPinned(true)
+        disabled={state.status === "busy"}
+        onClick={async () => {
+          setState({ status: "busy" })
+          try {
+            const result = await addStopsToToday(user.id, customers.map((customer) => customer.id))
+            setState({ status: "done", added: result.added, skipped: result.skipped })
+          } catch (error) {
+            setState({ status: "error", message: error instanceof ApiError ? error.message : "連不上伺服器，請再試一次" })
+          }
         }}
       >
         <CalendarPlus className="size-4" />
         排入今天的路線（{customers.length} 家）
       </Button>
+      {state.status === "error" && <p className="text-xs text-destructive">{state.message}</p>}
     </div>
   )
 }
