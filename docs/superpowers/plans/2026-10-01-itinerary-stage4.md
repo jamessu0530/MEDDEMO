@@ -49,14 +49,13 @@
 
 來源：<https://cloud.google.com/maps-platform/terms>（3.2.3）、<https://cloud.google.com/maps-platform/terms/maps-service-terms>（19. Routes API）、<https://developers.google.com/maps/documentation/routes/policies>
 
-**要使用者決定的事（已經問了，答覆前先做 Task 1–3）：** 設計寫「每一對點的車程放 Redis，同一天內重複使用」，但條款只允許快取經緯度。兩個選項：
+**怎麼做（依設計「實作前查 Google Maps Platform 的快取規定，必要時縮短」）：** 車程的分鐘數與公里數不快取。
+讀行程（首頁、主管頁、之後調整清單的 preview）只需要照順序相鄰兩站的車程，改用 `computeRoutes`（按請求計價，一個請求拿到全部路段）——
+`travel.along(points)`；只有真的要排順序時（每天第一次建、加一站、排順路）才用 `computeRouteMatrix`——`travel.matrix(points)`。
+主管頁的沿路折線（經緯度，條款允許）照 `(itinerary_id, version)` 快取到當天結束，在第 5 階段做。
+已經用訊息問過 main 要不要改回「照設計快取一天」（較省、但不符條款字面）；改的話只是在 `travel.matrix` 外面加一層 Redis，呼叫端不用動。
 
-1. 照設計快取一天：最省（估計每月 $0–40），但不符合條款的字面。
-2. 守條款：車程不快取。讀行程（首頁、主管頁、調整清單的 preview）只需要照順序相鄰兩站的車程，改用 `computeRoutes`（按請求計價、一次給所有路段），只有要排順序時（每天第一次建、加一站、排順路）才用 `computeRouteMatrix`。估計每月 $0–60，多半在免費額度內。
-
-不管選哪個，主管頁的沿路折線都照 `(itinerary_id, version)` 快取到當天結束（經緯度，條款允許）。答覆之後補上 Task 4。
-
-**示範規模的估計**（5 位業務、主管頁一次讀 2–5 位的行程、一個月）：地圖載入約 1,000–2,000 次（免費）；`computeRoutes` 數千次（免費額度內）；`computeRouteMatrix` 照選項 1 每天每位業務約 100 格、照選項 2 每次排順序 81 格，一個月 1–3 萬格，超過免費的部分 $0–100。只要不是「每讀一次就問一次矩陣」（那樣主管總覽一次就 405 格，一個月數百到上千美元），都在每月幾十美元以內。建議在 Google Cloud 設預算警示與 Routes API 的每日配額上限。
+**示範規模的估計**（5 位業務、主管頁一次讀 2–5 位的行程、一個月）：地圖載入約 1,000–2,000 次（免費）；`computeRoutes` 數千次（免費額度內）；`computeRouteMatrix` 照現在的做法每次排順序 81 格（若改回快取一天，每天每位業務約 100 格），一個月 1–3 萬格，超過免費的部分 $0–100。只要不是「每讀一次就問一次矩陣」（那樣主管總覽一次就 405 格，一個月數百到上千美元），都在每月幾十美元以內。建議在 Google Cloud 設預算警示與 Routes API 的每日配額上限。
 
 **使用者要建的東西：** Google Cloud 專案並綁帳單；啟用 Maps JavaScript API 與 Routes API；伺服器金鑰（只開 Routes API、限伺服器 IP）；瀏覽器金鑰（只開 Maps JavaScript API、限 `https://meddemo.jamessu2016.com/*`）；選配一個 Map ID；兩把金鑰放 GitHub Secrets `GOOGLE_MAPS_SERVER_KEY`、`GOOGLE_MAPS_BROWSER_KEY`，部署流程寫進 `meddemo-ai` Secret。
 
@@ -824,6 +823,172 @@ Expected: 全部通過（原本 1008 加上這一階段新增的）
 git add backend/app/config.py backend/tests/conftest.py backend/app/api/maps.py backend/app/main.py \
   backend/tests/test_maps_api.py backend/.env.example .github/workflows/ci-cd.yml deploy/helm/meddemo/values.yaml README.md
 git commit -m "Hand the manager page its Google Maps browser key and put both Maps keys in the deployment secret
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 4: 讀行程只問相鄰兩站的道路車程
+
+**Files:**
+- Modify: `backend/app/services/travel.py`（`matrix` 後面加 `along`）
+- Modify: `backend/app/services/itinerary.py:112`（`view` 裡那一行 `travel.matrix(` 換成 `travel.along(`，只改這個字）
+- Test: `backend/tests/test_travel.py`、`backend/tests/test_itinerary.py`
+
+**Interfaces:**
+- Consumes: `google_routes.route_legs`、`google_routes.Leg`、`google_routes.Cell`、`google_routes.RoutesError`（Task 1）；`travel.fill`、`travel.road`（Task 2）。
+- Produces: `travel.along(points: list[Point]) -> Matrix`：只有相鄰兩點（`minutes[i][i + 1]`、`km[i][i + 1]`）是 Google 的道路車程，其他格子是估算；只能拿去照同一個順序算時間（`route_planner.schedule`），不能拿去排順序。`estimated` 只看相鄰那幾格。第 2 階段（Track A）的 preview 也要用它。
+
+- [ ] **Step 1: 寫失敗的測試**
+
+`backend/tests/test_travel.py` 最後加：
+
+```python
+def fake_legs(calls):
+    """假的 Google 路線：第 n 段開 (n + 1) × 10 分鐘、(n + 1) 公里。"""
+
+    def route_legs(key, points, http=None):
+        calls.append((key, points))
+        return [
+            google_routes.Leg(seconds=600 * (n + 1), meters=1000 * (n + 1), polyline="")
+            for n in range(len(points) - 1)
+        ]
+
+    return route_legs
+
+
+def no_matrix(*args, **kwargs):
+    raise AssertionError("照順序算時間不該問整份矩陣（按格計價）")
+
+
+def test_along_asks_google_only_for_the_legs_in_order(monkeypatch, env):
+    env(GOOGLE_MAPS_SERVER_KEY="server-key")
+    calls = []
+    monkeypatch.setattr(google_routes, "route_legs", fake_legs(calls))
+    monkeypatch.setattr(google_routes, "route_matrix", no_matrix)
+    result = travel.along(POINTS)
+    assert result.estimated is False
+    # 第 1 段 600 秒：10 分鐘加 5 分鐘停車；第 2 段 1200 秒：20 分鐘加 5 分鐘
+    assert result.minutes[0][1] == 15 and result.minutes[1][2] == 25
+    assert result.km[0][1] == 1.0 and result.km[1][2] == 2.0
+    # 不相鄰的格子是估算的：這份只能照同一個順序算時間，不能拿去排順序
+    assert result.minutes[0][2] == travel.estimate(POINTS[0], POINTS[2])[0]
+    assert calls == [("server-key", POINTS)]
+
+
+def test_along_without_a_key_or_when_google_fails_is_the_estimate(monkeypatch, env):
+    assert travel.along(POINTS).estimated is True
+    env(GOOGLE_MAPS_SERVER_KEY="server-key")
+
+    def broken(*args, **kwargs):
+        raise google_routes.RoutesError("逾時")
+
+    monkeypatch.setattr(google_routes, "route_legs", broken)
+    result = travel.along(POINTS)
+    assert result.estimated is True and result.minutes[0][1] == 36
+
+
+def test_along_a_single_point_needs_no_google(monkeypatch, env):
+    env(GOOGLE_MAPS_SERVER_KEY="server-key")
+    calls = []
+    monkeypatch.setattr(google_routes, "route_legs", fake_legs(calls))
+    result = travel.along([POINTS[0]])
+    assert result.minutes == [[0]] and result.estimated is False
+    assert calls == []
+```
+
+`backend/tests/test_itinerary.py`：import 那一行 `from app.services import route_planner, today_route, travel` 改成 `from app.services import google_routes, route_planner, today_route, travel`，檔案最後加：
+
+```python
+def test_reading_the_itinerary_asks_google_for_the_legs_in_order_not_the_whole_matrix(tx, monkeypatch, env):
+    # 先在沒有金鑰時建好（建的時候要排順序，會問整份矩陣），再設金鑰讀
+    itinerary = service.get_or_create(tx, "U01")
+    env(GOOGLE_MAPS_SERVER_KEY="server-key")
+    asked = []
+
+    def route_legs(key, points, http=None):
+        asked.append(points)
+        return [google_routes.Leg(seconds=600, meters=3000, polyline="") for _ in points[1:]]
+
+    def no_matrix(*args, **kwargs):
+        raise AssertionError("讀行程不該問整份矩陣")
+
+    monkeypatch.setattr(google_routes, "route_legs", route_legs)
+    monkeypatch.setattr(google_routes, "route_matrix", no_matrix)
+    view = service.view(tx, itinerary)
+    assert view.estimated is False
+    # 一次問完：辦公室加每一站，照存著的順序
+    assert len(asked) == 1 and len(asked[0]) == len(view.stops) + 1
+    # 每段 10 分鐘加 5 分鐘停車、3 公里
+    assert all(s.travel_minutes == 15 and s.travel_km == 3.0 for s in view.stops)
+    assert view.travel_km == 3.0 * len(view.stops)
+```
+
+- [ ] **Step 2: 跑測試確認失敗**
+
+Run: `TEST_DB_NAME=meddemo_test_maps TEST_REDIS_URL=redis://127.0.0.1:6379/7 uv run --project backend pytest backend/tests/test_travel.py backend/tests/test_itinerary.py -q`
+Expected: FAIL（`travel` 沒有 `along`；讀行程時問了整份矩陣）
+
+- [ ] **Step 3: 實作**
+
+`backend/app/services/travel.py`：import 區加 `import dataclasses`（照字母順序放在 `import logging` 前面）。模組說明最後加一段：
+
+```python
+"""...（前面不動）
+
+車程的分鐘數與公里數不快取：Google 的條款只允許快取經緯度（docs/superpowers/plans/2026-10-01-itinerary-stage4.md）。
+所以分兩種問法：要排順序才問整份矩陣（matrix，按格計價）；照存著的順序算時間只要相鄰兩站（along，
+computeRoutes 按請求計價，一次拿到全部路段），讀行程、主管頁、調整清單的試算都走這條。
+"""
+```
+
+`matrix` 後面加：
+
+```python
+def along(points: list[Point]) -> Matrix:
+    """照這個順序開過去，相鄰兩點（points[i] → points[i + 1]）的車程。設了伺服器金鑰就用 Google 的
+    computeRoutes 一次問完；其他格子用直線估算補上，所以這份只能照同一個順序算時間（route_planner.schedule），
+    不能拿去排順序。沒設金鑰或 Google 失敗就整份用估算。"""
+    key = settings().google_maps_server_key
+    if not key:
+        return fill(points, {}, google=False)
+    if len(points) < 2:
+        return fill(points, {}, google=True)
+    try:
+        legs = google_routes.route_legs(key, points)
+    except google_routes.RoutesError:
+        log.warning("Google 路線沒有拿到，改用直線估算", exc_info=True)
+        return fill(points, {}, google=False)
+    cells = {(n, n + 1): road(google_routes.Cell(leg.seconds, leg.meters)) for n, leg in enumerate(legs)}
+    # 不相鄰的格子本來就是估算的、也用不到；相鄰的每一段都是 Google 給的，所以不算估計
+    return dataclasses.replace(fill(points, cells, google=True), estimated=False)
+```
+
+`backend/app/services/itinerary.py`，`view` 裡：
+
+```python
+    matrix = travel.matrix([origin or (points[0] if points else (0.0, 0.0)), *points])
+```
+
+改成（只換 `matrix` 這個字，這一行其他不動）：
+
+```python
+    matrix = travel.along([origin or (points[0] if points else (0.0, 0.0)), *points])
+```
+
+`_create` 與 `_cheapest_index` 裡的 `travel.matrix` 不改：那兩處要排順序，需要整份矩陣。
+
+- [ ] **Step 4: 跑測試確認通過**
+
+Run: `TEST_DB_NAME=meddemo_test_maps TEST_REDIS_URL=redis://127.0.0.1:6379/7 uv run --project backend pytest backend/tests -q`
+Expected: 全部通過
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add backend/app/services/travel.py backend/app/services/itinerary.py backend/tests/test_travel.py backend/tests/test_itinerary.py
+git commit -m "Read the itinerary with one Google route request for its legs instead of a full matrix, and cache no driving times
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
