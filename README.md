@@ -224,6 +224,13 @@ IT 登入後的首頁是 `/admin`：全國 → 區 → 主管 → 業務，點�
   - 每天建立建議時排不出來，從最舊的習慣開始一條一條記成今天不套用，行程上寫「今天沒套用『…』，因為跟『…』衝突」。
   - 「我的排序習慣」頁（`/route/habits`，調整行程的頁首與帳號設定都進得去）分今天套用中與其他日子，可以停用、刪除、自己新增。新增或改了習慣不回頭改今天已存的行程。
   - 示範業務林昱辰一開始有三條（康泰連鎖藥局的店排在診所前面、星期三 敦南內科診所 · 大安 排最後、杏林診所 · 大安 都 11:00 以前到）。
+- **跟熊熊滾說要怎麼排**：首頁底部（分頁膠囊上面）與調整清單最下面有一條「跟熊熊滾說要怎麼排…」，可以打字，也可以按麥克風用錄拜訪的即時轉文字講，講完看過再送出。例如「先去德安再去佑生」「鶯歌店要在三點以前到」「以後星期三都先跑板橋」「為什麼杏林排第一？」。
+  - **AI 只負責聽懂話，順序由程式算**（`backend/app/services/itinerary_ai.py`）：一次 Gemini（`app/llm.py` 的 `json`，用 `backend/app/schemas/itinerary_ops.schema.json` 約束）把話翻成操作清單（移動、加站、拿掉、約時間、停留、備註、鎖住、先後、排順路、記習慣、停用習慣、要選一個、找不到、只回答），客戶與習慣只能是這位業務自己的，其他的轉成「找不到」。排順序一律交給 `route_planner`，AI 不可能排出違反規則的順序；加了先後或習慣而順序不合時，自動整條重排。
+  - 回來的是一張「現在 → 改成」的對照卡：一句話說明做了什麼、兩欄順序（換了位置的站加粗）、各自的總里程與車程、每條規則讓路線多繞多少（`route_planner.rule_costs`）、會晚到的站、新增或停用的習慣、做不到的部分。按「套用」才寫進行程：後端照存下來的操作在最新的行程上再做一次（不信前端傳來的內容），版本對不上就請業務用現在的行程重算。規則互相衝突排不出來時寫出是哪幾條，沒有「套用」。名字對到好幾家時先問「你是說 A，還是 B？」；只是問問題就只回答。
+  - 調整清單上還有沒存的改動時，先問要不要存起來（熊熊滾是照存著的行程排的）。
+  - 調整清單最下面的「幫我排順一點」不呼叫 Gemini，直接整條重排，回同一種對照卡。
+  - 提案存在 `itinerary_proposal`，只留 7 天（`jobs/retention.py`）。Gemini 沒設定時回「熊熊滾現在沒辦法排行程」，拖移、加站照常可用。
+  - 實測：`uv run --project backend python backend/scripts/eval_itinerary_ai.py`（20 句話，`data/eval/itinerary_ai_questions.json`；會真的呼叫 Gemini，結果寫進 `data/eval/itinerary_ai_results.json`）。
 - 問答答案的「排入今天的路線」也是直接加進今天的行程，插在多繞最少的位置；一天還沒跑的站最多 8 站。
 - 路線拿到後存在手機裡，沒訊號時顯示上次那份並標明。
 
@@ -537,6 +544,7 @@ uv run --project backend python backend/scripts/eval_ask.py
 | 語音問答 | `POST /api/voice/session` | 10 | 40 |
 | 錄音時的即時文字 | `POST /api/transcription/session` | 15 | 60 |
 | 錄音整理（語音辨識＋整理欄位） | `POST /api/visits/audio`、`…/transcript`、`…/reprocess` | 15 | 60 |
+| 跟熊熊滾說要怎麼排 | `POST /api/itinerary/today/ask` | 30 | 200 |
 
 - 全系統每天的量，是決賽當天估計用量的約兩倍（推估：排練、簡報，加上約 10 位評審試用，提問約 100 題、語音問答約 20 次、錄音約 30 段）。每個 IP 每小時是每天的四分之一：一個來源至少要四小時才用得完一天的量。
 - **有登入就按帳號算**，沒登入的入口才按 IP（用 Cloudflare 填的 `CF-Connecting-IP`）。決賽現場大家連同一個 Wi-Fi，按 IP 算會全場共用一份額度，按帳號算每個人有自己的。
@@ -549,6 +557,7 @@ uv run --project backend python backend/scripts/eval_ask.py
 | 錄音時的即時文字 | gemini-3.5-transcribe-live 每分鐘約 US$0.009；一段 15 分鐘約 US$0.14 | 約 US$8 |
 | 錄音整理 | 一分鐘的口述約 US$0.01；錄音檔上限 20MB（約 80 分鐘）時約 US$0.1 | 約 US$7 |
 
+- 跟熊熊滾說要怎麼排：每次一次 gemini-3.8-flash 呼叫（低推理，約 5 千輸入、1 千輸出 token，約 US$0.006），每天用滿約 US$1.2。「幫我排順一點」不呼叫 Gemini，不算。
 - 語音問答照 `gemini-2.5-flash-native-audio` 的價格算；`gemini-3.1-flash-live-preview` 在官方價格頁只列了免費層。
 - 知識查詢另外會用到 Cohere 精排（每題 1～2 次）和 Firecrawl 網路搜尋（要上網的題目每題 1～3 次）。200 題全部上網的最壞情況，一天約 400 次 Cohere、600 次 Firecrawl，額度看各自的方案。
 - Redis 連不上時放行：問答與錄音整理本來就要靠 Redis 排背景工作，Redis 停了也花不到錢。
@@ -668,6 +677,8 @@ backend/app/services/route_planner.py 排今天的順序：守住規則、晚到
 backend/app/services/travel.py      兩點之間開車要多久（直線估算）
 backend/app/services/itinerary.py   今天的行程：存檔、版本、三顆鈕、加站、調整清單的 preview 與存檔、加一站的候選
 backend/app/services/route_habits.py 排序習慣：比對、那句話、換成排序規則、預設值
+backend/app/services/itinerary_ai.py 跟熊熊滾說要怎麼排：提示、驗證操作、對照卡、套用
+backend/scripts/eval_itinerary_ai.py 跟熊熊滾說要怎麼排的 20 句實測
 backend/app/resources/route_model.json  訓練好的權重與成績
 backend/app/services/oa.py          模擬 OA 申請單（出差單、優惠、合約）：申請匣、簽核匣、逐關簽核
 backend/app/services/approvals.py   優惠與合約簽核：誰要簽的規則、特徵、模型估計、系統核准、核准之後的效果

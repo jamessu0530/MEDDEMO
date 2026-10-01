@@ -204,7 +204,7 @@ def violations(ordered: list[str], rules: list[Rule]) -> list[Rule]    # 這個�
 def cheapest_insert(start: dt.datetime, start_point: int, ordered: list[PlanStop], new: PlanStop, rules: list[Rule], minutes: list[list[int]]) -> int   # 插在第幾站（0 起算）
 ```
 
-`rule_costs`（每條規則多繞多少）第一階段還沒做，第三階段「跟熊熊滾說要怎麼排」才加。
+`rule_costs(start, start_point, stops, rules, minutes) -> list[RuleCost]`：守住全部規則的最好排法，跟拿掉某一條（同一個 id 一起拿掉）重排的最好排法比，只列拿掉之後真的更好的（多開幾分鐘、多晚到幾分鐘、不守時的順序）。守住全部規則就排不出來時回空的。
 
 - **出發**：今天還沒跑任何一站，從區處辦公室 09:30 出發；跑過了，從最後完成那一站、拜訪時間加停留時間出發。
   已完成的站不進排序。跑完不用回辦公室。
@@ -317,6 +317,10 @@ def cheapest_insert(start: dt.datetime, start_point: int, ordered: list[PlanStop
 
 首頁的「幫我排順一點」按鈕打 `POST /api/itinerary/today/optimize`，回同一種提案卡。
 
+調整清單上還有沒存的改動時按「幫我排順一點」或送出輸入列，先問「剛才的調整還沒存，要先存起來再請熊熊滾排嗎？」：
+「先存再排」照「完成」一樣存（違反規則時一樣先問一次），存完接著問；「取消」什麼都不做（這一點原本設計沒寫到，
+第三階段先這樣做）。
+
 ### 我的排序習慣
 
 `/route/habits`，從調整行程的頁首與帳號設定進來。
@@ -368,7 +372,9 @@ def cheapest_insert(start: dt.datetime, start_point: int, ordered: list[PlanStop
 3. 驗證：客戶 id 必須是這位業務的客戶（照 `Scope`），習慣 id 必須是他的；不合的轉成 `not_found`。
 4. 有 `ask_which` 就只回「要選一個」；有 `answer` 而且沒有其他操作就只回答。
 5. 在行程的複本上依序套用；有 `optimize` 就最後整條 `plan`，只有 `add` 就 `cheapest_insert`，其他只 `schedule`。
-6. 算對照卡，存 `itinerary_proposal`，回傳。
+   加了今天的先後或今天就套用的習慣、順序卻不合時，當成也要排順路（不然套用時新的規則會因為順序不合被拿掉）。
+6. 算對照卡，存 `itinerary_proposal`，回傳。對照卡的每一行（規則的代價、會晚到、新增或停用的習慣、做不到的部分、
+   套用時會拿掉或今天不套用的規則）都由後端寫好。
 
 `apply` 時檢查 `base_version == itinerary.version`，相同就照 `operations` 在最新的行程上再做一次（不信前端傳來的內容），
 寫入、`version + 1`；不同回 409。
