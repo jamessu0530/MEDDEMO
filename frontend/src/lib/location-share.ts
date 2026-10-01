@@ -51,6 +51,10 @@ export type ShareSnapshot = {
 // hidden：不顯示（不是業務、下班時間、還沒問到）；consent：第一次要先說明；其他三種是分享列的三種樣子
 export type BarState = "hidden" | "consent" | "sharing" | "paused" | "denied"
 
+// 第一次在上班時間打開首頁時的說明（設計文件〈位置分享〉）；放在這裡而不是 share-bar.tsx，
+// 是因為那個檔案只匯出元件給 react-refresh 用，混進一個字串常數 lint 會過不了
+export const CONSENT_TEXT = "上班時間主管看得到你的位置，只存最新的一筆，不留軌跡；可以隨時暫停。"
+
 export function barState(snapshot: ShareSnapshot, now: Date): BarState {
   const { share } = snapshot
   if (!share || !share.applies || !withinHours(now, share.hours)) return "hidden"

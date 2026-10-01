@@ -9,6 +9,7 @@ import { Mascot } from "@/components/mascot"
 import { Notice } from "@/components/notice"
 import { MyStatusButton } from "@/components/my-status"
 import { RoutePath } from "@/components/route-path"
+import { ShareBar } from "@/components/route/share-bar"
 import { SkinToggle } from "@/components/skin-toggle"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { useAuth } from "@/lib/auth"
@@ -161,6 +162,8 @@ export function TodayPage() {
             方法卡
           </Link>
         </div>
+        {/* 位置分享列：上班時間主管看得到你在哪（components/route/share-bar.tsx） */}
+        <ShareBar />
       </header>
 
       {/* 底部分頁列約 64px，最後的終點要露出來 */}
