@@ -58,6 +58,7 @@ for key in (
     "VOICE_MODEL",
     "FIRECRAWL_API_KEY",
     "COHERE_API_KEY",
+    "GOOGLE_MAPS_SERVER_KEY",
 ):
     os.environ[key] = ""
 settings.cache_clear()

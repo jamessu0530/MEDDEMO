@@ -58,6 +58,10 @@ class Settings(BaseSettings):
     firecrawl_api_key: str = ""
     cohere_api_key: str = ""
 
+    # Google Routes API：行程的道路車程與主管頁的沿路路線。留空就用直線估算，畫面註明「估計」。
+    # 只在後端用；在 Google Cloud 限制只開 Routes API（docs/superpowers/plans/2026-10-01-itinerary-stage4.md）
+    google_maps_server_key: str = ""
+
     @field_validator("demo_password")
     @classmethod
     def _blank_password_means_default(cls, value: str) -> str:
