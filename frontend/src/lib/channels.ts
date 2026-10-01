@@ -36,3 +36,19 @@ export function mergeMessages(current: ChannelMessage[], incoming: ChannelMessag
   for (const message of incoming) byId.set(message.id, message)
   return [...byId.values()].sort((a, b) => a.id - b.id)
 }
+
+// 送出 @熊熊滾 之後最多顯示「熊熊滾正在想」多久：背景工作的上限是 180 秒，過了還沒回就是不會回了
+export const MASCOT_WAIT_MS = 3 * 60_000
+// 叫熊熊滾的規則，跟後端 services/channels.MENTION 一樣。不用 lookbehind：iOS 16.4 以前的 Safari 不支援，整支程式會載不起來
+const MENTION = /(?:^|[^0-9a-z０-９ａ-ｚ._%+-])[@＠](?:熊熊|(?:ai|ａｉ)(?![0-9a-z０-９ａ-ｚ]))/i
+
+/** 畫面上有沒有還在等熊熊滾回答的 @：送出不到三分鐘，也還沒有熊熊滾的訊息回覆它 */
+export function awaitingMascot(messages: ChannelMessage[], now: number) {
+  const answered = new Set(messages.map((m) => m.reply_to_id))
+  return messages.some((m) => m.mentions_ai && !answered.has(m.id) && now - Date.parse(m.created_at) < MASCOT_WAIT_MS)
+}
+
+/** 按「@熊熊滾」：還沒叫它就在開頭補上，已經叫了就不重複 */
+export function withMascotMention(draft: string) {
+  return MENTION.test(draft) ? draft : `@熊熊滾 ${draft}`
+}

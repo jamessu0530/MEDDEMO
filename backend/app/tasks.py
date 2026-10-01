@@ -24,7 +24,7 @@ def visit_queue() -> Queue:
 
 
 def channels_queue() -> Queue:
-    """頻道的背景工作（附件處理、整理記憶、@AI）。worker 先做完 visits 才輪到這裡，錄音轉文字不會被卡住。"""
+    """頻道的背景工作（附件處理、@熊熊滾 的回答，之後還有整理記憶）。worker 先做完 visits 才輪到這裡，錄音轉文字不會被卡住。"""
     return Queue("channels", connection=redis())
 
 

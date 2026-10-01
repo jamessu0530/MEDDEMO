@@ -23,7 +23,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { addDraftFiles, removeDraftFile, shrinkPhoto, type DraftFile } from "@/lib/attachments"
 import { useAuth } from "@/lib/auth"
 import { channelUnread } from "@/lib/channel-unread"
-import { MESSAGE_PAGE, mergeMessages } from "@/lib/channels"
+import { awaitingMascot, MESSAGE_PAGE, mergeMessages, withMascotMention } from "@/lib/channels"
 import { formatDateTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
@@ -84,6 +84,9 @@ function ChannelView({ id }: { id: number }) {
   const isIt = useAuth()?.user.role === "it"
   const bottom = useRef<HTMLDivElement>(null)
   const main = useRef<HTMLElement>(null)
+  const textarea = useRef<HTMLTextAreaElement>(null)
+  // 「熊熊滾正在想」要跟著時間消失：輪詢每 3 秒更新一次現在時間
+  const [now, setNow] = useState(() => Date.now())
   // 使用者是不是還停在底部附近：只有這樣，或最新一則是自己剛送出的，3 秒一次的輪詢才把畫面捲到最下面；
   // 不然使用者往上捲看舊訊息時會被強制拉回去
   const nearBottom = useRef(true)
@@ -128,6 +131,7 @@ function ChannelView({ id }: { id: number }) {
     const controller = new AbortController()
     const timer = setInterval(() => {
       if (document.visibilityState === "hidden" || !navigator.onLine) return
+      setNow(Date.now())
       listMessages(id, { after: lastId ?? 0 }, controller.signal)
         .then((page) => page.length && setMessages((current) => mergeMessages(current, page)))
         .catch(() => {
@@ -182,6 +186,11 @@ function ChannelView({ id }: { id: number }) {
     setPickError(result.error)
   }
 
+  function callMascot() {
+    setDraft((current) => withMascotMention(current))
+    textarea.current?.focus()
+  }
+
   async function send() {
     const body = draft.trim()
     if ((!body && !files.length) || sending) return
@@ -226,6 +235,7 @@ function ChannelView({ id }: { id: number }) {
   }
 
   const { channel } = state
+  const byId = new Map(messages.map((m) => [m.id, m]))
   return (
     <div className="flex h-svh flex-col">
       <PageHeader title={channel.name} subtitle={KIND_LABEL[channel.kind]} backTo={backTo} />
@@ -246,8 +256,19 @@ function ChannelView({ id }: { id: number }) {
         )}
         {messages.length === 0 && <p className="py-10 text-center text-sm text-muted-foreground">還沒有人發言。</p>}
         {messages.map((message) => (
-          <MessageBubble key={message.id} message={message} onDelete={isIt && !message.deleted ? setDeleting : undefined} />
+          <MessageBubble
+            key={message.id}
+            message={message}
+            replyTo={byId.get(message.reply_to_id ?? -1)}
+            onDelete={isIt && !message.deleted ? setDeleting : undefined}
+          />
         ))}
+        {awaitingMascot(messages, now) && (
+          <div className="flex items-end gap-2" aria-live="polite">
+            <Mascot state="think" size={28} bust className="shrink-0 rounded-full bg-accent" />
+            <p className="rounded-xl bg-muted px-3 py-2 text-sm text-muted-foreground">熊熊滾正在想…</p>
+          </div>
+        )}
         <div ref={bottom} />
       </main>
       <footer className="border-t bg-card px-4 pt-2 pb-[max(env(safe-area-inset-bottom),0.75rem)]">
@@ -255,7 +276,14 @@ function ChannelView({ id }: { id: number }) {
           <p className="py-2 text-center text-sm text-muted-foreground">這個小組頻道已封存，不能再發言。</p>
         ) : (
           <>
-            <p className="pb-1 text-[11px] text-muted-foreground">{channel.audience}</p>
+            <div className="flex items-center justify-between gap-2 pb-1">
+              <p className="text-[11px] text-muted-foreground">{channel.audience}</p>
+              <Button variant="ghost" size="sm" className="h-8 shrink-0 gap-1 px-2 text-xs text-primary" onClick={callMascot}>
+                {/* Button 會把沒寫 size- 的 svg 縮成 14px，頭像要自己給尺寸 */}
+                <Mascot size={18} bust className="size-4.5" />
+                @熊熊滾
+              </Button>
+            </div>
             {(sendError ?? pickError) && <p className="pb-1 text-xs text-destructive">{sendError ?? pickError}</p>}
             <DraftFiles files={files} disabled={sending} onRemove={(key) => setFiles((current) => removeDraftFile(current, key))} />
             {progress !== null && (
@@ -266,10 +294,11 @@ function ChannelView({ id }: { id: number }) {
             <div className="flex items-end gap-1">
               <AttachButton onPick={pick} disabled={sending || files.length >= MAX_FILES} />
               <Textarea
+                ref={textarea}
                 value={draft}
                 maxLength={MAX_LENGTH}
                 rows={1}
-                placeholder="回報一件事…"
+                placeholder="回報一件事，或 @熊熊滾 問問題…"
                 className="max-h-32 min-h-11 flex-1 resize-none"
                 onChange={(event) => setDraft(event.target.value)}
               />
@@ -340,13 +369,23 @@ function DeleteDialog({
   )
 }
 
-function MessageBubble({ message, onDelete }: { message: ChannelMessage; onDelete?: (message: ChannelMessage) => void }) {
+function MessageBubble({
+  message,
+  replyTo,
+  onDelete,
+}: {
+  message: ChannelMessage
+  replyTo?: ChannelMessage
+  onDelete?: (message: ChannelMessage) => void
+}) {
   if (message.kind !== "user") {
-    // AI 主理與風險通報（第 3 階段）先用同一種樣式；AI 主理的左邊多一個熊熊滾的頭像
+    // 熊熊滾與風險通報用同一種樣式；熊熊滾的左邊多一個頭像，標出回覆誰（提問那一則在畫面上才標得出來）
+    const replied = replyTo && (replyTo.mine ? " · 回覆你" : ` · 回覆 ${replyTo.author_name}`)
     const bubble = (
       <div className="rounded-xl bg-muted px-3 py-2 text-sm">
         <p className="text-[11px] text-muted-foreground">
-          {message.kind === "ai" ? "AI 主理" : "風險通報"} · {formatDateTime(message.created_at)}
+          {message.kind === "ai" ? "熊熊滾" : "風險通報"}
+          {replied} · {formatDateTime(message.created_at)}
         </p>
         <p className="whitespace-pre-wrap">{message.body}</p>
       </div>

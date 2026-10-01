@@ -1,5 +1,6 @@
 """用量上限（第六週）：會呼叫 Gemini 的入口都限次數，免得額度被用光；
 不花錢但容易被濫用、做了無法復原的入口（建立帳號、頻道發言）也一併限流。
+頻道發言有 @熊熊滾 時，另外算一次提問（take，api/channels.py）。
 
 兩層上限：
 - 每個來源每小時：擋單一裝置或程式一直送。有登入就按帳號算，沒有才按 IP
@@ -157,6 +158,19 @@ def _too_many(over: Counter, now: dt.datetime) -> JSONResponse:
     else:
         detail = f"今天全系統的{label}已經 {over.limit} 次，到了上限，明天再試。"
     return JSONResponse({"detail": detail}, status_code=429, headers={"Retry-After": str(wait)})
+
+
+def take(bucket: str, request: Request) -> JSONResponse | None:
+    """在 API 裡另外扣一次。middleware 只看網址，分不出來的情況用這個（頻道發言有沒有 @熊熊滾）。
+    超過上限回 429 的回應；沒超過，或 Redis 連不上（跟 middleware 一樣放行）回 None。"""
+    now = dt.datetime.now(dt.UTC)
+    items = counters(bucket, client_address(request), now)
+    try:
+        over = _take(*items)
+    except RedisError:
+        log.warning("用量計數連不上 Redis，這次放行", exc_info=True)
+        return None
+    return _too_many(over, now) if over else None
 
 
 async def limit_usage(request: Request, call_next):

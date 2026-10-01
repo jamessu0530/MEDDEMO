@@ -22,7 +22,7 @@ export type Channel = {
 
 export type ChannelMessage = {
   id: number
-  // user 人發的；ai AI 主理；notice 拜訪的風險通報
+  // user 人發的；ai 熊熊滾；notice 拜訪的風險通報
   kind: "user" | "ai" | "notice"
   author_id: string | null
   author_name: string | null
@@ -32,6 +32,10 @@ export type ChannelMessage = {
   attachments: Attachment[]
   // IT 刪掉的訊息：內容已經換成固定的一句
   deleted: boolean
+  // 有沒有叫熊熊滾
+  mentions_ai: boolean
+  // 熊熊滾的回答指向提問那一則
+  reply_to_id: number | null
 }
 
 /** 看得到的頻道，不含客戶討論串；後端已經依全國 → 各區排好 */

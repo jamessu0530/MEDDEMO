@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import re
 from dataclasses import dataclass
 
 from sqlalchemy import Row, delete, func, select
@@ -33,6 +34,12 @@ LEVEL = {
 # 一次給幾則訊息：打開頻道先給最新的一頁，往上捲再要前一頁
 MESSAGE_PAGE = 50
 DELETED_BODY = "（這則訊息已被 IT 刪除）"
+# 叫熊熊滾：@熊熊滾、@熊熊、@AI。中文輸入法常打出全形的 ＠ 與 ＡＩ，一起算；英文不分大小寫。
+# @ 前面不能緊接英數字或 email 用的符號（x@ai.com 不算），接中文可以（請@熊熊滾回答）；
+# AI 後面不能緊接英數字（@AIDS 不算），接中文可以（@AI請問）。畫面上的按鈕用同一條規則（frontend/src/lib/channels.ts）
+MENTION = re.compile(
+    r"(?<![0-9a-z０-９ａ-ｚ._%+-])[@＠](?:熊熊|(?:ai|ａｉ)(?![0-9a-z０-９ａ-ｚ]))", re.IGNORECASE
+)
 
 
 class NotFound(Exception):
@@ -208,18 +215,35 @@ def messages(
     return list(session.execute(stmt.order_by(ChannelMessage.id.desc()).limit(limit)))[::-1]
 
 
+def mentions_mascot(body: str) -> bool:
+    return MENTION.search(body) is not None
+
+
+def _write(session: Session, channel_id: int, **fields) -> ChannelMessage:
+    """寫一則訊息。所有寫訊息的地方都走這裡：先鎖住頻道那一列，同一個頻道的寫入排隊進行，
+    編號的先後就等於寫入完成的先後。輪詢靠「這則之後的新訊息」，熊熊滾在背景寫回答時才不會漏掉。
+    用 FOR NO KEY UPDATE：寫訊息、記已讀時外鍵檢查拿的是 KEY SHARE，跟它不衝突，別人記已讀不必排隊。"""
+    session.execute(select(Channel.id).where(Channel.id == channel_id).with_for_update(key_share=True))
+    message = ChannelMessage(channel_id=channel_id, **fields)
+    session.add(message)
+    session.flush()
+    return message
+
+
 def post(session: Session, user: AppUser, info: ChannelInfo, body: str) -> ChannelMessage:
     """發言。記在實際登入的帳號上（自建帳號用自己的名字，不是代理的示範業務）；自己發的就算讀過了。
     附件由呼叫端接著寫（services/attachments.add），跟這則訊息在同一個交易裡。"""
     if info.archived:
         raise Archived
-    # 同一個頻道的寫入排隊到交易結束：編號的先後就等於寫入完成的先後。
-    # 不然後拿到編號的先寫完，畫面輪詢「這則之後的新訊息」會跳過還沒寫完、編號比較小的那則
-    session.execute(select(Channel.id).where(Channel.id == info.id).with_for_update())
-    message = ChannelMessage(channel_id=info.id, author_id=user.id, kind="user", body=body)
-    session.add(message)
-    session.flush()
+    message = _write(session, info.id, author_id=user.id, kind="user", body=body, mentions_ai=mentions_mascot(body))
     mark_read(session, user, info.id, message.id)
+    session.refresh(message)
+    return message
+
+
+def post_mascot(session: Session, channel_id: int, body: str, reply_to_id: int) -> ChannelMessage:
+    """熊熊滾回答 reply_to_id 那一則（services/channel_ai.py）。不判斷 @，熊熊滾不會自己叫自己。"""
+    message = _write(session, channel_id, kind="ai", body=body, reply_to_id=reply_to_id)
     session.refresh(message)
     return message
 

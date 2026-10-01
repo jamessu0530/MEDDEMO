@@ -692,7 +692,8 @@ class Channel(Base):
 
 
 class ChannelMessage(Base):
-    """頻道裡的一則訊息。第一版不能改、不能刪：回報會被整理進記憶，原文留著才追得回來。"""
+    """頻道裡的一則訊息。第一版不能改、不能刪：回報會被整理進記憶，原文留著才追得回來。
+    熊熊滾的回答（kind = ai）用 reply_to_id 指向提問那一則。"""
 
     __tablename__ = "channel_message"
     __table_args__ = (
@@ -708,6 +709,10 @@ class ChannelMessage(Base):
     author_id: Mapped[str | None] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"))
     kind: Mapped[str] = mapped_column(server_default="user")
     body: Mapped[str] = mapped_column(Text)
+    # 有沒有叫熊熊滾（services/channels.mentions_mascot）。寫入時判斷就存起來，之後改了判斷規則，舊訊息不會被重新解讀
+    mentions_ai: Mapped[bool] = mapped_column(server_default=text("false"))
+    # 熊熊滾回答的是哪一則。那一則不在了（自建帳號刪除時一起刪）就留 NULL，回答本身留著
+    reply_to_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("channel_message.id", ondelete="SET NULL"))
     created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
     # IT 刪掉的訊息：內容換成固定的一句、附件整列刪掉，這一則本身留著，編號與已讀才不會亂
     deleted_at: Mapped[dt.datetime | None]

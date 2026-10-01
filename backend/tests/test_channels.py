@@ -11,7 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.main import app
-from app.models import Channel
+from app.models import AppUser, Channel
 from app.services import channels
 
 NORTH_PLACES = {
@@ -245,3 +245,36 @@ def test_threads_404s_on_a_channel_that_is_not_a_place(client, auth):
         response = client.get(f"/api/channels/{cid}/threads", headers=auth("U01"))
         assert response.status_code == 404
         assert response.json()["detail"] == "找不到這個地點"
+
+
+@pytest.mark.parametrize("body", [
+    "@熊熊滾 近效期退貨運費誰付？", "請問 @熊熊 一下", "請@熊熊滾回答", "＠熊熊滾 在嗎",
+    "@AI 幫我整理", "@ai請問", "＠ＡＩ 請問", "第一行\n@熊熊滾 第二行",
+])
+def test_these_call_the_mascot(body):
+    assert channels.mentions_mascot(body)
+
+
+@pytest.mark.parametrize("body", ["寄到 x@ai.com", "@AIDS 衛教單張", "熊熊滾好可愛", "@熊 在嗎"])
+def test_these_do_not_call_the_mascot(body):
+    assert not channels.mentions_mascot(body)
+
+
+def visible(session, user_id: str, name: str):
+    user = session.get(AppUser, user_id)
+    return user, next(i for i in channels.visible_channels(session, user) if i.name == name)
+
+
+def test_a_message_remembers_whether_it_called_the_mascot_and_the_mascot_replies_to_it(tx, client, auth):
+    user, team = visible(tx, "U01", "陳建宏小組")
+    asked = channels.post(tx, user, team, "@熊熊滾 在嗎")
+    reply = channels.post_mascot(tx, team.id, "在喔", asked.id)
+    assert asked.mentions_ai is True and asked.reply_to_id is None
+    assert (reply.kind, reply.author_id, reply.reply_to_id, reply.mentions_ai) == ("ai", None, asked.id, False)
+    assert reply.id > asked.id
+    # 一般發言 mentions_ai 是 false；API 都帶這兩欄
+    plain = post(client, auth("U01"), team.id, "忠孝店的檔期資料我週三前給").json()
+    assert (plain["mentions_ai"], plain["reply_to_id"]) == (False, None)
+    latest = history(client, auth("U02"), team.id)[-3:]
+    assert [(m["kind"], m["reply_to_id"]) for m in latest] == [("user", None), ("ai", asked.id), ("user", None)]
+    # 寫入排隊（編號順序等於寫完的順序）在 test_attachments 的 test_posts_to_one_channel_take_numbers_in_the_order_they_finish
