@@ -149,6 +149,7 @@ def apply_feedback(session: Session, user_id: str, customer_id: str, action: Fee
     """需立即處理的三顆鈕。插入下一站：移到還沒跑的第一站，同類提醒之後排前面一點；
     暫緩：從今天拿掉，三天內的建議不排；誤判：暫緩，再加上同類提醒之後少排一點。"""
     itinerary = get_or_create(session, user_id)
+    _lock(session, itinerary)
     if itinerary.version != version:
         raise VersionConflict
     rows = _rows(session, itinerary)
@@ -179,6 +180,7 @@ def add_stops(
     """把幾家加進今天的行程，各自插在多繞最少、又不動到鎖住的站的位置。回傳 (行程, 加進去的店名, 沒加的與原因)。
     加進來的那家一併取消暫緩，否則明天的建議照樣不排它。"""
     itinerary = get_or_create(session, user_id)
+    _lock(session, itinerary)
     rep = session.get(AppUser, user_id)
     done = today_route.done_visits(session, user_id, itinerary.date)
     done_ids = {c.id for _, c in done}
@@ -224,6 +226,11 @@ def add_stops(
 
 def _find(session: Session, user_id: str, today: dt.date) -> Itinerary | None:
     return session.scalar(select(Itinerary).where(Itinerary.user_id == user_id, Itinerary.date == today))
+
+
+def _lock(session: Session, itinerary: Itinerary) -> None:
+    """鎖住這份行程、重新讀一次。兩個人同時改同一位業務的行程：後到的等前一個存完，再看到版本已經變了。"""
+    session.refresh(itinerary, with_for_update=True)
 
 
 def _create(session: Session, rep: AppUser, today: dt.date) -> Itinerary:

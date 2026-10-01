@@ -2,11 +2,14 @@
 
 import datetime as dt
 import itertools
+import threading
+import time
 
 import catalog
 import pytest
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from app.models import Customer, Itinerary, ItineraryStop, RouteSignalWeight, RouteSnooze, Visit
 from app.services import itinerary as service
@@ -180,3 +183,56 @@ def test_no_more_than_eight_open_stops(tx):
     _, added, skipped = service.add_stops(tx, "U01", list(more))
     assert len(added) == 3
     assert [s.reason for s in skipped] == ["今天已經排了 8 站", "今天已經排了 8 站"]
+
+
+def test_two_saves_at_once_cannot_both_pass_the_version_check(engine):
+    """兩個人同時讀到同一個版本、幾乎同時各自存：靠 _lock 的 SELECT ... FOR UPDATE 把兩邊序列化，
+    後到的那個鎖到的時候，版本已經被先存的那個改過了，直接擋下來，不會兩邊的改動混在一起。
+    用 engine 開真的連線跑在兩條執行緒上（不是共用一條連線的 tx），才測得出跨連線、真的交疊的鎖。"""
+    with Session(engine) as a, Session(engine) as b:
+        itinerary_a = service.get_or_create(a, "U01")
+        version = itinerary_a.version
+        target_id = service.view(a, itinerary_a).stops[-1].customer_id
+        a.commit()
+
+        itinerary_b = service.get_or_create(b, "U01")
+        assert itinerary_b.version == version
+        b.commit()
+
+    # 先存的那個改完、拿到鎖之後先別急著提交，讓後存的那個真的卡在 _lock 的 FOR UPDATE 上
+    first_locked = threading.Event()
+    second_outcome: dict[str, bool] = {}
+
+    def save_first():
+        with Session(engine) as session:
+            service.apply_feedback(session, "U01", target_id, "pin", version)
+            first_locked.set()
+            time.sleep(0.3)
+            session.commit()
+
+    def save_second():
+        first_locked.wait(timeout=5)
+        with Session(engine) as session:
+            try:
+                service.apply_feedback(session, "U01", target_id, "pin", version)
+            except service.VersionConflict:
+                second_outcome["conflict"] = True
+            else:
+                second_outcome["conflict"] = False
+                session.commit()
+
+    try:
+        t1 = threading.Thread(target=save_first)
+        t2 = threading.Thread(target=save_second)
+        t1.start()
+        t2.start()
+        t1.join(timeout=5)
+        t2.join(timeout=5)
+        assert second_outcome.get("conflict") is True
+    finally:
+        # 這個測試不像其他測試用 tx（回滾），而是真的 commit 到測試資料庫，收尾要自己清乾淨
+        with Session(engine) as cleanup:
+            cleanup.execute(delete(RouteSignalWeight).where(RouteSignalWeight.user_id == "U01"))
+            cleanup.execute(delete(RouteSnooze).where(RouteSnooze.user_id == "U01"))
+            cleanup.execute(delete(Itinerary).where(Itinerary.user_id == "U01", Itinerary.date == TODAY))
+            cleanup.commit()
