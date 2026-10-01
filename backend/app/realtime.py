@@ -78,10 +78,20 @@ def _collect_itinerary_changes(session: Session, flush_context) -> None:
 
 @event.listens_for(Session, "after_commit")
 def _announce_itinerary_changes(session: Session) -> None:
+    # SQLAlchemy 在 begin_nested()（SAVEPOINT）釋放時也會跑 after_commit，不只是真的 commit 的時候：
+    # session.in_nested_transaction() 這時候是 True，忽略它，等外層真的 commit 才發，不然行程改到一半
+    # （還在外層交易裡、隨時可能回滾）就先通知了主管。tx 測試用的 fixture 用 join_transaction_mode="create_savepoint"
+    # 接上外層連線的交易，但那是 session 自己最外層的交易，不是 begin_nested() 開的，in_nested_transaction() 是 False，
+    # 所以這裡不影響它：tx.commit() 照樣會發事件。
+    if session.in_nested_transaction():
+        return
     for user_id in session.info.pop(_PENDING, set()):
         itinerary_changed(user_id)
 
 
 @event.listens_for(Session, "after_rollback")
 def _forget_itinerary_changes(session: Session) -> None:
+    # 同樣的道理：SAVEPOINT 回滾也會跑 after_rollback，不能把外層交易裡先前已經收集到的 rep 清掉
+    if session.in_nested_transaction():
+        return
     session.info.pop(_PENDING, None)
