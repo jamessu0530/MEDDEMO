@@ -111,3 +111,14 @@ def test_every_rep_with_an_opportunity_gets_one_picked(engine):
         labelled = [item for item in result.picked if item["signal"] == "opportunity"]
         assert bool(labelled) == has_any, rep_id
         assert all(item["reason"] for item in labelled)
+
+
+def test_labels_for_several_customers_at_once(tx):
+    from sqlalchemy import select
+
+    from app.models import Customer
+
+    ids = tx.scalars(select(Customer.id).where(Customer.owner_user_id == "U01").order_by(Customer.id).limit(3)).all()
+    found = today_route.labels(tx, "U01", list(ids))
+    assert set(found) == set(ids)
+    assert found[ids[0]] == today_route.label(tx, "U01", ids[0])

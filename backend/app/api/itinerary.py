@@ -19,6 +19,7 @@ from app.services import itinerary as service
 router = APIRouter(prefix="/api/itinerary", tags=["itinerary"])
 SessionDep = Annotated[Session, Depends(get_session)]
 NO_ROUTE = "主管沒有自己的拜訪路線"
+STALE = "行程剛被改過，已幫你重新整理"
 
 
 class Rep(BaseModel):
@@ -122,7 +123,7 @@ def send_feedback(session: SessionDep, body: FeedbackInput, user: CurrentUser):
     try:
         itinerary = service.apply_feedback(session, _rep_id(user), body.customer_id, body.action, body.version)
     except service.VersionConflict:
-        raise HTTPException(409, "行程剛被改過，已幫你重新整理") from None
+        raise HTTPException(409, STALE) from None
     except service.NotOnItinerary:
         raise HTTPException(404, "這家不在今天還沒跑的站裡") from None
     except LookupError:
@@ -137,6 +138,8 @@ def add_stops(session: SessionDep, body: StopsInput, user: CurrentUser):
     """問答答案提到的客戶加進今天的行程，各自插在多繞最少的位置。"""
     try:
         itinerary, added, skipped = service.add_stops(session, _rep_id(user), body.customer_ids)
+    except service.VersionConflict:
+        raise HTTPException(409, STALE) from None
     except LookupError:
         raise HTTPException(403, NO_ROUTE) from None
     result = StopsResult(

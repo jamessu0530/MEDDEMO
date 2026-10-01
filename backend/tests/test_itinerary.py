@@ -7,13 +7,15 @@ import time
 
 import catalog
 import pytest
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models import Customer, Itinerary, ItineraryStop, RouteSignalWeight, RouteSnooze, Visit
+from app.models import (
+    Customer, Itinerary, ItineraryPrecedence, ItineraryStop, RouteHabit, RouteSignalWeight, RouteSnooze, Visit,
+)
 from app.services import itinerary as service
-from app.services import route_planner, today_route, travel
+from app.services import route_habits, route_planner, today_route, travel
 from app.timeutil import TAIPEI
 
 TODAY = dt.date(2026, 10, 28)
@@ -252,3 +254,97 @@ def test_two_saves_at_once_cannot_both_pass_the_version_check(engine):
             cleanup.execute(delete(RouteSnooze).where(RouteSnooze.user_id == "U01"))
             cleanup.execute(delete(Itinerary).where(Itinerary.user_id == "U01", Itinerary.date == TODAY))
             cleanup.commit()
+
+
+def by_customer(cid):
+    return {"by": "customer", "value": cid}
+
+
+def rebuild(tx, user_id="U01"):
+    """刪掉今天的行程再讀一次：照模型的建議與目前的習慣重新建。"""
+    tx.execute(delete(Itinerary).where(Itinerary.user_id == user_id))
+    tx.expire_all()
+    return service.view(tx, service.get_or_create(tx, user_id))
+
+
+def test_the_suggestion_follows_the_reps_habits(tx):
+    tx.execute(delete(RouteHabit).where(RouteHabit.user_id == "U01"))
+    ids = [s.customer_id for s in service.view(tx, service.get_or_create(tx, "U01")).stops]
+    spec = route_habits.HabitSpec
+    route_habits.create(tx, "U01", spec("precedence", by_customer(ids[-1]), by_customer(ids[1])), "manual")
+    stay = route_habits.create(tx, "U01", spec("duration", by_customer(ids[2]), duration_minutes=90), "manual")
+    route_habits.create(
+        tx, "U01", spec("window", by_customer(ids[3]), window_kind="after", window_time=dt.time(14, 0)), "manual",
+    )
+    view = rebuild(tx)
+    order = [s.customer_id for s in view.stops]
+    # 需立即處理那家照樣鎖第一站；習慣的先後一定守
+    assert order[0] == ids[0] and order.index(ids[-1]) < order.index(ids[1])
+    stops = {s.customer_id: s for s in view.stops}
+    assert stops[ids[2]].duration_minutes == 90 and stay.id in stops[ids[2]].habit_ids
+    assert (stops[ids[3]].window_kind, stops[ids[3]].window_time) == ("after", "14:00")
+    assert any(r.source == "habit" for r in view.rules) and view.violations == []
+    assert view.skipped_habits == []
+
+
+def test_habits_that_cannot_be_kept_are_skipped_today_with_the_reason(tx):
+    tx.execute(delete(RouteHabit).where(RouteHabit.user_id == "U01"))
+    plain = service.view(tx, service.get_or_create(tx, "U01"))
+    ids = [s.customer_id for s in plain.stops]
+    spec = route_habits.HabitSpec
+    # 「第三家排第一」跟「需立即處理那家排第一站」的鎖打架；「第四家排最後」與較新的「第五家排最後」也打架
+    first = route_habits.create(tx, "U01", spec("first", by_customer(ids[2])), "manual")
+    older = route_habits.create(tx, "U01", spec("last", by_customer(ids[3])), "manual")
+    newer = route_habits.create(tx, "U01", spec("last", by_customer(ids[4])), "manual")
+    view = rebuild(tx)
+    skipped = {h.id: h for h in view.skipped_habits}
+    assert set(skipped) == {first.id, older.id}
+    assert skipped[first.id].reason == f"跟『{plain.stops[0].customer_name} 排第一站』衝突"
+    assert skipped[older.id].reason == f"跟『{newer.text}』衝突" and skipped[older.id].conflict
+    assert view.stops[0].customer_id == ids[0] and view.stops[-1].customer_id == ids[4]
+    assert view.violations == []
+
+
+def test_the_view_lists_todays_rules_and_what_the_order_breaks(tx):
+    itinerary = service.get_or_create(tx, "U01")
+    view = service.view(tx, itinerary)
+    ids = [s.customer_id for s in view.stops]
+    names = {s.customer_id: s.customer_name for s in view.stops}
+    tx.add(ItineraryPrecedence(itinerary_id=itinerary.id, before_customer_id=ids[3], after_customer_id=ids[1]))
+    tx.flush()
+    view = service.view(tx, itinerary)
+    rule = next(r for r in view.rules if r.source == "today")
+    assert (rule.id, rule.kind, rule.customer_ids) == (f"today:{ids[3]}>{ids[1]}", "precedence", [ids[3], ids[1]])
+    assert rule.text == f"{names[ids[3]]} 排在 {names[ids[1]]} 前面"
+    assert rule.id in view.violations
+    assert [(p.before, p.after) for p in view.precedences] == [(ids[3], ids[1])]
+    assert view.stops[0].locked and not view.stops[1].locked
+
+
+def test_added_stops_get_the_habit_defaults_and_keep_the_habit_rules(tx):
+    itinerary = service.get_or_create(tx, "U01")
+    on_route = [s.customer_id for s in service.view(tx, itinerary).stops]
+    mine = tx.scalars(
+        select(Customer.id).where(Customer.owner_user_id == "U01", Customer.id.not_in(on_route)).order_by(Customer.id)
+    ).first()
+    spec = route_habits.HabitSpec
+    route_habits.create(tx, "U01", spec("duration", by_customer(mine), duration_minutes=60), "manual")
+    route_habits.create(tx, "U01", spec("last", by_customer(mine)), "manual")
+    service.add_stops(tx, "U01", [mine])
+    view = service.view(tx, itinerary)
+    assert view.stops[-1].customer_id == mine and view.stops[-1].duration_minutes == 60
+
+
+def test_reading_after_an_it_reset_is_a_version_conflict(tx):
+    itinerary = service.get_or_create(tx, "U01")
+    # 讀到之後、鎖住之前，IT 在另一條連線按了重置：這個 session 裡的物件還在，資料庫裡已經沒有了
+    tx.execute(text("DELETE FROM itinerary WHERE id = :id"), {"id": itinerary.id})
+    with pytest.raises(service.VersionConflict):
+        service._lock(tx, itinerary)
+
+
+def test_an_unknown_button_is_refused(tx):
+    itinerary = service.get_or_create(tx, "U01")
+    target = service.view(tx, itinerary).stops[1]
+    with pytest.raises(ValueError):
+        service.apply_feedback(tx, "U01", target.customer_id, "ignore", 1)
