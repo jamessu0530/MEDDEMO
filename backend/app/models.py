@@ -994,6 +994,23 @@ class UserAvatar(Base):
     updated_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
 
 
+SKINS = ("light", "dark")
+TEXT_SIZES = ("standard", "large", "xlarge")
+
+
+class UserPreference(Base):
+    """帳號設定（docs/superpowers/specs/2026-10-02-cloud-settings-design.md）：配色與字體大小跟著帳號走，
+    換一支手機登入也一樣。一個帳號最多一列，第一次改設定時建立；沒有這一列就是還沒存過。"""
+
+    __tablename__ = "user_preference"
+    __table_args__ = (one_of("skin", SKINS, "skin"), one_of("text_size", TEXT_SIZES, "text_size"))
+
+    user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), primary_key=True)
+    skin: Mapped[str]
+    text_size: Mapped[str]
+    updated_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+
+
 class SapEmployee(Base):
     """模擬 SAP 的人員主檔：一個公司帳號一列，存到職日與負責的產品線（新人第一週頁的「你賣什麼」）。
 

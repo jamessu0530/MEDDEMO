@@ -30,12 +30,13 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { changeSkin, playInk } from "@/ink/ink"
+import { playInk } from "@/ink/ink"
 import { canManage, homePath, refreshUser, signIn, useAuth, type AuthUser } from "@/lib/auth"
 import { PROVIDER_LABEL, useProviders, type OAuthProvider } from "@/lib/oauth"
 import { openGuide } from "@/lib/onboarding"
+import { chooseSkin, chooseTextSize } from "@/lib/preferences"
 import { useSkin, type Skin } from "@/lib/skin"
-import { setTextSize, useTextSize, type TextSize } from "@/lib/text-size"
+import { useTextSize, type TextSize } from "@/lib/text-size"
 import { TRAVEL_MODE_LABEL, TRAVEL_MODES } from "@/lib/travel-mode"
 import { cn } from "@/lib/utils"
 
@@ -55,7 +56,7 @@ const SKINS: { id: Skin; label: string; swatch: string }[] = [
 ]
 
 /**
- * 配色：淺色（紫）或深色（黑灰），記在這支手機裡。首頁的頁首也有一顆切換鈕（components/skin-toggle.tsx）。
+ * 配色：淺色（紫）或深色（黑灰），跟著帳號存在伺服器（lib/preferences.ts）。首頁的頁首也有一顆切換鈕（components/skin-toggle.tsx）。
  * 換的時候用噴漆把整個畫面染成新的顏色（ink/ink.ts 的 changeSkin）
  */
 function SkinPicker() {
@@ -70,7 +71,7 @@ function SkinPicker() {
             type="button"
             role="radio"
             aria-checked={skin === id}
-            onClick={() => changeSkin(id)}
+            onClick={() => chooseSkin(id)}
             className={cn(
               "flex h-12 items-center justify-center gap-2 rounded-xl border-2 bg-card text-sm font-medium shadow-lip press",
               skin === id && "border-primary ring-1 ring-primary"
@@ -93,7 +94,7 @@ const TEXT_SIZES: { id: TextSize; label: string; sample: number }[] = [
   { id: "xlarge", label: "特大", sample: 20 },
 ]
 
-/** 字體大小：整頁一起放大，記在這支手機裡（lib/text-size.ts） */
+/** 字體大小：整頁一起放大（lib/text-size.ts），跟著帳號存在伺服器（lib/preferences.ts） */
 function TextSizePicker() {
   const size = useTextSize()
   return (
@@ -106,7 +107,7 @@ function TextSizePicker() {
             type="button"
             role="radio"
             aria-checked={size === id}
-            onClick={() => setTextSize(id)}
+            onClick={() => chooseTextSize(id)}
             className={cn(
               "flex h-14 items-center justify-center gap-1.5 rounded-xl border-2 bg-card text-sm font-medium shadow-lip press",
               size === id && "border-primary ring-1 ring-primary"

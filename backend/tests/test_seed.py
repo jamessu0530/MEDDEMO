@@ -654,6 +654,13 @@ def used_database():
             models.UserIdentity(user_id="A01", provider="google", subject="g-it", email="jamessu2026@gmail.com"),
             models.UserIdentity(user_id="XKEEP001", provider="github", subject="gh-keep"),
             models.UserIdentity(user_id="M09", provider="google", subject="g-old"),
+            # 大頭貼與設定：公司帳號、自建帳號的都要留；M09 不在新的假資料裡，掛在 M09 的跟著消失
+            models.UserAvatar(user_id="U01", content=b"jpeg-U01", version="a1b2c3d4"),
+            models.UserAvatar(user_id="XKEEP001", content=b"jpeg-keep", version="0f0f0f0f"),
+            models.UserAvatar(user_id="M09", content=b"jpeg-old", version="deadbeef"),
+            models.UserPreference(user_id="U01", skin="dark", text_size="xlarge"),
+            models.UserPreference(user_id="XKEEP001", skin="light", text_size="large"),
+            models.UserPresence(user_id="M01", choice="dnd"),
         ])
     engine.dispose()
     yield url
@@ -680,6 +687,16 @@ def test_a_reseed_keeps_self_created_accounts_and_sign_in_bindings(used_database
             ("A01", "google", "g-it", "jamessu2026@gmail.com"),
             ("XKEEP001", "github", "gh-keep", None),
         }
+        # 大頭貼的版本也一樣：手機上的網址重灌之後還能用
+        assert {tuple(r) for r in rows(conn, "SELECT user_id, content, version FROM user_avatar")} == {
+            ("U01", b"jpeg-U01", "a1b2c3d4"),
+            ("XKEEP001", b"jpeg-keep", "0f0f0f0f"),
+        }
+        assert {tuple(r) for r in rows(conn, "SELECT user_id, skin, text_size FROM user_preference")} == {
+            ("U01", "dark", "xlarge"),
+            ("XKEEP001", "light", "large"),
+        }
+        assert [tuple(r) for r in rows(conn, "SELECT user_id, choice FROM user_presence")] == [("M01", "dnd")]
         # 假資料照常灌好：十個公司帳號加上留下來的那一個
         assert rows(conn, "SELECT count(*) FROM app_user")[0][0] == 11
         assert rows(conn, "SELECT count(*) FROM customer")[0][0] == 253
@@ -687,6 +704,7 @@ def test_a_reseed_keeps_self_created_accounts_and_sign_in_bindings(used_database
         assert rows(conn, "SELECT count(*), count(*) FILTER (WHERE user_id = 'XKEEP001') FROM sap_employee") == [(9, 0)]
     engine.dispose()
     assert (counts["kept_account"], counts["kept_identity"]) == (1, 2)
+    assert (counts["kept_avatar"], counts["kept_preference"], counts["kept_presence"]) == (2, 2, 1)
 
 
 def test_accounts_that_cannot_go_back_do_not_fail_the_seed(tx):
@@ -757,3 +775,14 @@ def test_competitor_notes_only_where_the_visits_mention_the_competitor(db):
         WHERE n.kind = 'competitor' GROUP BY n.customer_id
     """)
     assert found == [("C001", True)]
+
+
+def test_settings_that_cannot_go_back_only_drop_their_own_table(tx):
+    preference = {"user_id": "U02", "skin": "dark", "text_size": "large"}
+    kept = seed.KeptAccounts(users=[], identities=[], settings={
+        # 舊資料不合新的資料表（已經不支援的狀態）：只放棄這一張表
+        "user_presence": [{"user_id": "U02", "choice": "sleeping"}],
+        "user_preference": [preference, preference | {"user_id": "XGONE001"}],
+    })
+    assert seed.restore_settings(tx, kept) == {"user_avatar": 0, "user_preference": 1, "user_presence": 0}
+    assert tx.get(models.UserPreference, "U02").text_size == "large"

@@ -3,12 +3,13 @@
     uv run --project backend python data/seed/seed.py [--as-of 2026-10-28]
 
 會清掉整個 public schema，依 SQLAlchemy models 重建資料表與語意層 View，再重新產生資料。
-只有兩樣東西會留下來：自己開的帳號（含第三方登入自動開的），以及第三方登入的綁定。
+會留下來的只有帳號本身的東西：自己開的帳號（含第三方登入自動開的）、第三方登入的綁定，
+以及每個帳號的大頭貼、配色與字體大小、自己選的在線狀態。
 """
 
 import argparse
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -58,16 +59,27 @@ TABLES = [
 ]
 
 
+# 跟著帳號留下來的設定，表名 → model。公司帳號重灌後工號不變，一樣留；帳號已經不在了的跳過
+KEPT_SETTINGS = {
+    "user_avatar": models.UserAvatar,
+    "user_preference": models.UserPreference,
+    "user_presence": models.UserPresence,
+}
+
+
 @dataclass
 class KeptAccounts:
     """重灌前先讀出來、灌完再放回去的東西。資料表一改部署就會重灌（.github/workflows/ci-cd.yml），
-    這兩樣不留的話，綁過 Google 的人下次登入會被當成新來的、另開一個帳號，自己開的帳號則整個消失。
+    帳號與綁定不留的話，綁過 Google 的人下次登入會被當成新來的、另開一個帳號，自己開的帳號則整個消失；
+    設定不留的話，每部署一次，大家的大頭貼、深色、字體大小、「請勿打擾」就全部回到預設。
     他們的提問、頻道訊息這些內容不留：那些跟著假資料一起重來。"""
 
     # app_user 裡自己開的帳號（有 acts_as_user_id 的列），欄位照舊資料表的樣子
     users: list[dict[str, Any]]
     # user_identity 的每一列，公司帳號綁的也算
     identities: list[dict[str, Any]]
+    # KEPT_SETTINGS 每張表的每一列，表名 → 列；舊資料庫還沒有的表就不在裡面
+    settings: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
 
 
 def saved_accounts(conn: Connection) -> KeptAccounts:
@@ -83,7 +95,13 @@ def saved_accounts(conn: Connection) -> KeptAccounts:
         return KeptAccounts([], [])
     users = conn.execute(text("SELECT * FROM app_user WHERE acts_as_user_id IS NOT NULL ORDER BY id")).mappings()
     identities = conn.execute(text("SELECT * FROM user_identity ORDER BY id")).mappings()
-    return KeptAccounts([dict(row) for row in users], [dict(row) for row in identities])
+    settings = {
+        # 表名是上面寫死的，不是外面來的字串
+        table: [dict(row) for row in conn.execute(text(f"SELECT * FROM {table}")).mappings()]
+        for table in KEPT_SETTINGS
+        if conn.execute(text("SELECT to_regclass(:name) IS NOT NULL"), {"name": f"public.{table}"}).scalar()
+    }
+    return KeptAccounts([dict(row) for row in users], [dict(row) for row in identities], settings)
 
 
 def restore_accounts(session: Session, kept: KeptAccounts) -> tuple[int, int]:
@@ -138,6 +156,30 @@ def seed_topics(session: Session) -> None:
     for unit_id, name, created_by in catalog.TOPICS:
         session.add(models.Channel(kind="topic", unit_id=unit_id, name=name, created_by=created_by))
     session.flush()
+
+
+def restore_settings(session: Session, kept: KeptAccounts) -> dict[str, int]:
+    """把大頭貼與設定放回去，回傳每張表放回幾列。要在 restore_or_skip 之後：自建帳號放回去了，那些帳號的設定才有地方掛。
+    帳號已經不在的跳過。一張表放不回去（舊資料不合新的資料表）只放棄那一張，其他照放，
+    灌資料照常往下走：理由跟 restore_or_skip 一樣，少了設定頂多是那些人回到預設。"""
+    ids = set(session.scalars(select(models.AppUser.id)))
+    counts = {}
+    for table, model in KEPT_SETTINGS.items():
+        columns = {column.key for column in model.__table__.columns}
+        rows = [
+            {key: value for key, value in row.items() if key in columns}
+            for row in kept.settings.get(table, [])
+            if row["user_id"] in ids
+        ]
+        try:
+            with session.begin_nested():
+                if rows:
+                    session.execute(insert(model), rows)
+            counts[table] = len(rows)
+        except SQLAlchemyError as exc:
+            print(f"{table} 沒有留下來：{exc}", file=sys.stderr)
+            counts[table] = 0
+    return counts
 
 
 def seed_conversations(session: Session) -> int:
@@ -330,6 +372,7 @@ def seed(url: str | None, as_of: date) -> dict[str, int]:
             session.execute(insert(model), rows)
         # 重灌前的自建帳號與第三方登入綁定放回來；放在重算組織之前，轄區才會跟著示範業務一起算
         kept_accounts, kept_identities = restore_or_skip(session, kept)
+        kept_settings = restore_settings(session, kept)
         # 跟 services/org.py 的演算法核對一次：組織管理頁改組織時，也是呼叫這個函式重算
         rebuild_org_paths(session)
         # 歷史出差單當已核准：請求者與區處主管兩關都過，申請匣才不會被幾千張舊單塞滿
@@ -389,7 +432,7 @@ def seed(url: str | None, as_of: date) -> dict[str, int]:
         "method_card": method_cards, "method_card_feedback": method_feedback,
         "route_habit": len(route_habits.DEMO_HABITS),
         "kept_account": kept_accounts, "kept_identity": kept_identities,
-    }
+    } | {f"kept_{table.removeprefix('user_')}": n for table, n in kept_settings.items()}
 
 
 def main():

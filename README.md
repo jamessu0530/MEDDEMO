@@ -10,7 +10,7 @@
 
 ```bash
 docker compose up -d --wait db redis                # Postgres 16 + pgvector（5433）、Redis（6379）
-uv run --project backend python data/seed/seed.py   # 重建 schema 並灌假資料，會清掉整個資料庫（只留自己開的帳號與第三方登入的綁定）
+uv run --project backend python data/seed/seed.py   # 重建 schema 並灌假資料，會清掉整個資料庫（只留自己開的帳號、第三方登入的綁定、每個人的大頭貼與設定）
 uv run --project backend pytest backend/tests       # 測試另建 meddemo_test、用 Redis 第 15 號庫，不動開發環境
 
 uv run --project backend uvicorn app.main:app --app-dir backend --reload                  # API：http://127.0.0.1:8000
@@ -497,7 +497,7 @@ uv run --project backend python backend/scripts/eval_ask.py
 
 不播、直接換頁的情況：轉址（沒登入被送去登入頁這一類）、同一頁裡只換查詢參數、系統開了「減少動態效果」、瀏覽器開不了 WebGL。播得卡會自動降解析度，降到底還是卡，這次打開就不再播。
 
-配色分淺色（紫色，預設）與深色（黑灰底、白字）。首頁的頁首有一顆月亮／太陽的按鈕直接切換，業務、主管、IT 各自的首頁都有；帳號設定頁也能選。選了什麼記在手機裡（瀏覽器的 localStorage），之前選了黑白灰的人會變成深色。深色裡警示、錯誤、成功一樣是琥珀、紅、綠，調亮一點好在深底上看清楚；吉祥物熊熊滾維持紫色。顏色在 `frontend/src/index.css` 的 `:root[data-skin="dark"]`。
+配色分淺色（紫色，預設）與深色（黑灰底、白字）。首頁的頁首有一顆月亮／太陽的按鈕直接切換，業務、主管、IT 各自的首頁都有；帳號設定頁也能選。選了什麼跟著帳號存在伺服器，換手機登入也一樣（見「大頭貼與字體大小」）；之前選了黑白灰的人會變成深色。深色裡警示、錯誤、成功一樣是琥珀、紅、綠，調亮一點好在深底上看清楚；吉祥物熊熊滾維持紫色。顏色在 `frontend/src/index.css` 的 `:root[data-skin="dark"]`。
 
 全站的按鈕、卡片、輸入框是 Duolingo 那種「厚」的：2px 邊框，底下墊 4px 的厚底，能按的按下去會陷下去（`index.css` 的 `shadow-lip-*` 與 `press`，厚底的顏色是 `--lip`、`--lip-strong`、`--primary-lip`、`--destructive-lip`，淺色、深色各一組）。字型是粉圓體（jf open 粉圓，SIL OFL 1.1，`@fontsource/huninn`），中英文都是圓的；按字切成很多塊，畫面用到哪些字才下載，還沒下載完或沒網路時先用手機內建的黑體。
 
@@ -613,13 +613,17 @@ uv run --project backend python backend/scripts/eval_ask.py
 
 ## 大頭貼與字體大小
 
-設計見 [docs/superpowers/specs/2026-10-01-avatars-text-size-design.md](docs/superpowers/specs/2026-10-01-avatars-text-size-design.md)。
+設計見 [docs/superpowers/specs/2026-10-01-avatars-text-size-design.md](docs/superpowers/specs/2026-10-01-avatars-text-size-design.md)；設定改成跟著帳號存在伺服器見 [docs/superpowers/specs/2026-10-02-cloud-settings-design.md](docs/superpowers/specs/2026-10-02-cloud-settings-design.md)。
 
 - **大頭貼**：帳號設定的「大頭貼」可以拍照或從相簿選一張，所有帳號都能換；沒有照片就用名字縮寫。後端重新整理一次（`backend/app/services/avatars.py`）：轉正、清掉 EXIF、從中間裁成 256×256 的 JPEG，存在 `user_avatar` 表。
   - 網址帶一個用登入密鑰簽的 `sig`，沒有期限、不分看的人，只有要登入的 `GET /api/avatars` 會發；換照片或移除時版本換成新的隨機值，舊網址就 404，所以圖片可以一直快取。
   - 有人換了照片就發 WebSocket 的 `avatars` 事件，手機重拿一次網址。IT 在頻道的成員清單可以移除別人的照片。
   - 換照片算在用量上限的「換大頭貼」（每個帳號每小時 20 次、全系統每天 300 次）。
-- **字體大小**：帳號設定的「字體大小」有標準、大、特大（根字級 100%／112.5%／125%），記在這支手機的 `localStorage`，掛在 `<html data-text-size>`。Tailwind 的字級、間距都是 rem，整頁一起等比例放大；寫字級時不要用 `text-[11px]` 這種像素值，改用 `text-[0.6875rem]`，不然那些字不會跟著放大。
+- **字體大小**：帳號設定的「字體大小」有標準、大、特大（根字級 100%／112.5%／125%），跟配色一樣跟著帳號存在伺服器（見下一段），掛在 `<html data-text-size>`。Tailwind 的字級、間距都是 rem，整頁一起等比例放大；寫字級時不要用 `text-[11px]` 這種像素值，改用 `text-[0.6875rem]`，不然那些字不會跟著放大。
+- **設定跟著帳號**：配色與字體大小存在 `user_preference` 表（`GET`／`PATCH /api/preferences/me`），換一支手機登入也一樣。手機的 `localStorage` 只留一份讓下次打開在畫面出來前先套上，登入後以伺服器為準（`frontend/src/lib/preferences.ts`）。
+  - 還沒存過的帳號，第一次登入就把那支手機現在的設定存上去。沒訊號存不上去就記在手機裡，重連或下次打開再送。
+  - 存好發 WebSocket 的 `preferences` 事件，只轉給同一個帳號的連線：手機上換深色，開著的電腦跟著換。
+  - 部署重灌假資料時，大頭貼、配色與字體大小、選的在線狀態都會留下來（`data/seed/seed.py` 的 `KEPT_SETTINGS`）。
 
 ## 個資與保存期限（NFR-8）
 
@@ -733,7 +737,7 @@ uv run --project backend python backend/scripts/eval_voice.py
 2. 建 `api` 和 `web` 兩個映像檔，推到 GHCR。
 3. VM 上 MEDDEMO 專用的 GitHub Actions runner 把映像拉進 K3s，用 Helm 部署 `deploy/helm/meddemo`（`helm upgrade --install`，等所有服務就緒才算成功）。做法跟 CARE 一樣，兩個 repo 各有自己的 runner。
 
-以下情況部署時會自動重灌假資料。VM 上的資料庫會清空重建，只有兩樣會留下來：自己開的帳號（含第三方登入自動開的），以及第三方登入的綁定——不留的話，綁過 Google 的人下次登入會被當成新來的、另開一個帳號。他們的提問、頻道訊息這些內容不留（`data/seed/seed.py` 的 `KeptAccounts`）。
+以下情況部署時會自動重灌假資料。VM 上的資料庫會清空重建，只有帳號本身的東西會留下來：自己開的帳號（含第三方登入自動開的）、第三方登入的綁定——不留的話，綁過 Google 的人下次登入會被當成新來的、另開一個帳號——以及每個帳號的大頭貼、配色與字體大小、自己選的在線狀態（公司帳號的也留，工號重灌後不變）。他們的提問、頻道訊息這些內容不留（`data/seed/seed.py` 的 `KeptAccounts` 與 `KEPT_SETTINGS`）。
 
 - 第一次部署
 - `models.py` 或 `semantic_layer.sql` 有改動

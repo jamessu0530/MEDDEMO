@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react"
 
-// 配色：淺色是原本的紫色，深色是黑灰底。首頁的頁首與設定頁都能切換。選了什麼記在這支手機裡，跟帳號無關
+// 配色：淺色是原本的紫色，深色是黑灰底。首頁的頁首與設定頁都能切換。
+// 選了什麼跟著帳號存在伺服器（lib/preferences.ts）；這裡在手機裡另外留一份，下次打開在畫面出來前就先套上
 export type Skin = "light" | "dark"
 
 const STORAGE_KEY = "meddemo:skin"
@@ -32,7 +33,7 @@ export function readSkin() {
   return current
 }
 
-/** 直接換配色。畫面上要帶噴漆動畫的話用 ink/ink.ts 的 changeSkin */
+/** 直接換配色，只記在手機裡。使用者自己選的用 lib/preferences.ts 的 chooseSkin：帶噴漆動畫，也存到帳號上 */
 export function setSkin(skin: Skin) {
   if (skin === current) return
   current = skin

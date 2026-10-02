@@ -7,6 +7,8 @@ API 與背景工作不在同一個程序，API 之後也可能開到兩個以上
 - {"type": "presence", "at": 1790000000.5}：有人的狀態變了，每條連線都要新的狀態。at 是 commit 之後取的 time.time()，
   同一個程序裡的連線靠它共用同一次查詢（api/presence.py 的 _StatusCache）
 - {"type": "avatars"}：有人換了或移除大頭貼，手機重拿一次網址
+- {"type": "preferences", "user_id": "U01"}：這個帳號改了配色或字體大小，只轉給他自己的連線，
+  他開著的其他手機、電腦重拿一次設定（api/preferences.py）
 - {"type": "channels"}：有人開了、改名或封存文字頻道，或 IT 改了組織（誰看得到哪些頻道可能變了）。
   手機重新載入頻道列表，WebSocket 重算這個人看得到的頻道
 - {"type": "location", "user_id": "U01"}：這位業務的位置或分享狀態變了，只送給看得到他的主管與 IT
@@ -64,6 +66,10 @@ def location_changed(user_id: str) -> None:
 
 def itinerary_changed(user_id: str) -> None:
     publish({"type": "itinerary", "user_id": user_id})
+
+
+def preferences_changed(user_id: str) -> None:
+    publish({"type": "preferences", "user_id": user_id})
 
 
 # 行程變了就通知主管頁（{"type": "itinerary"}）。行程的每一種改動都會改 Itinerary（加版本；首頁點站只改 updated_at），所以看這張表就夠，

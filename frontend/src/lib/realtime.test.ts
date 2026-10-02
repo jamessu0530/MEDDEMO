@@ -143,6 +143,14 @@ describe("RealtimeClient", () => {
     expect(events.at(-1)).toEqual({ type: "channels" })
   })
 
+  it("自己在別的裝置改了設定，轉給設定的 store 重拿一次", () => {
+    const { client, ready, latest, events } = setup()
+    client.start()
+    ready()
+    latest().push({ type: "preferences" })
+    expect(events.at(-1)).toEqual({ type: "preferences" })
+  })
+
   it("每 20 秒心跳；5 分鐘沒碰螢幕就是閒置，一碰馬上再送一次", () => {
     const { client, latest, ready, handlers } = setup()
     client.start()

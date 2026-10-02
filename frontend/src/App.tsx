@@ -10,6 +10,7 @@ import { Onboarding } from "@/components/onboarding"
 import { canManage, homePath, refreshUser, useAuth } from "@/lib/auth"
 import { uploadQueue } from "@/lib/offline-queue"
 import { clearAvatars, loadAvatars } from "@/lib/avatars"
+import { clearPreferences, loadPreferences } from "@/lib/preferences"
 import { clearMyPresence, loadMyPresence } from "@/lib/presence"
 import { realtime } from "@/lib/realtime"
 import { useIsDesktop } from "@/lib/use-media-query"
@@ -92,10 +93,13 @@ function RequireAuth() {
     void loadMyPresence()
     // 連上 WebSocket 時會再拿一次（resync）；先拿，連不上的時候也看得到大家的照片
     void loadAvatars()
+    // 配色與字體大小跟著帳號：換了手機登入，一進來就換成這個帳號選的
+    loadPreferences()
     return () => {
       realtime.stop()
       clearMyPresence()
       clearAvatars()
+      clearPreferences()
     }
   }, [token])
 

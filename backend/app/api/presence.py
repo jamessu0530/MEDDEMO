@@ -364,6 +364,10 @@ class _Connection:
                 await self.send_presence(_event_time(event))
             elif event.get("type") == "avatars":
                 await self.send({"type": "avatars"})
+            elif event.get("type") == "preferences":
+                # 設定是自己的事：只告訴同一個帳號的連線，別人連「這個帳號改了設定」都不必知道
+                if event.get("user_id") == self.user_id:
+                    await self.send({"type": "preferences"})
             elif event.get("type") == "channels":
                 # 開了頻道或改了組織，看得到的頻道可能變了：記下的作廢，下一則訊息時才重算
                 # （這裡不查：每條連線同時去查，又會跟發言的請求搶 threadpool 與連線池）

@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react"
 
-// 字體大小（docs/superpowers/specs/2026-10-01-avatars-text-size-design.md）：記在這支手機裡，跟配色一樣、跟帳號無關。
+// 字體大小（docs/superpowers/specs/2026-10-01-avatars-text-size-design.md）：跟配色一樣跟著帳號存在伺服器（lib/preferences.ts），
+// 這裡在手機裡另外留一份，下次打開在畫面出來前就先套上。
 // 掛在 <html data-text-size>，index.css 依它放大根字級；Tailwind 的字級、間距都是 rem，整頁一起等比例放大
 export type TextSize = "standard" | "large" | "xlarge"
 
@@ -33,6 +34,7 @@ export function readTextSize() {
   return current
 }
 
+/** 直接換字體大小，只記在手機裡。使用者自己選的用 lib/preferences.ts 的 chooseTextSize：也存到帳號上 */
 export function setTextSize(size: TextSize) {
   if (size === current) return
   current = size

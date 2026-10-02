@@ -24,7 +24,8 @@ const CLOSE_UNAUTHORIZED = 4401
 const CLOSE_TOO_MANY = 4429
 
 // avatars：有人換了或移除大頭貼（lib/avatars.ts 重拿一次網址）；channels：有人開了、改名或封存文字頻道（頻道頁重新載入列表）；
-// location、itinerary：這位業務的位置或今天的行程變了（主管頁）
+// location、itinerary：這位業務的位置或今天的行程變了（主管頁）；
+// preferences：自己在別的手機、電腦改了配色或字體大小（lib/preferences.ts 重拿一次），後端只送給同一個帳號
 export type RealtimeEvent =
   | { type: "message"; channel_id: number }
   | { type: "resync" }
@@ -32,6 +33,7 @@ export type RealtimeEvent =
   | { type: "channels" }
   | { type: "location"; user_id: string }
   | { type: "itinerary"; user_id: string }
+  | { type: "preferences" }
 
 type ServerEvent =
   | { type: "ready"; user_id: string }
@@ -45,6 +47,7 @@ type ServerEvent =
   | { type: "channels" }
   | { type: "location"; user_id: string }
   | { type: "itinerary"; user_id: string }
+  | { type: "preferences" }
 
 export type SocketLike = {
   send(data: string): void
@@ -176,7 +179,8 @@ export class RealtimeClient {
       event.type === "avatars" ||
       event.type === "channels" ||
       event.type === "location" ||
-      event.type === "itinerary"
+      event.type === "itinerary" ||
+      event.type === "preferences"
     ) {
       this.emit(event)
     }
