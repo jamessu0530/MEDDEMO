@@ -6,6 +6,7 @@ WebSocket 那幾個測試不能用 tx：連線在自己的 session 裡讀狀態�
 """
 
 import datetime as dt
+import json
 import math
 import time
 
@@ -536,6 +537,38 @@ def test_an_org_change_stops_notifications_from_channels_no_longer_visible(clien
             if read_before:
                 conn.execute(insert(ChannelRead), read_before)
     assert moved_back.status_code == 200
+
+
+async def test_an_org_change_rechecks_which_reps_a_manager_can_see(monkeypatch):
+    # 看不看得到某位業務記在連線上（位置事件很密）；IT 改了組織（channels 事件）就作廢，不必等記的時間過期
+    allowed = {"U03": False}
+    checks = []
+    monkeypatch.setattr(presence_api, "_can_see_rep", lambda viewer, rep: checks.append(rep) or allowed[rep])
+
+    class Socket:
+        def __init__(self):
+            self.sent = []
+
+        async def send_json(self, payload):
+            self.sent.append(payload)
+
+    class PubSub:
+        def __init__(self, *events):
+            self.events = events
+
+        async def listen(self):
+            for event in self.events:
+                yield {"type": "message", "data": json.dumps(event)}
+
+    moved = {"type": "location", "user_id": "U03"}
+    socket = presence_api._Connection(Socket(), "M01", "token", True)
+    await socket.listen(PubSub(moved, moved))
+    # 看不到：不送，而且第二則不再查
+    assert socket.ws.sent == [] and checks == ["U03"]
+    # IT 把 U03 調到陳建宏底下，存檔後發 channels 事件
+    allowed["U03"] = True
+    await socket.listen(PubSub({"type": "channels"}, moved, moved))
+    assert socket.ws.sent == [{"type": "channels"}, moved, moved] and checks == ["U03", "U03"]
 
 
 def test_the_pool_has_room_for_every_threadpool_worker():

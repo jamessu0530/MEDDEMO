@@ -55,7 +55,8 @@ MAX_CONNECTIONS = 5
 VISIBLE_TTL_SECONDS = 60
 # 定時重算狀態時，別條連線這麼近才算好的那一份可以直接用
 SWEEP_SHARE_SECONDS = 1.0
-# 每條連線記住看不看得到某位業務的位置與行程事件：位置事件很密，不必每一則都查資料庫。組織改了最慢 5 分鐘生效
+# 每條連線記住看不看得到某位業務的位置與行程事件：位置事件很密，不必每一則都查資料庫。
+# IT 改了組織會發 channels 事件，收到就作廢、下一則位置事件時重查；隔這麼久重查是漏接事件時的保險
 SEE_REP_CACHE_SECONDS = 300
 
 # 關閉碼：4000～4999 給應用程式自己用
@@ -367,6 +368,8 @@ class _Connection:
                 # 開了頻道或改了組織，看得到的頻道可能變了：記下的作廢，下一則訊息時才重算
                 # （這裡不查：每條連線同時去查，又會跟發言的請求搶 threadpool 與連線池）
                 self.visible_at = -math.inf
+                # 改了組織，主管看得到哪些業務也可能變了：記下的一起作廢，下一則位置或行程事件時才重查
+                self.reps_seen.clear()
                 # 不帶內容：收到的人重新載入自己看得到的頻道列表，看不到的頻道不會因此透露
                 await self.send({"type": "channels"})
             elif event.get("type") == "message":
