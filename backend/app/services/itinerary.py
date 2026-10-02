@@ -261,6 +261,19 @@ def view(session: Session, itinerary: Itinerary) -> ItineraryView:
     )
 
 
+def stop_order(session: Session, itinerary: Itinerary) -> list[tuple[Customer, bool]]:
+    """今天的站，順序跟 view() 的站號一樣：跑完的在前（照拜訪時間），其他照存著的順序；(客戶, 跑完了嗎)。
+    不算時間與車程、不問 Google：主管頁收到位置事件時只要站號與座標（services/team_itineraries.py）。"""
+    day = _day(session, itinerary)
+    return [(c, True) for _, c in day.done] + [(o.customer, False) for o in _saved_open(session, day)]
+
+
+def office(session: Session, rep: AppUser) -> travel.Point | None:
+    """區處辦公室的位置：還沒跑任何一站時從這裡出發。區處沒有位置（組織管理新開的區）回 None。"""
+    found = session.scalar(select(OrgUnit).where(OrgUnit.kind == "region", OrgUnit.name == rep.region))
+    return (found.lat, found.lng) if found and found.lat is not None and found.lng is not None else None
+
+
 def apply_feedback(session: Session, user_id: str, customer_id: str, action: FeedbackAction, version: int) -> Itinerary:
     """需立即處理的三顆鈕。插入下一站：移到還沒跑的第一站，同類提醒之後排前面一點；
     暫緩：從今天拿掉，三天內的建議不排；誤判：暫緩，再加上同類提醒之後少排一點。"""
@@ -803,9 +816,7 @@ def _start(
         visit, customer = done[-1]
         minutes = durations.get(customer.id, DEFAULT_DURATION)
         return visit.visited_at.astimezone(TAIPEI) + dt.timedelta(minutes=minutes), _point(customer)
-    office = session.scalar(select(OrgUnit).where(OrgUnit.kind == "region", OrgUnit.name == rep.region))
-    origin = (office.lat, office.lng) if office and office.lat is not None and office.lng is not None else None
-    return dt.datetime.combine(today, today_route.FIRST_STOP, TAIPEI), origin
+    return dt.datetime.combine(today, today_route.FIRST_STOP, TAIPEI), office(session, rep)
 
 
 def _points(

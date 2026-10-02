@@ -15,8 +15,8 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import AppUser, Customer, Itinerary, ItineraryStop, OrgUnit, UserLocation
-from app.services import customer_profile, locations, today_route, travel
+from app.models import AppUser, Customer, Itinerary, UserLocation
+from app.services import customer_profile, locations, travel
 from app.services import itinerary as itineraries
 from app.services.scope import SHARING_LEVEL, Scope
 from app.services.today_route import SIGNAL_LABEL
@@ -101,16 +101,10 @@ def route(session: Session, rep: AppUser) -> RepRoute:
     current_ids = [s.customer_id for s in view.stops]
     suggested_ids = [item["customer_id"] for item in suggested]
     customers = _customers(session, current_ids + suggested_ids)
-    rows = {
-        row.customer_id: row
-        for row in session.scalars(select(ItineraryStop).where(ItineraryStop.itinerary_id == itinerary.id))
-    }
-    stops = [
-        _map_stop(n + 1, stop, customers[stop.customer_id], rows.get(stop.customer_id))
-        for n, stop in enumerate(view.stops)
-    ]
+    stops = [_map_stop(n + 1, stop, customers[stop.customer_id]) for n, stop in enumerate(view.stops)]
 
-    origin = _office(session, rep)
+    # 跟 itinerary._start 同一個出發點
+    origin = itineraries.office(session, rep)
     path = ([origin] if origin else []) + [(s.lat, s.lng) for s in stops]
     found = travel.lines(path)
     # 第 n 段開到 path 的第 n + 1 點：有辦公室時就是第 n 站，沒有時是第 n + 1 站
@@ -180,19 +174,11 @@ def locations_now(session: Session, viewer: AppUser) -> dict[str, locations.Seen
 
 
 def _stop_points(session: Session, rep: AppUser, today: dt.date) -> list[locations.StopPoint]:
-    """今天的站，站號跟 itinerary.view 一樣：跑完的在前（照拜訪時間），其他照存著的順序。今天還沒有行程就是沒有站。"""
+    """今天的站，站號跟 itinerary.view 一樣（itinerary.stop_order）。今天還沒有行程就是沒有站。"""
     itinerary = session.scalar(select(Itinerary).where(Itinerary.user_id == rep.id, Itinerary.date == today))
     if itinerary is None:
         return []
-    done = today_route.done_visits(session, rep.id, today)
-    done_ids = {customer.id for _, customer in done}
-    rows = session.scalars(
-        select(ItineraryStop).where(ItineraryStop.itinerary_id == itinerary.id)
-        .order_by(ItineraryStop.position, ItineraryStop.id)
-    )
-    open_ids = [row.customer_id for row in rows if row.customer_id not in done_ids]
-    customers = _customers(session, open_ids)
-    ordered = [(customer, True) for _, customer in done] + [(customers[cid], False) for cid in open_ids]
+    ordered = itineraries.stop_order(session, itinerary)
     return [
         locations.StopPoint(n + 1, _short(customer.name, customer.area), customer.lat, customer.lng, finished)
         for n, (customer, finished) in enumerate(ordered)
@@ -220,20 +206,13 @@ def _customers(session: Session, ids: list[str]) -> dict[str, Customer]:
     return {c.id: c for c in session.scalars(select(Customer).where(Customer.id.in_(ids)))} if ids else {}
 
 
-def _office(session: Session, rep: AppUser) -> travel.Point | None:
-    """區處辦公室的位置：每天從這裡出發（跟 itinerary._start 同一個規則）。還沒有位置的區回 None。"""
-    office = session.scalar(select(OrgUnit).where(OrgUnit.kind == "region", OrgUnit.name == rep.region))
-    return (office.lat, office.lng) if office and office.lat is not None and office.lng is not None else None
-
-
-def _map_stop(number: int, stop: itineraries.StopView, customer: Customer, row: ItineraryStop | None) -> MapStop:
+def _map_stop(number: int, stop: itineraries.StopView, customer: Customer) -> MapStop:
+    # 一個一個欄位抄：StopView 還有業務自己的備註、鎖定與套用的習慣，不給主管看
     return MapStop(
         number=number, customer_id=stop.customer_id, customer_name=stop.customer_name, area=customer.area,
         lat=customer.lat, lng=customer.lng, status=stop.status, planned_time=stop.planned_time,
         duration_minutes=stop.duration_minutes, late_minutes=stop.late_minutes, source=stop.source,
-        signal=stop.signal, reason=stop.reason,
-        window_kind=row.window_kind if row else None,
-        window_time=row.window_time.strftime("%H:%M") if row and row.window_time else None,
+        signal=stop.signal, reason=stop.reason, window_kind=stop.window_kind, window_time=stop.window_time,
     )
 
 

@@ -50,6 +50,22 @@ def test_stops_carry_numbers_and_coordinates_and_the_route_starts_at_the_office(
     assert all(leg.polyline is None and leg.done is False for leg in route.legs)
 
 
+def test_managers_see_the_reps_window_but_not_their_note_or_habits(tx):
+    # 約的時間跟業務看到的一樣（itinerary.StopView）；業務自己的備註、鎖定與套用的習慣不給主管
+    itinerary = itineraries.get_or_create(tx, "U01")
+    draft = itineraries.draft_of(tx, itinerary)
+    draft.stops[1].window_kind, draft.stops[1].window_time = "before", dt.time(11, 0)
+    draft.stops[1].note = "找王藥師"
+    itineraries.save(tx, "U01", itinerary.version, draft)
+    route = team.route(tx, person(tx, "U01"))
+    stop = next(s for s in route.stops if s.customer_id == draft.stops[1].customer_id)
+    assert (stop.window_kind, stop.window_time) == ("before", "11:00")
+    assert not {"note", "locked", "habit_ids"} & set(vars(stop))
+    # 收到位置事件時只拿的那份，站號跟行程的一樣
+    points = team._stop_points(tx, person(tx, "U01"), itinerary.date)
+    assert [(p.number, p.lat, p.lng) for p in points] == [(s.number, s.lat, s.lng) for s in route.stops]
+
+
 def test_legs_to_finished_stops_are_marked_done(tx):
     itinerary = itineraries.get_or_create(tx, "U01")
     target = itineraries.view(tx, itinerary).stops[1]
