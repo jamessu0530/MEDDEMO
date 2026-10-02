@@ -14,10 +14,16 @@ type ErrorDetail = string | Array<string | { msg: string }> | undefined
 // 登入自己的 401 是 Email 或密碼不對、第三方帳號還沒綁定，不是登入過期，不能把本機的登入狀態清掉
 const LOGIN_PATHS = /^\/api\/auth\/(login|oauth\/[a-z]+\/login)$/
 
+// 502／503／504 沒帶後端的說明：是 Nginx、Traefik 或 Cloudflare 回的，業務看狀態碼看不懂。
+// 後端自己回的 502 也可能到不了手機：2026-10-02 Nginx 記到送出 67 bytes 的「熊熊滾這次沒聽懂」，
+// 畫面上卻只有「伺服器回應 502」，說明在 Traefik 或 Cloudflare 那一段被換掉了（Traefik 沒設錯誤頁，多半是 Cloudflare）
+const GATEWAY = new Set([502, 503, 504])
+
 // 後端的錯誤訊息都是寫給業務看的中文，直接顯示；驗證錯誤是一串，接成一句
 function describe(detail: ErrorDetail, status: number) {
   if (typeof detail === "string") return detail
   if (Array.isArray(detail)) return detail.map((d) => (typeof d === "string" ? d : d.msg)).join("；")
+  if (GATEWAY.has(status)) return "伺服器暫時沒有回應，請再試一次"
   return `伺服器回應 ${status}`
 }
 

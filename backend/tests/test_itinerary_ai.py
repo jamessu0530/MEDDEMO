@@ -7,6 +7,7 @@ from route_fakes import FakeLLM
 from sqlalchemy import delete, select
 
 from app.config import NotConfigured
+from app.llm import api_schema
 from app.models import Customer, ItineraryProposal, RouteHabit, Visit
 from app.services import itinerary as service
 from app.services import itinerary_ai, route_habits
@@ -109,6 +110,17 @@ def test_other_reps_customers_are_not_found(tx):
     assert result["notes"] == [f"找不到『{theirs}』", "找不到『德安』"]
     assert result["changed"] is False and result["summary"] == "沒有要改的"
     assert proposal.operations == [{"op": "not_found", "mention": theirs}, {"op": "not_found", "mention": "德安"}]
+
+
+def test_the_schema_sent_to_gemini_has_no_limit_on_the_operation_count():
+    # 加了 maxItems，Gemini 會把整份 schema 拒絕（400 INVALID_ARGUMENT）：上限改在程式裡截
+    assert "maxItems" not in api_schema(itinerary_ai.SCHEMA)["properties"]["operations"]
+
+
+def test_more_than_twelve_operations_are_cut(tx):
+    route(tx)
+    proposal = ask(tx, *({"op": "not_found", "mention": f"店{n}"} for n in range(15)))
+    assert [op["mention"] for op in proposal.operations] == [f"店{n}" for n in range(itinerary_ai.MAX_OPERATIONS)]
 
 
 def test_times_stays_notes_and_locks(tx):

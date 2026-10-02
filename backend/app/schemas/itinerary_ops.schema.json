@@ -7,7 +7,6 @@
   "properties": {
     "operations": {
       "type": "array",
-      "maxItems": 12,
       "description": "照業務說的順序列出要做的操作",
       "items": {
         "type": "object",

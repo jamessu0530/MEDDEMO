@@ -231,7 +231,8 @@ IT 登入後的首頁是 `/admin`：全國 → 區 → 主管 → 業務，點�
   - 調整清單上還有沒存的改動時，先問要不要存起來（熊熊滾是照存著的行程排的）。
   - 調整清單最下面的「幫我排順一點」不呼叫 Gemini，直接整條重排，回同一種對照卡。
   - 提案存在 `itinerary_proposal`，只留 7 天（`jobs/retention.py`）。Gemini 沒設定時回「熊熊滾現在沒辦法排行程」，拖移、加站照常可用。
-  - 實測：`uv run --project backend python backend/scripts/eval_itinerary_ai.py`（20 句話，`data/eval/itinerary_ai_questions.json`；會真的呼叫 Gemini，結果寫進 `data/eval/itinerary_ai_results.json`）。
+  - 實測：`uv run --project backend python backend/scripts/eval_itinerary_ai.py`（20 句話，`data/eval/itinerary_ai_questions.json`；會真的呼叫 Gemini，結果寫進 `data/eval/itinerary_ai_results.json`）。10/2 跑 20/20，等待中位數 1.8 秒、最久 2.7 秒。
+  - 一句話最多 12 個操作，在程式裡截（`MAX_OPERATIONS`），不能寫成 schema 的 `maxItems`：操作是十幾個欄位的物件，清單再加個數上限，Gemini 會把整份 schema 拒絕（400 INVALID_ARGUMENT）。10/2 剛上線時就是這樣，每一句都回「熊熊滾這次沒聽懂」。
 - 問答答案的「排入今天的路線」也是直接加進今天的行程，插在多繞最少的位置；一天還沒跑的站最多 8 站。
 - 路線拿到後存在手機裡，沒訊號時顯示上次那份並標明。
 

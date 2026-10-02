@@ -28,7 +28,10 @@ from app.services import route_habits, today_route
 PROPOSAL_RETENTION = dt.timedelta(days=7)
 SCHEMA_FILE = Path(__file__).resolve().parents[1] / "schemas" / "itinerary_ops.schema.json"
 SCHEMA: dict[str, Any] = json.loads(SCHEMA_FILE.read_text(encoding="utf-8"))
-TIME = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+# 一句話最多做幾個操作。不能寫成 schema 的 maxItems：操作是十幾個欄位、還包著習慣的物件，
+# 清單再加個數上限，Gemini 會把整份 schema 拒絕（400 INVALID_ARGUMENT，2026-10-02 線上每一句都失敗），所以在這裡截
+MAX_OPERATIONS = 12
+TIME =re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 WEEKDAY = "一二三四五六日"
 WINDOW_WORD = {"at": "到", "before": "以前到", "after": "以後到"}
 # 這幾種操作要動行程上的某一站
@@ -132,7 +135,7 @@ def interpret(
     habits = [h for h in route_habits.mine(session, itinerary.user_id) if h.active]
     prompt = _prompt(session, itinerary, question, customer_id, customers, habits)
     raw = llm.json(system=SYSTEM, prompt=prompt, schema=SCHEMA, effort="low")
-    return normalize(raw.get("operations") or [], customers, {h.id for h in habits})
+    return normalize((raw.get("operations") or [])[:MAX_OPERATIONS], customers, {h.id for h in habits})
 
 
 def normalize(
