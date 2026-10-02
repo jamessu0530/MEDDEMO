@@ -63,6 +63,9 @@ LIMITS: dict[str, Limit] = {
     "attachment_search": Limit("搜尋附件", per_client_hour=60, per_day=1000),
     # 換大頭貼不花錢，但每次要解一張最大 15MB 的照片，全公司又都看得到：擋的是一直換
     "avatar": Limit("換大頭貼", per_client_hour=20, per_day=300),
+    # 跟熊熊滾說要怎麼排：一次 Flash 呼叫（約 5 千輸入、1 千輸出 token，約 US$0.006），每天用滿約 US$1.2。
+    # 「幫我排順一點」不呼叫 Gemini，不算
+    "itinerary_ask": Limit("跟熊熊滾排行程", per_client_hour=30, per_day=200),
 }
 
 # 會呼叫 Gemini，或是不花錢但容易被濫用、做了無法復原的入口。提問與錄音整理在背景工作裡呼叫，
@@ -82,6 +85,7 @@ ROUTES: list[tuple[str, re.Pattern[str], str, bool]] = [
     ("POST", re.compile(r"/api/channels/\d+/messages"), "attachment", True),
     ("POST", re.compile(r"/api/channels/search"), "attachment_search", False),
     ("POST", re.compile(r"/api/avatars/me"), "avatar", False),
+    ("POST", re.compile(r"/api/itinerary/today/ask"), "itinerary_ask", False),
 ]
 
 

@@ -9,6 +9,8 @@ import { Mascot } from "@/components/mascot"
 import { Notice } from "@/components/notice"
 import { MyStatusButton } from "@/components/my-status"
 import { RoutePath } from "@/components/route-path"
+import { EditRouteLink, SkippedHabitsNote } from "@/components/route/home-extras"
+import { HomeAsk } from "@/components/route/home-ask"
 import { ShareBar } from "@/components/route/share-bar"
 import { SkinToggle } from "@/components/skin-toggle"
 import { Button, buttonVariants } from "@/components/ui/button"
@@ -154,6 +156,7 @@ export function TodayPage() {
             )}
             <h1 className="text-lg leading-snug font-semibold">今日路線</h1>
           </div>
+          {state.status === "ready" && !state.cached && <EditRouteLink />}
           <Link
             to="/methods"
             className="flex w-16 shrink-0 flex-col items-center justify-center gap-0.5 border-l-2 border-black/15 text-[0.6875rem] font-semibold active:bg-black/10"
@@ -166,8 +169,8 @@ export function TodayPage() {
         <ShareBar />
       </header>
 
-      {/* 底部分頁列約 64px，最後的終點要露出來 */}
-      <main className="flex-1 px-4 pt-3 pb-28">
+      {/* 底部分頁列約 64px，上面再疊一條跟熊熊滾說的輸入列，最後的終點要露出來 */}
+      <main className="flex-1 px-4 pt-3 pb-48">
         {/* 新人才有的入口卡；自己問自己的資料，載不到就不顯示，跟下面的路線互不影響 */}
         <FirstWeekEntry userId={user.id} />
         {state.status === "ready" && state.cached && (
@@ -181,6 +184,7 @@ export function TodayPage() {
           </div>
         )}
         {hint && <p className="mb-3 rounded-xl bg-primary/10 px-3 py-2 text-xs text-primary">{hint}</p>}
+        {route && <SkippedHabitsNote route={route} />}
         {busy && route && (
           <p className="mb-3 flex items-center gap-1.5 text-xs text-muted-foreground">
             <Loader2 className="size-3.5 animate-spin" />
@@ -249,6 +253,16 @@ export function TodayPage() {
             <RoutePath stops={route.stops} />
           ))}
       </main>
+      {/* 跟熊熊滾說要怎麼排：連不上、用的是手機上的舊行程時不給問 */}
+      {state.status === "ready" && !state.cached && (
+        <HomeAsk
+          userId={user.id}
+          onApplied={(next) => {
+            setState({ status: "ready", route: next, cached: false })
+            setHint("已套用熊熊滾的提案。")
+          }}
+        />
+      )}
       <BottomNav />
     </div>
   )

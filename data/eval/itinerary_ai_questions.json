@@ -1,0 +1,25 @@
+{
+  "說明": "跟熊熊滾說要怎麼排的實測（backend/scripts/eval_itinerary_ai.py）。系統的今天是 2026-10-28（星期三），示範業務林昱辰（U01）。每句在交易裡先重置他今天的行程與習慣、問完回滾。expect 的每一個操作都要出現（只比對有寫的欄位，客戶寫店名、習慣寫那一句話）；forbid 的操作不能出現；only 有寫的話，不能有清單以外的操作。",
+  "items": [
+    {"id": "R01", "question": "把鶯歌店排到第二站", "expect": [{"op": "move", "customer_id": "福安連鎖藥局 · 鶯歌店", "to_position": 2}]},
+    {"id": "R02", "question": "林口店改到忠孝店前面", "expect": [{"op": "move", "customer_id": "康泰連鎖藥局 · 林口店"}]},
+    {"id": "R03", "question": "今天也順便去一下德安藥局", "expect": [{"op": "add", "customer_id": "德安藥局 · 板橋"}]},
+    {"id": "R04", "question": "內湖店今天不去了", "expect": [{"op": "remove", "customer_id": "康泰連鎖藥局 · 內湖店"}]},
+    {"id": "R05", "question": "忠孝店約了十點半到", "expect": [{"op": "set_window", "customer_id": "康泰連鎖藥局 · 忠孝店", "kind": "at", "time": "10:30"}]},
+    {"id": "R06", "question": "鶯歌店要在下午三點以前到", "expect": [{"op": "set_window", "customer_id": "福安連鎖藥局 · 鶯歌店", "kind": "before", "time": "15:00"}]},
+    {"id": "R07", "question": "內湖店要待一個小時", "expect": [{"op": "set_duration", "customer_id": "康泰連鎖藥局 · 內湖店", "minutes": 60}]},
+    {"id": "R08", "question": "林口店備註：找王店長拿簽收單", "expect": [{"op": "set_note", "customer_id": "康泰連鎖藥局 · 林口店"}]},
+    {"id": "R09", "question": "把林口店鎖住", "expect": [{"op": "lock", "customer_id": "康泰連鎖藥局 · 林口店"}]},
+    {"id": "R10", "question": "板橋店不用固定在第一站了", "expect": [{"op": "unlock", "customer_id": "福安連鎖藥局 · 板橋店"}]},
+    {"id": "R11", "question": "先去內湖店再去忠孝店", "expect": [{"op": "add_precedence", "before": "康泰連鎖藥局 · 內湖店", "after": "康泰連鎖藥局 · 忠孝店"}]},
+    {"id": "R12", "question": "幫我排順一點", "expect": [{"op": "optimize"}], "only": ["optimize"]},
+    {"id": "R13", "question": "以後星期三都先跑板橋", "expect": [{"op": "add_habit", "habit": {"kind": "first", "subject": {"by": "area", "value": "板橋"}, "weekday": 2}}]},
+    {"id": "R14", "question": "以後去杏林診所都待二十分鐘就好", "expect": [{"op": "add_habit", "habit": {"kind": "duration", "subject": {"by": "customer", "value": "杏林診所 · 大安"}, "duration_minutes": 20}}]},
+    {"id": "R15", "question": "福安的店每次都排在康泰前面", "expect": [{"op": "add_habit", "habit": {"kind": "precedence", "subject": {"by": "chain", "value": "福安連鎖藥局"}, "object": {"by": "chain", "value": "康泰連鎖藥局"}}}]},
+    {"id": "R16", "question": "康泰的店排在診所前面那條先不要了", "expect": [{"op": "disable_habit", "habit_id": "康泰連鎖藥局的店排在診所前面"}]},
+    {"id": "R17", "question": "今天加去大樹藥局", "expect": [{"op": "not_found"}], "forbid": ["add"]},
+    {"id": "R18", "question": "也去一下康泰", "expect": [{"op": "ask_which"}], "only": ["ask_which"]},
+    {"id": "R19", "question": "為什麼板橋店排第一站？", "expect": [{"op": "answer"}], "only": ["answer"]},
+    {"id": "R20", "question": "把王冠宇的三重店也加進來", "forbid": ["add"], "expect": []}
+  ]
+}

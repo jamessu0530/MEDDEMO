@@ -11,6 +11,7 @@ from app import usage
 from app.api import admin, asks, attachments, auth, avatars, channel_search, channels, customers, documents, escalations, first_week, itinerary, manager, memory, methods, mock_systems, oa, presence, products, promotions, transcription, visits, voice
 from app.api import maps  # 行程第 4 階段：主管頁的地圖金鑰
 from app.api import location  # 行程第 6 階段：即時位置
+from app.api import route_habits as route_habits_api
 from app.config import settings
 from app.db import get_session
 
@@ -31,6 +32,7 @@ app.include_router(voice.router)
 app.include_router(transcription.router)
 app.include_router(escalations.router)
 app.include_router(itinerary.router)
+app.include_router(route_habits_api.router)
 app.include_router(manager.router)
 app.include_router(oa.router)
 app.include_router(admin.router)

@@ -1,7 +1,7 @@
 /**
  * 錄音時即時顯示文字（FR-4.2）：把麥克風的聲音同時送給 Gemini 的即時轉錄模型。
  * 只是顯示給業務看；拜訪紀錄的逐字稿還是錄完整段上傳後，由語音辨識產生。
- * 錄音頁用 import() 載入這支程式，Gemini SDK 不會算進首頁的下載量。
+ * 錄音頁與跟熊熊滾說要怎麼排的輸入列用 import() 載入這支程式，Gemini SDK 不會算進首頁的下載量。
  */
 
 import { GoogleGenAI, type LiveConnectConfig, type Session } from "@google/genai"
@@ -19,7 +19,7 @@ export type LiveTranscription = { stop: () => void }
 export async function startLiveTranscription(
   context: AudioContext,
   stream: MediaStream,
-  customerId: string,
+  customerId: string | null,
   onText: (confirmed: string, interim: string) => void
 ): Promise<LiveTranscription | null> {
   let session: Session | null = null

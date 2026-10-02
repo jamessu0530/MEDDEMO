@@ -256,13 +256,26 @@ def _label(candidate: route_model.Candidate, today: dt.date, due: dt.date | None
     return signal, reason, unresolved
 
 
-def label(session: Session, owner_id: str, customer_id: str) -> tuple[str, str]:
-    """業務自己加進行程的那一家，用跟模型挑的同一套說法寫理由。只能問這位業務自己的客戶。"""
+def labels(session: Session, owner_id: str, customer_ids: list[str]) -> dict[str, tuple[str, str]]:
+    """業務自己加進行程的幾家，用跟模型挑的同一套說法寫 (訊號, 理由)。只能問這位業務自己的客戶；
+    一次算好幾家，客戶的特徵、承諾與商機各只查一次。"""
     today = customer_profile.app_today(session)
-    candidate = next(c for c in route_model.candidates(session, today, owner_id=owner_id) if c.customer_id == customer_id)
-    due = _overdue_commitments(session, owner_id, today).get(customer_id)
-    signal, reason, _ = _label(candidate, today, due, _opportunities(session, owner_id, today).get(customer_id))
-    return signal, reason
+    wanted = set(customer_ids)
+    overdue = _overdue_commitments(session, owner_id, today)
+    opportunities = _opportunities(session, owner_id, today)
+    found = {}
+    for candidate in route_model.candidates(session, today, owner_id=owner_id):
+        if candidate.customer_id in wanted:
+            signal, reason, _ = _label(
+                candidate, today, overdue.get(candidate.customer_id), opportunities.get(candidate.customer_id)
+            )
+            found[candidate.customer_id] = (signal, reason)
+    return found
+
+
+def label(session: Session, owner_id: str, customer_id: str) -> tuple[str, str]:
+    """一家的 (訊號, 理由)，見 labels。"""
+    return labels(session, owner_id, [customer_id])[customer_id]
 
 
 def load_feedback(session: Session, user_id: str, today: dt.date) -> Feedback:

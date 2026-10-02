@@ -25,7 +25,7 @@ import generate
 from app import models
 from app.db import make_engine, reset_schema, schema_version
 from app.embeddings import optional_embedder
-from app.services import approvals, attachment_processing, attachments, channel_memory
+from app.services import approvals, attachment_processing, attachments, channel_memory, route_habits
 from app.services.auth import EXTERNAL_ACCOUNT_ACTS_AS
 from app.services.channels import ensure_channels
 from app.services.documents import index_documents
@@ -367,6 +367,8 @@ def seed(url: str | None, as_of: date) -> dict[str, int]:
         seed_topics(session)
         messages = seed_conversations(session)
         method_cards, method_feedback = seed_method_cards(session, data["method_card"], data["method_card_feedback"])
+        # 示範業務的三條排序習慣（services/route_habits.DEMO_HABITS），IT 重置示範業務的行程時也照這份重建
+        route_habits.reset_demo(session, catalog.DEMO_USER_ID)
         # 假資料的拜訪編號是直接指定的，序號要接在後面，新拜訪才不會撞號
         session.execute(text("SELECT setval('visit_seq', :n)"), {"n": len(data["visit"])})
         # 內部文件建索引；有設定 embedding 服務才一併算向量，否則只建關鍵字索引
@@ -384,6 +386,7 @@ def seed(url: str | None, as_of: date) -> dict[str, int]:
     return {name: len(data[name]) for name, _ in TABLES} | {
         "document_chunk": chunks, "channel_message": messages,
         "method_card": method_cards, "method_card_feedback": method_feedback,
+        "route_habit": len(route_habits.DEMO_HABITS),
         "kept_account": kept_accounts, "kept_identity": kept_identities,
     }
 

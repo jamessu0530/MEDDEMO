@@ -143,3 +143,104 @@ def test_cheapest_insert_ignores_rules_the_order_already_breaks():
     last_rule = rp.Rule(id="habit:last", text="A 排最後", kind="last", customer_ids=("A",))
     ordered = [stop("A", 1), stop("C", 3)]
     assert rp.cheapest_insert(START, 0, ordered, stop("B", 2), [last_rule], LINE) == 1
+
+
+def test_a_first_rule_can_cover_several_customers():
+    # 「先跑康泰的店」符合兩家：兩家都要排在其他站前面
+    first = rp.Rule(id="habit:1", text="先跑康泰的店", kind="first", customer_ids=("B", "C"))
+    order = order_of(rp.plan(START, 0, [stop("A", 1), stop("B", 2), stop("C", 3)], [first], LINE))
+    assert set(order[:2]) == {"B", "C"} and order[2] == "A"
+    assert rp.violations(["B", "A", "C"], [first]) == [first]
+
+
+def test_a_last_rule_can_cover_several_customers():
+    last = rp.Rule(id="habit:1", text="診所排最後", kind="last", customer_ids=("A", "B"))
+    order = order_of(rp.plan(START, 0, [stop("A", 1), stop("B", 2), stop("C", 3)], [last], LINE))
+    assert order[0] == "C"
+    assert rp.violations(["A", "C", "B"], [last]) == [last]
+
+
+def test_first_and_last_on_the_same_customer_conflict():
+    first = rp.Rule(id="habit:1", text="A 排第一", kind="first", customer_ids=("A",))
+    last = rp.Rule(id="habit:2", text="A 排最後", kind="last", customer_ids=("A",))
+    result = rp.plan(START, 0, [stop("A", 1), stop("B", 2)], [first, last], LINE)
+    assert isinstance(result, rp.Conflict)
+    assert {r.id for r in result.rules} == {"habit:1", "habit:2"}
+
+
+def test_two_first_rules_for_different_customers_conflict():
+    a_first = rp.Rule(id="habit:1", text="A 排第一", kind="first", customer_ids=("A",))
+    b_first = rp.Rule(id="habit:2", text="B 排第一", kind="first", customer_ids=("B",))
+    result = rp.plan(START, 0, [stop("A", 1), stop("B", 2), stop("C", 3)], [a_first, b_first], LINE)
+    assert isinstance(result, rp.Conflict)
+    assert {r.id for r in result.rules} == {"habit:1", "habit:2"}
+
+
+def test_a_lock_past_the_last_stop_is_a_conflict():
+    lock = rp.Rule(id="lock:A", text="A 鎖在第 4 站", kind="lock", customer_ids=("A",), position=3)
+    result = rp.plan(START, 0, [stop("A", 1), stop("B", 2)], [lock], LINE)
+    assert isinstance(result, rp.Conflict) and result.rules == [lock]
+    assert rp.violations(["A", "B"], [lock]) == [lock]
+
+
+def test_locking_the_same_customer_twice_at_the_same_place_is_fine():
+    # 「需立即處理」的鎖與業務自己按的鎖可能同時在：同一家、同一個位置，不算衝突
+    lock = rp.Rule(id="lock:C", text="C 排第一站", kind="lock", customer_ids=("C",), position=0)
+    again = rp.Rule(id="urgent:C", text="C 需立即處理", kind="lock", customer_ids=("C",), position=0)
+    assert order_of(rp.plan(START, 0, [stop("A", 1), stop("B", 2), stop("C", 3)], [lock, again], LINE))[0] == "C"
+
+
+def test_two_customers_locked_at_the_same_place_conflict():
+    lock_a = rp.Rule(id="lock:A", text="A 鎖在第 1 站", kind="lock", customer_ids=("A",), position=0)
+    lock_b = rp.Rule(id="lock:B", text="B 鎖在第 1 站", kind="lock", customer_ids=("B",), position=0)
+    result = rp.plan(START, 0, [stop("A", 1), stop("B", 2)], [lock_a, lock_b], LINE)
+    assert isinstance(result, rp.Conflict)
+    assert {r.id for r in result.rules} == {"lock:A", "lock:B"}
+
+
+def test_the_same_customer_locked_at_two_places_is_a_conflict():
+    first = rp.Rule(id="lock:A", text="A 鎖在第 1 站", kind="lock", customer_ids=("A",), position=0)
+    second = rp.Rule(id="urgent:A", text="A 鎖在第 2 站", kind="lock", customer_ids=("A",), position=1)
+    assert isinstance(rp.plan(START, 0, [stop("A", 1), stop("B", 2)], [first, second], LINE), rp.Conflict)
+
+
+def test_one_rule_split_into_pairs_is_reported_once():
+    # 「B、C 排在 A 前面」這條習慣拆成兩組兩兩的先後，id 一樣；A 又鎖在第一站
+    pairs = [
+        rp.Rule(id="habit:7", text="B、C 排在 A 前面", kind="precedence", customer_ids=("B", "A")),
+        rp.Rule(id="habit:7", text="B、C 排在 A 前面", kind="precedence", customer_ids=("C", "A")),
+    ]
+    lock = rp.Rule(id="lock:A", text="A 排第一站", kind="lock", customer_ids=("A",), position=0)
+    result = rp.plan(START, 0, [stop("A", 1), stop("B", 2), stop("C", 3)], [*pairs, lock], LINE)
+    assert isinstance(result, rp.Conflict)
+    # 整條習慣拿掉就排得出來，所以它也是擋住的那幾條之一；只列一次
+    assert sorted(r.id for r in result.rules) == ["habit:7", "lock:A"]
+    assert [r.id for r in rp.violations(["A", "B", "C"], pairs)] == ["habit:7"]
+
+
+def test_rule_costs_say_how_much_each_rule_adds():
+    # 先 B 再 A：0 → B(2) → A(1) 開 20 + 10 = 30 分鐘；不守的話 0 → A → B 只要 20 分鐘
+    before_a = rp.Rule(id="today:B>A", text="先 B 再 A", kind="precedence", customer_ids=("B", "A"))
+    harmless = rp.Rule(id="today:A>C", text="先 A 再 C", kind="precedence", customer_ids=("A", "C"))
+    stops = [stop("A", 1), stop("B", 2), stop("C", 3)]
+    costs = rp.rule_costs(START, 0, stops, [before_a, harmless], LINE)
+    assert [(c.rule.id, c.travel_minutes, c.late_minutes) for c in costs] == [("today:B>A", 20, 0)]
+    assert costs[0].without == ["A", "B", "C"]
+
+
+def test_rule_costs_count_a_split_rule_once_and_report_lateness():
+    pairs = [
+        rp.Rule(id="habit:7", text="C 排在 A、B 前面", kind="precedence", customer_ids=("C", "A")),
+        rp.Rule(id="habit:7", text="C 排在 A、B 前面", kind="precedence", customer_ids=("C", "B")),
+    ]
+    # A 約 09:15 以前到：先跑 C（30 分鐘外）一定晚到
+    stops = [stop("A", 1, window=("before", dt.time(9, 15))), stop("B", 2), stop("C", 3)]
+    costs = rp.rule_costs(START, 0, stops, pairs, LINE)
+    assert len(costs) == 1 and costs[0].rule.id == "habit:7"
+    assert costs[0].late_minutes > 0
+
+
+def test_rule_costs_are_empty_when_the_rules_cannot_be_kept():
+    a_first = rp.Rule(id="today:A>B", text="先 A 再 B", kind="precedence", customer_ids=("A", "B"))
+    b_first = rp.Rule(id="today:B>A", text="先 B 再 A", kind="precedence", customer_ids=("B", "A"))
+    assert rp.rule_costs(START, 0, [stop("A", 1), stop("B", 2)], [a_first, b_first], LINE) == []

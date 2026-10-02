@@ -22,6 +22,11 @@ function stop(id: string, status: RouteStop["status"], extra: Partial<RouteStop>
     late_minutes: 0,
     travel_minutes: 10,
     travel_km: 3.2,
+    window_kind: null,
+    window_time: null,
+    note: null,
+    locked: false,
+    habit_ids: [],
     ...extra,
   }
 }
@@ -66,5 +71,11 @@ describe("RoutePath", () => {
     expect(html).toContain("今天 3 站都跑完了")
     expect(html).toContain("mascot-yay")
     expect(html).not.toContain(">出發<")
+  })
+
+  it("有約的時間又趕不上，標籤第二行改成紅字會晚到幾分", () => {
+    const html = render([stop("a", "next", { window_kind: "before", window_time: "10:00", late_minutes: 25 }), stop("b", "todo")])
+    expect(html).toContain("會晚到 25 分")
+    expect(html.match(/會晚到/g)).toHaveLength(1)
   })
 })

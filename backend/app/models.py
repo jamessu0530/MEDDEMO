@@ -1021,8 +1021,11 @@ class Itinerary(Base):
     suggested: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
     # 「需立即處理」那張卡；按了三顆鈕之一、那站拿掉或跑完之後清成 NULL
     urgent: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True))
-    # 今天不套用的排序習慣（第二階段才有習慣）
+    # 今天不套用的排序習慣：每天建立建議時跟別的規則衝突、業務在調整清單上按了「今天不套用」，
+    # 或存檔時今天的順序跟它不合（以當天排的為準）
     skipped_habit_ids: Mapped[list[int]] = mapped_column(ARRAY(BigInteger), server_default="{}")
+    # 上面每一條為什麼今天不套用（習慣 id 的字串 → 一句話），行程與習慣頁上提示用
+    skip_reasons: Mapped[dict[str, Any]] = mapped_column(server_default="{}")
     created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
 
@@ -1084,3 +1087,68 @@ class RouteSignalWeight(Base):
     user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), primary_key=True)
     signal: Mapped[str] = mapped_column(primary_key=True)
     weight: Mapped[float] = mapped_column(server_default="0")
+
+
+# 排序習慣的種類。precedence：A 排在 B 前面；first、last：排在其他站前面、後面；
+# window：約的時段；duration：停留多久。前三種是一定要守的規則，後兩種是新增一站時的預設值
+ROUTE_HABIT_KINDS = ("precedence", "first", "last", "window", "duration")
+# 習慣從哪裡來。ai：在首頁跟熊熊滾說的；prompt：拖完或改完答應的；manual：在習慣頁自己新增的
+ROUTE_HABIT_SOURCES = ("ai", "prompt", "manual")
+
+
+class RouteHabit(Base):
+    """業務自己的排序習慣，長期有效、可以限定星期幾（services/route_habits.py）。主管看不到。"""
+
+    __tablename__ = "route_habit"
+    __table_args__ = (
+        one_of("kind", ROUTE_HABIT_KINDS, "kind"),
+        one_of("source", ROUTE_HABIT_SOURCES, "source"),
+        CheckConstraint("weekday IS NULL OR weekday BETWEEN 0 AND 6", name="weekday"),
+        CheckConstraint("(kind = 'precedence') = (object IS NOT NULL)", name="object"),
+        CheckConstraint("window_kind IS NULL OR window_kind IN ('at', 'before', 'after')", name="window_kind"),
+        CheckConstraint("(kind = 'window') = (window_kind IS NOT NULL AND window_time IS NOT NULL)", name="window_pair"),
+        CheckConstraint("(kind = 'duration') = (duration_minutes IS NOT NULL)", name="duration"),
+        CheckConstraint("duration_minutes IS NULL OR duration_minutes > 0", name="duration_positive"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str]
+    # {"by": "customer"／"chain"／"type"／"area", "value": ...}：客戶比 id、連鎖體系比 chain_group、類型比 type、地區比 area
+    subject: Mapped[dict[str, Any]]
+    # 只有 precedence 用：subject 那幾家要排在 object 那幾家前面
+    object: Mapped[dict[str, Any] | None]
+    window_kind: Mapped[str | None]
+    window_time: Mapped[dt.time | None]
+    duration_minutes: Mapped[int | None]
+    # 0（星期一）～6（星期日），跟 Python 的 date.weekday() 一樣；NULL 是每天
+    weekday: Mapped[int | None]
+    # 給人看的一句話，由 route_habits.describe 依欄位產生，例如「康泰連鎖藥局的店排在診所前面」
+    text: Mapped[str]
+    source: Mapped[str]
+    # 停用不刪
+    active: Mapped[bool] = mapped_column(server_default=text("true"))
+    # 兩條習慣衝突時新的優先
+    created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+
+
+class ItineraryProposal(Base):
+    """跟熊熊滾說要怎麼排、「幫我排順一點」算出來的提案（services/itinerary_ai.py）。
+
+    按「套用」時照 operations 在最新的行程上再做一次，不信前端傳來的內容；base_version 對不上就擋下來。
+    只留最近 7 天（jobs/retention.py）。行程刪掉（IT 重置示範業務）時一起刪。
+    """
+
+    __tablename__ = "itinerary_proposal"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    itinerary_id: Mapped[int] = mapped_column(ForeignKey("itinerary.id", ondelete="CASCADE"), index=True)
+    # 算提案時的行程版本
+    base_version: Mapped[int]
+    # 業務說的那句話；按鈕觸發的排順路是 NULL
+    question: Mapped[str | None] = mapped_column(Text)
+    # 驗證過的操作清單（AI 的輸出換成這位業務自己的客戶與習慣，不合的已經轉成 not_found）
+    operations: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
+    # 對照卡的內容（api/itinerary.py 的 ProposalOut 照這個欄位回傳）
+    result: Mapped[dict[str, Any]]
+    created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now(), index=True)

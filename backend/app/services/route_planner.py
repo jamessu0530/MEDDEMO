@@ -6,6 +6,8 @@
 
 規則分兩級：先後、排第一、排最後、鎖住的位置一定要守，守不住就不排（回 Conflict，講出是哪幾條）；
 約的時間盡量守，趕不上照樣排，記下晚到幾分鐘。
+
+`rule_costs` 算每條規則讓路線多繞多少，對照卡用。
 """
 
 from __future__ import annotations
@@ -58,9 +60,20 @@ class Schedule:
 
 @dataclass(frozen=True)
 class Conflict:
-    """排不出來：拿掉其中任何一條就排得出來的那幾條；找不到單獨一條擋住的，就是全部的規則。"""
+    """排不出來：拿掉其中任何一條就排得出來的那幾條；找不到單獨一條擋住的，就是全部的規則。
+    同一個 id 的規則只列一條。"""
 
     rules: list[Rule]
+
+
+@dataclass(frozen=True)
+class RuleCost:
+    """守住這條規則讓路線多花多少：跟拿掉這條（同一個 id 一起拿掉）重排的最好排法比。"""
+
+    rule: Rule
+    travel_minutes: int  # 多開幾分鐘（晚到變少時可能是負的）
+    late_minutes: int  # 多晚到幾分鐘
+    without: list[str]  # 不守這條時最好的順序
 
 
 def _visit(t: dt.datetime, travel: int, stop: PlanStop) -> tuple[dt.datetime, dt.datetime, int]:
@@ -89,10 +102,14 @@ def schedule(start: dt.datetime, start_point: int, ordered: list[PlanStop], minu
 
 
 def violations(ordered: list[str], rules: list[Rule]) -> list[Rule]:
-    """這個順序違反哪幾條規則。只看今天行程裡有的客戶；規則提到的客戶不在行程裡就不算違反。"""
+    """這個順序違反哪幾條規則。只看今天行程裡有的客戶；規則提到的客戶不在行程裡就不算違反。
+    同一條規則（同一個 id）拆成好幾組兩兩的先後時（習慣「康泰的店排在診所前面」），只列違反的第一組。"""
     position = {cid: i for i, cid in enumerate(ordered)}
-    broken = []
+    broken: list[Rule] = []
+    seen: set[str] = set()
     for rule in rules:
+        if rule.id in seen:
+            continue
         here = [cid for cid in rule.customer_ids if cid in position]
         if rule.kind == "precedence":
             ok = len(here) < 2 or position[rule.customer_ids[0]] < position[rule.customer_ids[1]]
@@ -109,6 +126,7 @@ def violations(ordered: list[str], rules: list[Rule]) -> list[Rule]:
             ok = not here or position[here[0]] == rule.position
         if not ok:
             broken.append(rule)
+            seen.add(rule.id)
     return broken
 
 
@@ -133,15 +151,21 @@ def _before(stops: list[PlanStop], rules: list[Rule]) -> dict[str, set[str]]:
 
 
 def _locks(stops: list[PlanStop], rules: list[Rule]) -> dict[int, str] | None:
-    """鎖住的位置 → 那一家。兩家鎖在同一個位置、或位置超出站數，就是排不出來（None）。"""
+    """鎖住的位置 → 那一家。同一家重複鎖在同一個位置不算衝突（「需立即處理」的鎖與業務按的鎖可能同時在）；
+    兩家鎖在同一個位置、同一家鎖在兩個位置、或位置超出站數，就是排不出來（None）。"""
     present = {s.customer_id for s in stops}
     locks: dict[int, str] = {}
     for rule in rules:
         if rule.kind != "lock" or rule.customer_ids[0] not in present:
             continue
-        if rule.position is None or not 0 <= rule.position < len(stops) or rule.position in locks:
+        cid = rule.customer_ids[0]
+        if rule.position is None or not 0 <= rule.position < len(stops):
             return None
-        locks[rule.position] = rule.customer_ids[0]
+        if locks.get(rule.position, cid) != cid:
+            return None
+        if cid in locks.values() and locks.get(rule.position) != cid:
+            return None
+        locks[rule.position] = cid
     return locks
 
 
@@ -193,11 +217,36 @@ def plan(
     found = _search(start, start_point, stops, rules, minutes)
     if found is not None:
         return found
+    # 一條一條拿掉再試；同一個 id 的規則（一條習慣拆成的好幾組先後）一起拿掉，算一條
+    ids = list(dict.fromkeys(rule.id for rule in rules))
+    first_of = {rule_id: next(r for r in rules if r.id == rule_id) for rule_id in ids}
     blocking = [
-        rule for i, rule in enumerate(rules)
-        if _search(start, start_point, stops, rules[:i] + rules[i + 1:], minutes) is not None
+        first_of[rule_id] for rule_id in ids
+        if _search(start, start_point, stops, [r for r in rules if r.id != rule_id], minutes) is not None
     ]
-    return Conflict(blocking or list(rules))
+    return Conflict(blocking or list(first_of.values()))
+
+
+def rule_costs(
+    start: dt.datetime, start_point: int, stops: list[PlanStop], rules: list[Rule], minutes: list[list[int]]
+) -> list[RuleCost]:
+    """每條規則讓路線多繞多少（對照卡上「守住『…』，比不守多繞 N 分鐘」）。只列拿掉之後真的排得更好的；
+    守住全部規則就排不出來時回空的（那是 plan 的 Conflict 要講的事）。"""
+    best = _search(start, start_point, stops, rules, minutes)
+    if best is None:
+        return []
+    costs = []
+    for rule_id in dict.fromkeys(rule.id for rule in rules):
+        without = _search(start, start_point, stops, [r for r in rules if r.id != rule_id], minutes)
+        if without is None or (without.late_minutes, without.travel_minutes) >= (best.late_minutes, best.travel_minutes):
+            continue
+        costs.append(RuleCost(
+            rule=next(r for r in rules if r.id == rule_id),
+            travel_minutes=best.travel_minutes - without.travel_minutes,
+            late_minutes=best.late_minutes - without.late_minutes,
+            without=[s.customer_id for s in without.slots],
+        ))
+    return costs
 
 
 def cheapest_insert(

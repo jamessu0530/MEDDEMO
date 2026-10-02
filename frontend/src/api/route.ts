@@ -25,6 +25,8 @@ export type RouteUrgent = {
   note: string | null
 }
 
+export type WindowKind = "at" | "before" | "after"
+
 export type RouteStop = {
   customer_id: string
   customer_name: string
@@ -43,7 +45,29 @@ export type RouteStop = {
   // 從上一站開過來；已完成的站是 null
   travel_minutes: number | null
   travel_km: number | null
+  // 約的時間：at 幾點到、before 以前、after 以後；沒約是 null
+  window_kind: WindowKind | null
+  window_time: string | null
+  note: string | null
+  // 排順路時位置不動
+  locked: boolean
+  // 套用在這一站的習慣，調整清單的卡片上標綠色「習慣」
+  habit_ids: number[]
 }
+
+export type RouteRule = {
+  id: string
+  text: string
+  kind: "precedence" | "first" | "last"
+  // today：今天設的先後；habit：習慣；new：這次答應要記、按「完成」才存的習慣
+  source: "today" | "habit" | "new"
+  // precedence 是 [前, 後]；同一條習慣拆成好幾組時 id 相同
+  customer_ids: string[]
+}
+
+export type Precedence = { before: string; after: string }
+
+export type SkippedHabit = { id: number; text: string; reason: string; conflict: boolean }
 
 export type TodayRoute = {
   date: string
@@ -59,6 +83,12 @@ export type TodayRoute = {
   finish_time: string | null
   // 車程是直線估算的
   estimated: boolean
+  // 調整清單要守的規則（今天的先後與習慣；鎖住的不列）與目前的順序違反了哪幾條
+  rules: RouteRule[]
+  violations: string[]
+  precedences: Precedence[]
+  // 今天不套用的習慣；conflict 是每天建立建議時跟別的規則衝突，行程上要提示
+  skipped_habits: SkippedHabit[]
 }
 
 export type RouteAction = "pin" | "snooze" | "misjudge"
@@ -67,6 +97,76 @@ export type AddStopsResult = {
   itinerary: TodayRoute
   added: string[]
   skipped: { customer_id: string; customer_name: string; reason: string }[]
+}
+
+export type HabitTarget = { by: "customer" | "chain" | "type" | "area"; value: string }
+
+export type HabitKind = "precedence" | "first" | "last" | "window" | "duration"
+
+// 一條習慣的欄位（新增習慣、調整清單上答應要記的都是這個樣子）。object 只有先後用
+export type HabitDraft = {
+  kind: HabitKind
+  subject: HabitTarget
+  object: HabitTarget | null
+  window_kind: WindowKind | null
+  window_time: string | null
+  duration_minutes: number | null
+  // 0 是星期一；null 是每天
+  weekday: number | null
+  // 紅框上按了「今天不套用這條」：照樣記下來，只是今天不套用
+  skip_today?: boolean
+}
+
+export type DraftStop = Pick<RouteStop, "customer_id" | "duration_minutes" | "window_kind" | "window_time" | "note" | "locked">
+
+// 調整清單上改到一半的行程：還沒跑的站照畫面上的順序
+export type RouteDraft = {
+  stops: DraftStop[]
+  precedences: Precedence[]
+  skipped_habit_ids: number[]
+  habits: HabitDraft[]
+}
+
+export type RouteCandidate = {
+  customer_id: string
+  customer_name: string
+  type: "chain" | "independent" | "clinic"
+  area: string
+  // 順路的才有：目前的理由類別、插在第幾站後（0 是排第一站）、估算多繞幾分鐘
+  signal: RouteSignal | null
+  after_stop: number | null
+  extra_minutes: number | null
+}
+
+export type RouteCandidates = { nearby: RouteCandidate[]; others: RouteCandidate[]; full: boolean }
+
+export type ProposalStop = { customer_id: string; customer_name: string; planned_time: string; late_minutes: number }
+
+export type ProposalSide = { stops: ProposalStop[]; travel_minutes: number; travel_km: number }
+
+// 跟熊熊滾說要怎麼排、「幫我排順一點」回來的對照卡（後端 api/itinerary.py 的 ProposalOut）。
+// 一行一行的字（規則的代價、會晚到、做不到的部分…）都是後端寫好的
+export type RouteProposal = {
+  id: number
+  // 業務說的那句話；按「幫我排順一點」是 null
+  question: string | null
+  // proposal：提案（changed 是 false 時沒有「套用」）；conflict：規則互相衝突排不出來；ask_which：要選一個；answer：只回答
+  kind: "proposal" | "conflict" | "ask_which" | "answer"
+  summary: string
+  changed: boolean
+  before: ProposalSide | null
+  after: ProposalSide | null
+  rule_costs: string[]
+  late: string[]
+  habits_added: string[]
+  habits_disabled: string[]
+  dropped: string[]
+  notes: string[]
+  conflict: string[]
+  mention: string | null
+  candidates: { customer_id: string; customer_name: string }[]
+  text: string | null
+  estimated: boolean
 }
 
 // 跟客戶清單一樣（FR-4.3）：載入成功就記在手機裡，路上沒訊號時至少看得到上次那份
@@ -129,6 +229,47 @@ export async function addStopsToToday(userId: string, customerIds: string[]) {
   )
   writeCache(routeKey(userId), result.itinerary)
   return result
+}
+
+/** 調整清單上的草稿算時間、車程與違反的規則，不存；insert 是「加一站」點的那一家 */
+export function previewToday(draft: RouteDraft, insert?: string, signal?: AbortSignal) {
+  return request<TodayRoute>("/api/itinerary/today/preview", {
+    ...jsonBody("POST", { ...draft, insert: insert ?? null }),
+    signal,
+  })
+}
+
+/** 調整清單按「完成」：一次存進去；行程剛被改過回 409 */
+export async function saveToday(userId: string, version: number, draft: RouteDraft) {
+  const route = await request<TodayRoute>("/api/itinerary/today", jsonBody("PUT", { ...draft, version }))
+  writeCache(routeKey(userId), route)
+  return route
+}
+
+/** 加一站的候選：順路的前幾家（估算多繞幾分鐘）與其他客戶。order、locked 是草稿上還沒跑的站與鎖住的站 */
+export function getCandidates(order: string[], locked: string[], signal?: AbortSignal) {
+  const query = new URLSearchParams({ order: order.join(","), locked: locked.join(",") })
+  return request<RouteCandidates>(`/api/itinerary/today/candidates?${query}`, { signal })
+}
+
+/** 跟熊熊滾說要怎麼排（同步，通常 3～5 秒）：回對照卡，還沒套用。customerId 是「要選一個」時按的那一家 */
+export function askRoute(question: string, customerId?: string) {
+  return request<RouteProposal>(
+    "/api/itinerary/today/ask",
+    jsonBody("POST", { question, customer_id: customerId ?? null })
+  )
+}
+
+/** 「幫我排順一點」：整條重排，回同一種對照卡 */
+export function optimizeRoute() {
+  return request<RouteProposal>("/api/itinerary/today/optimize", { method: "POST" })
+}
+
+/** 套用提案：後端照存下來的操作在最新的行程上再做一次；行程在問完之後改過了回 409 */
+export async function applyProposal(userId: string, id: number) {
+  const route = await request<TodayRoute>(`/api/itinerary/proposals/${id}/apply`, { method: "POST" })
+  writeCache(routeKey(userId), route)
+  return route
 }
 
 /** 還沒跑的站數（不算剛回寫完的那一家）；回寫完成頁的「回今日路線 · 還有 N 站」用 */
