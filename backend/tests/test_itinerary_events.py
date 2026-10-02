@@ -4,11 +4,13 @@ import datetime as dt
 
 import pytest
 from fastapi.testclient import TestClient
+from route_fakes import FakeLLM
 
 from app import realtime
 from app.main import app
 from app.models import Visit
 from app.services import itinerary as itineraries
+from app.services import itinerary_ai
 from app.timeutil import TAIPEI
 
 
@@ -46,6 +48,35 @@ def test_a_rolled_back_change_is_not_announced(tx, events):
     tx.rollback()
     tx.commit()
     assert changed(events) == []
+
+
+def test_saving_the_edit_list_is_announced(tx, events):
+    # 調整清單按「完成」（PUT /api/itinerary/today）加版本，不必另外記得發
+    itinerary = itineraries.get_or_create(tx, "U02")
+    tx.commit()
+    events.clear()
+    draft = itineraries.draft_of(tx, itinerary)
+    draft.stops[1].note = "找王藥師"
+    itineraries.save(tx, "U02", itinerary.version, draft)
+    tx.flush()
+    assert changed(events) == []
+    tx.commit()
+    assert changed(events) == ["U02"]
+
+
+def test_applying_bears_proposal_is_announced(tx, events):
+    # 套用熊熊滾的提案（POST /api/itinerary/proposals/{id}/apply）一樣是存一份新的行程
+    itinerary = itineraries.get_or_create(tx, "U02")
+    ids = [s.customer_id for s in itineraries.view(tx, itinerary).stops]
+    llm = FakeLLM([{"op": "move", "customer_id": ids[-1], "to_position": 2}])
+    proposal = itinerary_ai.ask(tx, "U02", "最後一家先去", None, llm=llm)
+    tx.commit()
+    events.clear()
+    itinerary_ai.apply(tx, "U02", proposal.id)
+    tx.flush()
+    assert changed(events) == []
+    tx.commit()
+    assert changed(events) == ["U02"]
 
 
 def test_confirming_a_visit_is_announced_but_editing_it_later_is_not(tx, events):
