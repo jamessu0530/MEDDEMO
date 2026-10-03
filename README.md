@@ -695,6 +695,7 @@ MEDDEMO 跟 CARE 共用 GCP 上的 care-vm：K3s、Helm、Traefik、HTTPS 憑證
 | `VOICE_API_KEY` | secret | 選填：語音問答用的 Gemini 金鑰，沒填就沿用 `LLM_API_KEY` |
 | `FIRECRAWL_API_KEY` | secret | 選填：知識查詢上網搜尋 |
 | `COHERE_API_KEY` | secret | 選填：知識查詢精排 |
+| `TYPESAFE_API_KEY` | secret | 選填：TypeSafe 的 Jev，跟 CARE 共用同一把。準備給問答自動判斷查數字、查規定還是查頻道用，目前還沒有程式讀它 |
 | `GOOGLE_MAPS_SERVER_KEY` | secret | 選填：行程的道路車程（Google Routes API）。Google Cloud 專案要開帳單；API 限制只開 Routes API，應用程式限制填 VM 的對外 IP。沒填就用直線估算。在 Google Cloud 為 Routes API 設每日配額上限（例如每天 2,000 次）並替帳單設預算警示。設好之後用業務帳號打 `/api/itinerary/today`，回應裡 `"estimated": false` 就是接上了。 |
 | `GOOGLE_MAPS_BROWSER_KEY` | secret | 選填：主管頁的地圖（Maps JavaScript API）。API 限制只開 Maps JavaScript API，網站限制填 `https://網址/*`。沒填主管頁就不畫地圖、只列清單。 |
 
