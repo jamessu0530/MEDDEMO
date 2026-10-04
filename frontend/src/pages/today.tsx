@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
-import { Bell, BookOpenText, ChevronRight, FileText, Flag, Loader2, TriangleAlert } from "lucide-react"
-import { Link, useNavigate } from "react-router"
+import { Bell, BookOpenText, ChevronRight, FileText, Flag, Loader2, Map as MapIcon, Route, TriangleAlert } from "lucide-react"
+import { Link, useNavigate, useSearchParams } from "react-router"
 
 import { ApiError } from "@/api/client"
 import { getTodayRoute, sendRouteFeedback, type RouteAction, type TodayRoute } from "@/api/route"
@@ -11,6 +11,7 @@ import { MyStatusButton } from "@/components/my-status"
 import { RoutePath } from "@/components/route-path"
 import { EditRouteLink, SkippedHabitsNote } from "@/components/route/home-extras"
 import { HomeAsk } from "@/components/route/home-ask"
+import { HomeMapPanel } from "@/components/route/home-map-panel"
 import { ShareBar } from "@/components/route/share-bar"
 import { SkinToggle } from "@/components/skin-toggle"
 import { Button, buttonVariants } from "@/components/ui/button"
@@ -33,9 +34,11 @@ type LoadState =
  * 頂部是圖示加數字的狀態列和紫色橫幅，路線是一顆顆蛇行往下的圓鈕（components/route-path.tsx）。
  * 最上面是「需立即處理」，業務按三顆鈕給回饋（插入下一站／暫緩／誤判），
  * 後端直接改存著的今日行程（services/itinerary.py），回來的就是改好的那一份。
+ * 路線可以切成「地圖」（components/route/home-map-panel.tsx）：同一份行程畫在 Google 地圖上，下一站一按就導航。
  */
 export function TodayPage() {
   const navigate = useNavigate()
+  const [params, setParams] = useSearchParams()
   const user = useAuth()?.user
   const userId = user?.id ?? null
   const [state, setState] = useState<LoadState>({ status: "loading" })
@@ -64,6 +67,14 @@ export function TodayPage() {
 
   const route = state.status === "ready" ? state.route : null
   const urgent = route?.urgent ?? null
+  // 路線／地圖：沒有站、或用的是手機上的舊行程（連不上，地圖也載不到）就只有路線
+  const mappable = state.status === "ready" && !state.cached && state.route.stops.length > 0
+  const onMap = mappable && params.get("view") === "map"
+
+  // 記在網址上：從客戶檔案按返回，回來還是地圖
+  function showView(view: "route" | "map") {
+    setParams(view === "map" ? { view: "map" } : {}, { replace: true })
+  }
 
   // 重新跟後端要一次路線；期間畫面仍顯示目前這份，只在上面標「更新今天的行程…」
   function reload() {
@@ -240,6 +251,7 @@ export function TodayPage() {
           </article>
         )}
 
+        {mappable && <ViewSwitch onMap={onMap} onChange={showView} />}
         {route &&
           (route.stops.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-8 text-center">
@@ -249,6 +261,8 @@ export function TodayPage() {
                 自己挑一家
               </Link>
             </div>
+          ) : onMap ? (
+            <HomeMapPanel route={route} />
           ) : (
             <RoutePath stops={route.stops} />
           ))}
@@ -264,6 +278,27 @@ export function TodayPage() {
         />
       )}
       <BottomNav />
+    </div>
+  )
+}
+
+/** 路線／地圖切換：平常看蛇行的路線，要看地圖再切過來 */
+function ViewSwitch({ onMap, onChange }: { onMap: boolean; onChange: (view: "route" | "map") => void }) {
+  const tab = (active: boolean) =>
+    cn(
+      "flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl text-sm font-semibold transition-colors",
+      active ? "bg-card text-foreground shadow-[0_2px_0_var(--lip)]" : "text-muted-foreground"
+    )
+  return (
+    <div role="group" aria-label="怎麼看今天的路線" className="mb-3 flex gap-1 rounded-2xl bg-muted p-1">
+      <button type="button" aria-pressed={!onMap} onClick={() => onChange("route")} className={tab(!onMap)}>
+        <Route className="size-4" />
+        路線
+      </button>
+      <button type="button" aria-pressed={onMap} onClick={() => onChange("map")} className={tab(onMap)}>
+        <MapIcon className="size-4" />
+        地圖
+      </button>
     </div>
   )
 }

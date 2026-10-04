@@ -77,6 +77,12 @@ export const SOURCE_LABEL: Record<StopSource, string> = {
   ask: "問答加的",
 }
 
+// 地圖上還沒有任何點時框住台灣本島
+export const TAIWAN = { north: 25.35, south: 21.85, east: 122.05, west: 119.95 }
+// 已經跑完的段深色、還沒去的段淡色（主管頁與首頁的地圖一樣）
+export const DONE_OPACITY = 0.95
+export const TODO_OPACITY = 0.35
+
 /** Google 的編碼折線（Encoded Polyline Algorithm Format）解成經緯度 */
 export function decodePolyline(encoded: string): LatLng[] {
   const points: LatLng[] = []
@@ -113,8 +119,9 @@ export function boundsOf(points: LatLng[]) {
 }
 
 /** 一位業務沿路的每一段要畫的點：有折線用折線，沒有就從上一點直接連到這一站。
- *  第 n 段從「出發點加各站」的第 n 點開到第 n + 1 點（後端 services/team_itineraries.py 同一個規則） */
-export function legPaths(route: RepRoute) {
+ *  第 n 段從「出發點加各站」的第 n 點開到第 n + 1 點（後端 services/team_itineraries.py 同一個規則）。
+ *  主管頁與業務首頁的地圖都用 */
+export function legPaths(route: Pick<RepRoute, "origin" | "legs"> & { stops: LatLng[] }) {
   const points: LatLng[] = [
     ...(route.origin ? [route.origin] : []),
     ...route.stops.map(({ lat, lng }) => ({ lat, lng })),

@@ -1,4 +1,5 @@
 import { ApiError, jsonBody, request } from "@/api/client"
+import type { LatLng, TeamLeg } from "@/api/team-routes"
 
 // 每一站為什麼被排進來。後端 today_route.SIGNAL_LABEL 有同一組，改了要一起改
 export type RouteSignal = "commitment" | "ar" | "interval" | "order" | "contract" | "visit" | "opportunity" | "routine"
@@ -89,6 +90,26 @@ export type TodayRoute = {
   precedences: Precedence[]
   // 今天不套用的習慣；conflict 是每天建立建議時跟別的規則衝突，行程上要提示
   skipped_habits: SkippedHabit[]
+}
+
+// 首頁「地圖」分頁（後端 api/itinerary.py 的 /today/map）：各站的位置與沿路的線，切到地圖才問。
+// 到達時間、理由這些首頁的行程本來就有，這裡只有畫圓點要的
+export type MapStop = LatLng & {
+  // 第幾站，跟首頁的站號一樣（已完成的在前）
+  number: number
+  customer_id: string
+  customer_name: string
+  status: RouteStop["status"]
+}
+
+export type TodayMap = {
+  // 畫的是哪一版行程：首頁的行程換版了就要重拿
+  version: number
+  // 區處辦公室，路線從這裡畫起；還沒有位置的區是 null
+  origin: LatLng | null
+  stops: MapStop[]
+  // 沿路的每一段，跟主管頁的地圖同一個格式
+  legs: TeamLeg[]
 }
 
 export type RouteAction = "pin" | "snooze" | "misjudge"
@@ -209,6 +230,11 @@ export async function getTodayRoute(userId: string, signal?: AbortSignal) {
     if (cached) return { route: cached, cached: true }
     throw error
   }
+}
+
+/** 首頁切到「地圖」：今天各站的位置與沿路的線。沒網路就是沒有，不用手機裡的舊資料 */
+export function getTodayMap(signal?: AbortSignal) {
+  return request<TodayMap>("/api/itinerary/today/map", { signal })
 }
 
 /** 需立即處理的三顆鈕：後端直接改今天的行程，回傳改好的那一份 */

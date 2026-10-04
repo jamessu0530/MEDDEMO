@@ -1,28 +1,14 @@
-import { useEffect, useState } from "react"
-import {
-  AdvancedMarker,
-  APILoadingStatus,
-  APIProvider,
-  ColorScheme,
-  InfoWindow,
-  Map,
-  Polyline,
-  useApiLoadingStatus,
-} from "@vis.gl/react-google-maps"
+import { useState } from "react"
+import { AdvancedMarker, APIProvider, ColorScheme, InfoWindow, Map, Polyline } from "@vis.gl/react-google-maps"
 
-import type { MapsConfig, RemovedStop, RepRoute, TeamStop } from "@/api/team-routes"
+import type { MapsConfig } from "@/api/maps"
+import type { RemovedStop, RepRoute, TeamStop } from "@/api/team-routes"
+import { LoadWatch } from "@/components/map-load-watch"
 import { UserAvatar } from "@/components/user-avatar"
+import { cssColor } from "@/lib/css-color"
 import { useSkin } from "@/lib/skin"
-import { boundsOf, legPaths, routeColorVar } from "@/lib/team-routes"
+import { boundsOf, DONE_OPACITY, legPaths, routeColorVar, TAIWAN, TODO_OPACITY } from "@/lib/team-routes"
 import { cn } from "@/lib/utils"
-
-// 還沒有任何點時框住台灣本島
-const TAIWAN = { north: 25.35, south: 21.85, east: 122.05, west: 119.95 }
-// 已經跑完的段深色、還沒去的段淡色
-const DONE_OPACITY = 0.95
-const TODO_OPACITY = 0.35
-// 讀不到 CSS 變數時用主色
-const FALLBACK_COLOR = "#9B51E0"
 
 type Props = {
   config: NonNullable<MapsConfig>
@@ -32,11 +18,6 @@ type Props = {
 }
 
 type Selected = { stop: TeamStop; repName: string }
-
-/** CSS 變數換成實際的顏色：Google 地圖的線畫在 canvas 上，不認 var(--primary) */
-function cssColor(name: string) {
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || FALLBACK_COLOR
-}
 
 /**
  * 主管頁的地圖（Google Maps JavaScript API，docs/superpowers/specs/2026-10-01-itinerary-planning-design.md〈地圖〉）。
@@ -114,16 +95,6 @@ export default function RouteMap({ config, routes, removed = [], onFail }: Props
       {routes.length > 1 && <Legend routes={routes} />}
     </APIProvider>
   )
-}
-
-/** 程式載不下來（FAILED）交給外面換成說明；金鑰被拒（AUTH_FAILURE）理論上也會到這裡，
- * 但這版 @vis.gl/react-google-maps 不會設這個狀態，實際由 map-slot.tsx 的 gm_authFailure 處理 */
-function LoadWatch({ onFail }: { onFail: () => void }) {
-  const status = useApiLoadingStatus()
-  useEffect(() => {
-    if (status === APILoadingStatus.FAILED || status === APILoadingStatus.AUTH_FAILURE) onFail()
-  }, [status, onFail])
-  return null
 }
 
 /** 一位業務的路線：沿路的線（跑完的段深色、還沒去的淡色）與圓形編號（已完成實心、還沒去空心） */

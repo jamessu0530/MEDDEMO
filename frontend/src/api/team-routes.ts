@@ -76,19 +76,12 @@ export type TeamRoutes = {
   reps: RepRoute[]
 }
 
-// 主管頁的 Google 地圖要的設定；沒有瀏覽器金鑰是 null，地圖區塊就換成一行說明
-export type MapsConfig = { browser_key: string; map_id: string } | null
-
 export function getTeamRoutes(signal?: AbortSignal) {
   return request<TeamRoutes>("/api/manager/itineraries", { signal })
 }
 
 export function getRepRoute(userId: string, signal?: AbortSignal) {
   return request<RepRoute>(`/api/manager/itineraries/${encodeURIComponent(userId)}`, { signal })
-}
-
-export function getMapsConfig(signal?: AbortSignal) {
-  return request<MapsConfig>("/api/maps/config", { signal })
 }
 
 export type TeamLocations = { updated_at: string; locations: Record<string, SeenLocation> }

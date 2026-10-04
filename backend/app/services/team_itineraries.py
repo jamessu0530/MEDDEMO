@@ -5,6 +5,7 @@
 行程怎麼存、怎麼排時間都在 services/itinerary.py，這裡只讀它的結果，再加上地圖要的座標與沿路的線，
 以及跟系統早上的建議（Itinerary.suggested）比改了什麼。
 位置那一行（services/locations.describe）也在這裡組：今天的站與這位業務的客戶地區。
+業務首頁的「地圖」分頁畫的是同一套座標與沿路的線（rep_map）。
 """
 
 from __future__ import annotations
@@ -74,6 +75,26 @@ class RepRoute:
     location: locations.Seen  # 主管看到的位置那一行，加上地圖上頭像畫在哪
 
 
+@dataclass
+class PinStop:
+    """業務自己的地圖上的一站：只有畫圓點要的。到達時間、理由那些首頁的行程本來就有。"""
+
+    number: int  # 第幾站，跟首頁的站號一樣（已完成的在前）
+    customer_id: str
+    customer_name: str
+    lat: float
+    lng: float
+    status: str  # done／next／todo
+
+
+@dataclass
+class RepMap:
+    version: int  # 畫的是哪一版行程：首頁的行程換版了就要重拿
+    origin: travel.Point | None
+    stops: list[PinStop]
+    legs: list[Leg]
+
+
 def reps(session: Session, viewer: AppUser) -> list[AppUser]:
     """看得到的業務：主管是自己底下的人，IT 是全公司。
     代理示範業務的帳號（第三方登入）不列，他們看的就是示範業務那一份；停用的人也不列。"""
@@ -105,11 +126,7 @@ def route(session: Session, rep: AppUser) -> RepRoute:
 
     # 跟 itinerary._start 同一個出發點
     origin = itineraries.office(session, rep)
-    path = ([origin] if origin else []) + [(s.lat, s.lng) for s in stops]
-    found = travel.lines(path)
-    # 第 n 段開到 path 的第 n + 1 點：有辦公室時就是第 n 站，沒有時是第 n + 1 站
-    ends = stops if origin else stops[1:]
-    legs = [Leg(polyline=found[n] if found else None, done=end.status == "done") for n, end in enumerate(ends)]
+    legs = _legs(origin, [(s.lat, s.lng, s.status == "done") for s in stops])
 
     on_route = set(current_ids)
     removed = [_removed(customers[item["customer_id"]], item) for item in suggested if item["customer_id"] not in on_route]
@@ -124,6 +141,32 @@ def route(session: Session, rep: AppUser) -> RepRoute:
         untouched=itinerary.version == 1 and not removed and not added and not moved,
         location=location,
     )
+
+
+def rep_map(session: Session, rep: AppUser, itinerary: Itinerary) -> RepMap:
+    """業務自己今天的地圖（首頁的「地圖」分頁）：各站的位置與沿路的線，畫法跟主管頁一樣。
+    只要站號、座標與跑完了沒（itinerary.stop_order），不算時間與車程：切到地圖不必再等一次 Google 的車程。"""
+    ordered = itineraries.stop_order(session, itinerary)
+    upcoming = next((n for n, (_, finished) in enumerate(ordered) if not finished), None)
+    stops = [
+        PinStop(
+            number=n + 1, customer_id=customer.id, customer_name=customer.name, lat=customer.lat, lng=customer.lng,
+            status="done" if finished else "next" if n == upcoming else "todo",
+        )
+        for n, (customer, finished) in enumerate(ordered)
+    ]
+    origin = itineraries.office(session, rep)
+    legs = _legs(origin, [(s.lat, s.lng, s.status == "done") for s in stops])
+    return RepMap(version=itinerary.version, origin=origin, stops=stops, legs=legs)
+
+
+def _legs(origin: travel.Point | None, stops: list[tuple[float, float, bool]]) -> list[Leg]:
+    """從出發點（或第一站）一段一段開到最後一站；stops 是各站的 (緯度, 經度, 跑完了嗎)。"""
+    path = ([origin] if origin else []) + [(lat, lng) for lat, lng, _ in stops]
+    found = travel.lines(path)
+    # 第 n 段開到 path 的第 n + 1 點：有辦公室時就是第 n 站，沒有時是第 n + 1 站
+    ends = stops if origin else stops[1:]
+    return [Leg(polyline=found[n] if found else None, done=done) for n, (_, _, done) in enumerate(ends)]
 
 
 def moved_sentences(suggested: list[str], current: list[str], names: dict[str, str]) -> list[str]:

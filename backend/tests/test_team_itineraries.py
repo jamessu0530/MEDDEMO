@@ -133,6 +133,46 @@ def test_with_a_server_key_the_legs_carry_googles_lines(tx, monkeypatch, env):
     assert [leg.polyline for leg in route.legs] == [f"line{n}" for n in range(len(route.legs))]
 
 
+def test_the_reps_own_map_numbers_the_stops_like_the_home_page(tx):
+    itinerary = itineraries.get_or_create(tx, "U01")
+    target = itineraries.view(tx, itinerary).stops[1]
+    at = dt.datetime(2026, 10, 28, 9, 40, tzinfo=TAIPEI)
+    tx.add(Visit(id="VTEAM3", customer_id=target.customer_id, user_id="U01", visited_at=at,
+                 transcript="測試", status="synced", confirmed_at=at))
+    tx.flush()
+    view = itineraries.view(tx, itinerary)
+    found = team.rep_map(tx, person(tx, "U01"), itinerary)
+    assert found.version == view.version
+    assert [(s.number, s.customer_id, s.status) for s in found.stops] == [
+        (n + 1, s.customer_id, s.status) for n, s in enumerate(view.stops)
+    ]
+    assert [s.status for s in found.stops][:3] == ["done", "next", "todo"]
+    first = tx.get(Customer, found.stops[0].customer_id)
+    assert (found.stops[0].customer_name, found.stops[0].lat, found.stops[0].lng) == (first.name, first.lat, first.lng)
+    office = tx.scalar(select(OrgUnit).where(OrgUnit.kind == "region", OrgUnit.name == "北區"))
+    assert found.origin == (office.lat, office.lng)
+    assert [leg.done for leg in found.legs] == [True] + [False] * (len(found.stops) - 1)
+    assert all(leg.polyline is None for leg in found.legs)
+
+
+def test_the_reps_own_map_draws_the_same_lines_as_the_managers(tx, monkeypatch, env):
+    itinerary = itineraries.get_or_create(tx, "U01")
+    env(GOOGLE_MAPS_SERVER_KEY="server-key")
+
+    def route_legs(key, points, http=None, polylines=True):
+        return [google_routes.Leg(seconds=60, meters=500, polyline=f"line{n}") for n in range(len(points) - 1)]
+
+    monkeypatch.setattr(google_routes, "route_legs", route_legs)
+
+    def no_driving(*args, **kwargs):
+        raise AssertionError("地圖分頁只要站號與座標，不該再算一次車程")
+
+    monkeypatch.setattr(travel, "along", no_driving)
+    monkeypatch.setattr(travel, "matrix", no_driving)
+    found = team.rep_map(tx, person(tx, "U01"), itinerary)
+    assert [leg.polyline for leg in found.legs] == [f"line{n}" for n in range(len(found.stops))]
+
+
 def test_the_route_says_where_the_rep_is(tx, env):
     env(LOCATION_SHARE_HOURS="1-7 00:00-24:00")
     first = team.route(tx, person(tx, "U01")).stops[0]

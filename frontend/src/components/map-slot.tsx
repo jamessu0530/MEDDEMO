@@ -1,9 +1,13 @@
 import { Component, lazy, Suspense, useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from "react"
 
-import { getMapsConfig, type MapsConfig, type RemovedStop, type RepRoute } from "@/api/team-routes"
+import { getMapsConfig, type MapsConfig } from "@/api/maps"
+import type { RouteStop, TodayMap } from "@/api/route"
+import type { RemovedStop, RepRoute } from "@/api/team-routes"
+import { cn } from "@/lib/utils"
 
-// 用 import() 另外打包：Google 地圖與 @vis.gl/react-google-maps 只有主管頁的行程分頁用得到
+// 用 import() 另外打包：Google 地圖與 @vis.gl/react-google-maps 只有主管頁的行程分頁、首頁切到「地圖」才用得到
 const RouteMap = lazy(() => import("@/components/manager/route-map"))
+const HomeMap = lazy(() => import("@/components/route/home-map"))
 
 declare global {
   interface Window {
@@ -31,11 +35,48 @@ function subscribeAuth(listener: () => void) {
 }
 const readAuthFailed = () => authFailed
 
-/**
- * 主管頁的地圖區塊。先問後端有沒有瀏覽器金鑰（GET /api/maps/config，不寫進前端的建置）；
- * 沒有金鑰、Google 的程式載不下來或金鑰被拒，就換成一行「地圖暫時載入不了」，下面的清單照常。
- */
+/** 主管頁的地圖區塊：團隊或一位業務的路線 */
 export function MapSlot({ routes, removed }: { routes: RepRoute[]; removed?: RemovedStop[] }) {
+  return (
+    <MapGate className="h-64">
+      {(config, onFail) => <RouteMap config={config} routes={routes} removed={removed} onFail={onFail} />}
+    </MapGate>
+  )
+}
+
+/** 首頁「地圖」分頁的地圖：自己今天的路線、自己的位置，底下一張卡寫下一站（或點的那一站） */
+export function HomeMapSlot({
+  map,
+  stops,
+  estimated,
+  className,
+}: {
+  map: TodayMap
+  stops: RouteStop[]
+  estimated: boolean
+  className: string
+}) {
+  return (
+    <MapGate className={className}>
+      {(config, onFail) => (
+        <HomeMap config={config} map={map} stops={stops} estimated={estimated} className={className} onFail={onFail} />
+      )}
+    </MapGate>
+  )
+}
+
+/**
+ * 地圖區塊的外框。先問後端有沒有瀏覽器金鑰（GET /api/maps/config，不寫進前端的建置）；
+ * 沒有金鑰、Google 的程式載不下來或金鑰被拒，就換成一行「地圖暫時載入不了」，頁面其他地方照常。
+ * className 是地圖的高度，載入中的骨架跟它一樣高，載好時版面不會跳
+ */
+function MapGate({
+  className,
+  children,
+}: {
+  className: string
+  children: (config: NonNullable<MapsConfig>, onFail: () => void) => ReactNode
+}) {
   // undefined：還在問；null：沒有瀏覽器金鑰
   const [config, setConfig] = useState<MapsConfig | undefined>(undefined)
   // load/chunk 失敗（地圖那包下載不下來、React 錯誤邊界接住的例外）；金鑰被拒走下面的 rejected，不記在這裡
@@ -57,22 +98,20 @@ export function MapSlot({ routes, removed }: { routes: RepRoute[]; removed?: Rem
 
   // 先看金鑰有沒有被拒：頁面已經知道的話，不要先閃一下「還在問」的骨架
   if (failed || rejected) return <MapFallback />
-  if (config === undefined) return <MapPlaceholder />
+  if (config === undefined) return <MapPlaceholder className={className} />
   if (config === null) return <MapFallback />
   return (
     <MapBoundary onFail={onFail}>
-      <Suspense fallback={<MapPlaceholder />}>
-        <RouteMap config={config} routes={routes} removed={removed} onFail={onFail} />
-      </Suspense>
+      <Suspense fallback={<MapPlaceholder className={className} />}>{children(config, onFail)}</Suspense>
     </MapBoundary>
   )
 }
 
-function MapPlaceholder() {
-  return <div aria-hidden className="h-64 animate-pulse rounded-2xl bg-muted" />
+export function MapPlaceholder({ className }: { className: string }) {
+  return <div aria-hidden className={cn("animate-pulse rounded-2xl bg-muted", className)} />
 }
 
-function MapFallback() {
+export function MapFallback() {
   return (
     <p data-map-fallback className="rounded-xl bg-muted px-3 py-2.5 text-center text-xs text-muted-foreground">
       地圖暫時載入不了
@@ -81,8 +120,8 @@ function MapFallback() {
 }
 
 /**
- * 地圖那一包是打開行程分頁才下載的，收訊不好就會失敗；沒有錯誤邊界的話 React 會卸載整頁，
- * 連下面的清單都看不到。擋在地圖這一區，換成說明。React 的錯誤邊界只能用 class 元件寫（pages/ask.tsx 同）。
+ * 地圖那一包是要畫地圖時才下載的，收訊不好就會失敗；沒有錯誤邊界的話 React 會卸載整頁，
+ * 連清單都看不到。擋在地圖這一區，換成說明。React 的錯誤邊界只能用 class 元件寫（pages/ask.tsx 同）。
  */
 class MapBoundary extends Component<{ onFail: () => void; children: ReactNode }, { failed: boolean }> {
   state = { failed: false }

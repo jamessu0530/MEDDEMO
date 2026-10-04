@@ -1,4 +1,4 @@
-"""主管頁的地圖金鑰：有設才給、只給主管端，不寫進前端的建置。"""
+"""地圖金鑰：有設才給、登入的人都拿得到（主管頁的行程分頁與業務首頁的地圖），不寫進前端的建置。"""
 
 from fastapi.testclient import TestClient
 
@@ -24,8 +24,7 @@ def test_without_a_map_id_the_map_uses_googles_demo_id(auth, env):
     assert config(auth, "A01").json() == {"browser_key": "browser-key", "map_id": "DEMO_MAP_ID"}
 
 
-def test_only_the_manager_side_gets_it(auth, env):
+def test_reps_get_it_for_the_home_map_but_not_without_signing_in(auth, env):
     env(GOOGLE_MAPS_BROWSER_KEY="browser-key")
-    denied = config(auth, "U01")
-    assert denied.status_code == 403 and denied.json()["detail"] == "這個頁面只有主管看得到"
+    assert config(auth, "U01").json() == {"browser_key": "browser-key", "map_id": "DEMO_MAP_ID"}
     assert TestClient(app).get("/api/maps/config").status_code == 401

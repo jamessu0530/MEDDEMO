@@ -21,6 +21,7 @@ from app.llm import LLMOutputError
 from app.models import AppUser
 from app.services import itinerary as service
 from app.services import itinerary_ai
+from app.services import team_itineraries as team
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/itinerary", tags=["itinerary"])
@@ -246,6 +247,32 @@ class ProposalOut(BaseModel):
     estimated: bool
 
 
+class MapPoint(BaseModel):
+    lat: float
+    lng: float
+
+
+class MapStop(BaseModel):
+    number: int
+    customer_id: str
+    customer_name: str
+    lat: float
+    lng: float
+    status: str
+
+
+class MapLeg(BaseModel):
+    polyline: str | None  # Google 的編碼折線；沒有（沒設金鑰、Google 失敗）就畫直線
+    done: bool
+
+
+class TodayMap(BaseModel):
+    version: int
+    origin: MapPoint | None  # 區處辦公室，路線從這裡畫起；還沒有位置的區是 null
+    stops: list[MapStop]
+    legs: list[MapLeg]
+
+
 def _rep_id(user: AppUser) -> str:
     return user.acts_as_user_id or user.id
 
@@ -278,6 +305,24 @@ def get_today(session: SessionDep, user: CurrentUser):
     # 先提交再算畫面：算車程可能要等 Google，不要讓剛建好的那一列一直卡著同時第一次讀的人
     session.commit()
     return _out(service.view(session, itinerary))
+
+
+@router.get("/today/map", response_model=TodayMap)
+def get_today_map(session: SessionDep, user: CurrentUser):
+    """首頁的「地圖」分頁：今天各站的位置與沿路的線。切到地圖才問，首頁本身不多等 Google。"""
+    try:
+        itinerary = service.get_or_create(session, _rep_id(user))
+    except LookupError:
+        raise HTTPException(403, NO_ROUTE) from None
+    # 先提交再畫線：沿路的線可能要等 Google
+    session.commit()
+    found = team.rep_map(session, session.get(AppUser, _rep_id(user)), itinerary)
+    return TodayMap(
+        version=found.version,
+        origin=MapPoint(lat=found.origin[0], lng=found.origin[1]) if found.origin else None,
+        stops=[MapStop(**dataclasses.asdict(stop)) for stop in found.stops],
+        legs=[MapLeg(**dataclasses.asdict(leg)) for leg in found.legs],
+    )
 
 
 @router.post("/today/feedback", response_model=TodayItinerary)

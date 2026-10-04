@@ -6,7 +6,8 @@ from route_fakes import FakeLLM
 from sqlalchemy import select, text
 
 from app.main import app
-from app.models import Customer, Itinerary, RouteSignalWeight, RouteSnooze
+from app.models import AppUser, Customer, Itinerary, RouteSignalWeight, RouteSnooze
+from app.services import auth as auth_service
 from app.services import itinerary as service
 from app.services import itinerary_ai
 
@@ -41,6 +42,36 @@ def test_today_has_the_fields_the_home_page_needs(client, auth):
 def test_only_a_signed_in_sales_rep_has_an_itinerary(client, auth):
     assert client.get("/api/itinerary/today").status_code == 401
     denied = client.get("/api/itinerary/today", headers=auth("M01"))
+    assert denied.status_code == 403 and denied.json()["detail"] == "主管沒有自己的拜訪路線"
+
+
+def test_the_map_tab_gets_coordinates_and_lines(client, auth):
+    data = today(client, auth)
+    response = client.get("/api/itinerary/today/map", headers=auth())
+    assert response.status_code == 200, response.text
+    found = response.json()
+    assert set(found) == {"version", "origin", "stops", "legs"}
+    assert found["version"] == data["version"]
+    assert [(s["customer_id"], s["status"]) for s in found["stops"]] == [
+        (s["customer_id"], s["status"]) for s in data["stops"]
+    ]
+    assert set(found["stops"][0]) == {"number", "customer_id", "customer_name", "lat", "lng", "status"}
+    assert set(found["origin"]) == {"lat", "lng"}
+    assert len(found["legs"]) == len(found["stops"]) and found["legs"][0] == {"polyline": None, "done": False}
+
+
+def test_a_third_party_account_maps_the_demo_reps_day(client, auth, tx):
+    guest = AppUser(id="XMAP01", name="評審", role="sales", region="北區", acts_as_user_id="U01")
+    tx.add(guest)
+    tx.commit()
+    headers = {"Authorization": f"Bearer {auth_service.create_token(guest)}"}
+    mine = client.get("/api/itinerary/today/map", headers=headers).json()
+    assert mine == client.get("/api/itinerary/today/map", headers=auth("U01")).json()
+
+
+def test_managers_have_no_map_of_their_own(client, auth):
+    assert client.get("/api/itinerary/today/map").status_code == 401
+    denied = client.get("/api/itinerary/today/map", headers=auth("M01"))
     assert denied.status_code == 403 and denied.json()["detail"] == "主管沒有自己的拜訪路線"
 
 

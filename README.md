@@ -39,9 +39,9 @@ cd frontend && npm install && npm run dev                                       
 | 網路搜尋 | `FIRECRAWL_API_KEY` | — |
 | 精排 | `COHERE_API_KEY` | `rerank-v4.0-pro` |
 | 問答自動判斷查哪一種 | `TYPESAFE_API_KEY`（跟 CARE 共用），見下方「問答」 | `jev-1.13.0`（釘版本） |
-| 道路車程、主管頁的地圖 | `GOOGLE_MAPS_SERVER_KEY`（Routes API）、`GOOGLE_MAPS_BROWSER_KEY`（Maps JavaScript API），見下方部署的表格 | — |
+| 道路車程、主管頁與首頁的地圖 | `GOOGLE_MAPS_SERVER_KEY`（Routes API）、`GOOGLE_MAPS_BROWSER_KEY`（Maps JavaScript API），見下方部署的表格 | — |
 
-沒設定也能用：錄音會停在「轉文字失敗」，業務可以手動輸入逐字稿；欄位會留白，讓業務手動填。整條「口述 → 確認 → 寫回三套系統」照樣走得完。沒設定 embedding 時，知識檢索只走關鍵字。沒設 Google 地圖的金鑰時，車程用直線估算並標明「估計」，主管頁的地圖換成一行說明。
+沒設定也能用：錄音會停在「轉文字失敗」，業務可以手動輸入逐字稿；欄位會留白，讓業務手動填。整條「口述 → 確認 → 寫回三套系統」照樣走得完。沒設定 embedding 時，知識檢索只走關鍵字。沒設 Google 地圖的金鑰時，車程用直線估算並標明「估計」，主管頁與首頁的地圖換成一行說明。
 
 ## 口述到回寫
 
@@ -236,6 +236,7 @@ IT 登入後的首頁是 `/admin`：全國 → 區 → 主管 → 業務，點�
   - 一句話最多 12 個操作，在程式裡截（`MAX_OPERATIONS`），不能寫成 schema 的 `maxItems`：操作是十幾個欄位的物件，清單再加個數上限，Gemini 會把整份 schema 拒絕（400 INVALID_ARGUMENT）。10/2 剛上線時就是這樣，每一句都回「熊熊滾這次沒聽懂」。
 - 問答答案的「排入今天的路線」也是直接加進今天的行程，插在多繞最少的位置；一天還沒跑的站最多 8 站。
 - 路線拿到後存在手機裡，沒訊號時顯示上次那份並標明。
+- **地圖**：路線上方有「路線｜地圖」切換，預設是路線；切到地圖（網址 `/?view=map`）才向 `GET /api/itinerary/today/map` 要各站座標與沿路的線、才下載 Google 地圖，首頁本身不多載。畫法跟主管頁一樣（跑完的段深色、站點跑完的打勾、下一站多一圈），藍點是自己的位置（位置分享中才有）。底下一張卡寫下一站的時間、理由與車程，按「導航」打開手機上的 Google 地圖開車導航；點別的站換成那一站。地圖載不到時換成一行「地圖暫時載入不了」，切回路線照常。示範客戶的座標是地區中心點加錯開，導航開到的是那個點，不是真的地址。
 
 ## 客戶檔案與談判卡
 
@@ -475,7 +476,7 @@ uv run --project backend python backend/scripts/eval_ask.py
 - **總覽**：Google 地圖上每位業務一個顏色（跟頭像底色同一套），路線沿道路畫，跑完的段深色、還沒去的淡色，站點是圓形編號（已完成實心）。每位業務一張卡：進度、公里數、約幾點收工、下一站，紅字是拿掉了系統排的哪幾站，琥珀色是會晚到的站，沒動過的寫「照系統建議，還沒動過」。
 - **一位業務的詳細**（點卡片）：地圖多畫被拿掉的站（紅色虛線圈），下面是總公里數與車程（標明 Google 道路車程或估計）、「跟系統早上的建議比」（拿掉、自己加的、順序改過的），以及跟業務看到的一樣的行程清單，點客戶進客戶檔案。
 - 業務今天還沒打開首頁時，主管一讀就照系統的建議建好他的行程（跟業務第一次讀取一樣）。
-- 地圖用 `@vis.gl/react-google-maps`，只有這一頁用 `import()` 另外下載，不算進業務首頁。瀏覽器金鑰由 `GET /api/maps/config` 給；沒設金鑰或 Google 載不下來時，地圖換成一行「地圖暫時載入不了」，下面的卡片照常。沿路的線向 Google Routes API 要，同一串點的線放 Redis 一天（條款允許快取經緯度；車程不快取）。
+- 地圖用 `@vis.gl/react-google-maps`，只有這一頁與首頁切到「地圖」時用 `import()` 另外下載，不算進首頁本身。瀏覽器金鑰由 `GET /api/maps/config` 給（登入的人都給）；沒設金鑰或 Google 載不下來時，地圖換成一行「地圖暫時載入不了」，下面的卡片照常。沿路的線向 Google Routes API 要，同一串點的線放 Redis 一天（條款允許快取經緯度；車程不快取）。
 - 畫面開著時每 60 秒重拿一次。
 
 ## 即時位置
@@ -715,7 +716,7 @@ MEDDEMO 跟 CARE 共用 GCP 上的 care-vm：K3s、Helm、Traefik、HTTPS 憑證
 | `COHERE_API_KEY` | secret | 選填：知識查詢精排 |
 | `TYPESAFE_API_KEY` | secret | 選填：TypeSafe 的 Jev，跟 CARE 共用同一把。問答選「自動」時判斷要查數字、規定還是頻道；沒填就每一題都請業務自己選 |
 | `GOOGLE_MAPS_SERVER_KEY` | secret | 選填：行程的道路車程（Google Routes API）。Google Cloud 專案要開帳單；API 限制只開 Routes API，應用程式限制填 VM 的對外 IP。沒填就用直線估算。在 Google Cloud 為 Routes API 設每日配額上限（例如每天 2,000 次）並替帳單設預算警示。設好之後用業務帳號打 `/api/itinerary/today`，回應裡 `"estimated": false` 就是接上了。 |
-| `GOOGLE_MAPS_BROWSER_KEY` | secret | 選填：主管頁的地圖（Maps JavaScript API）。API 限制只開 Maps JavaScript API，網站限制填 `https://網址/*`。沒填主管頁就不畫地圖、只列清單。 |
+| `GOOGLE_MAPS_BROWSER_KEY` | secret | 選填：主管頁與首頁的地圖（Maps JavaScript API）。API 限制只開 Maps JavaScript API，網站限制填 `https://網址/*`。沒填就不畫地圖：主管頁只列清單，首頁切到地圖時顯示一行說明。 |
 
 ### 改參數（用哪家服務、哪個模型）
 

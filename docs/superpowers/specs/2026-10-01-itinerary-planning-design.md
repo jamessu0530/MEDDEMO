@@ -39,6 +39,10 @@
     主管會看到「暫停分享」。只存最新位置，不留軌跡。
 16. **示範帳號也用真的 GPS**：用第三方登入、代理示範業務的評審，分享的是評審手機的位置，存在示範業務名下。
 17. **IT 能重置示範業務今天的行程**：系統日期固定在決賽日不會換天，示範業務的行程給所有評審共用、第一次建好之後只會累積改動（暫緩、插入下一站、加站）。組織管理頁加一顆「重置示範業務今天的行程」，IT 按下去刪掉這份行程與所有暫緩、訊號權重，示範業務的排序習慣也回到一開始那三條，下次讀取照模型的建議重新建一份，換一批評審前用。
+18. **業務首頁也有地圖，但平常不顯示**（2026-10-04 加）：路線上方多一個「路線｜地圖」切換，預設是路線；
+    切到地圖才載入 Google 地圖，畫自己今天的路線與位置，底下一張卡寫下一站，按「導航」打開手機上的 Google 地圖。
+    比較過的另外兩種：路線上方常駐一張小地圖（每次開首頁都載入、把路線往下擠）、只在每站加導航鈕（看不到整條路），
+    見〈業務首頁的地圖〉。
 
 ## 資料
 
@@ -147,13 +151,13 @@
 ### 路線：沿路的線
 
 主管頁要畫路線時，後端用 `computeRoutes`（出發點、終點、中間各站）拿編碼過的折線，依 `(itinerary_id, version)`
-放 Redis。業務的首頁不畫地圖，不呼叫。
+放 Redis。業務首頁切到「地圖」時用同一份（`team_itineraries.rep_map`）；首頁平常不畫地圖，不呼叫。
 
 ### 地圖
 
-前端用 `@vis.gl/react-google-maps`，只有主管頁的行程分頁用 `import()` 載入，不算進業務首頁的下載量。
-瀏覽器用的金鑰由 `GET /api/maps/config` 給（`{"browser_key": "..."}` 或 `null`），不寫進前端的建置。
-沒有金鑰或載入失敗時，地圖區塊換成一行「地圖暫時載入不了」，下面的清單照常。
+前端用 `@vis.gl/react-google-maps`，主管頁的行程分頁與首頁切到「地圖」時才用 `import()` 載入，不算進首頁的下載量。
+瀏覽器用的金鑰由 `GET /api/maps/config` 給（`{"browser_key": "..."}` 或 `null`，登入的人都給），不寫進前端的建置。
+沒有金鑰或載入失敗時，地圖區塊換成一行「地圖暫時載入不了」，頁面其他地方照常。
 
 ### 金鑰
 
@@ -244,6 +248,23 @@ def cheapest_insert(start: dt.datetime, start_point: int, ordered: list[PlanStop
 - 橫幅下面一條位置分享列（見〈位置分享〉）。
 - 路線下面、底部分頁膠囊上面固定一條「跟熊熊滾說要怎麼排…」的輸入列（見〈跟熊熊滾說要怎麼排〉）。
 - 「需立即處理」紅卡照舊；三顆鈕改打 `POST /api/itinerary/today/feedback`。
+
+### 業務首頁的地圖
+
+2026-10-04 加。比較過三種擺法（示意圖：路線上方常駐一張小地圖、路線／地圖切換、不放地圖只在每站加導航），選了切換：
+首頁平常照舊，要看地圖才載入，Google 載不到也不會讓首頁最顯眼的地方壞掉。
+
+- 路線上方一個「路線｜地圖」切換，預設是路線。選了地圖記在網址上（`/?view=map`），從客戶檔案按返回還在地圖。
+  今天沒有站、或用的是手機上的舊行程（連不上）時不顯示切換。
+- 切到地圖才打 `GET /api/itinerary/today/map`（站號、座標、跑完了沒、沿路的線，跟主管頁同一套：
+  `team_itineraries.rep_map`），不算時間與車程，不必再等一次 Google 的車程。首頁的行程換版了（三顆鈕、套用提案）就重拿。
+- 地圖畫法跟主管頁一樣：沿路的線跑完的段深色、還沒去的淡色；站點跑完的打勾、下一站實心多一圈、還沒去的空心寫站號。
+  自己的位置是藍點，位置分享中（手機正在追蹤）才有，右上角一顆鈕移回自己的位置。
+- 底下一張卡寫下一站：「下一站 · 第 3 站 · 11:00 到」、店名、理由與車程（「Google Maps」或「（估計）」）。
+  點別的站換成那一站，點地圖空白處回到下一站；跑完的站寫「已完成」。還沒去的站有「導航」，
+  打開 `https://www.google.com/maps/dir/?api=1&destination=緯度,經度&travelmode=driving`：手機上有 Google 地圖就開 App，
+  只是網址，不用金鑰。
+- 地圖載不到（沒金鑰、金鑰被拒、程式下載失敗、`/today/map` 失敗）就一行「地圖暫時載入不了」，切回路線照常。
 
 ### 調整行程（清單）
 
@@ -446,6 +467,7 @@ IT 看全公司（照 `manager.py` 現在的範圍）。只能看。原本把 `/
 | 方法與路徑 | 用途 |
 |---|---|
 | `GET /api/itinerary/today` | 今天的行程（沒有就建），含排程、規則、違反、`urgent`、`version`、`estimated` |
+| `GET /api/itinerary/today/map` | 首頁切到「地圖」：各站的站號、座標、狀態，出發點與沿路的線，`version` |
 | `POST /api/itinerary/today/preview` | 編輯中的行程算時間與違反的規則，不存 |
 | `PUT /api/itinerary/today` | 調整清單按「完成」：整份站、先後、今天不套用的習慣、要新增的習慣，帶 `version` |
 | `POST /api/itinerary/today/stops` | 加一站或多站（加一站頁、問答的「排入今天的路線」），`cheapest_insert` |
@@ -456,7 +478,7 @@ IT 看全公司（照 `manager.py` 現在的範圍）。只能看。原本把 `/
 | `POST /api/itinerary/proposals/{id}/apply` | 套用提案 |
 | `GET/POST /api/route-habits`、`PATCH/DELETE /api/route-habits/{id}` | 我的排序習慣 |
 | `POST /api/location/pause`、`/resume` | 暫停、繼續分享位置 |
-| `GET /api/maps/config` | 瀏覽器用的 Google 地圖金鑰 |
+| `GET /api/maps/config` | 瀏覽器用的 Google 地圖金鑰（主管頁與首頁的地圖都用，登入的人都給） |
 | `GET /api/manager/itineraries` | 主管的團隊總覽（含路線折線、位置描述、差異摘要） |
 | `GET /api/manager/itineraries/{user_id}` | 一位業務的詳細 |
 | `POST /api/admin/demo-itinerary/reset` | IT 重置示範業務今天的行程（刪掉行程與所有暫緩、訊號權重、排序習慣回到一開始那三條） |
@@ -507,6 +529,9 @@ frontend/src/pages/route-add.tsx          加一站
 frontend/src/pages/route-habits.tsx       我的排序習慣
 frontend/src/components/route/stop-card.tsx、stop-editor.tsx、habit-prompt.tsx、proposal-sheet.tsx、ask-bar.tsx、share-bar.tsx
 frontend/src/components/manager/routes-panel.tsx、route-map.tsx（import() 載入 Google 地圖）
+frontend/src/components/map-slot.tsx      地圖的外框：問金鑰、金鑰被拒或載不下來時換成說明（主管頁與首頁共用）
+frontend/src/components/route/home-map-panel.tsx、home-map.tsx（import() 載入）、map-stop-card.tsx   首頁的地圖
+frontend/src/lib/home-map.ts              首頁地圖的卡片文字與導航網址（純函式）
 ```
 
 ## 測試
@@ -554,7 +579,7 @@ frontend/src/components/manager/routes-panel.tsx、route-map.tsx（import() 載�
   但系統日期固定不換天，大家的改動（暫緩、插入下一站、加站）會一直累積，不會自動恢復；IT 要在組織管理頁按
   「重置示範業務今天的行程」才會清掉、回到模型原本的建議。位置以最後一筆為準，主管頁上那位業務的位置會在評審之間跳動；
   分享的是評審本人手機的位置。
-- 客戶位置是地區中心點加錯開，不是真的地址；Google 的路線會從最近的道路出發。
+- 客戶位置是地區中心點加錯開，不是真的地址；Google 的路線會從最近的道路出發，首頁地圖的「導航」也是開到這個點。
 - 車程不看即時路況。
 
 ## 不在這次範圍
@@ -562,7 +587,6 @@ frontend/src/components/manager/routes-panel.tsx、route-map.tsx（import() 載�
 - 主管改業務的行程、留言給業務。
 - 往前或往後翻其他日子的行程；排明天以後的行程。
 - 位置軌跡、離開路線的警示、背景定位（原生 App）。
-- 業務首頁的地圖。
 - 從拖移紀錄自動歸納習慣（只在業務點頭時記）。
 - 問答頁與語音問答的行程調整。
 

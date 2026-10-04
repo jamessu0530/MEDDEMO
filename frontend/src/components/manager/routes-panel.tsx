@@ -12,7 +12,7 @@ import {
   type TeamRoutes,
   type TeamStop,
 } from "@/api/team-routes"
-import { MapSlot } from "@/components/manager/map-slot"
+import { MapSlot } from "@/components/map-slot"
 import { RepRouteCard } from "@/components/manager/rep-route-card"
 import { Notice } from "@/components/notice"
 import { LiveAvatar } from "@/components/user-avatar"

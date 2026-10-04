@@ -1,13 +1,13 @@
-"""主管頁的 Google 地圖要的設定（docs/superpowers/specs/2026-10-01-itinerary-planning-design.md〈地圖〉）。
+"""Google 地圖要的設定（docs/superpowers/specs/2026-10-01-itinerary-planning-design.md〈地圖〉）。
 
 瀏覽器用的金鑰不寫進前端的建置：換金鑰不必重建映像檔，沒設金鑰的環境（開發、測試）地圖區塊就換成
-「地圖暫時載入不了」，下面的清單照常。只有主管頁畫地圖，所以只給主管與 IT。
+「地圖暫時載入不了」，下面的清單照常。主管頁的行程分頁與業務首頁的「地圖」都要畫，登入的人都給。
 """
 
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from app.api.auth import ManagerUser
+from app.api.auth import CurrentUser
 from app.config import settings
 
 router = APIRouter(prefix="/api/maps", tags=["maps"])
@@ -22,7 +22,7 @@ class MapsConfig(BaseModel):
 
 
 @router.get("/config", response_model=MapsConfig | None)
-def get_config(_: ManagerUser) -> MapsConfig | None:
+def get_config(_: CurrentUser) -> MapsConfig | None:
     """沒設瀏覽器金鑰回 null，畫面就不載入 Google 地圖。"""
     config = settings()
     if not config.google_maps_browser_key:
