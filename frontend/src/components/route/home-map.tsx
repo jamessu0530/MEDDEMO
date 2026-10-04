@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils"
 // 自己的位置用 Google 地圖慣用的藍點：一看就知道是「我在這」，不跟紫色的站點混在一起
 const HERE_COLOR = "#1A73E8"
 // 框住路線時四周留白；底下多留，路線不要被底部那張卡蓋住
-const PADDING = { top: 64, right: 32, bottom: 136, left: 32 }
+const PADDING = { top: 64, right: 32, bottom: 168, left: 32 }
 
 type Props = {
   config: NonNullable<MapsConfig>
@@ -81,12 +81,13 @@ export default function HomeMap({ config, map, stops, estimated, className, onFa
           {position && <HereDot position={position} />}
         </Map>
         {position && <LocateButton position={position} />}
+        {/* 卡片離底 2rem：左下角 Google 的標誌與地圖資料的版權列要露出來（Google 的使用條款） */}
         {shown && (
           <MapStopCard
             stop={shown}
             detail={stops.find((stop) => stop.customer_id === shown.customer_id)}
             estimated={estimated}
-            className="absolute inset-x-2.5 bottom-2.5"
+            className="absolute inset-x-2.5 bottom-8"
           />
         )}
       </div>

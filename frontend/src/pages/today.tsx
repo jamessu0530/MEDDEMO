@@ -74,7 +74,7 @@ export function TodayPage() {
   useEffect(() => {
     const node = switchRef.current
     if (!onMap || !node) return
-    const top = node.getBoundingClientRect().top + window.scrollY - (headerRef.current?.offsetHeight ?? 0) - 8
+    const top = node.getBoundingClientRect().top + window.scrollY - (headerRef.current?.offsetHeight ?? 0)
     window.scrollTo({ top: Math.max(top, 0), behavior: "smooth" })
   }, [onMap])
 
