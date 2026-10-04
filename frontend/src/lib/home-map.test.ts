@@ -8,16 +8,18 @@ function pin(number: number, status: MapStop["status"]): MapStop {
 }
 
 function map(stops: MapStop[]): TodayMap {
-  return { version: 1, origin: { lat: 25.04, lng: 121.53 }, stops, legs: [] }
+  return { version: 1, travel_mode: "drive", origin: { lat: 25.04, lng: 121.53 }, stops, legs: [] }
 }
 
 const detail = (extra: Partial<RouteStop>) => ({ planned_time: "11:00", ...extra }) as RouteStop
 
 describe("navigationUrl", () => {
-  it("開 Google 地圖的開車導航，終點是這一站的座標", () => {
-    expect(navigationUrl({ lat: 25.0478, lng: 121.5319 })).toBe(
+  it("開 Google 地圖的導航，終點是這一站的座標，照業務的交通方式", () => {
+    expect(navigationUrl({ lat: 25.0478, lng: 121.5319 }, "drive")).toBe(
       "https://www.google.com/maps/dir/?api=1&destination=25.0478,121.5319&travelmode=driving"
     )
+    expect(navigationUrl({ lat: 25.0478, lng: 121.5319 }, "scooter")).toContain("travelmode=two-wheeler")
+    expect(navigationUrl({ lat: 25.0478, lng: 121.5319 }, "transit")).toContain("travelmode=transit")
   })
 })
 

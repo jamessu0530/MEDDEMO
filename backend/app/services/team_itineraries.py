@@ -11,7 +11,7 @@
 from __future__ import annotations
 
 import datetime as dt
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from app.models import AppUser, Customer, Itinerary, UserLocation
 from app.services import customer_profile, locations, travel
 from app.services import itinerary as itineraries
+from app.services.google_routes import TravelMode
 from app.services.scope import SHARING_LEVEL, Scope
 from app.services.today_route import SIGNAL_LABEL
 
@@ -56,9 +57,18 @@ class RemovedStop:
 
 
 @dataclass
+class LegStep:
+    """大眾運輸一段裡的一小段：走路（地圖上畫虛線）或搭車。"""
+
+    walk: bool
+    polyline: str
+
+
+@dataclass
 class Leg:
-    polyline: str | None  # Google 的編碼折線；沒有（沒設金鑰、Google 失敗）就畫直線
-    done: bool  # 這一段開到的那一站已經跑完：地圖上畫深色
+    polyline: str | None  # Google 的編碼折線；沒有（沒設金鑰、Google 失敗、搭不到車）就畫直線
+    done: bool  # 這一段到的那一站已經跑完：地圖上畫深色
+    steps: list[LegStep] = field(default_factory=list)  # 只有大眾運輸有
 
 
 @dataclass
@@ -90,6 +100,7 @@ class PinStop:
 @dataclass
 class RepMap:
     version: int  # 畫的是哪一版行程：首頁的行程換版了就要重拿
+    travel_mode: str  # 線照哪種交通方式畫
     origin: travel.Point | None
     stops: list[PinStop]
     legs: list[Leg]
@@ -126,7 +137,7 @@ def route(session: Session, rep: AppUser) -> RepRoute:
 
     # 跟 itinerary._start 同一個出發點
     origin = itineraries.office(session, rep)
-    legs = _legs(origin, [(s.lat, s.lng, s.status == "done") for s in stops])
+    legs = _legs(origin, [(s.lat, s.lng, s.status == "done") for s in stops], rep.travel_mode)
 
     on_route = set(current_ids)
     removed = [_removed(customers[item["customer_id"]], item) for item in suggested if item["customer_id"] not in on_route]
@@ -156,17 +167,22 @@ def rep_map(session: Session, rep: AppUser, itinerary: Itinerary) -> RepMap:
         for n, (customer, finished) in enumerate(ordered)
     ]
     origin = itineraries.office(session, rep)
-    legs = _legs(origin, [(s.lat, s.lng, s.status == "done") for s in stops])
-    return RepMap(version=itinerary.version, origin=origin, stops=stops, legs=legs)
+    legs = _legs(origin, [(s.lat, s.lng, s.status == "done") for s in stops], rep.travel_mode)
+    return RepMap(version=itinerary.version, travel_mode=rep.travel_mode, origin=origin, stops=stops, legs=legs)
 
 
-def _legs(origin: travel.Point | None, stops: list[tuple[float, float, bool]]) -> list[Leg]:
-    """從出發點（或第一站）一段一段開到最後一站；stops 是各站的 (緯度, 經度, 跑完了嗎)。"""
+def _legs(origin: travel.Point | None, stops: list[tuple[float, float, bool]], mode: TravelMode) -> list[Leg]:
+    """從出發點（或第一站）一段一段走到最後一站，照業務的交通方式；stops 是各站的 (緯度, 經度, 跑完了嗎)。"""
     path = ([origin] if origin else []) + [(lat, lng) for lat, lng, _ in stops]
-    found = travel.lines(path)
-    # 第 n 段開到 path 的第 n + 1 點：有辦公室時就是第 n 站，沒有時是第 n + 1 站
+    found = travel.lines(path, mode)
+    # 第 n 段到 path 的第 n + 1 點：有辦公室時就是第 n 站，沒有時是第 n + 1 站
     ends = stops if origin else stops[1:]
-    return [Leg(polyline=found[n] if found else None, done=done) for n, (_, _, done) in enumerate(ends)]
+    legs = []
+    for n, (_, _, done) in enumerate(ends):
+        line = found[n] if found else None
+        steps = [LegStep(step.walk, step.polyline) for step in line.steps] if line else []
+        legs.append(Leg(polyline=line.polyline if line else None, done=done, steps=steps))
+    return legs
 
 
 def moved_sentences(suggested: list[str], current: list[str], names: dict[str, str]) -> list[str]:

@@ -12,7 +12,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import (
-    Customer, Itinerary, ItineraryPrecedence, ItineraryStop, RouteHabit, RouteSignalWeight, RouteSnooze, Visit,
+    AppUser, Customer, Itinerary, ItineraryPrecedence, ItineraryStop, RouteHabit, RouteSignalWeight, RouteSnooze,
+    Visit,
 )
 from app.services import itinerary as service
 from app.services import google_routes, route_habits, route_planner, today_route, travel
@@ -262,7 +263,7 @@ def test_reading_the_itinerary_asks_google_for_the_legs_in_order_not_the_whole_m
     env(GOOGLE_MAPS_SERVER_KEY="server-key")
     asked = []
 
-    def route_legs(key, points, http=None, polylines=True):
+    def route_legs(key, points, http=None, polylines=True, mode="drive"):
         asked.append(points)
         return [google_routes.Leg(seconds=600, meters=3000, polyline="") for _ in points[1:]]
 
@@ -278,6 +279,52 @@ def test_reading_the_itinerary_asks_google_for_the_legs_in_order_not_the_whole_m
     # 每段 10 分鐘加 5 分鐘停車、3 公里
     assert all(s.travel_minutes == 15 and s.travel_km == 3.0 for s in view.stops)
     assert view.travel_km == 3.0 * len(view.stops)
+
+
+def test_every_google_question_uses_the_reps_travel_mode(tx, monkeypatch, env):
+    tx.get(AppUser, "U01").travel_mode = "transit"
+    env(GOOGLE_MAPS_SERVER_KEY="server-key")
+    modes = []
+
+    def route_matrix(key, origins, destinations, http=None, mode="drive"):
+        modes.append(("matrix", mode))
+        return {}
+
+    def route_legs(key, points, http=None, polylines=True, mode="drive"):
+        modes.append(("legs", mode))
+        return [google_routes.Leg(seconds=1800, meters=6000, polyline="") for _ in points[1:]]
+
+    monkeypatch.setattr(google_routes, "route_matrix", route_matrix)
+    monkeypatch.setattr(google_routes, "route_legs", route_legs)
+    itinerary = service.get_or_create(tx, "U01")
+    view = service.view(tx, itinerary)
+    service.optimized(tx, itinerary, service.draft_of(tx, itinerary))
+    assert modes == [("matrix", "transit"), ("legs", "transit"), ("matrix", "transit")]
+    # 大眾運輸 Google 已經算了走路與等車，不加停車時間
+    assert view.travel_mode == "transit" and all(s.travel_minutes == 30 for s in view.stops)
+
+
+def test_switching_travel_mode_bumps_the_version_once_and_keeps_the_order(tx):
+    itinerary = service.get_or_create(tx, "U01")
+    before = service.view(tx, itinerary)
+    service.set_travel_mode(tx, "U01", "transit")
+    after = service.view(tx, itinerary)
+    assert after.version == before.version + 1 and after.travel_mode == "transit"
+    assert [s.customer_id for s in after.stops] == [s.customer_id for s in before.stops]
+    # 大眾運輸的估算比開車慢
+    assert after.travel_minutes > before.travel_minutes
+    service.set_travel_mode(tx, "U01", "transit")
+    assert service.view(tx, itinerary).version == after.version
+    with pytest.raises(ValueError):
+        service.set_travel_mode(tx, "U01", "helicopter")
+    with pytest.raises(LookupError):
+        service.set_travel_mode(tx, "M01", "scooter")
+
+
+def test_resetting_the_demo_day_goes_back_to_driving(tx):
+    service.set_travel_mode(tx, "U01", "scooter")
+    service.reset_today(tx, "U01")
+    assert tx.get(AppUser, "U01").travel_mode == "drive"
 
 
 def by_customer(cid):

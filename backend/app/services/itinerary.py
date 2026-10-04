@@ -22,10 +22,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import (
-    AppUser, Customer, Itinerary, ItineraryPrecedence, ItineraryStop, OrgUnit, RouteHabit, RouteSignalWeight,
-    RouteSnooze, Visit,
+    TRAVEL_MODES, AppUser, Customer, Itinerary, ItineraryPrecedence, ItineraryStop, OrgUnit, RouteHabit,
+    RouteSignalWeight, RouteSnooze, Visit,
 )
 from app.services import customer_profile, route_habits, route_planner, today_route, travel
+from app.services.google_routes import TravelMode
 from app.timeutil import TAIPEI
 
 # 每站預設停留多久。以前用「平均 70 分鐘一站」排時間，那包含了車程；現在車程另外算
@@ -117,6 +118,7 @@ class ItineraryView:
     travel_km: float
     finish_time: str | None  # 最後一站離開的時間
     estimated: bool  # 車程是直線估算的
+    travel_mode: str = "drive"  # 車程照哪種交通方式算（行程主人的設定）
     rules: list[RuleView] = field(default_factory=list)
     violations: list[str] = field(default_factory=list)  # 目前的順序違反的規則 id
     precedences: list[Precedence] = field(default_factory=list)  # 今天設的先後
@@ -435,7 +437,7 @@ def candidates(
         start, points = _points(
             session, day.rep, itinerary.date, day.done, day.durations(), [*(o.customer for o in open_), *pool]
         )
-        minutes = _estimated(points).minutes
+        minutes = _estimated(points, day.rep.travel_mode).minutes
         ordered = [o.plan_stop(n + 1) for n, o in enumerate(open_)]
         base = route_planner.schedule(start, 0, ordered, minutes).travel_minutes
         precedences = [(a, b) for a, b in _precedences(session, itinerary) if a in ids and b in ids]
@@ -499,7 +501,7 @@ def optimized(session: Session, itinerary: Itinerary, draft: Draft) -> Optimized
     open_, precedences, skipped, pending = _resolve(session, day, draft)
     durations = day.durations() | {o.customer.id: o.duration_minutes for o in open_}
     start, points = _points(session, day.rep, itinerary.date, day.done, durations, [o.customer for o in open_])
-    matrix = travel.matrix(points)
+    matrix = travel.matrix(points, day.rep.travel_mode)
     stops = [o.plan_stop(n + 1) for n, o in enumerate(open_)]
     rules = _rules(open_, precedences, day.habits, skipped, pending) + _locks(open_, len(day.done))
     result = route_planner.plan(start, 0, stops, rules, matrix.minutes)
@@ -555,6 +557,24 @@ def reset_today(session: Session, user_id: str) -> None:
     session.execute(delete(RouteSnooze).where(RouteSnooze.user_id == user_id))
     session.execute(delete(RouteSignalWeight).where(RouteSignalWeight.user_id == user_id))
     route_habits.reset_demo(session, user_id)
+    rep = session.get(AppUser, user_id)
+    if rep is not None:
+        rep.travel_mode = "drive"
+
+
+def set_travel_mode(session: Session, user_id: str, mode: str) -> Itinerary:
+    """換交通方式：存在行程主人身上，之後每天的建議、加一站、排順路與車程都照它算。
+    今天的行程換一版：順序是存著的、不動，時間照新的交通方式重算；換版讓還沒套用的提案作廢、主管頁跟著更新。
+    要照新的方式重排順路，按「幫我排順一點」。"""
+    if mode not in TRAVEL_MODES:
+        raise ValueError(mode)
+    itinerary = get_or_create(session, user_id)
+    _lock(session, itinerary)
+    rep = session.get(AppUser, user_id)
+    if rep.travel_mode != mode:
+        rep.travel_mode = mode
+        _touch(itinerary)
+    return itinerary
 
 
 def _find(session: Session, user_id: str, today: dt.date) -> Itinerary | None:
@@ -587,7 +607,7 @@ def _create(session: Session, rep: AppUser, today: dt.date) -> Itinerary:
     ]
     start, points = _points(session, rep, today, picked.done, {}, [o.customer for o in open_])
     # 順序還要由程式挑：要整張車程矩陣
-    minutes = travel.matrix(points).minutes
+    minutes = travel.matrix(points, rep.travel_mode).minutes
     stops = [o.plan_stop(n + 1) for n, o in enumerate(open_)]
     locks = []
     if picked.urgent:
@@ -732,9 +752,9 @@ def _inserted(
     return [*open_[:index], new, *open_[index:]]
 
 
-def _estimated(points: list[travel.Point]) -> travel.Matrix:
+def _estimated(points: list[travel.Point], mode: TravelMode) -> travel.Matrix:
     """直線估算的車程矩陣。調整清單的 preview（拖一下就算一次）與加一站的候選（一次約 50 家）只用估算，不打 Google。"""
-    pairs = [[travel.estimate(a, b) for b in points] for a in points]
+    pairs = [[travel.estimate(a, b, mode) for b in points] for a in points]
     return travel.Matrix(
         minutes=[[m for m, _ in row] for row in pairs], km=[[k for _, k in row] for row in pairs], estimated=True,
     )
@@ -829,13 +849,13 @@ def _points(
     return start, [origin or (points[0] if points else (0.0, 0.0)), *points]
 
 
-def _timed(points: list[travel.Point], estimate: bool = False) -> travel.Matrix:
+def _timed(points: list[travel.Point], mode: TravelMode, estimate: bool = False) -> travel.Matrix:
     """照這個順序跑的車程（順序已經定了：讀取、調整清單的 preview 與存檔）。只會用到相鄰兩點
     （第 n 點到第 n + 1 點）那幾格，所以用 travel.along 一次問 Google 整條路線，不必問整份矩陣；
     回來的 estimated 跟著 Google 有沒有給（畫面的「（估計）」／Google Maps）。
     順序還要由程式挑的地方（每天的建議、插入新的一站、排順路）直接用 travel.matrix：along 不相鄰的格子是估算的。
-    estimate：只要直線估算（調整清單的 preview）。"""
-    return _estimated(points) if estimate else travel.along(points)
+    mode：行程主人的交通方式。estimate：只要直線估算（調整清單的 preview）。"""
+    return _estimated(points, mode) if estimate else travel.along(points, mode)
 
 
 def _rules(
@@ -885,7 +905,8 @@ def _cheapest_index(
     customers = [o.customer for o in open_] + [new.customer]
     durations = day.durations() | {o.customer.id: o.duration_minutes for o in open_}
     start, points = _points(session, day.rep, day.itinerary.date, day.done, durations, customers)
-    matrix = _estimated(points) if estimate else travel.matrix(points)
+    mode = day.rep.travel_mode
+    matrix = _estimated(points, mode) if estimate else travel.matrix(points, mode)
     ordered = [o.plan_stop(n + 1) for n, o in enumerate(open_)]
     rules = _rules([*open_, new], precedences, day.habits, skipped, pending) + _locks(open_, len(day.done))
     return route_planner.cheapest_insert(start, 0, ordered, new.plan_stop(len(open_) + 1), rules, matrix.minutes)
@@ -922,7 +943,7 @@ def _compose(
     itinerary, rep = day.itinerary, day.rep
     durations = day.durations() | {o.customer.id: o.duration_minutes for o in open_}
     start, points = _points(session, rep, itinerary.date, day.done, durations, [o.customer for o in open_])
-    matrix = _timed(points, estimate)
+    matrix = _timed(points, rep.travel_mode, estimate)
     planned = route_planner.schedule(start, 0, [o.plan_stop(n + 1) for n, o in enumerate(open_)], matrix.minutes)
     rules = _rules(open_, precedences, day.habits, skipped, pending)
     order = [o.customer.id for o in open_]
@@ -963,7 +984,7 @@ def _compose(
         date=itinerary.date, rep=rep, version=itinerary.version, done=len(day.done), total=len(stops), urgent=urgent,
         stops=stops, travel_minutes=planned.travel_minutes, travel_km=round(total_km, 1),
         finish_time=planned.slots[-1].leave.strftime("%H:%M") if planned.slots else None,
-        estimated=matrix.estimated,
+        estimated=matrix.estimated, travel_mode=rep.travel_mode,
         rules=[RuleView(r.id, r.text, r.kind, r.id.split(":")[0], list(r.customer_ids)) for r in rules],
         violations=[r.id for r in route_planner.violations(order, rules)],
         precedences=[Precedence(a, b) for a, b in precedences if a in open_ids and b in open_ids],

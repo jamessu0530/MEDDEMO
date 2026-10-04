@@ -70,6 +70,9 @@ export type Precedence = { before: string; after: string }
 
 export type SkippedHabit = { id: number; text: string; reason: string; conflict: boolean }
 
+// 業務跑客戶的交通方式（後端 models.TRAVEL_MODES）：行程的時間、排順路與地圖上的線都照它算
+export type TravelMode = "drive" | "scooter" | "transit"
+
 export type TodayRoute = {
   date: string
   rep: { id: string; name: string }
@@ -84,6 +87,7 @@ export type TodayRoute = {
   finish_time: string | null
   // 車程是直線估算的
   estimated: boolean
+  travel_mode: TravelMode
   // 調整清單要守的規則（今天的先後與習慣；鎖住的不列）與目前的順序違反了哪幾條
   rules: RouteRule[]
   violations: string[]
@@ -105,6 +109,8 @@ export type MapStop = LatLng & {
 export type TodayMap = {
   // 畫的是哪一版行程：首頁的行程換版了就要重拿
   version: number
+  // 線照哪種交通方式畫
+  travel_mode: TravelMode
   // 區處辦公室，路線從這裡畫起；還沒有位置的區是 null
   origin: LatLng | null
   stops: MapStop[]
@@ -235,6 +241,18 @@ export async function getTodayRoute(userId: string, signal?: AbortSignal) {
 /** 首頁切到「地圖」：今天各站的位置與沿路的線。沒網路就是沒有，不用手機裡的舊資料 */
 export function getTodayMap(signal?: AbortSignal) {
   return request<TodayMap>("/api/itinerary/today/map", { signal })
+}
+
+/** 行程主人的交通方式（帳號設定頁）；代理示範業務的帳號拿到的是示範業務的 */
+export function getTravelMode(signal?: AbortSignal) {
+  return request<{ mode: TravelMode }>("/api/itinerary/travel-mode", { signal })
+}
+
+/** 換交通方式：今天的行程換一版，順序不動、時間照新的方式重算，回傳重算好的那一份 */
+export async function setTravelMode(userId: string, mode: TravelMode) {
+  const route = await request<TodayRoute>("/api/itinerary/travel-mode", jsonBody("PUT", { mode }))
+  writeCache(routeKey(userId), route)
+  return route
 }
 
 /** 需立即處理的三顆鈕：後端直接改今天的行程，回傳改好的那一份 */

@@ -1,4 +1,5 @@
 import { request } from "@/api/client"
+import type { TravelMode } from "@/api/route"
 
 // 主管端的行程分頁（後端 api/manager.py 的 /api/manager/itineraries）：只能看、只看今天。
 // 站的狀態與來源跟業務首頁同一套（後端 services/itinerary.py），這裡自己寫一份，不跟業務那邊的型別綁在一起
@@ -27,8 +28,12 @@ export type TeamStop = LatLng & {
   window_time: string | null
 }
 
-// 沿路的一段：polyline 是 Google 的編碼折線，沒有（沒設金鑰、Google 失敗）就畫直線；done 是開到的那一站跑完了
-export type TeamLeg = { polyline: string | null; done: boolean }
+// 大眾運輸一段裡的一小段：走路（虛線）或搭車
+export type TeamLegStep = { walk: boolean; polyline: string }
+
+// 沿路的一段：polyline 是 Google 的編碼折線，沒有（沒設金鑰、Google 失敗、搭不到車）就畫直線；
+// done 是到的那一站跑完了；steps 只有大眾運輸有
+export type TeamLeg = { polyline: string | null; done: boolean; steps: TeamLegStep[] }
 
 // 系統早上排了、現在不在行程裡的站
 export type RemovedStop = LatLng & {
@@ -54,6 +59,8 @@ export type RepRoute = {
   finish_time: string | null
   // 車程是直線估算的
   estimated: boolean
+  // 這位業務的交通方式
+  travel_mode: TravelMode
   // 區處辦公室，路線從這裡畫起；還沒有位置的區是 null
   origin: LatLng | null
   stops: TeamStop[]

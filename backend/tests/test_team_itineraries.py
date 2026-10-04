@@ -125,7 +125,7 @@ def test_with_a_server_key_the_legs_carry_googles_lines(tx, monkeypatch, env):
     itineraries.get_or_create(tx, "U01")  # 建的時候要排順序、會問整份矩陣，先在沒有金鑰時建好
     env(GOOGLE_MAPS_SERVER_KEY="server-key")
 
-    def route_legs(key, points, http=None, polylines=True):
+    def route_legs(key, points, http=None, polylines=True, mode="drive"):
         return [google_routes.Leg(seconds=60, meters=500, polyline=f"line{n}") for n in range(len(points) - 1)]
 
     monkeypatch.setattr(google_routes, "route_legs", route_legs)
@@ -159,7 +159,7 @@ def test_the_reps_own_map_draws_the_same_lines_as_the_managers(tx, monkeypatch, 
     itinerary = itineraries.get_or_create(tx, "U01")
     env(GOOGLE_MAPS_SERVER_KEY="server-key")
 
-    def route_legs(key, points, http=None, polylines=True):
+    def route_legs(key, points, http=None, polylines=True, mode="drive"):
         return [google_routes.Leg(seconds=60, meters=500, polyline=f"line{n}") for n in range(len(points) - 1)]
 
     monkeypatch.setattr(google_routes, "route_legs", route_legs)
@@ -171,6 +171,27 @@ def test_the_reps_own_map_draws_the_same_lines_as_the_managers(tx, monkeypatch, 
     monkeypatch.setattr(travel, "matrix", no_driving)
     found = team.rep_map(tx, person(tx, "U01"), itinerary)
     assert [leg.polyline for leg in found.legs] == [f"line{n}" for n in range(len(found.stops))]
+
+
+def test_a_transit_rep_is_drawn_walking_and_riding_on_both_maps(tx, monkeypatch, env):
+    itinerary = itineraries.get_or_create(tx, "U01")
+    person(tx, "U01").travel_mode = "transit"
+    env(GOOGLE_MAPS_SERVER_KEY="server-key")
+    asked = []
+
+    def route_legs(key, points, http=None, polylines=True, mode="drive"):
+        asked.append(mode)
+        steps = (google_routes.Step(True, "walk"), google_routes.Step(False, "ride"))
+        legs = [google_routes.Leg(seconds=900, meters=4000, polyline=f"line{n}", steps=steps) for n in range(len(points) - 1)]
+        return [*legs[:-1], None]  # 最後一段搭不到車
+
+    monkeypatch.setattr(google_routes, "route_legs", route_legs)
+    for found in (team.rep_map(tx, person(tx, "U01"), itinerary), team.route(tx, person(tx, "U01"))):
+        assert found.legs[0].polyline == "line0"
+        assert found.legs[0].steps == [team.LegStep(True, "walk"), team.LegStep(False, "ride")]
+        assert found.legs[-1].polyline is None and found.legs[-1].steps == []
+    assert team.rep_map(tx, person(tx, "U01"), itinerary).travel_mode == "transit"
+    assert set(asked) == {"transit"}
 
 
 def test_the_route_says_where_the_rep_is(tx, env):

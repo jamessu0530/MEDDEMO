@@ -10,7 +10,7 @@ from app.main import app
 from app.models import Itinerary
 
 ROUTE_FIELDS = {
-    "rep", "version", "done", "total", "travel_minutes", "travel_km", "finish_time", "estimated", "origin",
+    "rep", "version", "done", "total", "travel_minutes", "travel_km", "finish_time", "estimated", "travel_mode", "origin",
     "stops", "legs", "removed", "added", "moved", "untouched", "location",
 }
 STOP_FIELDS = {
@@ -36,8 +36,9 @@ def test_a_manager_gets_the_team_overview(client, auth):
     assert first["rep"] == {"id": "U01", "name": "林昱辰", "region": "北區"}
     assert set(first["stops"][0]) == STOP_FIELDS
     assert set(first["origin"]) == {"lat", "lng"}
-    assert len(first["legs"]) == len(first["stops"]) and first["legs"][0] == {"polyline": None, "done": False}
-    assert first["estimated"] is True
+    assert len(first["legs"]) == len(first["stops"])
+    assert first["legs"][0] == {"polyline": None, "done": False, "steps": []}
+    assert first["estimated"] is True and first["travel_mode"] == "drive"
 
 
 def test_it_sees_the_whole_company(client, auth):

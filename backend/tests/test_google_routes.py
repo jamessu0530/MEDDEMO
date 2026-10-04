@@ -1,12 +1,14 @@
 """Google Routes API 的呼叫：送出去的格式、回來的解讀、失敗一律 RoutesError。全部用假的 Google，不連網路。"""
 
+import datetime as dt
 import json
 
 import httpx
 import pytest
 
 from app.services import google_routes
-from app.services.google_routes import Cell, Leg, RoutesError
+from app.services.google_routes import Cell, Leg, RoutesError, Step
+from app.timeutil import TAIPEI
 
 TAIPEI_MAIN = (25.0478, 121.517)
 TAIPEI_101 = (25.034, 121.5645)
@@ -167,4 +169,69 @@ def test_no_route_or_the_wrong_number_of_legs_raise(answer):
 def test_one_point_needs_no_request():
     http, sent = fake(lambda request: (200, {}))
     assert google_routes.route_legs("k", [TAIPEI_MAIN], http=http) == []
+    assert sent == []
+
+
+def test_scooters_ask_for_two_wheeler_routes_in_both_calls():
+    legs = {"routes": [{"legs": [{"duration": "300s", "distanceMeters": 2000, "polyline": {"encodedPolyline": "abc"}}]}]}
+    http, sent = fake(lambda request: (200, [] if "Matrix" in str(request.url) else legs))
+    google_routes.route_matrix("k", [TAIPEI_MAIN], [TAIPEI_101], http=http, mode="scooter")
+    google_routes.route_legs("k", [TAIPEI_MAIN, TAIPEI_101], http=http, mode="scooter")
+    assert len(sent) == 2
+    for request in sent:
+        body = json.loads(request.content)
+        assert body["travelMode"] == "TWO_WHEELER" and body["routingPreference"] == "TRAFFIC_UNAWARE"
+
+
+def test_transit_matrix_leaves_out_traffic_and_departs_at_ten_today(monkeypatch):
+    monkeypatch.setattr(google_routes, "_now", lambda: dt.datetime(2026, 10, 4, 21, 30, tzinfo=TAIPEI))
+    http, sent = fake(lambda request: (200, []))
+    google_routes.route_matrix("k", [TAIPEI_MAIN], [TAIPEI_101], http=http, mode="transit")
+    body = json.loads(sent[0].content)
+    assert body["travelMode"] == "TRANSIT" and "routingPreference" not in body
+    # 晚上問也照白天的班次：今天台北早上 10 點（UTC 02:00）
+    assert body["departureTime"] == "2026-10-04T02:00:00Z"
+
+
+def test_a_transit_matrix_over_googles_limit_is_refused():
+    points = [(25.0 + i / 100, 121.5) for i in range(11)]  # 121 格；大眾運輸一次最多 100 格
+    http, sent = fake(lambda request: (200, []))
+    with pytest.raises(RoutesError):
+        google_routes.route_matrix("k", points, points, http=http, mode="transit")
+    assert sent == []
+
+
+def test_transit_asks_one_leg_at_a_time_and_splits_walking_from_riding():
+    def respond(request):
+        body = json.loads(request.content)
+        assert "intermediates" not in body and body["travelMode"] == "TRANSIT" and "departureTime" in body
+        if body["destination"] == waypoint(SONGSHAN):
+            return 200, {}  # 這一段搭不到車
+        return 200, {"routes": [{"legs": [{
+            "duration": "1500s", "distanceMeters": 6000, "polyline": {"encodedPolyline": "whole"},
+            "steps": [
+                {"travelMode": "WALK", "polyline": {"encodedPolyline": "w1"}},
+                {"travelMode": "TRANSIT", "polyline": {"encodedPolyline": "r1"}},
+                {"travelMode": "WALK", "polyline": {"encodedPolyline": "w2"}},
+            ],
+        }]}]}
+
+    http, sent = fake(respond)
+    legs = google_routes.route_legs("k", [TAIPEI_MAIN, TAIPEI_101, SONGSHAN], http=http, mode="transit")
+    assert legs == [Leg(1500, 6000, "whole", (Step(True, "w1"), Step(False, "r1"), Step(True, "w2"))), None]
+    assert len(sent) == 2
+    assert "routes.legs.steps.polyline.encodedPolyline" in sent[0].headers["X-Goog-FieldMask"].split(",")
+
+
+def test_transit_without_polylines_still_reads_the_time():
+    answer = {"routes": [{"legs": [{"duration": "1500s", "distanceMeters": 6000}]}]}
+    http, sent = fake(lambda request: (200, answer))
+    legs = google_routes.route_legs("k", [TAIPEI_MAIN, TAIPEI_101], http=http, polylines=False, mode="transit")
+    assert legs == [Leg(1500, 6000, "")]
+    assert "polyline" not in sent[0].headers["X-Goog-FieldMask"]
+
+
+def test_transit_between_the_same_point_needs_no_request():
+    http, sent = fake(lambda request: (200, {}))
+    assert google_routes.route_legs("k", [TAIPEI_MAIN, TAIPEI_MAIN], http=http, mode="transit") == [Leg(0, 0, "")]
     assert sent == []

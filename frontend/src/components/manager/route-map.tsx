@@ -103,16 +103,24 @@ function RouteLayer({ route, onSelect }: { route: RepRoute; onSelect: (stop: Tea
   const color = cssColor(colorVar)
   return (
     <>
-      {legPaths(route).map((leg, n) => (
-        <Polyline
-          key={n}
-          path={leg.path}
-          strokeColor={color}
-          strokeOpacity={leg.done ? DONE_OPACITY : TODO_OPACITY}
-          strokeWeight={5}
-          clickable={false}
-        />
-      ))}
+      {/* 大眾運輸的走路畫虛線，其他（開車、機車、搭車）畫實線 */}
+      {legPaths(route).flatMap((leg, n) =>
+        leg.pieces.map((piece, m) => (
+          <Polyline
+            key={`${n}-${m}`}
+            path={piece.path}
+            strokeColor={color}
+            strokeOpacity={piece.walk ? 0 : leg.done ? DONE_OPACITY : TODO_OPACITY}
+            strokeWeight={5}
+            icons={
+              piece.walk
+                ? [{ icon: { path: "M 0,-1 0,1", scale: 3, strokeColor: color, strokeOpacity: leg.done ? DONE_OPACITY : TODO_OPACITY }, offset: "0", repeat: "12px" }]
+                : undefined
+            }
+            clickable={false}
+          />
+        ))
+      )}
       {route.stops.map((stop) => {
         const done = stop.status === "done"
         return (

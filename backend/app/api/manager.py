@@ -126,9 +126,15 @@ class TeamStop(BaseModel):
     window_time: str | None
 
 
+class TeamLegStep(BaseModel):
+    walk: bool  # 大眾運輸的走路（虛線）；不是走路就是搭車
+    polyline: str
+
+
 class TeamLeg(BaseModel):
     polyline: str | None
     done: bool
+    steps: list[TeamLegStep]
 
 
 class TeamRemovedStop(BaseModel):
@@ -161,6 +167,7 @@ class RepRoute(BaseModel):
     travel_km: float
     finish_time: str | None
     estimated: bool
+    travel_mode: str  # 這位業務的交通方式：drive、scooter、transit
     origin: LatLng | None
     stops: list[TeamStop]
     legs: list[TeamLeg]
@@ -184,6 +191,7 @@ def _route_out(route: team.RepRoute) -> RepRoute:
         rep=TeamRep(id=route.rep.id, name=route.rep.name, region=route.rep.region),
         version=view.version, done=view.done, total=view.total, travel_minutes=view.travel_minutes,
         travel_km=view.travel_km, finish_time=view.finish_time, estimated=view.estimated,
+        travel_mode=view.travel_mode,
         origin=LatLng(lat=route.origin[0], lng=route.origin[1]) if route.origin else None,
         stops=[TeamStop(**dataclasses.asdict(stop)) for stop in route.stops],
         legs=[TeamLeg(**dataclasses.asdict(leg)) for leg in route.legs],

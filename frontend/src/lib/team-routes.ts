@@ -1,6 +1,7 @@
 import type { LatLng, RemovedStop, RepRoute, StopSource, TeamLocations, TeamRoutes, TeamStop } from "@/api/team-routes"
 import { formatDayLabel } from "@/lib/format"
 import { avatarTone } from "@/lib/presence"
+import { routeSource, TRAVEL_MODE_LABEL } from "@/lib/travel-mode"
 
 /*
  * 主管端行程分頁的文字與地圖資料（docs/superpowers/specs/2026-10-01-itinerary-planning-design.md〈主管端：行程分頁〉）。
@@ -56,10 +57,10 @@ export function formatDriveTime(minutes: number) {
   return rest ? `${hours} 小時 ${rest} 分` : `${hours} 小時`
 }
 
-/** 詳細頁地圖下面那一行：「共 18.2 公里 · 車程 1 小時 25 分（Google 道路車程）」或「（估計）」 */
+/** 詳細頁地圖下面那一行：「共 18.2 公里 · 機車 1 小時 25 分（Google 機車路線測試版）」或「（估計）」 */
 export function totalsLine(route: RepRoute) {
-  const source = route.estimated ? "（估計）" : "（Google 道路車程）"
-  return `共 ${route.travel_km} 公里 · 車程 ${formatDriveTime(route.travel_minutes)}${source}`
+  const mode = TRAVEL_MODE_LABEL[route.travel_mode]
+  return `共 ${route.travel_km} 公里 · ${mode} ${formatDriveTime(route.travel_minutes)}${routeSource(route.travel_mode, route.estimated)}`
 }
 
 /** 約的時間：「約 11:00 到」「11:00 以前到」「14:00 以後到」 */
@@ -79,9 +80,10 @@ export const SOURCE_LABEL: Record<StopSource, string> = {
 
 // 地圖上還沒有任何點時框住台灣本島
 export const TAIWAN = { north: 25.35, south: 21.85, east: 122.05, west: 119.95 }
-// 已經跑完的段深色、還沒去的段淡色（主管頁與首頁的地圖一樣）
+// 已經跑完的段深色、還沒去的段淡色（主管頁與首頁的地圖一樣）。還沒去的不能太淡：
+// 一天剛開始整條都是還沒去的，太淡會跟 Google 底圖上的捷運線混在一起，看起來像只有站點、沒有路線
 export const DONE_OPACITY = 0.95
-export const TODO_OPACITY = 0.35
+export const TODO_OPACITY = 0.55
 
 /** Google 的編碼折線（Encoded Polyline Algorithm Format）解成經緯度 */
 export function decodePolyline(encoded: string): LatLng[] {
@@ -118,17 +120,25 @@ export function boundsOf(points: LatLng[]) {
   return { north: Math.max(...lats), south: Math.min(...lats), east: Math.max(...lngs), west: Math.min(...lngs) }
 }
 
-/** 一位業務沿路的每一段要畫的點：有折線用折線，沒有就從上一點直接連到這一站。
- *  第 n 段從「出發點加各站」的第 n 點開到第 n + 1 點（後端 services/team_itineraries.py 同一個規則）。
+// 一段路裡要畫的一小段：walk 是大眾運輸的走路（畫虛線），其他（開車、機車、搭車）畫實線
+export type LegPiece = { path: LatLng[]; walk: boolean }
+
+/** 一位業務沿路的每一段要畫的線：大眾運輸照走路與搭車分成幾小段；其他有折線用折線，
+ *  沒有（沒設金鑰、Google 失敗、搭不到車）就從上一點直接連到這一站。
+ *  第 n 段從「出發點加各站」的第 n 點到第 n + 1 點（後端 services/team_itineraries.py 同一個規則）。
  *  主管頁與業務首頁的地圖都用 */
-export function legPaths(route: Pick<RepRoute, "origin" | "legs"> & { stops: LatLng[] }) {
+export function legPaths(
+  route: Pick<RepRoute, "origin" | "legs"> & { stops: LatLng[] }
+): { done: boolean; pieces: LegPiece[] }[] {
   const points: LatLng[] = [
     ...(route.origin ? [route.origin] : []),
     ...route.stops.map(({ lat, lng }) => ({ lat, lng })),
   ]
   return route.legs.map((leg, n) => ({
     done: leg.done,
-    path: leg.polyline ? decodePolyline(leg.polyline) : [points[n], points[n + 1]],
+    pieces: leg.steps.length
+      ? leg.steps.map((step) => ({ path: decodePolyline(step.polyline), walk: step.walk }))
+      : [{ path: leg.polyline ? decodePolyline(leg.polyline) : [points[n], points[n + 1]], walk: false }],
   }))
 }
 

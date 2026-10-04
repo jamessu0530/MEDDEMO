@@ -92,6 +92,8 @@ class AppSetting(Base):
 ORG_UNIT_KINDS = ("root", "region")
 # sales：跑今日路線；manager：帶一隊業務，多一個主管端；it：坐在根節點上，看得到也動得了全公司，並管組織
 ROLES = ("sales", "manager", "it")
+# 業務怎麼跑客戶：開車、機車、大眾運輸（services/google_routes.py 的 TravelMode 同一組）
+TRAVEL_MODES = ("drive", "scooter", "transit")
 
 
 class OrgUnit(Base):
@@ -116,6 +118,7 @@ class AppUser(Base):
     __tablename__ = "app_user"
     __table_args__ = (
         one_of("role", ROLES, "role"),
+        one_of("travel_mode", TRAVEL_MODES, "travel_mode"),
         # 位置跟著角色：業務接在主管後面；主管與 IT 掛在地理節點上（主管掛區、IT 掛根，這一層約束
         # 查不到 org_unit，由 services/org.py 的 paths_from_reports 檢查）。
         # 不在組織裡：三個都空，且一定是代理別人的帳號（自建與第三方登入，見 api/auth.py）
@@ -156,6 +159,9 @@ class AppUser(Base):
     # IT 停用的時間，NULL 是在職。停用的人登不進來，但留在組織樹原位：
     # 他的歷史拜訪照舊給原本的團隊看（路徑一拿掉，連 IT 都看不到那些紀錄）
     deactivated_at: Mapped[dt.datetime | None]
+    # 業務跑客戶的交通方式：行程的時間、排順路與地圖上的線都照它算（services/itinerary.py）。
+    # 是行程主人的設定：代理示範業務的帳號看的是示範業務的行程，改的也是示範業務這一欄
+    travel_mode: Mapped[str] = mapped_column(server_default="drive")
 
 
 class OrgChangeLog(Base):

@@ -12,8 +12,11 @@ import {
   type OAuthCredential,
   type OAuthProviders,
 } from "@/api/auth"
+import { ApiError } from "@/api/client"
+import { getTravelMode, setTravelMode, type TravelMode } from "@/api/route"
 import { MyStatusSection } from "@/components/my-status"
 import { ProfilePhotoSection } from "@/components/profile-photo"
+import { TravelModeIcon } from "@/components/route/travel-mode-icon"
 import { FacebookButton, NotReadyButton, RedirectButton } from "@/components/oauth-buttons"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
@@ -33,6 +36,7 @@ import { PROVIDER_LABEL, useProviders, type OAuthProvider } from "@/lib/oauth"
 import { openGuide } from "@/lib/onboarding"
 import { useSkin, type Skin } from "@/lib/skin"
 import { setTextSize, useTextSize, type TextSize } from "@/lib/text-size"
+import { TRAVEL_MODE_LABEL, TRAVEL_MODES } from "@/lib/travel-mode"
 import { cn } from "@/lib/utils"
 
 const ROLE_LABEL = { sales: "業務", manager: "主管", it: "IT" } as const
@@ -115,6 +119,70 @@ function TextSizePicker() {
           </button>
         ))}
       </div>
+    </section>
+  )
+}
+
+/**
+ * 交通方式：行程的時間、排順路與地圖上的路線都照它算（後端存在行程主人身上；代理示範業務的帳號改的是示範業務的）。
+ * 首頁地圖的左上角也能換，兩邊是同一個設定
+ */
+function TravelModePicker({ userId }: { userId: string }) {
+  const [mode, setMode] = useState<TravelMode | null>(null)
+  const [saving, setSaving] = useState<TravelMode | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    getTravelMode(controller.signal)
+      .then((found) => setMode(found.mode))
+      .catch(() => {
+        if (!controller.signal.aborted) setError("連不上伺服器，現在的交通方式沒有載入。")
+      })
+    return () => controller.abort()
+  }, [])
+
+  async function choose(next: TravelMode) {
+    if (next === mode || saving) return
+    setSaving(next)
+    setError(null)
+    try {
+      setMode((await setTravelMode(userId, next)).travel_mode)
+    } catch (cause) {
+      setError(cause instanceof ApiError ? cause.message : "連不上伺服器，交通方式沒有換到，請再試一次。")
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  return (
+    <section className="flex flex-col gap-3">
+      <div className="flex flex-col gap-1">
+        <h2 className="text-sm font-semibold">交通方式</h2>
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          行程的時間、排順路與地圖上的路線都照它算。換了之後今天的順序不動，要照新的方式排順路，到調整行程按「幫我排順一點」。
+        </p>
+      </div>
+      <div role="radiogroup" aria-label="交通方式" className="grid grid-cols-3 gap-2">
+        {TRAVEL_MODES.map((option) => (
+          <button
+            key={option}
+            type="button"
+            role="radio"
+            aria-checked={(saving ?? mode) === option}
+            disabled={mode === null || saving !== null}
+            onClick={() => void choose(option)}
+            className={cn(
+              "flex h-14 items-center justify-center gap-1.5 rounded-xl border-2 bg-card text-sm font-medium shadow-lip press disabled:opacity-60",
+              (saving ?? mode) === option && "border-primary ring-1 ring-primary"
+            )}
+          >
+            {saving === option ? <Loader2 className="size-4 animate-spin" /> : <TravelModeIcon mode={option} className="size-4" />}
+            {TRAVEL_MODE_LABEL[option]}
+          </button>
+        ))}
+      </div>
+      {error && <p className="text-xs text-destructive">{error}</p>}
     </section>
   )
 }
@@ -530,6 +598,7 @@ export function SettingsPage() {
           </button>
         )}
 
+        {user.role === "sales" && <TravelModePicker userId={user.id} />}
         <SkinPicker />
         <TextSizePicker />
 

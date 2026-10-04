@@ -68,8 +68,11 @@ describe("一位業務的詳細", () => {
   })
 
   it("地圖下面那一行標明是 Google 的道路車程還是估計", () => {
-    expect(totalsLine(repRoute())).toBe("共 18.2 公里 · 車程 1 小時 25 分（估計）")
-    expect(totalsLine(repRoute({ estimated: false }))).toBe("共 18.2 公里 · 車程 1 小時 25 分（Google 道路車程）")
+    expect(totalsLine(repRoute())).toBe("共 18.2 公里 · 開車 1 小時 25 分（估計）")
+    expect(totalsLine(repRoute({ estimated: false }))).toBe("共 18.2 公里 · 開車 1 小時 25 分（Google 路線）")
+    expect(totalsLine(repRoute({ estimated: false, travel_mode: "scooter" }))).toBe(
+      "共 18.2 公里 · 機車 1 小時 25 分（Google 機車路線測試版）"
+    )
   })
 
   it("約的時間", () => {
@@ -102,18 +105,43 @@ describe("地圖", () => {
   it("每一段有折線用折線，沒有就從上一點連直線到這一站", () => {
     const route = repRoute({
       legs: [
-        { polyline: "_p~iF~ps|U_ulLnnqC", done: true },
-        { polyline: null, done: false },
-        { polyline: null, done: false },
+        { polyline: "_p~iF~ps|U_ulLnnqC", done: true, steps: [] },
+        { polyline: null, done: false, steps: [] },
+        { polyline: null, done: false, steps: [] },
       ],
     })
     const paths = legPaths(route)
     expect(paths).toHaveLength(3)
-    expect(paths[0]).toEqual({ done: true, path: [{ lat: 38.5, lng: -120.2 }, { lat: 40.7, lng: -120.95 }] })
-    expect(paths[1]).toEqual({ done: false, path: [route.stops[0], route.stops[1]].map(({ lat, lng }) => ({ lat, lng })) })
+    expect(paths[0]).toEqual({ done: true, pieces: [{ walk: false, path: [{ lat: 38.5, lng: -120.2 }, { lat: 40.7, lng: -120.95 }] }] })
+    expect(paths[1]).toEqual({
+      done: false,
+      pieces: [{ walk: false, path: [route.stops[0], route.stops[1]].map(({ lat, lng }) => ({ lat, lng })) }],
+    })
     // 沒有出發點：第一段從第 1 站開到第 2 站
-    const noOffice = legPaths(repRoute({ origin: null, legs: [{ polyline: null, done: false }, { polyline: null, done: false }] }))
-    expect(noOffice[0].path).toEqual([route.stops[0], route.stops[1]].map(({ lat, lng }) => ({ lat, lng })))
+    const noOffice = legPaths(
+      repRoute({ origin: null, legs: [{ polyline: null, done: false, steps: [] }, { polyline: null, done: false, steps: [] }] })
+    )
+    expect(noOffice[0].pieces[0].path).toEqual([route.stops[0], route.stops[1]].map(({ lat, lng }) => ({ lat, lng })))
+  })
+
+  it("大眾運輸的一段照走路與搭車分開畫", () => {
+    const route = repRoute({
+      travel_mode: "transit",
+      legs: [
+        {
+          polyline: "_p~iF~ps|U_ulLnnqC",
+          done: false,
+          steps: [
+            { walk: true, polyline: "_p~iF~ps|U" },
+            { walk: false, polyline: "_p~iF~ps|U_ulLnnqC" },
+          ],
+        },
+      ],
+    })
+    expect(legPaths(route)[0].pieces.map((piece) => [piece.walk, piece.path.length])).toEqual([
+      [true, 1],
+      [false, 2],
+    ])
   })
 
   it("地圖範圍框住所有的點", () => {

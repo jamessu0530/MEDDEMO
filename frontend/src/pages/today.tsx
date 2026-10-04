@@ -18,6 +18,7 @@ import { Button, buttonVariants } from "@/components/ui/button"
 import { useAuth } from "@/lib/auth"
 import { formatDate, formatDayLabel } from "@/lib/format"
 import { useUnseenReplies } from "@/lib/manager-replies"
+import { TRAVEL_MODE_LABEL } from "@/lib/travel-mode"
 import { cn } from "@/lib/utils"
 import { FirstWeekEntry } from "@/pages/first-week"
 
@@ -70,6 +71,8 @@ export function TodayPage() {
   const switchRef = useRef<HTMLDivElement>(null)
   // 固定的頁首有多高（有沒有位置分享列、字放多大都不一樣）：地圖照它算高度（home-map-panel.tsx 的 --home-header）
   const [headerHeight, setHeaderHeight] = useState<number | null>(null)
+  // 按過路線／地圖切換：之後換過去的那一邊從旁邊滑進來
+  const [switched, setSwitched] = useState(false)
 
   useEffect(() => {
     const header = headerRef.current
@@ -93,8 +96,9 @@ export function TodayPage() {
   const route = state.status === "ready" ? state.route : null
   const urgent = route?.urgent ?? null
 
-  // 記在網址上：從客戶檔案按返回，回來還是地圖
+  // 記在網址上：從客戶檔案按返回，回來還是地圖。按了切換才滑動，一打開頁面不滑
   function showView(view: "route" | "map") {
+    setSwitched(true)
     setParams(view === "map" ? { view: "map" } : {}, { replace: true })
   }
 
@@ -188,6 +192,8 @@ export function TodayPage() {
               <p className="text-xs font-semibold opacity-85">
                 {formatDayLabel(route.date)}
                 {route.total > 0 && ` · ${route.total} 站`}
+                {/* 手機上存的舊行程（這一版以前）沒有交通方式 */}
+                {route.total > 0 && route.travel_mode && ` · ${TRAVEL_MODE_LABEL[route.travel_mode]}`}
               </p>
             )}
             <h1 className="text-lg leading-snug font-semibold">今日路線</h1>
@@ -206,7 +212,8 @@ export function TodayPage() {
       </header>
 
       {/* 底部分頁列約 64px，上面再疊一條跟熊熊滾說的輸入列，最後的終點要露出來 */}
-      <main className="flex-1 px-4 pt-3 pb-48">
+      {/* overflow-x-clip：路線與地圖互相滑進來時，不要短暫多出左右捲軸 */}
+      <main className="flex-1 overflow-x-clip px-4 pt-3 pb-48">
         {/* 新人才有的入口卡；自己問自己的資料，載不到就不顯示，跟下面的路線互不影響 */}
         <FirstWeekEntry userId={user.id} />
         {state.status === "ready" && state.cached && (
@@ -286,10 +293,25 @@ export function TodayPage() {
                 自己挑一家
               </Link>
             </div>
-          ) : onMap ? (
-            <HomeMapPanel route={route} />
           ) : (
-            <RoutePath stops={route.stops} />
+            // 地圖在切換的右邊、路線在左邊：換過去的那一邊從那一側滑進來
+            <div
+              key={onMap ? "map" : "route"}
+              className={cn(
+                switched && "animate-in duration-300 fade-in motion-reduce:animate-none",
+                switched && (onMap ? "slide-in-from-right-8" : "slide-in-from-left-8")
+              )}
+            >
+              {onMap ? (
+                <HomeMapPanel
+                  route={route}
+                  userId={user.id}
+                  onRoute={(next) => setState({ status: "ready", route: next, cached: false })}
+                />
+              ) : (
+                <RoutePath stops={route.stops} />
+              )}
+            </div>
           ))}
       </main>
       {/* 跟熊熊滾說要怎麼排：連不上、用的是手機上的舊行程時不給問 */}

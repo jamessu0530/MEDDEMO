@@ -1,7 +1,7 @@
 import { Component, lazy, Suspense, useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from "react"
 
 import { getMapsConfig, type MapsConfig } from "@/api/maps"
-import type { RouteStop, TodayMap } from "@/api/route"
+import type { RouteStop, TodayMap, TravelMode } from "@/api/route"
 import type { RemovedStop, RepRoute } from "@/api/team-routes"
 import { cn } from "@/lib/utils"
 
@@ -44,23 +44,22 @@ export function MapSlot({ routes, removed }: { routes: RepRoute[]; removed?: Rem
   )
 }
 
-/** 首頁「地圖」分頁的地圖：自己今天的路線、自己的位置，底下一張卡寫下一站（或點的那一站） */
+/** 首頁「地圖」分頁的地圖：自己今天的路線、自己的位置、換交通方式，底下一張卡寫下一站（或點的那一站） */
 export function HomeMapSlot({
-  map,
-  stops,
-  estimated,
   className,
+  ...props
 }: {
   map: TodayMap
   stops: RouteStop[]
   estimated: boolean
+  mode: TravelMode
+  switching: TravelMode | null
+  onMode: (mode: TravelMode) => void
   className: string
 }) {
   return (
     <MapGate className={className}>
-      {(config, onFail) => (
-        <HomeMap config={config} map={map} stops={stops} estimated={estimated} className={className} onFail={onFail} />
-      )}
+      {(config, onFail) => <HomeMap config={config} className={className} onFail={onFail} {...props} />}
     </MapGate>
   )
 }

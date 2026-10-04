@@ -22,6 +22,7 @@ from app.models import AppUser
 from app.services import itinerary as service
 from app.services import itinerary_ai
 from app.services import team_itineraries as team
+from app.services.google_routes import TravelMode
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/itinerary", tags=["itinerary"])
@@ -102,10 +103,20 @@ class TodayItinerary(BaseModel):
     travel_km: float
     finish_time: str | None
     estimated: bool
+    # 車程照哪種交通方式算：drive（開車）、scooter（機車）、transit（大眾運輸）
+    travel_mode: TravelMode
     rules: list[Rule]
     violations: list[str]
     precedences: list[PrecedenceOut]
     skipped_habits: list[SkippedHabit]
+
+
+class TravelModeOut(BaseModel):
+    mode: TravelMode
+
+
+class TravelModeInput(BaseModel):
+    mode: TravelMode
 
 
 class FeedbackInput(BaseModel):
@@ -261,13 +272,20 @@ class MapStop(BaseModel):
     status: str
 
 
+class MapStep(BaseModel):
+    walk: bool  # 走路（虛線）；不是走路就是搭車
+    polyline: str
+
+
 class MapLeg(BaseModel):
-    polyline: str | None  # Google 的編碼折線；沒有（沒設金鑰、Google 失敗）就畫直線
+    polyline: str | None  # Google 的編碼折線；沒有（沒設金鑰、Google 失敗、搭不到車）就畫直線
     done: bool
+    steps: list[MapStep]  # 只有大眾運輸有：走路與搭車的幾小段
 
 
 class TodayMap(BaseModel):
     version: int
+    travel_mode: TravelMode
     origin: MapPoint | None  # 區處辦公室，路線從這裡畫起；還沒有位置的區是 null
     stops: list[MapStop]
     legs: list[MapLeg]
@@ -284,7 +302,7 @@ def _out(view: service.ItineraryView) -> TodayItinerary:
         urgent=Urgent(**view.urgent) if view.urgent else None,
         stops=[Stop(**dataclasses.asdict(stop)) for stop in view.stops],
         travel_minutes=view.travel_minutes, travel_km=view.travel_km, finish_time=view.finish_time,
-        estimated=view.estimated,
+        estimated=view.estimated, travel_mode=view.travel_mode,
         rules=[Rule(**dataclasses.asdict(r)) for r in view.rules], violations=view.violations,
         precedences=[PrecedenceOut(**dataclasses.asdict(p)) for p in view.precedences],
         skipped_habits=[SkippedHabit(**dataclasses.asdict(h)) for h in view.skipped_habits],
@@ -318,11 +336,32 @@ def get_today_map(session: SessionDep, user: CurrentUser):
     session.commit()
     found = team.rep_map(session, session.get(AppUser, _rep_id(user)), itinerary)
     return TodayMap(
-        version=found.version,
+        version=found.version, travel_mode=found.travel_mode,
         origin=MapPoint(lat=found.origin[0], lng=found.origin[1]) if found.origin else None,
         stops=[MapStop(**dataclasses.asdict(stop)) for stop in found.stops],
         legs=[MapLeg(**dataclasses.asdict(leg)) for leg in found.legs],
     )
+
+
+@router.get("/travel-mode", response_model=TravelModeOut)
+def get_travel_mode(session: SessionDep, user: CurrentUser):
+    """行程主人的交通方式（帳號設定頁用）。代理示範業務的帳號看的是示範業務的。"""
+    rep = session.get(AppUser, _rep_id(user))
+    if rep is None or rep.role != "sales":
+        raise HTTPException(403, NO_ROUTE)
+    return TravelModeOut(mode=rep.travel_mode)
+
+
+@router.put("/travel-mode", response_model=TodayItinerary)
+def set_travel_mode(session: SessionDep, body: TravelModeInput, user: CurrentUser):
+    """換交通方式：今天的行程換一版，時間照新的方式重算（順序不動），回來的是重算好的行程。"""
+    try:
+        itinerary = service.set_travel_mode(session, _rep_id(user), body.mode)
+    except LookupError:
+        raise HTTPException(403, NO_ROUTE) from None
+    # 先提交、放掉列鎖再算畫面：算車程可能要等 Google
+    session.commit()
+    return _out(service.view(session, itinerary))
 
 
 @router.post("/today/feedback", response_model=TodayItinerary)

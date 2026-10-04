@@ -61,6 +61,7 @@ function route(stops: RouteStop[], extra: Partial<TodayRoute> = {}): TodayRoute 
     travel_km: 20,
     finish_time: "15:00",
     estimated: true,
+    travel_mode: "drive",
     rules: [],
     violations: [],
     precedences: [],

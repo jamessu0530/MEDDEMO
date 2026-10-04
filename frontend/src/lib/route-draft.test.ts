@@ -13,7 +13,7 @@ function stop(id: string): RouteStop {
 
 const today: TodayRoute = {
   date: "2026-10-28", rep: { id: "U01", name: "林昱辰" }, version: 1, done: 0, total: 2, urgent: null,
-  stops: [stop("A"), stop("B")], travel_minutes: 20, travel_km: 6, finish_time: "11:00", estimated: true,
+  stops: [stop("A"), stop("B")], travel_minutes: 20, travel_km: 6, finish_time: "11:00", estimated: true, travel_mode: "drive",
   rules: [], violations: [], precedences: [], skipped_habits: [],
 }
 

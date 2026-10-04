@@ -40,8 +40,8 @@ POINTS = [(25.0, 121.5), (25.1, 121.5), (25.0, 121.6)]
 def fake_matrix(calls, skip=()):
     """假的 Google 路線矩陣：第 i 點到第 j 點開 (i + j) × 10 分鐘、(i + j) 公里；skip 裡的格子當作開不到。"""
 
-    def route_matrix(key, origins, destinations, http=None):
-        calls.append((key, origins, destinations))
+    def route_matrix(key, origins, destinations, http=None, mode="drive"):
+        calls.append((key, origins, destinations, mode))
         return {
             (i, j): google_routes.Cell(seconds=600 * (i + j), meters=1000 * (i + j))
             for i in range(len(origins)) for j in range(len(destinations))
@@ -71,7 +71,7 @@ def test_with_a_server_key_the_matrix_uses_google_road_times(google):
     assert result.minutes[0][1] == 15 and result.km[0][1] == 1.0
     assert result.minutes[1][2] == 35 and result.km[2][1] == 3.0
     assert [result.minutes[i][i] for i in range(3)] == [0, 0, 0]
-    assert google == [("server-key", POINTS, POINTS)]
+    assert google == [("server-key", POINTS, POINTS, "drive")]
 
 
 def test_without_a_key_google_is_never_asked(google, env):
@@ -149,8 +149,8 @@ def test_a_single_point_needs_no_google(google):
 def fake_legs(calls):
     """假的 Google 路線：第 n 段開 (n + 1) × 10 分鐘、(n + 1) 公里。"""
 
-    def route_legs(key, points, http=None, polylines=True):
-        calls.append((key, points, polylines))
+    def route_legs(key, points, http=None, polylines=True, mode="drive"):
+        calls.append((key, points, polylines, mode))
         return [
             google_routes.Leg(seconds=600 * (n + 1), meters=1000 * (n + 1), polyline="")
             for n in range(len(points) - 1)
@@ -175,7 +175,7 @@ def test_along_asks_google_only_for_the_legs_in_order(monkeypatch, env):
     assert result.km[0][1] == 1.0 and result.km[1][2] == 2.0
     # 不相鄰的格子是估算的：這份只能照同一個順序算時間，不能拿去排順序
     assert result.minutes[0][2] == travel.estimate(POINTS[0], POINTS[2])[0]
-    assert calls == [("server-key", POINTS, False)]
+    assert calls == [("server-key", POINTS, False, "drive")]
 
 
 def test_along_without_a_key_or_when_google_fails_is_the_estimate(monkeypatch, env):
@@ -223,25 +223,32 @@ def test_along_a_single_point_needs_no_google(monkeypatch, env):
 
 @pytest.fixture
 def google_lines(monkeypatch, env):
-    """設假金鑰，Google 的路線換成假的：第 n 段的折線是 "line{n}"。記下每次問了哪些點、要不要折線。"""
+    """設假金鑰，Google 的路線換成假的：第 n 段的折線是 "line{n}"；大眾運輸再分成走路與搭車兩小段，
+    第 1 段搭不到車。記下每次問了哪些點、要不要折線、什麼交通方式。"""
     env(GOOGLE_MAPS_SERVER_KEY="server-key")
     calls = []
 
-    def route_legs(key, points, http=None, polylines=True):
-        calls.append((points, polylines))
+    def route_legs(key, points, http=None, polylines=True, mode="drive"):
+        calls.append((points, polylines, mode))
+        if mode == "transit":
+            steps = (google_routes.Step(True, "walk"), google_routes.Step(False, "ride"))
+            return [google_routes.Leg(seconds=60, meters=500, polyline="line0", steps=steps), None][:len(points) - 1]
         return [google_routes.Leg(seconds=60, meters=500, polyline=f"line{n}") for n in range(len(points) - 1)]
 
     monkeypatch.setattr(google_routes, "route_legs", route_legs)
     return calls
 
 
+LINES = [travel.Line("line0"), travel.Line("line1")]
+
+
 def test_lines_come_from_google_once_then_from_the_cache(google_lines):
-    assert travel.lines(POINTS) == ["line0", "line1"]
-    assert travel.lines(POINTS) == ["line0", "line1"]
-    assert google_lines == [(POINTS, True)]
+    assert travel.lines(POINTS) == LINES
+    assert travel.lines(POINTS) == LINES
+    assert google_lines == [(POINTS, True, "drive")]
     # 快取裡只有折線（經緯度），沒有車程的秒數與公尺：Google 的條款只允許快取經緯度
     (key,) = redis().keys(f"{travel.LINES_CACHE_PREFIX}*")
-    assert json.loads(redis().get(key)) == ["line0", "line1"]
+    assert json.loads(redis().get(key)) == [{"polyline": "line0", "steps": []}, {"polyline": "line1", "steps": []}]
     assert 0 < redis().ttl(key) <= travel.LINES_TTL_SECONDS
 
 
@@ -249,6 +256,15 @@ def test_a_different_order_is_a_different_route(google_lines):
     travel.lines(POINTS)
     travel.lines(list(reversed(POINTS)))
     assert len(google_lines) == 2
+
+
+def test_each_travel_mode_has_its_own_lines(google_lines):
+    assert travel.lines(POINTS) == LINES
+    transit = [travel.Line("line0", (google_routes.Step(True, "walk"), google_routes.Step(False, "ride"))), None]
+    assert travel.lines(POINTS, "transit") == transit
+    # 走路與搭車的小段、搭不到車的那一段也一起放進快取
+    assert travel.lines(POINTS, "transit") == transit
+    assert [mode for _, _, mode in google_lines] == ["drive", "transit"]
 
 
 def test_without_a_key_there_are_no_lines_and_the_map_draws_straight_ones(google_lines, env):
@@ -261,7 +277,7 @@ def test_google_failing_means_no_lines_and_a_pause(monkeypatch, env):
     env(GOOGLE_MAPS_SERVER_KEY="server-key")
     calls = []
 
-    def broken(key, points, http=None, polylines=True):
+    def broken(key, points, http=None, polylines=True, mode="drive"):
         calls.append(points)
         raise google_routes.RoutesError("逾時")
 
@@ -278,14 +294,53 @@ def test_a_single_point_has_no_legs(google_lines):
 
 
 def test_cached_lines_are_served_even_while_google_is_paused(google_lines):
-    assert travel.lines(POINTS) == ["line0", "line1"]
+    assert travel.lines(POINTS) == LINES
     assert len(google_lines) == 1
 
     travel._pause_google()
-    assert travel.lines(POINTS) == ["line0", "line1"]
+    assert travel.lines(POINTS) == LINES
     # 還是暫停中：Google 沒有被多問一次，因為折線已經在快取裡
     assert len(google_lines) == 1
 
     # 換一個順序（沒快取過）：暫停中就不問 Google，回 None
     assert travel.lines(list(reversed(POINTS))) is None
     assert len(google_lines) == 1
+
+
+def test_each_travel_mode_estimates_its_own_pace():
+    # 同一段 15.6 公里（開車的繞路倍數）：開車 31 分加找車位 5 分；機車繞得少、停車快；大眾運輸慢、要等車
+    a, b = (25.0, 121.5), (25.1, 121.5)
+    assert travel.estimate(a, b) == travel.estimate(a, b, "drive") == (36, 15.6)
+    assert travel.estimate(a, b, "scooter") == (33, 14.5)
+    assert travel.estimate(a, b, "transit") == (53, 14.5)
+
+
+def test_google_times_add_parking_for_cars_and_scooters_but_not_for_transit():
+    cell = google_routes.Cell(seconds=600, meters=4000)
+    assert travel.road(cell) == (15, 4.0)
+    assert travel.road(cell, "scooter") == (12, 4.0)
+    assert travel.road(cell, "transit") == (10, 4.0)
+
+
+def test_the_matrix_asks_google_in_the_reps_travel_mode(google):
+    result = travel.matrix(POINTS, "scooter")
+    assert google == [("server-key", POINTS, POINTS, "scooter")]
+    assert result.minutes[0][1] == 12 and result.estimated is False
+    # 沒問到的格子照機車的估算
+    assert travel.matrix([], "transit").minutes == []
+
+
+def test_along_by_transit_estimates_the_legs_google_cannot_ride(monkeypatch, env):
+    env(GOOGLE_MAPS_SERVER_KEY="server-key")
+    calls = []
+
+    def route_legs(key, points, http=None, polylines=True, mode="drive"):
+        calls.append(mode)
+        return [google_routes.Leg(seconds=1800, meters=6000, polyline=""), None]
+
+    monkeypatch.setattr(google_routes, "route_legs", route_legs)
+    result = travel.along(POINTS, "transit")
+    assert calls == ["transit"]
+    assert result.minutes[0][1] == 30
+    assert result.minutes[1][2] == travel.estimate(POINTS[1], POINTS[2], "transit")[0]
+    assert result.estimated is True

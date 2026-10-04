@@ -34,7 +34,7 @@ def test_today_has_the_fields_the_home_page_needs(client, auth):
         "source", "duration_minutes", "late_minutes", "travel_minutes", "travel_km",
         "window_kind", "window_time", "note", "locked", "habit_ids",
     }
-    assert {"rules", "violations", "precedences", "skipped_habits"} <= set(data)
+    assert {"rules", "violations", "precedences", "skipped_habits", "travel_mode"} <= set(data)
     assert data["urgent"]["customer_id"] == first["customer_id"]
     assert data["finish_time"] > first["planned_time"]
 
@@ -50,14 +50,16 @@ def test_the_map_tab_gets_coordinates_and_lines(client, auth):
     response = client.get("/api/itinerary/today/map", headers=auth())
     assert response.status_code == 200, response.text
     found = response.json()
-    assert set(found) == {"version", "origin", "stops", "legs"}
+    assert set(found) == {"version", "travel_mode", "origin", "stops", "legs"}
+    assert found["travel_mode"] == data["travel_mode"] == "drive"
     assert found["version"] == data["version"]
     assert [(s["customer_id"], s["status"]) for s in found["stops"]] == [
         (s["customer_id"], s["status"]) for s in data["stops"]
     ]
     assert set(found["stops"][0]) == {"number", "customer_id", "customer_name", "lat", "lng", "status"}
     assert set(found["origin"]) == {"lat", "lng"}
-    assert len(found["legs"]) == len(found["stops"]) and found["legs"][0] == {"polyline": None, "done": False}
+    assert len(found["legs"]) == len(found["stops"])
+    assert found["legs"][0] == {"polyline": None, "done": False, "steps": []}
 
 
 def test_a_third_party_account_maps_the_demo_reps_day(client, auth, tx):
@@ -73,6 +75,40 @@ def test_managers_have_no_map_of_their_own(client, auth):
     assert client.get("/api/itinerary/today/map").status_code == 401
     denied = client.get("/api/itinerary/today/map", headers=auth("M01"))
     assert denied.status_code == 403 and denied.json()["detail"] == "主管沒有自己的拜訪路線"
+
+
+def test_a_rep_switches_to_a_scooter_and_the_day_is_timed_for_it(client, auth):
+    before = today(client, auth)
+    assert client.get("/api/itinerary/travel-mode", headers=auth()).json() == {"mode": "drive"}
+    response = client.put("/api/itinerary/travel-mode", json={"mode": "scooter"}, headers=auth())
+    assert response.status_code == 200, response.text
+    after = response.json()
+    assert after["travel_mode"] == "scooter" and after["version"] == before["version"] + 1
+    # 順序不動，時間照機車重算：機車的估算比開車快
+    assert [s["customer_id"] for s in after["stops"]] == [s["customer_id"] for s in before["stops"]]
+    assert after["travel_minutes"] < before["travel_minutes"]
+    assert client.get("/api/itinerary/travel-mode", headers=auth()).json() == {"mode": "scooter"}
+    assert client.get("/api/itinerary/today/map", headers=auth()).json()["travel_mode"] == "scooter"
+
+
+def test_an_unknown_travel_mode_is_refused(client, auth):
+    response = client.put("/api/itinerary/travel-mode", json={"mode": "helicopter"}, headers=auth())
+    assert response.status_code == 422
+
+
+def test_managers_have_no_travel_mode_and_a_guest_changes_the_demo_reps(client, auth, tx):
+    for call in (
+        lambda: client.get("/api/itinerary/travel-mode", headers=auth("M01")),
+        lambda: client.put("/api/itinerary/travel-mode", json={"mode": "transit"}, headers=auth("M01")),
+    ):
+        denied = call()
+        assert denied.status_code == 403 and denied.json()["detail"] == "主管沒有自己的拜訪路線"
+    guest = AppUser(id="XMODE01", name="評審", role="sales", region="北區", acts_as_user_id="U01")
+    tx.add(guest)
+    tx.commit()
+    headers = {"Authorization": f"Bearer {auth_service.create_token(guest)}"}
+    assert client.put("/api/itinerary/travel-mode", json={"mode": "transit"}, headers=headers).status_code == 200
+    assert client.get("/api/itinerary/travel-mode", headers=auth("U01")).json() == {"mode": "transit"}
 
 
 def test_pin_through_the_api(client, auth):
