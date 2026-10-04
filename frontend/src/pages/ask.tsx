@@ -175,6 +175,7 @@ export function AskPage() {
             entry={entry}
             onAskChange={replaceAsk}
             onChoose={(entryId, picked) => void asking.choose(entryId, picked)}
+            onAskAsTyped={(entryId) => void asking.askAsTyped(entryId)}
             busy={sending}
           />
         ))}

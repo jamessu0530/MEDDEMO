@@ -87,19 +87,24 @@ def state(question: str, has_file: bool) -> dict[str, Any]:
     return {"question": question, "attachment": ATTACHMENT_NOTE} if has_file else {"question": question}
 
 
+def ask_jev(key: str, state: dict[str, Any], questions: dict[str, Any], client: httpx.Client | None = None) -> dict[str, Any]:
+    """送一次 Jev，回每一題的答案（以題目的 id 為鍵）。出錯照 httpx 的例外丟出去，呼叫端決定怎麼退"""
+    response = (client or _client).post(
+        JEV_URL,
+        headers={"Authorization": f"Bearer {key}"},
+        json={"state": state, "model": JEV_MODEL, "questions": questions},
+    )
+    response.raise_for_status()
+    return response.json()["answers"]
+
+
 def route(question: str, has_file: bool = False, client: httpx.Client | None = None) -> Routed:
     """問 Jev 這一題該查哪一種。不丟例外：Jev 怎麼了都改成請業務自己選。"""
     key = settings().typesafe_api_key
     if not key:
         return Routed(None, list(KINDS))
     try:
-        response = (client or _client).post(
-            JEV_URL,
-            headers={"Authorization": f"Bearer {key}"},
-            json={"state": state(question, has_file), "model": JEV_MODEL, "questions": QUESTIONS},
-        )
-        response.raise_for_status()
-        answer = response.json()["answers"]["source"]
+        answer = ask_jev(key, state(question, has_file), QUESTIONS, client)["source"]
         choice = answer["choice"]
         confidence = float(answer["confidence"])
         probabilities = {kind: float(answer["probabilities"][kind]) for kind in KINDS}

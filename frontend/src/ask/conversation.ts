@@ -22,13 +22,15 @@ export type Utterance = {
 }
 
 /** 一次查詢：打字問答與語音的工具呼叫長得一樣，所以共用同一種 entry。
- * 打字選「自動」時多三種狀態：routing 是正在判斷該查哪一種；choices 是沒把握、等業務點的選項；
- * auto 是判斷好直接查的（卡片上標出來，可以換一種重查） */
+ * 打字送出前會先整理：routing 是正在整理（判斷該查哪一種、追問要不要改寫）；choices 是沒把握、等業務點的選項；
+ * auto 是自動判斷好直接查的（卡片上標出來，可以換一種重查）。
+ * question 是實際拿去查的那一句；看了前文改寫過時，original 是業務原本打的那句 */
 export type ToolRun = {
   id: number
   kind: "tool"
   askKind: AskKind | null
   question: string
+  original: string | null
   ask: Ask | null
   error: string | null
   cancelled: boolean
@@ -43,7 +45,7 @@ export type Conversation = {
   getSnapshot: () => Entry[]
   subscribe: (listener: () => void) => () => void
   addUtterance: (kind: "user" | "model", source: UtteranceSource, text?: string) => number
-  addToolRun: (askKind: AskKind | null, question: string, state?: Partial<Pick<ToolRun, "routing">>) => number
+  addToolRun: (askKind: AskKind | null, question: string, state?: Partial<Pick<ToolRun, "routing" | "original">>) => number
   appendText: (id: number, chunk: string) => void
   replace: (id: number, patch: Partial<Omit<ToolRun, "id" | "kind">>) => void
   attach: (id: number, attachment: Attachment) => void
@@ -83,7 +85,7 @@ export function createConversation(): Conversation {
     addToolRun: (askKind, question, state = {}) => {
       const id = ++lastId
       const run: ToolRun = {
-        id, kind: "tool", askKind, question, ask: null, error: null, cancelled: false,
+        id, kind: "tool", askKind, question, original: null, ask: null, error: null, cancelled: false,
         routing: false, choices: null, auto: false, ...state,
       }
       commit([...entries, run])

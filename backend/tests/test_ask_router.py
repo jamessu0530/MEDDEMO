@@ -98,7 +98,9 @@ def test_the_route_api(auth, monkeypatch):
     client = TestClient(app)
     response = client.post("/api/asks/route", json={"question": "  康泰最近怎樣？ ", "has_file": True}, headers=auth())
     assert response.status_code == 200
-    assert response.json() == {"kind": None, "choices": ["data", "memory"], "confidence": 0.3}
+    assert response.json() == {
+        "kind": None, "choices": ["data", "memory"], "confidence": 0.3, "question": "康泰最近怎樣？", "rewritten": False
+    }
     assert calls == [("康泰最近怎樣？", True)]
     assert client.post("/api/asks/route", json={"question": "康泰最近怎樣？"}).status_code == 401
     assert client.post("/api/asks/route", json={"question": ""}, headers=auth()).status_code == 422

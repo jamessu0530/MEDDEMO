@@ -1,0 +1,62 @@
+{
+  "說明": "追問的實測題：earlier 是前面幾輪的問與答（由舊到新），followup 為 true 表示這句要看前面的對話才懂；must 是改寫後一定要出現的詞（從前面對話補進來的）。答案照示範資料寫，不必精確。",
+  "conversations": [
+    {
+      "id": "H1",
+      "earlier": [
+        {"question": "北區保健品最近三個月為什麼下滑？", "answer": "北區保健品近三個月比前三個月少了 18%，主要是康泰連鎖藥局的忠孝店、板橋店進貨變少，品項以魚油 30 入掉最多；這兩家的拜訪紀錄都提到御松田在談陳列位。"}
+      ],
+      "cases": [
+        {"question": "那康泰呢？", "followup": true, "must": ["康泰", "保健品"]},
+        {"question": "南區呢？", "followup": true, "must": ["南區", "保健品"]},
+        {"question": "魚油掉多少？", "followup": true, "must": ["魚油", "北區"]},
+        {"question": "幫我列出那兩家最近一次拜訪是什麼時候", "followup": true, "must": ["忠孝店", "板橋店"]},
+        {"question": "跟去年同期比呢？", "followup": true, "must": ["北區", "保健品"]},
+        {"question": "近效期的貨要多久前申請退貨？", "followup": false},
+        {"question": "最近競品有什麼動作？", "followup": false},
+        {"question": "北區有幾家連鎖藥局客戶？", "followup": false}
+      ]
+    },
+    {
+      "id": "H2",
+      "earlier": [
+        {"question": "近效期的貨要多久前申請退貨？", "answer": "效期剩 90 天以上的貨才受理退貨，要在到期前 90 天提出申請，由業務在系統送退貨單、主管核准 [1]。"}
+      ],
+      "cases": [
+        {"question": "那破損的呢？", "followup": true, "must": ["破損", "退"]},
+        {"question": "要找誰簽？", "followup": true, "must": ["退貨"]},
+        {"question": "如果已經過期了呢？", "followup": true, "must": ["過期", "退"]},
+        {"question": "上架費要怎麼申請？", "followup": false},
+        {"question": "康泰忠孝店近 90 天進了多少錢的貨？", "followup": false}
+      ]
+    },
+    {
+      "id": "H3",
+      "earlier": [
+        {"question": "最近競品有什麼動作？", "answer": "御松田在台北大安區推魚油買十送一（10/1–10/31），業務逐店在跑 [1]；瑞得生技用益生菌買二送一，換到南區連鎖店櫃檯旁的陳列位 [2]。"}
+      ],
+      "cases": [
+        {"question": "御松田那個活動到什麼時候？", "followup": true, "must": ["御松田"]},
+        {"question": "他們在哪些店？", "followup": true, "must": ["御松田"]},
+        {"question": "我們有對應的促銷嗎？", "followup": true, "must": ["魚油"]},
+        {"question": "北區還有哪些待辦沒做完？", "followup": false},
+        {"question": "那南區呢？", "followup": true, "must": ["南區", "競品"]},
+        {"question": "杏林診所的慢箋量最近怎樣？", "followup": false}
+      ]
+    },
+    {
+      "id": "H4",
+      "earlier": [
+        {"question": "康泰忠孝店近 90 天進了多少錢的貨？", "answer": "康泰連鎖藥局 · 忠孝店近 90 天進貨 NT$186,400，比前 90 天少 12%。"},
+        {"question": "魚油佔多少？", "answer": "魚油 30 入佔 NT$62,000，約三成，比前 90 天少了 NT$21,000。"}
+      ],
+      "cases": [
+        {"question": "那板橋店呢？", "followup": true, "must": ["板橋店"]},
+        {"question": "跟上一季比呢？", "followup": true, "must": ["忠孝店"]},
+        {"question": "店長上次抱怨什麼？", "followup": true, "must": ["忠孝店"]},
+        {"question": "帳齡拖最久的是哪一家？", "followup": false},
+        {"question": "我可以直接給客戶幾趴折扣？", "followup": false}
+      ]
+    }
+  ]
+}

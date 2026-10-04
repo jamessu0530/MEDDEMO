@@ -3,6 +3,7 @@
 import json
 import logging
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Annotated, Any, Literal
 
@@ -17,7 +18,7 @@ from app.api.attachments import AttachmentItem, attachment_item
 from app.api.auth import CurrentUser
 from app.db import get_session
 from app.models import AppUser, AskRecord, Attachment, Customer, Escalation, QueryTrace
-from app.services import ask_router, attachments
+from app.services import ask_followup, ask_router, attachments
 from app.services.scope import SHARING_LEVEL, Scope
 from app.tasks import visit_queue
 
@@ -35,10 +36,21 @@ class AskInput(BaseModel):
     question: str = Field(min_length=1, max_length=500)
 
 
+class Turn(BaseModel):
+    """這段對話前面答完的一輪。前端給的，只拿來改寫業務自己這一句，查詢照樣用他自己的權限"""
+
+    question: str = Field(max_length=500)
+    answer: str = Field(max_length=4000)
+
+
 class RouteInput(BaseModel):
     question: str = Field(min_length=1, max_length=500)
     # 有附檔案：分流時告訴 Jev（它只看文字，看不到檔案本身）
     has_file: bool = False
+    # 前面幾輪（由舊到新）：這句要看前文才懂就先改寫（services/ask_followup.py）
+    earlier: list[Turn] = Field(default_factory=list, max_length=10)
+    # 業務自己點了查哪一種：只改寫、不分流
+    kind: AskKind | None = None
 
 
 class RouteOut(BaseModel):
@@ -46,6 +58,9 @@ class RouteOut(BaseModel):
     kind: AskKind | None
     choices: list[AskKind]
     confidence: float | None
+    # 要拿去查的那一句；rewritten 是 true 表示看了前文改寫過
+    question: str
+    rewritten: bool
 
 
 @dataclass(frozen=True)
@@ -187,10 +202,20 @@ def _load(session: Session, ask_id: str, user: AppUser) -> AskRecord:
 
 @router.post("/route", response_model=RouteOut)
 def route_ask(body: RouteInput, user: CurrentUser):
-    """問答頁選「自動」時，送出前先問這一題該查哪一種（services/ask_router.py）。
-    不建提問、不算進提問的次數：業務選好或 Jev 決定了，前端再照原本的 POST /api/asks 送"""
-    routed = ask_router.route(body.question.strip(), body.has_file)
-    return RouteOut(kind=routed.kind, choices=routed.choices, confidence=routed.confidence)
+    """送出前先整理這一題：要看前文才懂就改寫（services/ask_followup.py），選「自動」再判斷該查哪一種
+    （services/ask_router.py）。不建提問、不算進提問的次數：前端拿回來的那一句再照原本的 POST /api/asks 送"""
+    question = body.question.strip()
+    earlier = [turn.model_dump() for turn in body.earlier]
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        # 大多數的問題不用改寫：判斷要不要改寫的同時，先照原話分流，不用改寫就直接用這個結果，不多等一次
+        guess = pool.submit(ask_router.route, question, body.has_file) if body.kind is None and earlier else None
+        asked = ask_followup.standalone(question, earlier)
+        if body.kind is not None:
+            return RouteOut(kind=body.kind, choices=[], confidence=None, question=asked, rewritten=asked != question)
+        routed = guess.result() if guess and asked == question else ask_router.route(asked, body.has_file)
+    return RouteOut(
+        kind=routed.kind, choices=routed.choices, confidence=routed.confidence, question=asked, rewritten=asked != question
+    )
 
 
 @router.post("", status_code=202, response_model=AskDetail)

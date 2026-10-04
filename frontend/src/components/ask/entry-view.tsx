@@ -1,3 +1,5 @@
+import type { ReactNode } from "react"
+
 import { ASK_KINDS, isFinished, type Ask, type AskKind } from "@/api/asks"
 import type { Entry, ToolRun } from "@/ask/conversation"
 import { AskAnswer, TracePanel } from "@/components/ask/ask-result"
@@ -13,12 +15,14 @@ type EntryViewProps = {
   onAskChange: (entryId: number, patch: { ask: Ask }) => void
   /** 業務選了要查哪一種（等他選的那一格，或自動判斷完想換一種重查） */
   onChoose: (entryId: number, kind: AskKind) => void
+  /** 看了前文改寫的意思不對：用業務原本打的那句重查 */
+  onAskAsTyped: (entryId: number) => void
   /** 有一題還在查：選種類的按鈕先停用，按了也不會送 */
   busy: boolean
 }
 
-export function EntryView({ entry, onAskChange, onChoose, busy }: EntryViewProps) {
-  if (entry.kind === "tool") return <ToolCard run={entry} onAskChange={onAskChange} onChoose={onChoose} busy={busy} />
+export function EntryView({ entry, ...actions }: EntryViewProps) {
+  if (entry.kind === "tool") return <ToolCard run={entry} {...actions} />
   if (entry.kind === "user") {
     // 語音那句是 Gemini 另外做的語音轉文字，常有同音錯字；打字的是業務原文，不必標
     return (
@@ -37,7 +41,7 @@ export function EntryView({ entry, onAskChange, onChoose, busy }: EntryViewProps
 }
 
 /** AI 呼叫查詢工具的那一步：跟打字問答同一套查詢，結果、依據與查詢過程都看得到 */
-function ToolCard({ run, onAskChange, onChoose, busy }: Omit<EntryViewProps, "entry"> & { run: ToolRun }) {
+function ToolCard({ run, onAskChange, onChoose, onAskAsTyped, busy }: Omit<EntryViewProps, "entry"> & { run: ToolRun }) {
   const done = run.error !== null || (run.ask !== null && isFinished(run.ask))
   return (
     <section className="mr-4 rounded-2xl border border-dashed bg-card px-4 py-3">
@@ -45,10 +49,14 @@ function ToolCard({ run, onAskChange, onChoose, busy }: Omit<EntryViewProps, "en
         {run.askKind ? TOOL_LABEL[run.askKind] : "查詢"}
         {run.auto && "（自動判斷）"}：{run.question || "（沒有問題內容）"}
       </p>
+      {/* 改寫可能誤會意思：讓業務看得到實際查的是哪一句、是從哪一句補出來的 */}
+      {run.original && (
+        <p className="-mt-1 mb-2 text-[0.6875rem] text-muted-foreground">接著前面的對話，把「{run.original}」補成完整的問題</p>
+      )}
       {run.routing ? (
         <p className="flex items-center gap-2 text-sm text-muted-foreground">
           <Mascot state="think" size={28} bust className="shrink-0 rounded-full bg-accent" />
-          判斷要查哪一種…
+          {run.askKind ? "看一下前面聊了什麼…" : "判斷要查哪一種…"}
         </p>
       ) : run.choices ? (
         <KindPicker
@@ -69,24 +77,37 @@ function ToolCard({ run, onAskChange, onChoose, busy }: Omit<EntryViewProps, "en
         </p>
       )}
       {run.ask && run.ask.trace.length > 0 && <TracePanel trace={run.ask.trace} live={!isFinished(run.ask)} />}
-      {run.auto && run.askKind && done && (
+      {run.askKind && done && (run.auto || run.original) && (
         <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t pt-2 text-xs text-muted-foreground">
           不是要查這個？
-          {ASK_KINDS.filter((kind) => kind !== run.askKind).map((kind) => (
-            <button
-              key={kind}
-              type="button"
-              disabled={busy}
-              onClick={() => onChoose(run.id, kind)}
-              className="min-h-8 font-medium text-primary underline-offset-2 hover:underline disabled:opacity-50"
-            >
-              改{TOOL_LABEL[kind]}
-            </button>
-          ))}
+          {run.original && (
+            <LinkButton disabled={busy} onClick={() => onAskAsTyped(run.id)}>
+              照原話查
+            </LinkButton>
+          )}
+          {run.auto &&
+            ASK_KINDS.filter((kind) => kind !== run.askKind).map((kind) => (
+              <LinkButton key={kind} disabled={busy} onClick={() => onChoose(run.id, kind)}>
+                改{TOOL_LABEL[kind]}
+              </LinkButton>
+            ))}
         </div>
       )}
       {run.cancelled && <p className="mt-2 text-xs text-muted-foreground">對話已經不需要這個結果，查到的內容仍保留在這裡。</p>}
     </section>
+  )
+}
+
+function LinkButton({ disabled, onClick, children }: { disabled: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className="min-h-8 font-medium text-primary underline-offset-2 hover:underline disabled:opacity-50"
+    >
+      {children}
+    </button>
   )
 }
 

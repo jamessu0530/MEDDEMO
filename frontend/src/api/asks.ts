@@ -76,12 +76,25 @@ export type Ask = {
 
 export const isFinished = (ask: Ask) => ask.status !== "queued" && ask.status !== "running"
 
-/** kind 有值：後端（TypeSafe Jev）有把握是這一種；null：請業務從 choices 選，機率高的在前 */
-export type RouteResult = { kind: AskKind | null; choices: AskKind[]; confidence: number | null }
+/** 這段對話前面答完的一輪：送出下一題時帶著，要看前文才懂的會先改寫成完整問句 */
+export type Turn = { question: string; answer: string }
 
-/** 選「自動」時，送出前先問這一題該查哪一種。不建提問、不算提問次數 */
-export function routeAsk(question: string, hasFile: boolean) {
-  return request<RouteResult>("/api/asks/route", jsonBody("POST", { question, has_file: hasFile }))
+/** kind 有值：後端（TypeSafe Jev）有把握是這一種；null：請業務從 choices 選，機率高的在前。
+ * question 是要拿去查的那一句，rewritten 表示看了前文改寫過 */
+export type RouteResult = {
+  kind: AskKind | null
+  choices: AskKind[]
+  confidence: number | null
+  question: string
+  rewritten: boolean
+}
+
+/** 送出前先整理這一題：追問就改寫；kind 沒給（選「自動」）再判斷該查哪一種。不建提問、不算提問次數 */
+export function routeAsk(question: string, hasFile: boolean, earlier: Turn[] = [], kind?: AskKind) {
+  return request<RouteResult>(
+    "/api/asks/route",
+    jsonBody("POST", { question, has_file: hasFile, earlier, kind: kind ?? null })
+  )
 }
 
 /** 提問。附了檔案（拍產品盒、仿單、競品海報）就用 multipart 上傳 */
