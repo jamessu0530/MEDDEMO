@@ -35,12 +35,14 @@ export function MapStopCard({
               `已完成${detail.visit_id ? " · 已回寫" : ""}`
             ) : (
               <>
+                {/* 理由、車程與來源各自整段換行：「合約快到期」「Google Maps」不會被拆成兩行 */}
                 {detail.window_kind && detail.late_minutes > 0 ? (
-                  <span className="font-semibold text-destructive">會晚到 {detail.late_minutes} 分</span>
+                  <span className="font-semibold whitespace-nowrap text-destructive">會晚到 {detail.late_minutes} 分</span>
                 ) : (
-                  <span className={cn("font-semibold", TONE_CLASS[signalTone(detail.signal)])}>{SIGNAL_LABEL[detail.signal]}</span>
+                  <span className={cn("font-semibold whitespace-nowrap", TONE_CLASS[signalTone(detail.signal)])}>
+                    {SIGNAL_LABEL[detail.signal]}
+                  </span>
                 )}
-                {/* 車程與來源一起換行，「Google Maps」不會被拆成兩行 */}
                 {detail.travel_minutes != null && (
                   <span className="whitespace-nowrap">
                     {` · 車程約 ${detail.travel_minutes} 分`}
