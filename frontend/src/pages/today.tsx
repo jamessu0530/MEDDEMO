@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type Ref } from "react"
+import { useEffect, useRef, useState, type CSSProperties, type Ref } from "react"
 import { Bell, BookOpenText, ChevronRight, FileText, Flag, Loader2, Map as MapIcon, Route, TriangleAlert } from "lucide-react"
 import { Link, useNavigate, useSearchParams } from "react-router"
 
@@ -68,6 +68,16 @@ export function TodayPage() {
   const onMap = mappable && params.get("view") === "map"
   const headerRef = useRef<HTMLElement>(null)
   const switchRef = useRef<HTMLDivElement>(null)
+  // 固定的頁首有多高（有沒有位置分享列、字放多大都不一樣）：地圖照它算高度（home-map-panel.tsx 的 --home-header）
+  const [headerHeight, setHeaderHeight] = useState<number | null>(null)
+
+  useEffect(() => {
+    const header = headerRef.current
+    if (!header) return
+    const observer = new ResizeObserver(() => setHeaderHeight(header.offsetHeight))
+    observer.observe(header)
+    return () => observer.disconnect()
+  }, [userId])
 
   // 切到地圖（或從客戶檔案回到地圖）時，把切換捲到固定的頁首正下面：地圖的高度是照這個位置算的，
   // 上面有新人卡、需立即處理時不捲的話，地圖下半與底下那張卡會被輸入列蓋住
@@ -120,7 +130,10 @@ export function TodayPage() {
   const misjudge = () => feedback("misjudge", "知道了，這類提醒會少排一點。")
 
   return (
-    <div className="flex min-h-svh flex-col">
+    <div
+      className="flex min-h-svh flex-col"
+      style={headerHeight ? ({ "--home-header": `${headerHeight}px` } as CSSProperties) : undefined}
+    >
       <header ref={headerRef} className="sticky top-0 z-10 bg-background/95 px-4 pt-2 pb-3 backdrop-blur">
         <div className="-mr-2 flex items-center justify-between gap-2">
           {/* 自己的頭像：點了換狀態（有空、忙碌、顯示為離線…）；點名字進帳號設定：改密碼、登出、使用說明 */}

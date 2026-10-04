@@ -40,11 +40,12 @@ export function MapStopCard({
                 ) : (
                   <span className={cn("font-semibold", TONE_CLASS[signalTone(detail.signal)])}>{SIGNAL_LABEL[detail.signal]}</span>
                 )}
+                {/* 車程與來源一起換行，「Google Maps」不會被拆成兩行 */}
                 {detail.travel_minutes != null && (
-                  <>
+                  <span className="whitespace-nowrap">
                     {` · 車程約 ${detail.travel_minutes} 分`}
                     <DriveSource estimated={estimated} />
-                  </>
+                  </span>
                 )}
               </>
             )}

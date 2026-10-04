@@ -3,8 +3,9 @@ import { useEffect, useState } from "react"
 import { getTodayMap, type TodayMap, type TodayRoute } from "@/api/route"
 import { HomeMapSlot, MapFallback, MapPlaceholder } from "@/components/map-slot"
 
-// 地圖填滿頁首與底部輸入列中間：一打開就看到整條路線和底下的卡，不必捲
-const HEIGHT = "h-[calc(100svh-24.5rem)] min-h-72"
+// 地圖填滿固定的頁首與底部輸入列中間（切換捲到頁首正下面時）：一打開就看到整條路線和底下的卡。
+// 頁首的高度由首頁量好放在 --home-header（有沒有位置分享列、字放多大都不一樣）；12rem 是切換本身加上底部的輸入列與分頁列
+const HEIGHT = "h-[calc(100svh-var(--home-header,12rem)-12rem)] min-h-72"
 
 /**
  * 首頁的「地圖」：切過來才問後端各站的位置與沿路的線（GET /api/itinerary/today/map），
