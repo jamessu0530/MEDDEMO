@@ -47,11 +47,13 @@ export function MapStopCard({
                     {SIGNAL_LABEL[detail.signal]}
                   </span>
                 )}
-                {/* 時間與來源各自不斷行、兩段之間可以換行：「大眾運輸約 32 分 · Google Maps」太長時來源換到下一行，
-                    不會整串擠進右邊的導航鈕底下 */}
+                {/* 時間與來源各自不斷行，段與段之間用 <wbr> 留換行點（每段開頭的空白在不斷行的範圍裡，算不上換行點）：
+                    「大眾運輸約 32 分 · Google Maps」太長時換到下一行，不會整串擠進右邊的導航鈕底下 */}
                 {detail.travel_minutes != null && (
                   <>
+                    <wbr />
                     <span className="whitespace-nowrap">{` · ${TRAVEL_MODE_LABEL[mode]}約 ${detail.travel_minutes} 分`}</span>
+                    <wbr />
                     <span className="whitespace-nowrap">
                       <DriveSource estimated={estimated} />
                     </span>

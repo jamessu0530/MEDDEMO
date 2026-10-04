@@ -30,7 +30,7 @@ describe("MapStopCard", () => {
 
   it("車程是估算的就寫（估計），不掛 Google 的名字", () => {
     const html = render(pin(3, "todo"), detail(), true)
-    expect(html).toMatch(/開車約 12 分<\/span><span class="whitespace-nowrap"><span>（估計）<\/span>/)
+    expect(html).toMatch(/開車約 12 分<\/span><wbr\/><span class="whitespace-nowrap"><span>（估計）<\/span>/)
     expect(html).not.toContain("Google Maps")
   })
 
