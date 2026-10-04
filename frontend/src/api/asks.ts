@@ -3,6 +3,9 @@ import { jsonBody, request, upload } from "@/api/client"
 
 // memory：在頻道記憶裡找（各頻道整理出來的重點與附件）
 export type AskKind = "data" | "knowledge" | "memory"
+export const ASK_KINDS: AskKind[] = ["data", "knowledge", "memory"]
+// 問答頁上方的切換：auto 是送出前先問後端該查哪一種（routeAsk），其餘是業務自己指定
+export type AskMode = AskKind | "auto"
 export type AskStatus = "queued" | "running" | "answered" | "no_evidence" | "not_converged" | "failed"
 
 export type TraceItem = {
@@ -72,6 +75,14 @@ export type Ask = {
 }
 
 export const isFinished = (ask: Ask) => ask.status !== "queued" && ask.status !== "running"
+
+/** kind 有值：後端（TypeSafe Jev）有把握是這一種；null：請業務從 choices 選，機率高的在前 */
+export type RouteResult = { kind: AskKind | null; choices: AskKind[]; confidence: number | null }
+
+/** 選「自動」時，送出前先問這一題該查哪一種。不建提問、不算提問次數 */
+export function routeAsk(question: string, hasFile: boolean) {
+  return request<RouteResult>("/api/asks/route", jsonBody("POST", { question, has_file: hasFile }))
+}
 
 /** 提問。附了檔案（拍產品盒、仿單、競品海報）就用 multipart 上傳 */
 export function createAsk(kind: AskKind, question: string, file?: File) {

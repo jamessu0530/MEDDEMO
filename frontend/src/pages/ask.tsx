@@ -1,7 +1,7 @@
 import { Component, lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react"
 import { Loader2, Mic, Send } from "lucide-react"
 
-import { type Ask, type AskKind } from "@/api/asks"
+import { type Ask, type AskMode } from "@/api/asks"
 import { askSessionFor } from "@/ask/ask-session"
 import { useConversation } from "@/ask/use-conversation"
 import { EntryView } from "@/components/ask/entry-view"
@@ -21,7 +21,16 @@ import { cn } from "@/lib/utils"
 // 整包 src/voice（Gemini Live SDK 與音訊處理）只從這裡進來，按了麥克風才載
 const loadVoiceDock = () => import("@/components/ask/voice-dock")
 
-const MODES: { kind: AskKind; label: string; placeholder: string; examples: string[] }[] = [
+const MODES: { kind: AskMode; label: string; placeholder: string; examples: string[] }[] = [
+  {
+    // 預設：送出前先問後端該查哪一種（services/ask_router.py），業務不必先想好。
+    // 範例挑實測時三種各自信心最高的，按了一定直接查，不會停在「你想查哪一種」
+    kind: "auto",
+    label: "自動",
+    // 手機寬度的輸入框放不到 12 個字，再長會被切掉
+    placeholder: "直接問，會自動判斷",
+    examples: ["北區保健品最近三個月為什麼下滑？", "近效期的貨要多久前申請退貨？", "北區還有哪些待辦沒做完？"],
+  },
   {
     kind: "data",
     label: "查數字",
@@ -49,7 +58,7 @@ export function AskPage() {
   const asking = askSessionFor(user?.id ?? "")
   const conversation = asking.conversation
   const sending = useSyncExternalStore(asking.subscribe, asking.isBusy)
-  const [kind, setKind] = useState<AskKind>("data")
+  const [kind, setKind] = useState<AskMode>("auto")
   const [question, setQuestion] = useState("")
   // 打字提問可以附一個檔案（拍產品盒、仿單、競品海報）；語音不能附
   const [files, setFiles] = useState<DraftFile[]>([])
@@ -122,7 +131,7 @@ export function AskPage() {
         {/* 語音會話裡是模型自己選要查數字還是查規定，這組切換只對打字有用。
             看的是 session 不是 voiceOn：連線中或掛斷後打字走的還是這裡選的工具，這時候藏起來業務就看不到也改不了 */}
         {!session && (
-          <div className="mt-3 grid grid-cols-3 gap-1 rounded-lg bg-muted p-1">
+          <div className="mt-3 grid grid-cols-4 gap-1 rounded-lg bg-muted p-1">
             {MODES.map((m) => (
               <button
                 key={m.kind}
@@ -161,7 +170,13 @@ export function AskPage() {
           </div>
         )}
         {entries.map((entry) => (
-          <EntryView key={entry.id} entry={entry} onAskChange={replaceAsk} />
+          <EntryView
+            key={entry.id}
+            entry={entry}
+            onAskChange={replaceAsk}
+            onChoose={(entryId, picked) => void asking.choose(entryId, picked)}
+            busy={sending}
+          />
         ))}
         {/* 語音會話的訊息不放按鈕：重試就在下面 dock 的「重新開始」。
             但整包載不下來時沒有 dock，那一種才自己帶重新整理 */}
@@ -200,9 +215,11 @@ export function AskPage() {
           }}
           className="flex flex-col gap-1.5"
         >
-          {/* 數字查詢只查得到登入者看得到的客戶；規定題查的是公司文件，不分客戶，不必提。
+          {/* 數字查詢只查得到登入者看得到的客戶；規定題查的是公司文件，不分客戶，不必提。選「自動」也可能查數字，一樣要說。
               會話活著時是模型自己選工具，這行文字才對不上；連線中或掛斷後打字仍走這條路，要照樣說清楚查得到誰 */}
-          {user && kind === "data" && !session && <p className="px-1 text-[0.6875rem] text-muted-foreground">{askScopeText(user)}</p>}
+          {user && (kind === "data" || kind === "auto") && !session && (
+            <p className="px-1 text-[0.6875rem] text-muted-foreground">{askScopeText(user)}</p>
+          )}
           {pickError && <p className="px-1 text-[0.6875rem] text-destructive">{pickError}</p>}
           {!session && <DraftFiles files={files} onRemove={() => setFiles([])} disabled={sending} />}
           <div className="flex gap-2">

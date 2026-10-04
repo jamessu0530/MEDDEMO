@@ -1,19 +1,24 @@
-import { isFinished, type Ask } from "@/api/asks"
+import { ASK_KINDS, isFinished, type Ask, type AskKind } from "@/api/asks"
 import type { Entry, ToolRun } from "@/ask/conversation"
 import { AskAnswer, TracePanel } from "@/components/ask/ask-result"
 import { AttachmentGallery } from "@/components/attachments/attachment-gallery"
 import { Mascot } from "@/components/mascot"
 
 const TOOL_LABEL = { data: "查數字", knowledge: "查規定", memory: "查頻道" }
+// 請業務選要查哪一種時，每個按鈕下面的一句說明：查得到什麼
+const KIND_HINT = { data: "業績、進貨、帳款這類數字", knowledge: "公司規定、文件或網路資料", memory: "同事在頻道說過的" }
 
-export function EntryView({
-  entry,
-  onAskChange,
-}: {
+type EntryViewProps = {
   entry: Entry
   onAskChange: (entryId: number, patch: { ask: Ask }) => void
-}) {
-  if (entry.kind === "tool") return <ToolCard run={entry} onAskChange={onAskChange} />
+  /** 業務選了要查哪一種（等他選的那一格，或自動判斷完想換一種重查） */
+  onChoose: (entryId: number, kind: AskKind) => void
+  /** 有一題還在查：選種類的按鈕先停用，按了也不會送 */
+  busy: boolean
+}
+
+export function EntryView({ entry, onAskChange, onChoose, busy }: EntryViewProps) {
+  if (entry.kind === "tool") return <ToolCard run={entry} onAskChange={onAskChange} onChoose={onChoose} busy={busy} />
   if (entry.kind === "user") {
     // 語音那句是 Gemini 另外做的語音轉文字，常有同音錯字；打字的是業務原文，不必標
     return (
@@ -32,19 +37,28 @@ export function EntryView({
 }
 
 /** AI 呼叫查詢工具的那一步：跟打字問答同一套查詢，結果、依據與查詢過程都看得到 */
-function ToolCard({
-  run,
-  onAskChange,
-}: {
-  run: ToolRun
-  onAskChange: (entryId: number, patch: { ask: Ask }) => void
-}) {
+function ToolCard({ run, onAskChange, onChoose, busy }: Omit<EntryViewProps, "entry"> & { run: ToolRun }) {
+  const done = run.error !== null || (run.ask !== null && isFinished(run.ask))
   return (
     <section className="mr-4 rounded-2xl border border-dashed bg-card px-4 py-3">
       <p className="mb-2 text-xs text-muted-foreground">
-        {run.askKind ? TOOL_LABEL[run.askKind] : "查詢"}：{run.question || "（沒有問題內容）"}
+        {run.askKind ? TOOL_LABEL[run.askKind] : "查詢"}
+        {run.auto && "（自動判斷）"}：{run.question || "（沒有問題內容）"}
       </p>
-      {run.error ? (
+      {run.routing ? (
+        <p className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Mascot state="think" size={28} bust className="shrink-0 rounded-full bg-accent" />
+          判斷要查哪一種…
+        </p>
+      ) : run.choices ? (
+        <KindPicker
+          // 三種都列：這次沒能判斷（Jev 沒回答）；兩種：這句話兩種都說得通
+          prompt={run.choices.length === ASK_KINDS.length ? "這次沒能自動判斷，你想查哪一種？" : "這句話兩種都說得通，你想查哪一種？"}
+          kinds={run.choices}
+          onPick={(kind) => onChoose(run.id, kind)}
+          disabled={busy}
+        />
+      ) : run.error ? (
         <p className="text-sm text-destructive">{run.error}</p>
       ) : run.ask ? (
         <AskAnswer ask={run.ask} onChange={(ask) => onAskChange(run.id, { ask })} />
@@ -55,7 +69,58 @@ function ToolCard({
         </p>
       )}
       {run.ask && run.ask.trace.length > 0 && <TracePanel trace={run.ask.trace} live={!isFinished(run.ask)} />}
+      {run.auto && run.askKind && done && (
+        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t pt-2 text-xs text-muted-foreground">
+          不是要查這個？
+          {ASK_KINDS.filter((kind) => kind !== run.askKind).map((kind) => (
+            <button
+              key={kind}
+              type="button"
+              disabled={busy}
+              onClick={() => onChoose(run.id, kind)}
+              className="min-h-8 font-medium text-primary underline-offset-2 hover:underline disabled:opacity-50"
+            >
+              改{TOOL_LABEL[kind]}
+            </button>
+          ))}
+        </div>
+      )}
       {run.cancelled && <p className="mt-2 text-xs text-muted-foreground">對話已經不需要這個結果，查到的內容仍保留在這裡。</p>}
     </section>
+  )
+}
+
+function KindPicker({
+  prompt,
+  kinds,
+  onPick,
+  disabled,
+}: {
+  prompt: string
+  kinds: AskKind[]
+  onPick: (kind: AskKind) => void
+  disabled: boolean
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="flex items-center gap-2 text-sm">
+        <Mascot state="hi" size={28} bust className="shrink-0 rounded-full bg-accent" />
+        {prompt}
+      </p>
+      <div className="flex flex-col gap-1.5">
+        {kinds.map((kind) => (
+          <button
+            key={kind}
+            type="button"
+            disabled={disabled}
+            onClick={() => onPick(kind)}
+            className="min-h-11 rounded-xl border-2 bg-background px-3 py-2 text-left shadow-lip press disabled:opacity-50"
+          >
+            <span className="text-sm font-medium">{TOOL_LABEL[kind]}</span>
+            <span className="ml-2 text-xs text-muted-foreground">{KIND_HINT[kind]}</span>
+          </button>
+        ))}
+      </div>
+    </div>
   )
 }

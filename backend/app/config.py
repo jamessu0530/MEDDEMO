@@ -57,6 +57,8 @@ class Settings(BaseSettings):
     # 沒填 Cohere 就改用檢索的融合分數排序
     firecrawl_api_key: str = ""
     cohere_api_key: str = ""
+    # 問答自動判斷查數字、規定還是頻道（TypeSafe Jev，跟 CARE 共用同一把）。沒填就每一題都請業務自己選
+    typesafe_api_key: str = ""
 
     # Google Routes API：行程的道路車程與主管頁的沿路路線。留空就用直線估算，畫面註明「估計」。
     # 只在後端用；在 Google Cloud 限制只開 Routes API（docs/superpowers/plans/2026-10-01-itinerary-stage4.md）

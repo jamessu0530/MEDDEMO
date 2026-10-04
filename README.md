@@ -38,6 +38,7 @@ cd frontend && npm install && npm run dev                                       
 | 語音問答 | `VOICE_API_KEY`（沒填就沿用 `LLM_API_KEY`） | `gemini-2.5-flash-native-audio-preview-12-2025` |
 | 網路搜尋 | `FIRECRAWL_API_KEY` | — |
 | 精排 | `COHERE_API_KEY` | `rerank-v4.0-pro` |
+| 問答自動判斷查哪一種 | `TYPESAFE_API_KEY`（跟 CARE 共用），見下方「問答」 | `jev-1.13.0`（釘版本） |
 | 道路車程、主管頁的地圖 | `GOOGLE_MAPS_SERVER_KEY`（Routes API）、`GOOGLE_MAPS_BROWSER_KEY`（Maps JavaScript API），見下方部署的表格 | — |
 
 沒設定也能用：錄音會停在「轉文字失敗」，業務可以手動輸入逐字稿；欄位會留白，讓業務手動填。整條「口述 → 確認 → 寫回三套系統」照樣走得完。沒設定 embedding 時，知識檢索只走關鍵字。沒設 Google 地圖的金鑰時，車程用直線估算並標明「估計」，主管頁的地圖換成一行說明。
@@ -345,6 +346,15 @@ IT 登入後的首頁是 `/admin`：全國 → 區 → 主管 → 業務，點�
 
 打字與語音問答在同一頁、同一條對話裡：語音會話開著時打字照樣送得出去，會進到同一個 Live 會話，由 AI 用講的回答，而不是另外開一次文字問答。
 
+- **自動判斷查哪一種**（10/4）：頁首的切換是「自動、查數字、查規定、查頻道」，預設「自動」，業務不必先想好要查哪一種。送出前先打 `POST /api/asks/route`，由 TypeSafe 的 Jev（`backend/app/services/ask_router.py`）判斷這一題該查數字、規定還是頻道。Jev 是只回機率與信心分數、不生成文字的分類模型，做法照 CARE 的 guardrail：直接打 HTTP API、版本釘在 `jev-1.13.0`、題目用英文寫，每個選項照它真的查得到的東西寫（語意層的 View、20 份內部文件、頻道記憶的五類重點）。
+  - 信心 0.7 以上就直接查，卡片標「查頻道（自動判斷）」，查完下面有「不是要查這個？改查數字、改查規定」，按了另開一格用那一種重查，原本那格留著。
+  - 信心不到 0.7（多半是兩種都說得通，例如「康泰忠孝店最近怎麼樣？」）：那一格列出最可能的兩種，每個附一句查得到什麼，業務點了才查。
+  - Jev 沒回答（沒設金鑰、逾時 2 秒、出錯、用量上限）：三種都列出來請業務選。不退回「當成查數字」：問規定或頻道的人會被送去寫 SQL，拿到的是錯的答案。
+  - 自己點了查數字、查規定或查頻道就不判斷，跟以前一樣。語音不受影響：會話裡本來就是模型自己挑工具。附了檔案只告訴 Jev「有附照片或 PDF」，它只看文字。
+  - 實測：`uv run --project backend python backend/scripts/eval_ask_route.py`（不用資料庫，整批不到 US$0.001）。題目是 `data/eval` 原本的數字題、知識題，加上 `data/eval/ask_route_questions.json` 的頻道題、兩種都說得通的題目，以及另一個 AI agent 只看功能說明寫的盲測題（看不到其他題目和判斷規則，降低出題的人跟寫規則的人是同一個的偏差）。10/4 跑 106 題：明確的 90 題直接判斷 86 題、判錯 0 題，4 題請業務選（給的兩個選項裡都有對的）；兩種都說得通的 16 題都判成其中一種或請業務選；中位數 0.25 秒、最慢 0.42 秒。信心分數每次跑會有一點浮動，門檻附近的題目會在「直接查」與「請業務選」之間換。
+  - 同一批題目 Gemini（gemini-3.8-flash、低推理）也全對，但中位數 1.3 秒、最慢 2.9 秒，也沒有信心分數可以決定要不要先問業務，所以用 Jev。
+  - 正式機上的提問紀錄會隨重灌假資料清掉，10/4 只有 1 題，還沒有用真實提問驗證過。判斷結果沒有另外存；Jev 沒回答時後端會記一行 warning。
+
 - **查數字**：把問題轉成 SQL，只能查語意層的 View，並用唯讀角色執行，而且**只查得到提問者看得到的客戶**（見「資料權限」）。答案提到自己負責的客戶時，下面列出來並給「排入今天的路線」（原型叫「排入拜訪」，但我們只有今天的路線），按了就排到最前面，最多五家（一天的量）。結果不夠回答，就自己決定下一條查詢，最多查三輪；查到上限還答不出來，就回報已經查到的部分和卡住的原因。
 - **查規定**：`data/documents/` 的內部文件，一個小節切成一段。整套照搬 CARE 的 CRAG 回答路徑（`backend/app/services/crag/`），跟 CARE 不同的有四點：網路搜尋不限網站（CARE 限定政府網域）、知識庫答案沒有對得上的出處就當查無依據、用藥這類醫療問題不上網、只有公司內部才有答案的問題也不上網（後三點見下面）。
   - 檢索：關鍵字（中文兩字一組的全文檢索）與語意（pgvector）兩路並行，各 5 秒逾時，一路失敗或逾時就只用另一路；分數依「向量 0.6、關鍵字 0.4」的凸組合合併，取前 40 段。
@@ -589,6 +599,7 @@ uv run --project backend python backend/scripts/eval_ask.py
 | 錄音時的即時文字 | `POST /api/transcription/session` | 15 | 60 |
 | 錄音整理（語音辨識＋整理欄位） | `POST /api/visits/audio`、`…/transcript`、`…/reprocess` | 15 | 60 |
 | 跟熊熊滾說要怎麼排 | `POST /api/itinerary/today/ask` | 30 | 200 |
+| 問答自動判斷查哪一種（Jev） | `POST /api/asks/route` | 100 | 400 |
 
 - 全系統每天的量，是決賽當天估計用量的約兩倍（推估：排練、簡報，加上約 10 位評審試用，提問約 100 題、語音問答約 20 次、錄音約 30 段）。每個 IP 每小時是每天的四分之一：一個來源至少要四小時才用得完一天的量。
 - **有登入就按帳號算**，沒登入的入口才按 IP（用 Cloudflare 填的 `CF-Connecting-IP`）。決賽現場大家連同一個 Wi-Fi，按 IP 算會全場共用一份額度，按帳號算每個人有自己的。
@@ -602,6 +613,7 @@ uv run --project backend python backend/scripts/eval_ask.py
 | 錄音整理 | 一分鐘的口述約 US$0.01；錄音檔上限 20MB（約 80 分鐘）時約 US$0.1 | 約 US$7 |
 
 - 跟熊熊滾說要怎麼排：每次一次 gemini-3.8-flash 呼叫（低推理，約 5 千輸入、1 千輸出 token，約 US$0.006），每天用滿約 US$1.2。「幫我排順一點」不呼叫 Gemini，不算。
+- 問答自動判斷：每次一次 Jev，約 300 個輸入 token（US$0.042／百萬 token，輸出不收錢），每天用滿不到 US$0.01。上限給到提問的兩倍，擋的是程式一直送，業務改問法重送不會先卡在這裡；判斷完真的送出的提問照樣算「提問」。
 - 語音問答照 `gemini-2.5-flash-native-audio` 的價格算；`gemini-3.1-flash-live-preview` 在官方價格頁只列了免費層。
 - 知識查詢另外會用到 Cohere 精排（每題 1～2 次）和 Firecrawl 網路搜尋（要上網的題目每題 1～3 次）。200 題全部上網的最壞情況，一天約 400 次 Cohere、600 次 Firecrawl，額度看各自的方案。
 - Redis 連不上時放行：問答與錄音整理本來就要靠 Redis 排背景工作，Redis 停了也花不到錢。
@@ -695,7 +707,7 @@ MEDDEMO 跟 CARE 共用 GCP 上的 care-vm：K3s、Helm、Traefik、HTTPS 憑證
 | `VOICE_API_KEY` | secret | 選填：語音問答用的 Gemini 金鑰，沒填就沿用 `LLM_API_KEY` |
 | `FIRECRAWL_API_KEY` | secret | 選填：知識查詢上網搜尋 |
 | `COHERE_API_KEY` | secret | 選填：知識查詢精排 |
-| `TYPESAFE_API_KEY` | secret | 選填：TypeSafe 的 Jev，跟 CARE 共用同一把。準備給問答自動判斷查數字、查規定還是查頻道用，目前還沒有程式讀它 |
+| `TYPESAFE_API_KEY` | secret | 選填：TypeSafe 的 Jev，跟 CARE 共用同一把。問答選「自動」時判斷要查數字、規定還是頻道；沒填就每一題都請業務自己選 |
 | `GOOGLE_MAPS_SERVER_KEY` | secret | 選填：行程的道路車程（Google Routes API）。Google Cloud 專案要開帳單；API 限制只開 Routes API，應用程式限制填 VM 的對外 IP。沒填就用直線估算。在 Google Cloud 為 Routes API 設每日配額上限（例如每天 2,000 次）並替帳單設預算警示。設好之後用業務帳號打 `/api/itinerary/today`，回應裡 `"estimated": false` 就是接上了。 |
 | `GOOGLE_MAPS_BROWSER_KEY` | secret | 選填：主管頁的地圖（Maps JavaScript API）。API 限制只開 Maps JavaScript API，網站限制填 `https://網址/*`。沒填主管頁就不畫地圖、只列清單。 |
 
@@ -726,6 +738,8 @@ backend/app/services/itinerary.py   今天的行程：存檔、版本、三顆�
 backend/app/services/route_habits.py 排序習慣：比對、那句話、換成排序規則、預設值
 backend/app/services/itinerary_ai.py 跟熊熊滾說要怎麼排：提示、驗證操作、對照卡、套用
 backend/scripts/eval_itinerary_ai.py 跟熊熊滾說要怎麼排的 20 句實測
+backend/app/services/ask_router.py  問答自動判斷查數字、規定還是頻道（TypeSafe Jev）
+backend/scripts/eval_ask_route.py   問答自動判斷的實測（106 題，含盲測題）
 backend/app/resources/route_model.json  訓練好的權重與成績
 backend/app/services/oa.py          模擬 OA 申請單（出差單、優惠、合約）：申請匣、簽核匣、逐關簽核
 backend/app/services/approvals.py   優惠與合約簽核：誰要簽的規則、特徵、模型估計、系統核准、核准之後的效果

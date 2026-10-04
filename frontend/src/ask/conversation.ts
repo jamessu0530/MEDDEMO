@@ -21,7 +21,9 @@ export type Utterance = {
   attachment?: Attachment
 }
 
-/** 一次查詢：打字問答與語音的工具呼叫長得一樣，所以共用同一種 entry */
+/** 一次查詢：打字問答與語音的工具呼叫長得一樣，所以共用同一種 entry。
+ * 打字選「自動」時多三種狀態：routing 是正在判斷該查哪一種；choices 是沒把握、等業務點的選項；
+ * auto 是判斷好直接查的（卡片上標出來，可以換一種重查） */
 export type ToolRun = {
   id: number
   kind: "tool"
@@ -30,6 +32,9 @@ export type ToolRun = {
   ask: Ask | null
   error: string | null
   cancelled: boolean
+  routing: boolean
+  choices: AskKind[] | null
+  auto: boolean
 }
 
 export type Entry = Utterance | ToolRun
@@ -38,7 +43,7 @@ export type Conversation = {
   getSnapshot: () => Entry[]
   subscribe: (listener: () => void) => () => void
   addUtterance: (kind: "user" | "model", source: UtteranceSource, text?: string) => number
-  addToolRun: (askKind: AskKind | null, question: string) => number
+  addToolRun: (askKind: AskKind | null, question: string, state?: Partial<Pick<ToolRun, "routing">>) => number
   appendText: (id: number, chunk: string) => void
   replace: (id: number, patch: Partial<Omit<ToolRun, "id" | "kind">>) => void
   attach: (id: number, attachment: Attachment) => void
@@ -75,9 +80,13 @@ export function createConversation(): Conversation {
       return id
     },
 
-    addToolRun: (askKind, question) => {
+    addToolRun: (askKind, question, state = {}) => {
       const id = ++lastId
-      commit([...entries, { id, kind: "tool", askKind, question, ask: null, error: null, cancelled: false }])
+      const run: ToolRun = {
+        id, kind: "tool", askKind, question, ask: null, error: null, cancelled: false,
+        routing: false, choices: null, auto: false, ...state,
+      }
+      commit([...entries, run])
       return id
     },
 

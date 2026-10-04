@@ -73,6 +73,7 @@ def test_requests_still_go_through_when_redis_is_down(client, auth, monkeypatch)
     ("method", "path", "buckets"),
     [
         ("POST", "/api/asks", ["ask"]),
+        ("POST", "/api/asks/route", ["ask_route"]),
         ("POST", "/api/voice/session", ["voice"]),
         ("POST", "/api/transcription/session", ["transcription"]),
         ("POST", "/api/visits/audio", ["visit"]),

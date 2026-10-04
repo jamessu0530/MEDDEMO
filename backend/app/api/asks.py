@@ -17,7 +17,7 @@ from app.api.attachments import AttachmentItem, attachment_item
 from app.api.auth import CurrentUser
 from app.db import get_session
 from app.models import AppUser, AskRecord, Attachment, Customer, Escalation, QueryTrace
-from app.services import attachments
+from app.services import ask_router, attachments
 from app.services.scope import SHARING_LEVEL, Scope
 from app.tasks import visit_queue
 
@@ -26,10 +26,26 @@ router = APIRouter(prefix="/api/asks", tags=["asks"])
 SessionDep = Annotated[Session, Depends(get_session)]
 
 
+AskKind = Literal["data", "knowledge", "memory"]
+
+
 class AskInput(BaseModel):
-    kind: Literal["data", "knowledge", "memory"]
+    kind: AskKind
     # 業務口語提問不會超過 500 字；再長多半是誤貼了一大段文字
     question: str = Field(min_length=1, max_length=500)
+
+
+class RouteInput(BaseModel):
+    question: str = Field(min_length=1, max_length=500)
+    # 有附檔案：分流時告訴 Jev（它只看文字，看不到檔案本身）
+    has_file: bool = False
+
+
+class RouteOut(BaseModel):
+    # 有把握就是這一種；null 時請業務從 choices 裡選
+    kind: AskKind | None
+    choices: list[AskKind]
+    confidence: float | None
 
 
 @dataclass(frozen=True)
@@ -167,6 +183,14 @@ def _load(session: Session, ask_id: str, user: AppUser) -> AskRecord:
     if record is None or record.user_id != user.id:
         raise HTTPException(404, "找不到這個提問")
     return record
+
+
+@router.post("/route", response_model=RouteOut)
+def route_ask(body: RouteInput, user: CurrentUser):
+    """問答頁選「自動」時，送出前先問這一題該查哪一種（services/ask_router.py）。
+    不建提問、不算進提問的次數：業務選好或 Jev 決定了，前端再照原本的 POST /api/asks 送"""
+    routed = ask_router.route(body.question.strip(), body.has_file)
+    return RouteOut(kind=routed.kind, choices=routed.choices, confidence=routed.confidence)
 
 
 @router.post("", status_code=202, response_model=AskDetail)

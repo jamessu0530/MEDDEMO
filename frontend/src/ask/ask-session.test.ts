@@ -3,24 +3,30 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { Ask } from "@/api/asks"
 import type { AuthUser } from "@/lib/auth"
 
-// 後端換成假的：createAsk 開一筆提問，getAsk 問進度
-const api = vi.hoisted(() => ({ createAsk: vi.fn(), getAsk: vi.fn() }))
+// 後端換成假的：routeAsk 判斷該查哪一種，createAsk 開一筆提問，getAsk 問進度
+const api = vi.hoisted(() => ({ createAsk: vi.fn(), getAsk: vi.fn(), routeAsk: vi.fn() }))
 vi.mock("@/api/asks", () => ({
+  ASK_KINDS: ["data", "knowledge", "memory"],
   createAsk: api.createAsk,
   getAsk: api.getAsk,
+  routeAsk: api.routeAsk,
   isFinished: (ask: Ask) => ask.status !== "queued" && ask.status !== "running",
 }))
 
+import type { ToolRun } from "@/ask/conversation"
 import { askSessionFor } from "@/ask/ask-session"
 import { signIn, signOut } from "@/lib/auth"
 
 const ask = (status: Ask["status"]) => ({ id: "a1", status, trace: [] }) as unknown as Ask
 const user = (id: string) => ({ id, name: id, role: "sales", region: "北區", email: null }) as AuthUser
+const tools = (session: ReturnType<typeof askSessionFor>) =>
+  session.conversation.getSnapshot().filter((entry): entry is ToolRun => entry.kind === "tool")
 
 beforeEach(() => {
   vi.useFakeTimers()
   api.createAsk.mockReset()
   api.getAsk.mockReset()
+  api.routeAsk.mockReset()
 })
 
 afterEach(() => {
@@ -76,6 +82,81 @@ describe("askSessionFor", () => {
     const run = session.conversation.getSnapshot()[1]
     expect(run.kind === "tool" && run.error).toBe("這一小時的提問次數用完了")
     expect(session.isBusy()).toBe(false)
+  })
+
+  it("選自動：判斷時那一格寫著在判斷，有把握就直接查那一種並標成自動判斷", async () => {
+    signIn({ token: "t", user: user("U01") })
+    let decide: (value: unknown) => void = () => {}
+    api.routeAsk.mockReturnValue(new Promise((resolve) => (decide = resolve)))
+    api.createAsk.mockResolvedValue(ask("answered"))
+    const session = askSessionFor("U01")
+
+    const done = session.ask("auto", "北區還有哪些待辦沒做完？")
+    await vi.advanceTimersByTimeAsync(0)
+    expect(session.isBusy()).toBe(true)
+    expect(tools(session)[0]).toMatchObject({ routing: true, askKind: null })
+    expect(api.routeAsk).toHaveBeenCalledWith("北區還有哪些待辦沒做完？", false)
+
+    decide({ kind: "memory", choices: [], confidence: 0.99 })
+    await done
+    expect(api.createAsk).toHaveBeenCalledWith("memory", "北區還有哪些待辦沒做完？", undefined)
+    expect(tools(session)[0]).toMatchObject({ routing: false, askKind: "memory", auto: true, choices: null })
+    expect(session.isBusy()).toBe(false)
+  })
+
+  it("沒把握就列出選項等業務點，點了在同一格查，附的檔案也一起送", async () => {
+    signIn({ token: "t", user: user("U01") })
+    api.routeAsk.mockResolvedValue({ kind: null, choices: ["data", "memory"], confidence: 0.3 })
+    api.createAsk.mockResolvedValue(ask("answered"))
+    const session = askSessionFor("U01")
+    const photo = new File(["x"], "box.jpg", { type: "image/jpeg" })
+
+    await session.ask("auto", "康泰忠孝店最近怎麼樣？", photo)
+    expect(api.routeAsk).toHaveBeenCalledWith("康泰忠孝店最近怎麼樣？", true)
+    expect(api.createAsk).not.toHaveBeenCalled()
+    expect(session.isBusy()).toBe(false)
+    const [waiting] = tools(session)
+    expect(waiting).toMatchObject({ routing: false, choices: ["data", "memory"], askKind: null })
+
+    await session.choose(waiting.id, "memory")
+    expect(api.createAsk).toHaveBeenCalledWith("memory", "康泰忠孝店最近怎麼樣？", photo)
+    expect(tools(session)).toHaveLength(1)
+    expect(tools(session)[0]).toMatchObject({ choices: null, askKind: "memory", auto: false })
+  })
+
+  it("判斷失敗不擋：三種都列出來請業務選", async () => {
+    signIn({ token: "t", user: user("U01") })
+    api.routeAsk.mockRejectedValue(new Error("伺服器暫時沒有回應，請再試一次"))
+    const session = askSessionFor("U01")
+    await session.ask("auto", "北區為什麼掉？")
+    expect(tools(session)[0]).toMatchObject({ choices: ["data", "knowledge", "memory"], error: null })
+    expect(session.isBusy()).toBe(false)
+  })
+
+  it("自動判斷查完想換一種：另開一格重查，原本那格留著", async () => {
+    signIn({ token: "t", user: user("U01") })
+    api.routeAsk.mockResolvedValue({ kind: "data", choices: [], confidence: 0.8 })
+    api.createAsk.mockResolvedValue(ask("answered"))
+    const session = askSessionFor("U01")
+    await session.ask("auto", "補貨現在多久補一次？")
+
+    await session.choose(tools(session)[0].id, "knowledge")
+    expect(api.createAsk).toHaveBeenLastCalledWith("knowledge", "補貨現在多久補一次？", undefined)
+    expect(tools(session).map((run) => [run.askKind, run.auto])).toEqual([
+      ["data", true],
+      ["knowledge", false],
+    ])
+    // 業務那句話只有一句，重查不會再多一句
+    expect(session.conversation.getSnapshot().filter((entry) => entry.kind === "user")).toHaveLength(1)
+  })
+
+  it("自己指定種類就不判斷", async () => {
+    signIn({ token: "t", user: user("U01") })
+    api.createAsk.mockResolvedValue(ask("answered"))
+    const session = askSessionFor("U01")
+    await session.ask("knowledge", "近效期的貨要多久前申請退貨？")
+    expect(api.routeAsk).not.toHaveBeenCalled()
+    expect(tools(session)[0]).toMatchObject({ askKind: "knowledge", auto: false })
   })
 
   it("登出或換人登入就清掉：上一個人的提問不會留給下一個人，還在跑的輪詢也停掉", async () => {
