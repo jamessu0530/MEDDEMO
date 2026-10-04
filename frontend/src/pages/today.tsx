@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState, type Ref } from "react"
 import { Bell, BookOpenText, ChevronRight, FileText, Flag, Loader2, Map as MapIcon, Route, TriangleAlert } from "lucide-react"
 import { Link, useNavigate, useSearchParams } from "react-router"
 
@@ -63,13 +63,25 @@ export function TodayPage() {
     return () => controller.abort()
   }, [userId, attempt])
 
+  // 路線／地圖：沒有站、或用的是手機上的舊行程（連不上，地圖也載不到）就只有路線
+  const mappable = state.status === "ready" && !state.cached && state.route.stops.length > 0
+  const onMap = mappable && params.get("view") === "map"
+  const headerRef = useRef<HTMLElement>(null)
+  const switchRef = useRef<HTMLDivElement>(null)
+
+  // 切到地圖（或從客戶檔案回到地圖）時，把切換捲到固定的頁首正下面：地圖的高度是照這個位置算的，
+  // 上面有新人卡、需立即處理時不捲的話，地圖下半與底下那張卡會被輸入列蓋住
+  useEffect(() => {
+    const node = switchRef.current
+    if (!onMap || !node) return
+    const top = node.getBoundingClientRect().top + window.scrollY - (headerRef.current?.offsetHeight ?? 0) - 8
+    window.scrollTo({ top: Math.max(top, 0), behavior: "smooth" })
+  }, [onMap])
+
   if (!user) return null // 沒登入進不來（App.tsx 會導去登入頁），這行只是讓型別成立
 
   const route = state.status === "ready" ? state.route : null
   const urgent = route?.urgent ?? null
-  // 路線／地圖：沒有站、或用的是手機上的舊行程（連不上，地圖也載不到）就只有路線
-  const mappable = state.status === "ready" && !state.cached && state.route.stops.length > 0
-  const onMap = mappable && params.get("view") === "map"
 
   // 記在網址上：從客戶檔案按返回，回來還是地圖
   function showView(view: "route" | "map") {
@@ -109,7 +121,7 @@ export function TodayPage() {
 
   return (
     <div className="flex min-h-svh flex-col">
-      <header className="sticky top-0 z-10 bg-background/95 px-4 pt-2 pb-3 backdrop-blur">
+      <header ref={headerRef} className="sticky top-0 z-10 bg-background/95 px-4 pt-2 pb-3 backdrop-blur">
         <div className="-mr-2 flex items-center justify-between gap-2">
           {/* 自己的頭像：點了換狀態（有空、忙碌、顯示為離線…）；點名字進帳號設定：改密碼、登出、使用說明 */}
           <div className="flex min-w-0 items-center gap-1.5">
@@ -251,7 +263,7 @@ export function TodayPage() {
           </article>
         )}
 
-        {mappable && <ViewSwitch onMap={onMap} onChange={showView} />}
+        {mappable && <ViewSwitch ref={switchRef} onMap={onMap} onChange={showView} />}
         {route &&
           (route.stops.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-8 text-center">
@@ -283,14 +295,22 @@ export function TodayPage() {
 }
 
 /** 路線／地圖切換：平常看蛇行的路線，要看地圖再切過來 */
-function ViewSwitch({ onMap, onChange }: { onMap: boolean; onChange: (view: "route" | "map") => void }) {
+function ViewSwitch({
+  ref,
+  onMap,
+  onChange,
+}: {
+  ref: Ref<HTMLDivElement>
+  onMap: boolean
+  onChange: (view: "route" | "map") => void
+}) {
   const tab = (active: boolean) =>
     cn(
       "flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl text-sm font-semibold transition-colors",
       active ? "bg-card text-foreground shadow-[0_2px_0_var(--lip)]" : "text-muted-foreground"
     )
   return (
-    <div role="group" aria-label="怎麼看今天的路線" className="mb-3 flex gap-1 rounded-2xl bg-muted p-1">
+    <div ref={ref} role="group" aria-label="怎麼看今天的路線" className="mb-3 flex gap-1 rounded-2xl bg-muted p-1">
       <button type="button" aria-pressed={!onMap} onClick={() => onChange("route")} className={tab(!onMap)}>
         <Route className="size-4" />
         路線
