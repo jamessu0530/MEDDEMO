@@ -2,8 +2,10 @@ import { useEffect, useState, type CSSProperties, type ReactNode } from "react"
 import { Check, Flag } from "lucide-react"
 import { Link } from "react-router"
 
+import { getNextNotes, type Note } from "@/api/notes"
 import { SIGNAL_LABEL, type RouteSignal, type LegMode, type RouteStop, type TravelMode } from "@/api/route"
 import { Mascot } from "@/components/mascot"
+import { NoteRow } from "@/components/note-row"
 import { LegChip, LegMenu } from "@/components/route/leg-chip"
 import { buttonVariants } from "@/components/ui/button"
 import { bearStopIndex, labelSide, pathOffset, signalTone, TONE_CLASS } from "@/lib/route-path"
@@ -286,9 +288,40 @@ function StopPopover({ stop, index, offset }: { stop: RouteStop; index: number; 
       <p className="mt-2 text-sm leading-relaxed">
         <SignalLabel signal={stop.signal} /> · {stop.reason}
       </p>
+      <StopNotes customerId={stop.customer_id} />
       <Link to={`/customers/${stop.customer_id}`} className={cn(buttonVariants(), "mt-3 h-11 w-full text-sm")}>
         {done ? "看客戶檔案" : "開啟拜訪準備"}
       </Link>
+    </div>
+  )
+}
+
+// 小卡上最多列幾則備忘；多的進客戶檔案看
+const STOP_NOTES_SHOWN = 3
+
+/** 小卡打開時才去拿這家的備忘（要帶的在前）；載不到或沒有就不顯示這一區，不影響小卡其他內容 */
+function StopNotes({ customerId }: { customerId: string }) {
+  const [notes, setNotes] = useState<Note[]>([])
+  useEffect(() => {
+    const controller = new AbortController()
+    getNextNotes(customerId, controller.signal)
+      .then(({ next }) => setNotes(next))
+      .catch(() => setNotes([]))
+    return () => controller.abort()
+  }, [customerId])
+  if (notes.length === 0) return null
+  const more = notes.length - STOP_NOTES_SHOWN
+  return (
+    <div className="mt-3 border-t pt-2">
+      <p className="text-xs font-semibold text-muted-foreground">下次去要記得</p>
+      <ul className="mt-1 flex flex-col gap-1.5">
+        {notes.slice(0, STOP_NOTES_SHOWN).map((note) => (
+          <li key={note.id}>
+            <NoteRow note={note} />
+          </li>
+        ))}
+      </ul>
+      {more > 0 && <p className="mt-1 text-xs text-muted-foreground">還有 {more} 則，在客戶檔案看</p>}
     </div>
   )
 }
