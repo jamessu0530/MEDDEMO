@@ -17,6 +17,7 @@ describe("quoteBlocked", () => {
   const base = { plainCount: 1, packCount: 0, discount: 0, route: discountSteps(0), reason: "" }
   it("照順序說明送不出去的原因", () => {
     expect(quoteBlocked({ ...base, plainCount: 0 })).toBe("至少要有一項數量大於 0")
+    expect(quoteBlocked({ ...base, plainCount: 20, packCount: 11 })).toBe("一張報價最多 30 項")
     expect(quoteBlocked({ ...base, discount: 2.3, route: discountSteps(2.3) })).toBe(discountSteps(2.3).text)
     expect(quoteBlocked({ ...base, plainCount: 0, packCount: 1, discount: 2, route: discountSteps(2) })).toBe(
       "折扣只套在沒促銷的品項上"

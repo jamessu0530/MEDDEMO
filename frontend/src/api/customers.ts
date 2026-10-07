@@ -259,6 +259,49 @@ export function createQuote(id: string, items: QuoteLineInput[], discountPct = 0
   )
 }
 
+// 上次訂的（後端 services/last_order.py）：上一次進貨與上一張報價合起來，上次走口的列跟這一期比
+export type LastOrderPack = { code: string; name: string; deal: string; buy_qty: number; free_qty: number; deal_price: number }
+// terms：同一口條件變了；pack_gone：這一口沒了；promo_gone：這期沒有促銷。text 寫在那一列下面
+export type LastOrderChange = { kind: "terms" | "pack_gone" | "promo_gone"; text: string; short: string }
+export type LastOrderLine = {
+  sku: string
+  name: string
+  spec: string
+  unit: string
+  // 這家的供貨價：照上次填加列時用
+  supply_price: number
+  // 沒走口是數量，走口是口數
+  qty: number
+  pack: LastOrderPack | null
+  source: "order" | "quote"
+  change: LastOrderChange | null
+  // 這次照抄成什麼
+  repeat: QuoteLineInput
+}
+export type LastOrder = {
+  // 有用到的那次進貨與那張報價
+  order: { order_no: string; date: string } | null
+  quote: { quote_no: string; date: string } | null
+  // 變了的列在前
+  lines: LastOrderLine[]
+  changed: number
+}
+
+/** 這家還沒訂過是 null */
+export function getLastOrder(id: string, signal?: AbortSignal) {
+  return request<LastOrder | null>(`/api/customers/${encodeURIComponent(id)}/last-order`, { signal })
+}
+
+export type OrderPlaced = { order_no: string; date: string; amount: number }
+
+/** 客戶下單了：報價寫成今天的進貨與應收帳款，不能復原；已經成交或還在等簽核回 409 */
+export function placeOrder(id: string, quoteNo: string) {
+  return request<OrderPlaced>(
+    `/api/customers/${encodeURIComponent(id)}/quotes/${encodeURIComponent(quoteNo)}/order`,
+    { method: "POST" }
+  )
+}
+
 // 連鎖客戶目前的合約條件。系統沒有合約表：到期日在客戶主檔，費率從近 90 天的交易算出來
 export type Contract = {
   contract_end_date: string | null

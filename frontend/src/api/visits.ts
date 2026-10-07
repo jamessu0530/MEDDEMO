@@ -40,6 +40,23 @@ export type RiskNotice = {
   manager_name: string
 }
 
+// 講了跟上次一樣、或跟上次比加減時，展開那一刻的快照（後端 services/repeat_order.py）
+export type RepeatSnapshot = {
+  said: string | null
+  all: boolean
+  except_skus: string[]
+  except_names: string[]
+  order: { order_no: string; date: string } | null
+  quote: { quote_no: string; date: string } | null
+  // 這家還沒訂過
+  empty: boolean
+  // 照上次抄了幾項（拿掉不要的之後）
+  copied: number
+  // promo_code 是這次抄成的口，不走促銷是 null
+  changes: { sku: string; promo_code: string | null; text: string }[]
+  relative: { sku: string; promo_code: string | null; last_qty: number; delta: number }[]
+}
+
 export type Visit = {
   id: string
   customer_id: string
@@ -59,6 +76,8 @@ export type Visit = {
   // 只有確認送出、而且這次提到競品或客訴時才有
   risk_notice: RiskNotice | null
   oa_form_id: number | null
+  // 沒講跟上次一樣、也沒講跟上次比的加減是 null
+  repeat_last: RepeatSnapshot | null
 }
 
 export function uploadAudio(customerId: string, audio: Blob, filename: string, clientRef: string) {

@@ -14,6 +14,9 @@ export function quoteTotal(
   return Math.round(discounted + packs.reduce((sum, line) => sum + line.dealPrice * line.packs, 0))
 }
 
+// 一張報價最多幾列，跟後端 MAX_QUOTE_LINES 一樣：照上次填會把上次整張帶進來
+export const MAX_QUOTE_LINES = 30
+
 /** 送不出去的原因，寫在按鈕上；送得出去是 null */
 export function quoteBlocked(input: {
   plainCount: number
@@ -23,6 +26,7 @@ export function quoteBlocked(input: {
   reason: string
 }) {
   if (input.plainCount + input.packCount === 0) return "至少要有一項數量大於 0"
+  if (input.plainCount + input.packCount > MAX_QUOTE_LINES) return `一張報價最多 ${MAX_QUOTE_LINES} 項`
   if (!input.route.valid) return input.route.text
   if (input.discount > 0 && input.plainCount === 0) return "折扣只套在沒促銷的品項上"
   if (input.route.steps.length > 0 && !input.reason.trim()) return "要送簽核，請寫申請理由"
