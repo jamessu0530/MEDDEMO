@@ -75,6 +75,8 @@ class VisitDetail(BaseModel):
     # 確認送出時提到競品或客訴，就通報轄區主管；畫面上說明風險分與通報給誰
     risk_notice: RiskNotice | None = None
     oa_form_id: int | None = None
+    # 講了跟上次一樣或跟上次比的加減時，展開那一刻的快照（services/repeat_order.py）；確認頁照它寫每一列變了什麼
+    repeat_last: dict[str, Any] | None = None
 
 
 class TranscriptInput(BaseModel):
@@ -132,6 +134,7 @@ def _detail(session: Session, visit: Visit) -> VisitDetail:
         first_competitors=risk.first_competitors(session, visit, fields),
         risk_notice=_risk_notice(session, visit),
         oa_form_id=session.scalar(select(OaExpenseForm.id).where(OaExpenseForm.visit_id == visit.id)),
+        repeat_last=visit.repeat_last,
     )
 
 
