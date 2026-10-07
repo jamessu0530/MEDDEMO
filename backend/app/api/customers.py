@@ -16,7 +16,7 @@ from app.api.methods import MethodCardOut
 from app.db import get_session
 from app.models import AppUser, Customer, Product, SalesTransaction, SapQuotationDraft, Visit
 from app.pricing import supply_price
-from app.services import approvals, customer_profile, last_order, negotiation, promo_packs, writeback
+from app.services import approvals, customer_profile, last_order, negotiation, orders, promo_packs, writeback
 from app.services.scope import SHARING_LEVEL, Scope
 
 router = APIRouter(prefix="/api/customers", tags=["customers"])
@@ -374,8 +374,9 @@ def get_last_order(session: SessionDep, customer_id: str, user: CurrentUser):
 
 # 報價頁列這家客戶近半年進過的品項，跟談判卡看的時間窗一樣
 QUOTE_ITEM_DAYS = customer_profile.TOP_SKU_DAYS
-# 一張報價最多幾列（品項與促銷的口合計）：這家客戶常進的品項大約 10～15 項，再多多半是誤操作
-MAX_QUOTE_LINES = 20
+# 一張報價最多幾列（品項與促銷的口合計）：「照上次填」會把上次整張帶進來，忠孝店上次進貨就有 18 項，
+# 加上上個月的口是 22 列；30 列以上多半是誤操作
+MAX_QUOTE_LINES = 30
 
 
 class QuoteItemOption(BaseModel):
@@ -674,6 +675,29 @@ def create_quote(session: SessionDep, customer_id: str, body: QuoteInput, user: 
         status=lines[0].status, approval=approvals.approval_out(session, form) if form else None,
         created_at=lines[0].created_at,
     )
+
+
+class OrderPlaced(BaseModel):
+    order_no: str
+    date: date
+    amount: float
+
+
+@router.post("/{customer_id}/quotes/{quote_no}/order", response_model=OrderPlaced)
+def place_order(session: SessionDep, customer_id: str, quote_no: str, user: CurrentUser):
+    """客戶下單了：把這張報價寫成今天的進貨，交易紀錄與應收帳款都寫，報價改成已成交（services/orders.py）。不能復原。"""
+    customer, _ = _load(session, customer_id, user, SHARING_LEVEL["quote"])
+    placed = orders.place(session, customer, quote_no)
+    if placed is None:
+        exists = session.scalar(
+            select(func.count()).select_from(SapQuotationDraft)
+            .where(SapQuotationDraft.quote_no == quote_no, SapQuotationDraft.customer_id == customer.id)
+        )
+        if not exists:
+            raise HTTPException(404, "找不到這張報價")
+        raise HTTPException(409, "這張報價已經成交，或還在等簽核")
+    session.commit()
+    return OrderPlaced(**dataclasses.asdict(placed))
 
 
 # ── 連鎖續約（合約申請單）────────────────────────────────────────
