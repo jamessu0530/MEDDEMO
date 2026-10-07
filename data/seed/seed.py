@@ -49,6 +49,7 @@ TABLES = [
     ("sales_transaction", models.SalesTransaction),
     ("receivable", models.Receivable),
     ("visit", models.Visit),
+    ("customer_note", models.CustomerNote),
     ("crm_visit_record", models.CrmVisitRecord),
     ("sap_quotation_draft", models.SapQuotationDraft),
     ("oa_expense_form", models.OaExpenseForm),

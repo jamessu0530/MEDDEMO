@@ -679,3 +679,13 @@ def test_each_region_has_an_office_to_start_from(db):
 def test_the_demo_rep_has_three_route_habits(db):
     found = rows(db, "SELECT kind, weekday, source FROM route_habit WHERE user_id = 'U01' ORDER BY created_at")
     assert found == [("precedence", None, "ai"), ("last", 2, "manual"), ("window", None, "manual")]
+
+
+def test_demo_notes_belong_to_the_demo_rep(db):
+    notes = rows(db, """
+        SELECT n.kind, n.on_date, c.owner_user_id FROM customer_note n JOIN customer c ON c.id = n.customer_id
+    """)
+    assert notes and all(owner == "U01" for _, _, owner in notes)
+    assert {kind for kind, _, _ in notes} == {"bring", "told"}
+    # 有日期與沒日期的要帶的都有，日曆與「下次去」才都有東西看
+    assert any(k == "bring" and d is None for k, d, _ in notes) and any(k == "bring" and d for k, d, _ in notes)

@@ -394,6 +394,36 @@ class FollowUpReminder(Base):
     created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
 
 
+NOTE_KINDS = ("bring", "told")
+
+
+class CustomerNote(Base):
+    """拜訪備忘：下次要帶的東西（bring）與跟客戶講過的促銷（told）。錄音確認時寫進來，業務也能手寫
+    （docs/superpowers/specs/2026-10-07-calendar-notes-design.md）。"""
+
+    __tablename__ = "customer_note"
+    __table_args__ = (
+        one_of("kind", NOTE_KINDS, "kind"),
+        # 講過的一定是某一天講的；要帶的沒講日期就不放上日曆
+        CheckConstraint("kind = 'bring' OR on_date IS NOT NULL", name="told_has_date"),
+        CheckConstraint("char_length(text) BETWEEN 1 AND 200", name="text_length"),
+        Index("ix_customer_note_customer_id", "customer_id", "id"),
+        Index("ix_customer_note_on_date", "on_date"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    customer_id: Mapped[str] = mapped_column(ForeignKey("customer.id"))
+    # 誰記的：錄音來的是做這次拜訪的人，手寫的是實際寫的人
+    user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id"))
+    kind: Mapped[str]
+    text: Mapped[str]
+    # 放在日曆的哪一天；要帶的沒講日期、這次也沒有追蹤日就是 NULL
+    on_date: Mapped[dt.date | None]
+    # 從哪次拜訪來的，手寫的是 NULL
+    visit_id: Mapped[str | None] = mapped_column(ForeignKey("visit.id", ondelete="CASCADE"))
+    created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+
+
 # 以下三張表模擬三套既有系統，欄位形狀刻意各不相同，回寫時要各自對應。
 # visit_id 設唯一：重送失敗項目時不會寫出第二筆。
 

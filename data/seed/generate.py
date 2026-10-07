@@ -947,6 +947,17 @@ def build_method_cards(customers, seed):
     return {"method_card": cards, "method_card_feedback": feedback}
 
 
+def build_notes(as_of):
+    """拜訪備忘的示範資料（catalog.NOTES）：日期跟著展示日走，換展示日不必改資料。"""
+    return [
+        {
+            "customer_id": customer_id, "user_id": catalog.DEMO_USER_ID, "kind": kind, "text": text,
+            "on_date": as_of + timedelta(days=offset) if offset is not None else None, "visit_id": None,
+        }
+        for customer_id, kind, text, offset in catalog.NOTES
+    ]
+
+
 def generate(as_of: date, seed: int = SEED) -> dict[str, list[dict]]:
     rng = random.Random(seed)
     # 公司給的帳號。Email 用工號，密碼十個帳號都一樣，由 DEMO_PASSWORD 設定
@@ -1026,6 +1037,8 @@ def generate(as_of: date, seed: int = SEED) -> dict[str, list[dict]]:
         ],
         # 方法卡放最後、用自己的亂數（seed + 101）：上面每一張表的產出都跟沒有方法卡時一模一樣
         **build_method_cards(customers, seed),
+        # 拜訪備忘的示範資料：手寫的固定清單，不抽亂數
+        "customer_note": build_notes(as_of),
     }
     # 優惠與合約的申請單加在最後、用自己的亂數（seed + 102）：上面每一張表都跟加這一段之前一模一樣，
     # 也不新增任何報價草稿
