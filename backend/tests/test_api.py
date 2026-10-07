@@ -17,8 +17,8 @@ def test_health_reports_ok_when_database_is_reachable(client):
 
 def test_customer_list_returns_every_customer_with_last_visit(client):
     customers = client.get("/api/customers").json()
-    # 客戶清單全國共享（services/scope.py），250 家客戶不分負責人一律列出
-    assert len(customers) == 250
+    # 客戶清單全國共享（services/scope.py），253 家客戶不分負責人一律列出
+    assert len(customers) == 253
     zhongxiao = next(c for c in customers if c["name"] == "康泰連鎖藥局 · 忠孝店")
     assert zhongxiao["last_visit_date"] == "2026-10-19"
     assert zhongxiao["owner_name"] == "林昱辰"

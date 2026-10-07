@@ -4,7 +4,7 @@
 評測題庫的標準答案要用同一個 as_of 產生的資料計算。例外是促銷方案：照搬的那一期是真實方案，
 固定在 2026 年 8 月，換 as_of 只會改變模擬到哪個月。
 
-亂數分四條：原本 80 家客戶與交易、補的 170 家客戶與交易、拜訪、優惠與合約的歷史申請單各用一條。
+亂數分五條：原本 80 家客戶與交易、補的 170 家客戶與交易、拜訪、優惠與合約的歷史申請單、新竹那三家各用一條。
 改其中一段不會連帶改到另一段，例如重排拜訪時，交易金額與帳款一筆都不會變。
 """
 
@@ -95,6 +95,16 @@ FIRST_VISIT_MINUTES = (9 * 60 + 30, 10 * 60 + 30)
 VISIT_GAP_MINUTES = (50, 100)
 # 主角客戶寫死那次的前一週不排別的拜訪，免得前一兩天才剛去過（A 級客戶一般十多天去一次）
 SCRIPTED_QUIET_DAYS = 7
+# 新竹那三家（catalog.HSINCHU_CUSTOMERS）路遠，三到五週才去一次，排在示範業務當天最後一家之後，
+# 從前一站開過去一個多小時
+HSINCHU_VISIT_INTERVAL = (21, 35)
+HSINCHU_DRIVE_MINUTES = (70, 100)
+# 示範的那一家：最近 50 天沒去、也沒再進貨（平常約一個月進一次）。距上次拜訪與進貨都拖很久，
+# 排序模型給的分數比示範業務其他客戶都高，今天的建議一定排進來，理由是「很久沒進貨」。
+# 不給逾期的承諾：那會被硬排到前面、變成「需立即處理」，搶走鎖在第一站的板橋店
+HSINCHU_STALLED = "風城內科診所 · 城隍廟"
+HSINCHU_STALL_DAYS = 50
+HSINCHU_STALLED_NOTE = "醫師說新竹這邊比較少業務跑，慢箋的量其實不小。"
 # 每次拜訪帶到各種內容的機率。原本一年只排 150 筆拜訪（每家約 1.9 次），現在每家約 21 次，
 # 機率都除以 11：每家客戶一年裡被提到競品、客訴、下單意向、承諾、約再訪的次數跟原本一樣，
 # 客戶檔案的提醒與待處理事項不會因為拜訪變多而暴增
@@ -239,6 +249,19 @@ def location_of(customer_id: str, city: str, district: str) -> tuple[float, floa
     return round(lat, 6), round(lng, 6)
 
 
+def customer_row(i, name, type_, group, region, city, area, grade, contract_end, owner):
+    """客戶表的一列：編號 C001 起，地點、行政區與位置從城市與名稱裡的地區算出來。"""
+    customer_id = f"C{i:03d}"
+    district = district_of(type_, city, area)
+    lat, lng = location_of(customer_id, city, district)
+    return {
+        "id": customer_id, "name": name, "type": type_, "chain_group": group,
+        "region": region, "city": city, "place_id": place_of(name, type_, city, area), "grade": grade,
+        "contract_end_date": contract_end, "owner_user_id": owner,
+        "area": district, "lat": lat, "lng": lng,
+    }
+
+
 def build_customers(rng, as_of, specs, assigned, first_id=1):
     """同一區的客戶由該區業務輪流負責；assigned 記每一區已經分了幾家，補客戶時接著輪。"""
     customers = []
@@ -254,15 +277,7 @@ def build_customers(rng, as_of, specs, assigned, first_id=1):
             grade = "B"
         has_contract = type_ == "chain" or (type_ == "independent" and rng.random() < 0.4)
         contract_end = as_of + timedelta(days=rng.randint(20, 400)) if has_contract else None
-        customer_id = f"C{i:03d}"
-        district = district_of(type_, city, area)
-        lat, lng = location_of(customer_id, city, district)
-        customers.append({
-            "id": customer_id, "name": name, "type": type_, "chain_group": group,
-            "region": region, "city": city, "place_id": place_of(name, type_, city, area), "grade": grade,
-            "contract_end_date": contract_end, "owner_user_id": owner,
-            "area": district, "lat": lat, "lng": lng,
-        })
+        customers.append(customer_row(i, name, type_, group, region, city, area, grade, contract_end, owner))
     return customers
 
 
@@ -537,56 +552,114 @@ def plan_content_rates(planned, customers, transactions, receivables):
     return [{key: m[key] * scale[key] for key in CONTENT_RATES} for m in multipliers]
 
 
+VISIT_TABLES = ("visit", "crm_visit_record", "sap_quotation_draft", "oa_expense_form", "writeback_log")
+
+
+def add_visit_rows(tables, n, c, visited_at, transcript, fields, sources, products):
+    """第 n 次拜訪寫進拜訪、CRM 拜訪紀錄、SAP 報價草稿（有下單意向才有）、OA 出差單與回寫紀錄。不抽亂數。"""
+    visit_id = f"V{n:05d}"
+    d = visited_at.date()
+    confirmed_at = visited_at + timedelta(minutes=10)
+    tables["visit"].append({
+        "id": visit_id, "customer_id": c["id"], "user_id": c["owner_user_id"],
+        "visited_at": visited_at, "transcript": transcript,
+        "fields_raw": fields, "fields_final": fields, "field_sources": sources,
+        "status": "synced", "created_at": visited_at, "confirmed_at": confirmed_at,
+    })
+    tables["crm_visit_record"].append({
+        "visit_id": visit_id, "customer_id": c["id"], "rep_id": c["owner_user_id"], "visit_date": d,
+        "competitor": "、".join(x["name"] for x in fields["competitor"]) if fields["competitor"] else None,
+        "complaint": fields["complaint"],
+        "intent_summary": "、".join(f"{x['product_text']} × {x['qty']}{x['unit']}" for x in fields["intent"]) if fields["intent"] else None,
+        "commitment": f"{fields['commitment']['text']}（{fields['commitment']['due']} 前）" if fields["commitment"] else None,
+        "follow_up_date": fields["follow_up_date"], "created_at": confirmed_at,
+    })
+    for line_no, item in enumerate(fields["intent"] or [], start=1):
+        price = round(products[item["sku"]]["unit_price"] * PRICE_FACTOR[c["type"]])
+        tables["sap_quotation_draft"].append({
+            "quote_no": visit_id, "visit_id": visit_id, "line_no": line_no, "customer_id": c["id"], "sku": item["sku"],
+            "created_by": c["owner_user_id"],
+            "qty": item["qty"], "unit_price": price, "amount": price * item["qty"],
+            "free_qty": 0, "promo_code": None, "packs": None, "discount_pct": 0, "status": "draft",
+            "created_at": confirmed_at,
+        })
+    tables["oa_expense_form"].append({
+        "form_no": f"OA{d:%Y%m}{n:05d}", "kind": "trip", "required_level": "manager",
+        "visit_id": visit_id, "applicant_id": c["owner_user_id"], "trip_date": d,
+        "customer_id": c["id"], "purpose": "客戶拜訪", "unit_name": c["region"],
+        "status": "approved", "created_at": confirmed_at, "submitted_at": confirmed_at,
+        # 優惠與合約申請單才有的欄位。同一張表的每一列要有同一組鍵，才能整批寫入
+        "request_date": None, "payload": None, "model_probability": None, "model_features": None,
+        "auto_approved": False,
+    })
+    for target in ("crm", "sap", "oa"):
+        status = "skipped" if target == "sap" and not fields["intent"] else "success"
+        tables["writeback_log"].append({
+            "visit_id": visit_id, "target": target, "attempt": 1, "status": status,
+            "created_at": confirmed_at, "finished_at": confirmed_at,
+        })
+
+
 def build_visits(rng, customers, baskets, products, as_of, transactions, receivables):
-    tables = {name: [] for name in ("visit", "crm_visit_record", "sap_quotation_draft", "oa_expense_form", "writeback_log")}
+    tables = {name: [] for name in VISIT_TABLES}
     planned = schedule_visits(rng, customers, as_of)
     rates = plan_content_rates(planned, customers, transactions, receivables)
     for n, ((c, visited_at, content), rate) in enumerate(zip(planned, rates), start=1):
-        visit_id = f"V{n:05d}"
-        d = visited_at.date()
         if content is None:
             # 主角客戶其他的拜訪都是例行拜訪：提醒只來自寫死的那次，客戶檔案與題庫的答案才不會被亂數改掉
             content = {} if c["name"] in SCENARIO_CUSTOMERS else random_content(rng, baskets[c["id"]], rate)
-        transcript, fields, sources = render_visit(rng, c, d, content, products)
-        confirmed_at = visited_at + timedelta(minutes=10)
-        tables["visit"].append({
-            "id": visit_id, "customer_id": c["id"], "user_id": c["owner_user_id"],
-            "visited_at": visited_at, "transcript": transcript,
-            "fields_raw": fields, "fields_final": fields, "field_sources": sources,
-            "status": "synced", "created_at": visited_at, "confirmed_at": confirmed_at,
-        })
-        tables["crm_visit_record"].append({
-            "visit_id": visit_id, "customer_id": c["id"], "rep_id": c["owner_user_id"], "visit_date": d,
-            "competitor": "、".join(x["name"] for x in fields["competitor"]) if fields["competitor"] else None,
-            "complaint": fields["complaint"],
-            "intent_summary": "、".join(f"{x['product_text']} × {x['qty']}{x['unit']}" for x in fields["intent"]) if fields["intent"] else None,
-            "commitment": f"{fields['commitment']['text']}（{fields['commitment']['due']} 前）" if fields["commitment"] else None,
-            "follow_up_date": fields["follow_up_date"], "created_at": confirmed_at,
-        })
-        for line_no, item in enumerate(fields["intent"] or [], start=1):
-            price = round(products[item["sku"]]["unit_price"] * PRICE_FACTOR[c["type"]])
-            tables["sap_quotation_draft"].append({
-                "quote_no": visit_id, "visit_id": visit_id, "line_no": line_no, "customer_id": c["id"], "sku": item["sku"],
-                "created_by": c["owner_user_id"],
-                "qty": item["qty"], "unit_price": price, "amount": price * item["qty"],
-                "free_qty": 0, "promo_code": None, "packs": None, "discount_pct": 0, "status": "draft",
-                "created_at": confirmed_at,
-            })
-        tables["oa_expense_form"].append({
-            "form_no": f"OA{d:%Y%m}{n:05d}", "kind": "trip", "required_level": "manager",
-            "visit_id": visit_id, "applicant_id": c["owner_user_id"], "trip_date": d,
-            "customer_id": c["id"], "purpose": "客戶拜訪", "unit_name": c["region"],
-            "status": "approved", "created_at": confirmed_at, "submitted_at": confirmed_at,
-            # 優惠與合約申請單才有的欄位。同一張表的每一列要有同一組鍵，才能整批寫入
-            "request_date": None, "payload": None, "model_probability": None, "model_features": None,
-            "auto_approved": False,
-        })
-        for target in ("crm", "sap", "oa"):
-            status = "skipped" if target == "sap" and not fields["intent"] else "success"
-            tables["writeback_log"].append({
-                "visit_id": visit_id, "target": target, "attempt": 1, "status": status,
-                "created_at": confirmed_at, "finished_at": confirmed_at,
-            })
+        transcript, fields, sources = render_visit(rng, c, visited_at.date(), content, products)
+        add_visit_rows(tables, n, c, visited_at, transcript, fields, sources, products)
+    return tables
+
+
+def build_hsinchu(rng, as_of, first_id, products, visits):
+    """新竹那三家（catalog.HSINCHU_CUSTOMERS）的客戶、交易、帳款與拜訪，回傳要接在各張表最後面的列。
+
+    整批在所有資料產生完之後才做、用自己的亂數：不經過各區業務輪流分配（直接算示範業務的），也不進
+    排拜訪、拜訪內容機率、方法卡與申請單的計算，前面每一張表原本的每一筆都跟沒有這一批時一模一樣。
+    拜訪只排在示範業務那天還不到五家的平日、接在他當天最後一家之後：一天照樣是 3～5 家。
+    拜訪都是例行拜訪，不帶下單意向（會開報價草稿、變成今日路線的商機）也不帶承諾（逾期會被硬排）。
+    """
+    owner, region, city = catalog.DEMO_USER_ID, "北區", "新竹市"
+    stalled_since = as_of - timedelta(days=HSINCHU_STALL_DAYS)
+    tables = {name: [] for name in ("customer", "sales_transaction", "receivable", *VISIT_TABLES)}
+    customers = tables["customer"]
+    for i, (store, area, type_, grade) in enumerate(catalog.HSINCHU_CUSTOMERS, start=first_id):
+        customers.append(customer_row(i, f"{store} · {area}", type_, None, region, city, area, grade, None, owner))
+    for c in customers:
+        lines = build_orders(rng, c, build_basket(rng, c, products), products, as_of)
+        if c["name"] == HSINCHU_STALLED:
+            lines = [line for line in lines if line["date"] < stalled_since]
+        tables["sales_transaction"] += lines
+        tables["receivable"] += build_receivables(rng, c, lines, as_of, late=False)
+
+    # 示範業務每天已經排了幾家、最後一家幾點。他每個平日都有出門，有記錄的日子就是平日
+    count, last = {}, {}
+    for v in visits:
+        if v["user_id"] == owner:
+            day = v["visited_at"].date()
+            count[day] = count.get(day, 0) + 1
+            last[day] = max(last.get(day, v["visited_at"]), v["visited_at"])
+    first_day = as_of - timedelta(days=HISTORY_DAYS - 1)
+    planned = []
+    for c in customers:
+        until = stalled_since if c["name"] == HSINCHU_STALLED else as_of
+        day = first_day + timedelta(days=rng.randint(0, HSINCHU_VISIT_INTERVAL[1]))
+        while day < until:
+            if count.get(day, VISITS_PER_DAY[1]) >= VISITS_PER_DAY[1]:
+                day += timedelta(days=1)
+                continue
+            last[day] += timedelta(minutes=rng.randint(*HSINCHU_DRIVE_MINUTES))
+            count[day] += 1
+            planned.append((c, last[day]))
+            day += timedelta(days=rng.randint(*HSINCHU_VISIT_INTERVAL))
+    planned.sort(key=lambda x: (x[1], x[0]["id"]))
+    final = {c["id"]: at for c, at in planned}  # 每家最後一次拜訪
+    for n, (c, visited_at) in enumerate(planned, start=len(visits) + 1):
+        content = {"note": HSINCHU_STALLED_NOTE} if c["name"] == HSINCHU_STALLED and visited_at == final[c["id"]] else {}
+        transcript, fields, sources = render_visit(rng, c, visited_at.date(), content, products)
+        add_visit_rows(tables, n, c, visited_at, transcript, fields, sources, products)
     return tables
 
 
@@ -1091,4 +1164,9 @@ def generate(as_of: date, seed: int = SEED) -> dict[str, list[dict]]:
     )
     # 上個月已成交的報價加在最後、不抽亂數：上面每一張表都跟加這一段之前一模一樣
     data["sap_quotation_draft"] += build_ordered_quotes(as_of, customers, products, promotion_items)
+    # 新竹那三家放在最後、用自己的亂數（seed + 3）：上面每一張表原本的每一筆都不變（客戶編號、交易、拜訪、
+    # 單號都沒有往後挪），只在客戶、交易、帳款與拜訪相關的表最後面多出這三家的
+    hsinchu = build_hsinchu(random.Random(seed + 3), as_of, len(customers) + 1, products, data["visit"])
+    for table, rows in hsinchu.items():
+        data[table] = data[table] + rows
     return data

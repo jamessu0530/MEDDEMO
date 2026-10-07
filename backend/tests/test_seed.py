@@ -44,11 +44,12 @@ def test_generation_is_deterministic():
 
 
 def test_scale_matches_plan(db):
-    assert rows(db, "SELECT count(*) FROM customer")[0][0] == 250
+    # 250 家，加上示範業務在新竹市的三家（catalog.HSINCHU_CUSTOMERS：兩家獨立藥局、一家診所）
+    assert rows(db, "SELECT count(*) FROM customer")[0][0] == 253
     # 40 個虛構品項，加上促銷方案照搬的 20 個真實品項
     assert rows(db, "SELECT count(*) FROM product")[0][0] == 60
     by_type = dict(rows(db, "SELECT type, count(*) FROM customer GROUP BY type"))
-    assert by_type == {"chain": 76, "independent": 112, "clinic": 62}
+    assert by_type == {"chain": 76, "independent": 114, "clinic": 63}
     first, last, months = rows(db, """
         SELECT min(date), max(date), count(DISTINCT date_trunc('month', date)) FROM sales_transaction
     """)[0]
@@ -57,9 +58,9 @@ def test_scale_matches_plan(db):
 
 
 def test_each_rep_visits_three_to_five_customers_every_weekday(db):
-    # 一位業務負責 50 家，一天跑 3～5 家、只跑平日；記錄的這一年裡每個平日都有出門
+    # 一位業務負責 50 家（示範業務多新竹那三家），一天跑 3～5 家、只跑平日；記錄的這一年裡每個平日都有出門
     reps = ["U01", "U02", "U03", "U04", "U05"]
-    assert dict(rows(db, "SELECT owner_user_id, count(*) FROM customer GROUP BY 1")) == dict.fromkeys(reps, 50)
+    assert dict(rows(db, "SELECT owner_user_id, count(*) FROM customer GROUP BY 1")) == dict.fromkeys(reps, 50) | {"U01": 53}
     per_day = rows(db, """
         SELECT user_id, (visited_at AT TIME ZONE 'Asia/Taipei')::date, count(*) FROM visit GROUP BY 1, 2
     """)
@@ -259,12 +260,12 @@ def test_every_seeded_trip_form_has_two_signed_steps_and_two_log_lines(db):
             IS DISTINCT FROM ARRAY['submitted', 'approved']
         )
     """)[0][0] == 0
-    assert rows(db, "SELECT count(*) FROM oa_expense_form WHERE kind = 'trip' AND status = 'approved'")[0][0] == 5223
+    assert rows(db, "SELECT count(*) FROM oa_expense_form WHERE kind = 'trip' AND status = 'approved'")[0][0] == 5259
 
 
 def test_approval_history_leaves_the_trip_forms_and_quotes_alone(db):
-    # 既有的 5,223 張出差單照舊；歷史優惠單不建報價草稿（會影響今日路線的商機）
-    assert rows(db, "SELECT count(*), count(visit_id), count(payload) FROM oa_expense_form WHERE kind = 'trip'")[0] == (5223, 5223, 0)
+    # 既有的 5,259 張出差單（新竹那三家的 36 張在內）照舊；歷史優惠單不建報價草稿（會影響今日路線的商機）
+    assert rows(db, "SELECT count(*), count(visit_id), count(payload) FROM oa_expense_form WHERE kind = 'trip'")[0] == (5259, 5259, 0)
     assert rows(db, "SELECT count(*) FROM sap_quotation_draft WHERE visit_id IS NOT NULL")[0][0] == 295
     assert rows(db, "SELECT count(*) FROM oa_expense_form WHERE kind = 'discount' AND payload->>'quote_no' IS NOT NULL")[0][0] == 0
     # 單號各自編號，不重複
@@ -416,8 +417,8 @@ def test_promotion_products_have_no_sales_history(db):
 def test_every_customer_sits_on_a_place_in_its_own_region(db):
     # 縣市一個地點，台北市客戶多，拆成十二個行政區；每個地點都有客戶
     by_place = dict(rows(db, "SELECT p.name, count(*) FROM customer c JOIN place p ON p.id = c.place_id GROUP BY 1"))
-    assert len(by_place) == 17
-    assert by_place["台北市・大安區"] > 0 and by_place["新北市"] > 0
+    assert len(by_place) == 18
+    assert by_place["台北市・大安區"] > 0 and by_place["新北市"] > 0 and by_place["新竹市"] == 3
     # 地點所在的區就是客戶的區；台北市的客戶一定對到行政區，其他縣市就是縣市本身
     assert rows(db, """
         SELECT c.name FROM customer c
@@ -478,8 +479,8 @@ def test_seeded_conversations_sit_in_their_channels(db):
         "陳建宏小組": 5, "台北市・大安區": 2, "康泰連鎖藥局 · 忠孝店": 2, "許文彬小組": 2, "蔡宗翰小組": 2,
         "新品上市": 2, "補貨問題": 1, "公司公告": 1,
     }
-    # 全國 1、整區 3、小組 4、地點 17、文字頻道 3，加上灌資料建的忠孝店討論串
-    assert rows(db, "SELECT count(*) FROM channel")[0][0] == 29
+    # 全國 1、整區 3、小組 4、地點 18、文字頻道 3，加上灌資料建的忠孝店討論串
+    assert rows(db, "SELECT count(*) FROM channel")[0][0] == 30
     # 時間都在灌資料之前，同一個頻道裡編號越大越晚
     assert rows(db, "SELECT count(*) FROM channel_message WHERE created_at > now()")[0][0] == 0
     assert rows(db, """
@@ -664,7 +665,7 @@ def test_a_reseed_keeps_self_created_accounts_and_sign_in_bindings(used_database
         }
         # 假資料照常灌好：十個公司帳號加上留下來的那一個
         assert rows(conn, "SELECT count(*) FROM app_user")[0][0] == 11
-        assert rows(conn, "SELECT count(*) FROM customer")[0][0] == 250
+        assert rows(conn, "SELECT count(*) FROM customer")[0][0] == 253
         # 人員主檔只有公司的業務與主管；留下來的自建帳號沒有（新人第一週頁把他當新人）
         assert rows(conn, "SELECT count(*), count(*) FILTER (WHERE user_id = 'XKEEP001') FROM sap_employee") == [(9, 0)]
     engine.dispose()

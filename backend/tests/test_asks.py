@@ -108,7 +108,7 @@ def test_chinese_is_split_into_overlapping_pairs():
 
 
 def test_sql_executor_only_reads_the_semantic_views(engine):
-    assert run_readonly(engine, "SELECT count(*) AS n FROM v_customer_summary").rows == [[250]]
+    assert run_readonly(engine, "SELECT count(*) AS n FROM v_customer_summary").rows == [[253]]
     with pytest.raises(QueryRejected):
         run_readonly(engine, "DELETE FROM visit")
     with pytest.raises(QueryRejected):

@@ -361,14 +361,16 @@ def test_the_suggestion_follows_the_reps_habits(tx):
 
 def test_habit_tags_only_the_stops_the_habit_actually_rules_today(tx):
     """綠色「習慣」標籤：先後／排第一／排最後今天真的排出規則、這一站在規則裡才算，光是被提到不算
-    （例如「康泰連鎖藥局的店排在診所前面」，今天的路線裡根本沒有診所，不該標）。"""
+    （例如「康泰連鎖藥局的店排在獨立藥局前面」，今天的路線裡根本沒有獨立藥局，不該標）。"""
     tx.execute(delete(RouteHabit).where(RouteHabit.user_id == "U01"))
     plain = service.view(tx, service.get_or_create(tx, "U01"))
     ids = [s.customer_id for s in plain.stops]
-    assert not any(s.type == "clinic" for s in plain.stops)  # U01 灌的路線本來就沒有診所
+    # U01 灌的路線是連鎖分店加新竹的診所，沒有獨立藥局
+    assert not any(s.type == "independent" for s in plain.stops)
     spec = route_habits.HabitSpec
     chain = route_habits.create(
-        tx, "U01", spec("precedence", {"by": "chain", "value": "康泰連鎖藥局"}, {"by": "type", "value": "clinic"}), "manual",
+        tx, "U01", spec("precedence", {"by": "chain", "value": "康泰連鎖藥局"}, {"by": "type", "value": "independent"}),
+        "manual",
     )
     view = rebuild(tx)
     assert all(chain.id not in s.habit_ids for s in view.stops)
@@ -632,7 +634,8 @@ def test_candidates_put_the_nearest_first(tx):
     on_route = [s.customer_id for s in before.stops]
     found = service.candidates(tx, "U01")
     listed = [c.customer_id for c in found.nearby + found.others]
-    assert len(listed) == len(set(listed)) == 45 and not set(listed) & set(on_route)
+    # 示範業務 53 家（含新竹那三家），扣掉路線上的 5 家
+    assert len(listed) == len(set(listed)) == 48 and not set(listed) & set(on_route)
     assert len(found.nearby) == service.NEARBY and not found.full
     assert [c.extra_minutes for c in found.nearby] == sorted(c.extra_minutes for c in found.nearby)
     assert all(c.signal and c.after_stop is not None for c in found.nearby)

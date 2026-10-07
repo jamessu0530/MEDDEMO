@@ -161,7 +161,7 @@ def test_anyone_can_create_an_account_and_is_signed_in(client, engine):
         headers = {"Authorization": f"Bearer {created.json()['token']}"}
         assert client.get("/api/auth/me", headers=headers).status_code == 200
         # 客戶清單全國共享，跟代理哪個業務無關（services/scope.py）
-        assert len(client.get("/api/customers", headers=headers).json()) == 250
+        assert len(client.get("/api/customers", headers=headers).json()) == 253
 
         # 之後用同一組 Email 密碼登入得進去；同一個 Email 不能再建一次
         assert client.post("/api/auth/login", json={"email": "judge@register.test", "password": "judge-pass-1"}).status_code == 200

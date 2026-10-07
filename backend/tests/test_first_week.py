@@ -82,12 +82,12 @@ def test_a_long_serving_rep_is_not_a_newcomer_but_can_still_open_the_page(client
     # 哪一區、主管是誰來自組織樹；轄區縣市是名下客戶所在的縣市，客戶多的在前
     assert page["employee"] == {
         "employee_no": "E00342", "hire_date": "2021-03-01", "region": "北區", "manager_name": "陳建宏",
-        "cities": ["台北市", "新北市"], "proxy_of": None,
+        "cities": ["台北市", "新北市", "新竹市"], "proxy_of": None,
     }
     assert page["customers"] == {
-        "total": 50,
-        "by_type": {"chain": 16, "independent": 22, "clinic": 12},
-        "by_grade": {"A": 10, "B": 26, "C": 14},
+        "total": 53,
+        "by_type": {"chain": 16, "independent": 24, "clinic": 13},
+        "by_grade": {"A": 11, "B": 27, "C": 15},
     }
     assert page["promotion"] == {"name": "202610保藥特搭活動", "item_count": 34}
     assert [day["day"] for day in page["days"]] == [1, 2, 3, 4, 5]
@@ -137,11 +137,11 @@ def test_a_self_created_account_is_a_newcomer_looking_at_the_demo_rep(tx, client
     assert (page["is_newcomer"], page["day_no"]) == (True, None)
     assert page["employee"] == {
         "employee_no": None, "hire_date": None, "region": "北區", "manager_name": "陳建宏",
-        "cities": ["台北市", "新北市"], "proxy_of": "林昱辰",
+        "cities": ["台北市", "新北市", "新竹市"], "proxy_of": "林昱辰",
     }
     # 客戶、產品線、先認識的五家都是林昱辰的
     demo = client.get("/api/first-week", headers=auth("U01")).json()
-    assert page["customers"]["total"] == 50
+    assert page["customers"]["total"] == 53
     for key in ("customers", "product_lines", "key_customers"):
         assert page[key] == demo[key]
 

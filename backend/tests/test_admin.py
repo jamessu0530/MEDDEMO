@@ -46,7 +46,7 @@ def test_it_sits_on_the_root_and_sees_everything(client, auth, engine):
         assert client.get(f"/api/customers/{customer_id}/profile", headers=auth("A01")).status_code == 200
     # 語意層（模型寫的 SQL）也一樣：TW 截到 REGION 還是 TW
     sql = "SELECT count(DISTINCT customer_id) FROM v_customer_summary"
-    assert run_readonly(engine, sql, Scope(path="TW")).rows == [[250]]
+    assert run_readonly(engine, sql, Scope(path="TW")).rows == [[253]]
     # 動得了：SELF 層級也涵蓋每個人
     assert Scope(path="TW").can_see(SELF, "TW.S.M04.U05") is True
 
@@ -81,7 +81,7 @@ def test_only_it_can_open_the_org_admin(client, auth):
     # 公司帳號全列（自建與第三方登入的不在組織裡，不列）
     assert {u["id"] for u in chart["users"]} >= {"A01", "M01", "M02", "M03", "M04", "U01", "U02", "U03", "U04", "U05"}
     assert all(not u["id"].startswith("X") for u in chart["users"])
-    assert member(chart, "U01")["customer_count"] == 50
+    assert member(chart, "U01")["customer_count"] == 53  # 50 家加新竹那三家
     # 主管端 IT 也進得去
     assert client.get("/api/manager/notices", headers=auth("A01")).status_code == 200
     assert client.get("/api/oa/inbox", headers=auth("A01")).status_code == 200
@@ -228,7 +228,7 @@ def test_promoting_hands_the_customers_over_and_takes_effect_without_signing_in_
     ).json()
     assert member(chart, "U02")["role"] == "manager"
     assert member(chart, "U02")["customer_count"] == 0
-    assert member(chart, "U01")["customer_count"] == 100
+    assert member(chart, "U01")["customer_count"] == 103
     assert fresh(tx, "U02").org_path == "TW.C.U02"
     assert chart["log"][0]["detail"] == "王冠宇從業務升為中區主管，50 家客戶移交給林昱辰"
     # 權限每個請求都讀資料庫：同一張 token 馬上就是主管

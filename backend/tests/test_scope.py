@@ -32,8 +32,8 @@ def client(engine):
 def test_everyone_sees_every_customer_but_only_acts_on_their_own(client, auth):
     assert client.get("/api/customers").status_code == 401
     # 客戶清單是全國共享的：名稱、類型、區、等級、負責人
-    assert len(client.get("/api/customers", headers=auth("U01")).json()) == 250
-    assert len(client.get("/api/customers", headers=auth("M01")).json()) == 250
+    assert len(client.get("/api/customers", headers=auth("U01")).json()) == 253
+    assert len(client.get("/api/customers", headers=auth("M01")).json()) == 253
     assert client.get("/api/customers/C002", headers=auth("U03")).status_code == 200
 
     # 但檔案、議價卡、報價還是只有負責人與他的主管看得到。C002 是王冠宇（U02）的
@@ -54,7 +54,7 @@ def test_the_customer_list_hides_visit_dates_from_outside_the_team(client, auth)
         return {c["id"]: c for c in client.get("/api/customers", headers=auth(user_id)).json()}
 
     north = listed("U01")
-    assert len(north) == 250  # 清單本身沒有縮水
+    assert len(north) == 253  # 清單本身沒有縮水
     assert north["C001"]["last_visit_date"] is not None  # 自己的客戶
     assert north["C002"]["last_visit_date"] is not None  # 同團隊 U02 的客戶
     assert north["C017"]["last_visit_date"] is None      # 南區 U04 的客戶
@@ -130,15 +130,15 @@ def test_quoting_for_someone_elses_customer_is_refused(client, auth):
 
 def test_sales_figures_stop_at_the_region(engine):
     sql = "SELECT count(DISTINCT customer_id) FROM v_customer_summary"
-    assert run_readonly(engine, sql).rows == [[250]]
-    # U01 在 REGION 層級看得到整個北區，不只自己的 50 家
-    assert run_readonly(engine, sql, Scope(path="TW.N.M01.U01")).rows == [[100]]
-    assert run_readonly(engine, sql, Scope(path="TW.N.M01")).rows == [[100]]
+    assert run_readonly(engine, sql).rows == [[253]]
+    # U01 在 REGION 層級看得到整個北區（他的 53 家加 U02 的 50 家），不只自己的
+    assert run_readonly(engine, sql, Scope(path="TW.N.M01.U01")).rows == [[103]]
+    assert run_readonly(engine, sql, Scope(path="TW.N.M01")).rows == [[103]]
     assert run_readonly(engine, sql, Scope(path="TW.C.M02.U03")).rows == [[50]]
     for view in ("v_monthly_sales", "v_margin_breakdown"):
-        # 北區 100 家全部都有交易，所以是剛好 100；寫 <= 100 的話少過濾到一區以外的幾家也測不出來
+        # 北區 103 家全部都有交易，所以是剛好 103；寫 <= 103 的話少過濾到一區以外的幾家也測不出來
         rows = run_readonly(engine, f"SELECT count(DISTINCT customer_id) FROM {view}", Scope(path="TW.N.M01.U01")).rows
-        assert rows[0][0] == 100
+        assert rows[0][0] == 103
 
 
 def test_the_sql_views_declare_the_same_depths_as_python():

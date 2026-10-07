@@ -17,7 +17,7 @@ from app.services import channels
 NORTH_PLACES = {
     "台北市・中正區", "台北市・大同區", "台北市・中山區", "台北市・松山區", "台北市・大安區", "台北市・萬華區",
     "台北市・信義區", "台北市・士林區", "台北市・北投區", "台北市・內湖區", "台北市・南港區", "台北市・文山區",
-    "新北市",
+    "新北市", "新竹市",
 }
 
 
@@ -46,8 +46,8 @@ def test_channels_follow_the_org_tree_and_places(engine):
             session, list(session.scalars(select(Channel).where(Channel.kind.not_in(("customer", "topic")))))
         )
     by_name = {i.name: i for i in infos}
-    # 全國 1、整區 3、小組 4（每位主管一個）、地點 17
-    assert len(infos) == 25
+    # 全國 1、整區 3、小組 4（每位主管一個）、地點 18
+    assert len(infos) == 26
     assert (by_name["全國"].path, by_name["全國"].parent_id, by_name["全國"].region_id) == ("TW", None, None)
     assert (by_name["北區"].path, by_name["北區"].parent_id) == ("TW.N", by_name["全國"].id)
     assert (by_name["陳建宏小組"].path, by_name["陳建宏小組"].parent_id) == ("TW.N.M01", by_name["北區"].id)
@@ -68,7 +68,7 @@ def test_each_account_sees_its_own_team_its_region_and_the_whole_company(client,
     assert names(client, auth("M04")) == {"全國", "公司公告", "南區", "蔡宗翰小組", "高雄市", "台南市"}
     # IT 坐在根節點上，全部看得到，包括各組的原始對話
     everything = listing(client, auth("A01"))
-    assert len(everything) == 28
+    assert len(everything) == 29
     # 全國與它的文字頻道在最前面，接著北區、北區的文字頻道、小組、地點（照名稱排），再來中區、南區
     order = [c["name"] for c in everything]
     assert order[:7] == ["全國", "公司公告", "北區", "新品上市", "補貨問題", "陳建宏小組", "台北市・中山區"]
