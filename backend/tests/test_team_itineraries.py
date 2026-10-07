@@ -153,6 +153,33 @@ def test_a_walked_leg_is_asked_of_google_as_walking_on_both_maps(tx, monkeypatch
     assert [s.travel_mode for s in team.route(tx, person(tx, "U01")).stops][:3] == ["drive", "walk", "drive"]
 
 
+def test_a_region_without_an_office_location_draws_legs_between_stops_with_each_legs_mode(tx, monkeypatch, env):
+    itinerary = itineraries.get_or_create(tx, "U01")
+    stops = itineraries.view(tx, itinerary).stops
+    itineraries.set_leg_mode(tx, "U01", stops[0].customer_id, stops[1].customer_id, "walk", itinerary.version)
+    office = tx.scalar(select(OrgUnit).where(OrgUnit.kind == "region", OrgUnit.name == person(tx, "U01").region))
+    office.lat = office.lng = None
+    tx.flush()
+    env(GOOGLE_MAPS_SERVER_KEY="server-key")
+    asked = []
+
+    def route_legs(key, points, http=None, polylines=True, mode="drive"):
+        asked.append((mode, len(points) - 1))
+        return [google_routes.Leg(seconds=60, meters=500, polyline=f"line{n}") for n in range(len(points) - 1)]
+
+    monkeypatch.setattr(google_routes, "route_legs", route_legs)
+    for draw in (lambda: team.rep_map(tx, person(tx, "U01"), itinerary), lambda: team.route(tx, person(tx, "U01"))):
+        asked.clear()
+        found = draw()
+        assert len(found.legs) == len(stops) - 1
+        # 沒有辦公室時第一段是第一站到第二站，走路；其餘開車
+        assert ("walk", 1) in asked
+        assert ("drive", len(stops) - 2) in asked
+    view = itineraries.view(tx, itinerary)
+    assert view.office_start is False
+    assert view.start_city == office.city
+
+
 def test_the_reps_own_map_numbers_the_stops_like_the_home_page(tx):
     itinerary = itineraries.get_or_create(tx, "U01")
     target = itineraries.view(tx, itinerary).stops[1]
