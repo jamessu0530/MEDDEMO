@@ -8,6 +8,7 @@ import {
   type Competitor,
   type FieldKey,
   type IntentItem,
+  type NoteItem,
   type Visit,
   type VisitFields,
 } from "@/api/visits"
@@ -68,6 +69,7 @@ export function FieldEditor({ visit, field, onClose, onSaved }: FieldEditorProps
               {field === "intent" && <IntentEditor initial={visit.fields.intent} {...props} />}
               {field === "commitment" && <CommitmentEditor initial={visit.fields.commitment} {...props} />}
               {field === "follow_up_date" && <DateEditor initial={visit.fields.follow_up_date} {...props} />}
+              {field === "notes" && <NotesEditor initial={visit.fields.notes} {...props} />}
             </div>
             {error && <p className="text-sm text-destructive">{error}</p>}
           </>
@@ -193,6 +195,69 @@ function CompetitorEditor({ initial, saving, onSave }: EditorProps<Competitor[]>
         </div>
       ))}
       <AddButton label="新增一家" onClick={() => setRows([...rows, { name: "", detail: null }])} />
+      <EditorFooter saving={saving} onClear={() => onSave(null)} onSave={save} />
+    </>
+  )
+}
+
+const NOTE_KINDS: { value: NoteItem["kind"]; label: string }[] = [
+  { value: "bring", label: "要帶的" },
+  { value: "told", label: "講過的" },
+]
+
+/** 備忘：一則一列。要帶的可以選日期（沒選就放追蹤日）；講過的放拜訪日，不選日期 */
+function NotesEditor({ initial, saving, onSave }: EditorProps<NoteItem[]>) {
+  const [rows, setRows] = useState<NoteItem[]>(initial ?? [{ kind: "bring", text: "", date: null }])
+  const update = (index: number, row: NoteItem) => setRows(rows.map((r, i) => (i === index ? row : r)))
+
+  function save() {
+    const cleaned = rows
+      .filter((r) => r.text.trim())
+      .map((r) => ({ kind: r.kind, text: r.text.trim(), date: r.kind === "bring" ? r.date || null : null }))
+    onSave(cleaned.length ? cleaned : null)
+  }
+
+  return (
+    <>
+      <p className="text-xs text-muted-foreground">確認後存進這家的備忘，下次去之前在客戶檔案與日曆看得到。</p>
+      {rows.map((row, index) => (
+        <div key={index} className="flex flex-col gap-2 rounded-xl border-2 bg-card p-3 shadow-lip">
+          <div className="flex gap-2">
+            <div className="grid flex-1 grid-cols-2 gap-2">
+              {NOTE_KINDS.map((choice) => (
+                <Button
+                  key={choice.value}
+                  type="button"
+                  variant={row.kind === choice.value ? "default" : "outline"}
+                  className="h-11"
+                  onClick={() => update(index, { ...row, kind: choice.value })}
+                >
+                  {choice.label}
+                </Button>
+              ))}
+            </div>
+            <RemoveButton onClick={() => setRows(rows.filter((_, i) => i !== index))} />
+          </div>
+          <Input
+            value={row.text}
+            onChange={(e) => update(index, { ...row, text: e.target.value })}
+            placeholder={row.kind === "bring" ? "要帶什麼：DM、試用包、比價表…" : "講了什麼促銷或條件"}
+            aria-label="備忘內容"
+            maxLength={200}
+            className="h-11"
+          />
+          {row.kind === "bring" && (
+            <Input
+              type="date"
+              value={row.date ?? ""}
+              onChange={(e) => update(index, { ...row, date: e.target.value || null })}
+              aria-label="哪天要帶"
+              className="h-11"
+            />
+          )}
+        </div>
+      ))}
+      <AddButton label="新增一則" onClick={() => setRows([...rows, { kind: "bring", text: "", date: null }])} />
       <EditorFooter saving={saving} onClear={() => onSave(null)} onSave={save} />
     </>
   )

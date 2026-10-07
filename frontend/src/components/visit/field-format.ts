@@ -1,9 +1,10 @@
 import type { PromotionItem } from "@/api/promotions"
-import type { FieldKey, IntentItem, VisitFields } from "@/api/visits"
+import type { FieldKey, IntentItem, NoteItem, VisitFields } from "@/api/visits"
+import { noteDate } from "@/lib/calendar"
 import { formatDate, formatMoney } from "@/lib/format"
 import { packDeal } from "@/lib/quote"
 
-export const FIELD_ORDER: FieldKey[] = ["competitor", "complaint", "intent", "commitment", "follow_up_date"]
+export const FIELD_ORDER: FieldKey[] = ["competitor", "complaint", "intent", "commitment", "follow_up_date", "notes"]
 
 export const FIELD_LABEL: Record<FieldKey, string> = {
   competitor: "競品",
@@ -11,6 +12,7 @@ export const FIELD_LABEL: Record<FieldKey, string> = {
   intent: "意向",
   commitment: "承諾",
   follow_up_date: "追蹤",
+  notes: "備忘",
 }
 
 /** 意向的一項：促銷的口寫「Premium眼藥水(小口) × 1 口（買 22 送 1，NT$5,500）」，其他照口述講法 */
@@ -19,6 +21,15 @@ export function intentLine(item: IntentItem, pack?: PromotionItem) {
     return `${pack.name} × ${item.qty} 口（${packDeal(pack)}，${formatMoney(pack.deal_price * item.qty)}）`
   }
   return `${item.product_text} × ${item.qty ?? "？"}${item.unit ?? ""}`
+}
+
+/** 備忘一行：「要帶：骨營的 DM、試用包（10/30）；講過：小口買 22 送 1」，要帶的在前 */
+export function notesLine(notes: NoteItem[]) {
+  const part = (kind: NoteItem["kind"], label: string) => {
+    const items = notes.filter((n) => n.kind === kind).map((n) => (n.date ? `${n.text}（${noteDate(n.date)}）` : n.text))
+    return items.length ? `${label}：${items.join("、")}` : null
+  }
+  return [part("bring", "要帶"), part("told", "講過")].filter(Boolean).join("；")
 }
 
 /**
@@ -38,6 +49,8 @@ export function summarize(key: FieldKey, fields: VisitFields, packs: Record<stri
       if (!c) return null
       return `${c.by === "us" ? "我方" : "客戶"}：${c.text}${c.due ? `（${formatDate(c.due)} 前）` : ""}`
     }
+    case "notes":
+      return fields.notes ? notesLine(fields.notes) || null : null
     case "follow_up_date":
       return fields.follow_up_date ? formatDate(fields.follow_up_date) : null
   }

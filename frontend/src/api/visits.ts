@@ -1,7 +1,9 @@
 import { jsonBody, request } from "@/api/client"
 
-// 五個欄位的格式與 backend/app/schemas/visit_fields.schema.json 一致
+// 欄位的格式與 backend/app/schemas/visit_fields.schema.json 一致
 export type Competitor = { name: string; detail: string | null }
+// 備忘：bring 是下次要帶的東西，told 是跟客戶講過的促銷；date 只有要帶的才會有
+export type NoteItem = { kind: "bring" | "told"; text: string; date: string | null }
 // promo_code 有值時是促銷的某一口：qty 是口數、unit 是「口」
 export type IntentItem = {
   product_text: string
@@ -17,6 +19,7 @@ export type VisitFields = {
   intent: IntentItem[] | null
   commitment: Commitment | null
   follow_up_date: string | null
+  notes: NoteItem[] | null
 }
 export type FieldKey = keyof VisitFields
 

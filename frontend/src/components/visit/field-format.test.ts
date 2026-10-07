@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import type { PromotionItem } from "@/api/promotions"
-import { intentLine } from "@/components/visit/field-format"
+import { intentLine, notesLine } from "@/components/visit/field-format"
 
 const SMALL = {
   code: "PP-1",
@@ -20,5 +20,18 @@ describe("intentLine", () => {
   it("沒促銷、或查不到那一口，照口述講法", () => {
     expect(intentLine({ product_text: "魚油", sku: "HS-FO30", qty: 20, unit: "盒", promo_code: null })).toBe("魚油 × 20盒")
     expect(intentLine({ product_text: "小口眼藥水", sku: null, qty: 1, unit: "口", promo_code: "PP-9" })).toBe("小口眼藥水 × 1口")
+  })
+})
+
+describe("notesLine", () => {
+  it("要帶的在前，有日期寫日期", () => {
+    expect(
+      notesLine([
+        { kind: "told", text: "小口買 22 送 1", date: null },
+        { kind: "bring", text: "骨營的 DM", date: null },
+        { kind: "bring", text: "試用包", date: "2026-10-30" },
+      ])
+    ).toBe("要帶：骨營的 DM、試用包（10/30）；講過：小口買 22 送 1")
+    expect(notesLine([{ kind: "told", text: "大口送葡萄籽", date: null }])).toBe("講過：大口送葡萄籽")
   })
 })
