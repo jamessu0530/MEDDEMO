@@ -27,6 +27,9 @@ function stop(id: string, status: RouteStop["status"], extra: Partial<RouteStop>
     note: null,
     locked: false,
     habit_ids: [],
+    travel_mode: "drive",
+    travel_estimated: false,
+    city: "台北市",
     ...extra,
   }
 }

@@ -44,6 +44,9 @@ function stop(id: string, status: RouteStop["status"] = "todo", extra: Partial<R
     note: null,
     locked: false,
     habit_ids: [],
+    travel_mode: "drive",
+    travel_estimated: false,
+    city: "台北市",
     ...extra,
   }
 }
@@ -62,6 +65,8 @@ function route(stops: RouteStop[], extra: Partial<TodayRoute> = {}): TodayRoute 
     finish_time: "15:00",
     estimated: true,
     travel_mode: "drive",
+    start_city: "台北市",
+    office_start: true,
     rules: [],
     violations: [],
     precedences: [],

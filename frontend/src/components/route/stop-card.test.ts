@@ -10,7 +10,7 @@ function stop(extra: Partial<RouteStop> = {}): RouteStop {
     customer_id: "A", customer_name: "德安藥局 · 板橋", type: "independent", grade: "A", planned_time: "10:30",
     status: "todo", signal: "ar", reason: "帳款最久拖了 78 天", visit_id: null, source: "model", duration_minutes: 40,
     late_minutes: 0, travel_minutes: 12, travel_km: 4.1, window_kind: null, window_time: null, note: null,
-    locked: false, habit_ids: [], ...extra,
+    locked: false, habit_ids: [], travel_mode: "drive", travel_estimated: false, city: "台北市", ...extra,
   }
 }
 

@@ -52,6 +52,11 @@ export type RouteStop = {
   note: string | null
   // 排順路時位置不動
   locked: boolean
+  // 從上一站過來實際用的交通方式（沒特別改就是整天的預設）；travel_estimated 是這一段的時間為直線估算
+  travel_mode: LegMode
+  travel_estimated: boolean
+  // 客戶所在縣市
+  city: string
   // 套用在這一站的習慣，調整清單的卡片上標綠色「習慣」
   habit_ids: number[]
 }
@@ -73,6 +78,12 @@ export type SkippedHabit = { id: number; text: string; reason: string; conflict:
 // 業務跑客戶的交通方式（後端 models.TRAVEL_MODES）：行程的時間、排順路與地圖上的線都照它算
 export type TravelMode = "drive" | "scooter" | "transit"
 
+// 單段路可以多選走路（整天的預設不行）
+export type LegMode = TravelMode | "walk"
+
+// 一段路四種交通方式各要多久（膠囊的選單）
+export type LegOption = { mode: LegMode; minutes: number; km: number; estimated: boolean; found: boolean }
+
 export type TodayRoute = {
   date: string
   rep: { id: string; name: string }
@@ -88,6 +99,10 @@ export type TodayRoute = {
   // 車程是直線估算的
   estimated: boolean
   travel_mode: TravelMode
+  // 第一站從辦公室出發時辦公室所在縣市；沒有就是 null
+  start_city: string | null
+  // 第一站是從辦公室出發（不是從已跑完的站）
+  office_start: boolean
   // 調整清單要守的規則（今天的先後與習慣；鎖住的不列）與目前的順序違反了哪幾條
   rules: RouteRule[]
   violations: string[]
@@ -221,19 +236,39 @@ function routeKey(userId: string) {
 }
 
 /**
+ * 舊版前端存下的行程沒有每段的交通方式、估算旗標、縣市與辦公室：補上預設值，
+ * 不然連不上伺服器改讀快取時畫面會拿到 undefined。網路來的也順手補一次。
+ */
+export function normalizeRoute(route: TodayRoute): TodayRoute {
+  const dayMode = route.travel_mode ?? "drive"
+  return {
+    ...route,
+    travel_mode: dayMode,
+    start_city: route.start_city ?? null,
+    office_start: route.office_start ?? true,
+    stops: route.stops.map((stop) => ({
+      ...stop,
+      travel_mode: stop.travel_mode ?? dayMode,
+      travel_estimated: stop.travel_estimated ?? true,
+      city: stop.city ?? "",
+    })),
+  }
+}
+
+/**
  * 今天的行程（存在伺服器，當天第一次讀取時照系統的建議建好）；連不上伺服器時改用上次拿到的那份（cached 為 true，畫面上要標明）。
  * 是哪一位業務由後端看 token 認，不必送 user_id；這裡的 userId 只用來分開每個人在這支手機上的快取。
  */
 export async function getTodayRoute(userId: string, signal?: AbortSignal) {
   try {
-    const route = await request<TodayRoute>("/api/itinerary/today", { signal })
+    const route = normalizeRoute(await request<TodayRoute>("/api/itinerary/today", { signal }))
     writeCache(routeKey(userId), route)
     return { route, cached: false }
   } catch (error) {
     // 主管沒有自己的拜訪路線（403）：這不是連不上，不能拿舊的那份出來充數
     if (error instanceof ApiError && error.status === 403) throw error
     const cached = signal?.aborted ? null : readCache<TodayRoute>(routeKey(userId))
-    if (cached) return { route: cached, cached: true }
+    if (cached) return { route: normalizeRoute(cached), cached: true }
     throw error
   }
 }
@@ -250,16 +285,15 @@ export function getTravelMode(signal?: AbortSignal) {
 
 /** 換交通方式：今天的行程換一版，順序不動、時間照新的方式重算，回傳重算好的那一份 */
 export async function setTravelMode(userId: string, mode: TravelMode) {
-  const route = await request<TodayRoute>("/api/itinerary/travel-mode", jsonBody("PUT", { mode }))
+  const route = normalizeRoute(await request<TodayRoute>("/api/itinerary/travel-mode", jsonBody("PUT", { mode })))
   writeCache(routeKey(userId), route)
   return route
 }
 
 /** 需立即處理的三顆鈕：後端直接改今天的行程，回傳改好的那一份 */
 export async function sendRouteFeedback(userId: string, customerId: string, action: RouteAction, version: number) {
-  const route = await request<TodayRoute>(
-    "/api/itinerary/today/feedback",
-    jsonBody("POST", { customer_id: customerId, action, version })
+  const route = normalizeRoute(
+    await request<TodayRoute>("/api/itinerary/today/feedback", jsonBody("POST", { customer_id: customerId, action, version }))
   )
   writeCache(routeKey(userId), route)
   return route
@@ -271,6 +305,7 @@ export async function addStopsToToday(userId: string, customerIds: string[]) {
     "/api/itinerary/today/stops",
     jsonBody("POST", { customer_ids: customerIds })
   )
+  result.itinerary = normalizeRoute(result.itinerary)
   writeCache(routeKey(userId), result.itinerary)
   return result
 }
@@ -280,12 +315,12 @@ export function previewToday(draft: RouteDraft, insert?: string, signal?: AbortS
   return request<TodayRoute>("/api/itinerary/today/preview", {
     ...jsonBody("POST", { ...draft, insert: insert ?? null }),
     signal,
-  })
+  }).then(normalizeRoute)
 }
 
 /** 調整清單按「完成」：一次存進去；行程剛被改過回 409 */
 export async function saveToday(userId: string, version: number, draft: RouteDraft) {
-  const route = await request<TodayRoute>("/api/itinerary/today", jsonBody("PUT", { ...draft, version }))
+  const route = normalizeRoute(await request<TodayRoute>("/api/itinerary/today", jsonBody("PUT", { ...draft, version })))
   writeCache(routeKey(userId), route)
   return route
 }
@@ -309,9 +344,25 @@ export function optimizeRoute() {
   return request<RouteProposal>("/api/itinerary/today/optimize", { method: "POST" })
 }
 
+/** 這一段四種交通方式各要多久（膠囊的選單）；from 是 null 代表從辦公室出發 */
+export function getLegOptions(from: string | null, to: string, signal?: AbortSignal) {
+  const query = new URLSearchParams({ to })
+  if (from) query.set("from", from)
+  return request<{ options: LegOption[] }>(`/api/itinerary/today/legs/options?${query}`, { signal })
+}
+
+/** 改一段路的交通方式；後端重算之後回整份行程。行程剛被改過回 409。from 一定要送（null 是從辦公室） */
+export async function setLegMode(userId: string, version: number, from: string | null, to: string, mode: LegMode) {
+  const route = normalizeRoute(
+    await request<TodayRoute>("/api/itinerary/today/legs", jsonBody("PUT", { from, to, mode, version }))
+  )
+  writeCache(routeKey(userId), route)
+  return route
+}
+
 /** 套用提案：後端照存下來的操作在最新的行程上再做一次；行程在問完之後改過了回 409 */
 export async function applyProposal(userId: string, id: number) {
-  const route = await request<TodayRoute>(`/api/itinerary/proposals/${id}/apply`, { method: "POST" })
+  const route = normalizeRoute(await request<TodayRoute>(`/api/itinerary/proposals/${id}/apply`, { method: "POST" }))
   writeCache(routeKey(userId), route)
   return route
 }

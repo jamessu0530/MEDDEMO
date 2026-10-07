@@ -1,5 +1,5 @@
 import { request } from "@/api/client"
-import type { TravelMode } from "@/api/route"
+import type { LegMode, TravelMode } from "@/api/route"
 
 // 主管端的行程分頁（後端 api/manager.py 的 /api/manager/itineraries）：只能看、只看今天。
 // 站的狀態與來源跟業務首頁同一套（後端 services/itinerary.py），這裡自己寫一份，不跟業務那邊的型別綁在一起
@@ -26,6 +26,8 @@ export type TeamStop = LatLng & {
   // 約的時間：at 幾點到、before 幾點以前、after 幾點以後
   window_kind: "at" | "before" | "after" | null
   window_time: string | null
+  // 從上一站過來用的交通方式
+  travel_mode: LegMode
 }
 
 // 大眾運輸一段裡的一小段：走路（虛線）或搭車

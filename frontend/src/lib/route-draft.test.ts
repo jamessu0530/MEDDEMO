@@ -8,12 +8,14 @@ function stop(id: string): RouteStop {
     customer_id: id, customer_name: id, type: "independent", grade: "A", planned_time: "10:00", status: "todo",
     signal: "ar", reason: "", visit_id: null, source: "model", duration_minutes: 40, late_minutes: 0,
     travel_minutes: 10, travel_km: 3, window_kind: null, window_time: null, note: null, locked: false, habit_ids: [],
+    travel_mode: "drive", travel_estimated: false, city: "台北市",
   }
 }
 
 const today: TodayRoute = {
   date: "2026-10-28", rep: { id: "U01", name: "林昱辰" }, version: 1, done: 0, total: 2, urgent: null,
   stops: [stop("A"), stop("B")], travel_minutes: 20, travel_km: 6, finish_time: "11:00", estimated: true, travel_mode: "drive",
+  start_city: "台北市", office_start: true,
   rules: [], violations: [], precedences: [], skipped_habits: [],
 }
 

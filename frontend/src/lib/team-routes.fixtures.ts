@@ -18,6 +18,7 @@ export function teamStop(number: number, status: StopStatus, extra: Partial<Team
     reason: "帳款最久拖了 78 天",
     window_kind: null,
     window_time: null,
+    travel_mode: "drive",
     ...extra,
   }
 }

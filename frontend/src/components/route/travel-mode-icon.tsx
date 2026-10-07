@@ -1,11 +1,8 @@
-import { Car, Motorbike, TrainFront, type LucideIcon } from "lucide-react"
+import type { LegMode } from "@/api/route"
+import { MODE_ICON } from "@/lib/travel-mode"
 
-import type { TravelMode } from "@/api/route"
-
-const ICONS: Record<TravelMode, LucideIcon> = { drive: Car, scooter: Motorbike, transit: TrainFront }
-
-/** 交通方式的圖示：首頁地圖左上角與帳號設定頁 */
-export function TravelModeIcon({ mode, className }: { mode: TravelMode; className?: string }) {
-  const Icon = ICONS[mode]
+/** 交通方式的圖示：首頁地圖左上角、帳號設定頁與每一段的膠囊 */
+export function TravelModeIcon({ mode, className }: { mode: LegMode; className?: string }) {
+  const Icon = MODE_ICON[mode]
   return <Icon className={className} />
 }
