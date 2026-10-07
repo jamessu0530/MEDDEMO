@@ -84,11 +84,11 @@ function Drive({ bear }: VehicleProps) {
     <>
       <Ground />
       <g className="ride-bob">
-        {bear({ x: 103, y: 6, size: 94 })}
+        {bear({ x: 96, y: 0, size: 108 })}
         <Lantern cx={150} top={70} w={122} h={96} />
       </g>
-      <Wheel cx={104} cy={168} r={19} />
-      <Wheel cx={196} cy={168} r={19} />
+      <Wheel cx={104} cy={168} r={20} />
+      <Wheel cx={196} cy={168} r={20} />
     </>
   )
 }
@@ -103,7 +103,7 @@ function Scooter({ bear }: VehicleProps) {
       <g className="ride-bob">
         {bear({ x: 74, y: -2, size: 100 })}
         <rect x="140" y="138" width="86" height="12" rx="6" fill={PROP} />
-        <line x1="228" y1="150" x2="212" y2="74" stroke={PROP} strokeWidth="16" strokeLinecap="round" />
+        <line x1="228" y1="150" x2="212" y2="74" stroke={PROP} strokeWidth="18" strokeLinecap="round" />
         <line x1="198" y1="72" x2="228" y2="66" stroke={INK} strokeWidth="7" strokeLinecap="round" />
         <circle cx="228" cy="98" r="6" fill={STAR} />
         <Lantern cx={124} top={84} w={86} h={70} />

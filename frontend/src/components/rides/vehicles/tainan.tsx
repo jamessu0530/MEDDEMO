@@ -151,7 +151,7 @@ function Scooter({ bear }: VehicleProps) {
       <g className="ride-bob">
         {bear({ x: 76, y: 14, size: 100 })}
         <rect x="160" y="140" width="66" height="12" rx="6" fill={PROP} />
-        <line x1="228" y1="150" x2="212" y2="74" stroke={PROP} strokeWidth="16" strokeLinecap="round" />
+        <line x1="228" y1="150" x2="212" y2="74" stroke={PROP} strokeWidth="18" strokeLinecap="round" />
         <line x1="198" y1="72" x2="228" y2="66" stroke={INK} strokeWidth="7" strokeLinecap="round" />
         <circle cx="228" cy="98" r="6" fill={STAR} />
         <Fish cx={146} cy={130} len={148} h={30} dorsal={0.2} />

@@ -105,7 +105,7 @@ function Scooter({ bear }: VehicleProps) {
       <Wheel cx={228} cy={167} r={20} />
       <g className="ride-bob">
         <rect x="80" y="142" width="146" height="12" rx="6" fill={PROP} />
-        <line x1="228" y1="150" x2="212" y2="74" stroke={PROP} strokeWidth="16" strokeLinecap="round" />
+        <line x1="228" y1="150" x2="212" y2="74" stroke={PROP} strokeWidth="18" strokeLinecap="round" />
         <line x1="198" y1="72" x2="228" y2="66" stroke={INK} strokeWidth="7" strokeLinecap="round" />
         <circle cx="228" cy="98" r="6" fill={STAR} />
         {bear({ x: 82, y: 52, size: 100 })}
