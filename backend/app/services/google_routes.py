@@ -130,7 +130,8 @@ def route_legs(
 ) -> list[Leg | None]:
     """照給的順序走過這幾點，每一段的時間、距離（`polylines=True` 時還有沿路的折線，共 len(points) - 1 段）。
     開車與機車：中間點超過 Essentials 的上限就拆成好幾次送，下一次從上一次的終點出發，每一段都一定有。
-    大眾運輸：一段一段問，搭不到車的那一段是 None。"""
+    大眾運輸：一段一段問，搭不到車的那一段是 None。走路與機車：Google 找不到路線時整串都是 None（開車找不到才丟 RoutesError）。
+    搭不到車／找不到路線的那一段是 None，呼叫端用估算、不暫停問 Google。"""
     if mode == "transit":
         return _transit_legs(key, points, http, polylines)
     legs: list[Leg | None] = []
@@ -176,7 +177,9 @@ def _transit_leg(key: str, origin: Point, destination: Point, http: httpx.Client
         raise RoutesError(f"看不懂大眾運輸路線的回應：{exc}") from exc
 
 
-def _legs(key: str, points: list[Point], http: httpx.Client | None, polylines: bool, mode: TravelMode) -> list[Leg]:
+def _legs(
+    key: str, points: list[Point], http: httpx.Client | None, polylines: bool, mode: TravelMode,
+) -> list[Leg | None]:
     origin, *middle, destination = points
     body: dict[str, Any] = {"origin": _waypoint(origin), "destination": _waypoint(destination), **_travel(mode)}
     if middle:
@@ -185,6 +188,9 @@ def _legs(key: str, points: list[Point], http: httpx.Client | None, polylines: b
     data = _post(key, ROUTES_URL, fields, body, http)
     try:
         routes = data.get("routes") or []
+        if not routes and mode in ("walk", "scooter"):
+            # 走路、機車找不到路線是常有的事（不是 Google 壞了），照大眾運輸的做法回 None，不要讓整個服務暫停
+            return [None] * (len(points) - 1)
         legs = routes[0].get("legs", []) if routes else []
         if len(legs) != len(points) - 1:
             raise RoutesError(f"要 {len(points) - 1} 段路線，Google 回了 {len(legs)} 段")

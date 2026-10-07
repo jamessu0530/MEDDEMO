@@ -249,3 +249,13 @@ def test_walking_sends_walk_without_a_routing_preference_and_keeps_intermediates
     assert body["travelMode"] == "WALK"
     assert "routingPreference" not in body and "departureTime" not in body
     assert body["intermediates"] == [waypoint(TAIPEI_101)]
+
+
+@pytest.mark.parametrize("mode", ["walk", "scooter"])
+@pytest.mark.parametrize("answer", [{"routes": []}, {}])
+def test_walking_or_scooter_with_no_route_is_none_per_leg_and_drive_still_raises(mode, answer):
+    http, _ = fake(lambda request: (200, answer))
+    points = [TAIPEI_MAIN, TAIPEI_101, SONGSHAN]
+    assert google_routes.route_legs("k", points, http=http, mode=mode) == [None, None]
+    with pytest.raises(RoutesError):
+        google_routes.route_legs("k", points, http=http, mode="drive")

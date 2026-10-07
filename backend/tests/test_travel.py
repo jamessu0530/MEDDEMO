@@ -474,3 +474,12 @@ def test_options_without_a_key_or_for_the_same_point():
     assert all(o.estimated and o.found for o in found)
     assert [o.minutes for o in found] == [travel.estimate(FIVE[0], FIVE[1], m)[0] for m in google_routes.TRAVEL]
     assert all((o.minutes, o.estimated) == (0, False) for o in travel.options(FIVE[0], FIVE[0]))
+
+
+def test_options_with_no_walking_route_estimate_it_without_pausing_google(monkeypatch, env):
+    env(GOOGLE_MAPS_SERVER_KEY="server-key")
+    monkeypatch.setattr(google_routes, "route_legs", legs_by_mode([], missing={"walk"}))
+    by_mode = {o.mode: o for o in travel.options(FIVE[0], FIVE[1])}
+    assert (by_mode["walk"].found, by_mode["walk"].estimated) == (False, True)
+    assert by_mode["drive"].found is True and by_mode["drive"].estimated is False
+    assert travel._server_key() == "server-key"
