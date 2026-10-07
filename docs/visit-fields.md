@@ -27,3 +27,14 @@ OA 出差單不讀這些欄位，只用客戶和拜訪日期。
 8. **抱怨只收針對我方的不滿。** 店況觀察（例如「魚油最近賣得比較慢」）不放進欄位，留在逐字稿裡；數字查詢會去搜逐字稿。
 9. **講到促銷的口才填 `promo_code`。** 業務講了小口、中口、大口或某一口的搭贈，而且對得到這一期唯一的一口，`promo_code` 填促銷品項編號，`qty` 是口數、`unit` 是「口」；只講「開小口」沒講幾口算 1 口。沒講口就填 null，照第 5、6 條填數量。講了口卻對不到唯一的一口（例如「小口眼藥水」，好幾種眼藥水都有小口），`sku` 與 `promo_code` 都填 null，由業務在確認頁選。回寫 SAP 時一口照每口售價記（見 `docs/superpowers/specs/2026-10-07-quote-promotion-packs-design.md`）。
 10. **備忘收兩種。** `bring` 是下次要帶給客戶的東西（DM、POP、海報、試用包、樣品、衛教單張、比價表…），`told` 是跟客戶講過的促銷、實銷、搭贈、活動條件。`date` 只在業務講了哪天要帶、或下次哪天去時才填，講過的一律 null。可以跟承諾、意向重複。確認時寫進拜訪備忘：要帶的沒講日期就放追蹤日，講過的放拜訪日（見 `docs/superpowers/specs/2026-10-07-calendar-notes-design.md`）。
+
+11. **講「跟上次一樣」不是欄位，是 `repeat_last`。** AI 在六個欄位旁邊另外輸出 `repeat_last`：`all` 是有沒有講「跟上次一樣」「照上次」「老樣子」，`except_skus` 是這次不要的品項，`relative` 是跟上次比的加減（`delta` 是口數或數量，少是負數，「照上次」是 0）。講了確定的總數（「魚油這次 40 盒」）才填 `intent`。要抄哪幾列、這期對應哪一口、變了什麼都由後端照上次訂的算（`services/repeat_order.py`），展開後的結果寫進 `intent`，快照存在 `visit.repeat_last`（見 `docs/superpowers/specs/2026-10-07-repeat-last-order-design.md`）。
+
+    | 業務說 | 抽出來 |
+    |---|---|
+    | 跟上次一樣就好 | `all` true |
+    | 跟上次一樣，魚油改 40 盒 | `all` true；`intent` 魚油 30 入 × 40 盒 |
+    | 老樣子，威鎮這次先不要 | `all` true；`except_skus` 威鎮凝膠 |
+    | 跟上次一樣，再加一口小口 Premium | `all` true；`relative` Premium眼藥水小口 +1 |
+    | 魚油比上次少 5 盒 | `all` false；`relative` 魚油 30 入 −5 |
+    | 人工淚液照上次，其他不用 | `all` false；`relative` 人工淚液 0 |
