@@ -101,7 +101,7 @@ export type TodayRoute = {
   travel_mode: TravelMode
   // 第一站從辦公室出發時辦公室所在縣市；沒有就是 null
   start_city: string | null
-  // 第一站是從辦公室出發（不是從已跑完的站）
+  // 區處有辦公室位置、今天從辦公室出發：跑過幾站之後仍是 true；新開的區沒有位置才是 false（第一站沒有第一段）
   office_start: boolean
   // 調整清單要守的規則（今天的先後與習慣；鎖住的不列）與目前的順序違反了哪幾條
   rules: RouteRule[]

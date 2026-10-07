@@ -92,7 +92,7 @@ class AppSetting(Base):
 ORG_UNIT_KINDS = ("root", "region")
 # sales：跑今日路線；manager：帶一隊業務，多一個主管端；it：坐在根節點上，看得到也動得了全公司，並管組織
 ROLES = ("sales", "manager", "it")
-# 業務怎麼跑客戶：開車、機車、大眾運輸（services/google_routes.py 的 TravelMode 同一組）
+# 業務怎麼跑客戶：開車、機車、大眾運輸（跟 services/google_routes.py 的 DayMode 同一組）
 TRAVEL_MODES = ("drive", "scooter", "transit")
 # 單段可以另外選的交通方式（itinerary_leg.mode）：多一種走路，走路不能當整天的預設
 LEG_MODES = (*TRAVEL_MODES, "walk")
