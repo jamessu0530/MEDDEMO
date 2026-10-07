@@ -23,6 +23,7 @@ from app.models import (
     WritebackLog,
 )
 from app.pricing import supply_price
+from app.services import promo_packs
 from app.tasks import redis
 from app.timeutil import local_date
 
@@ -91,17 +92,28 @@ def _write_sap(session: Session, visit: Visit) -> None:
     if not items:
         raise NothingToWrite("這次沒有購買意向，不需要報價草稿")
     prices = dict(session.execute(select(Product.sku, Product.unit_price).where(Product.sku.in_([i["sku"] for i in items]))).all())
+    # 照編號查，不管哪一期：拜訪時那一期還在，回寫重送時可能已經換期，照當初的那一口與價錢寫
+    packs = promo_packs.packs_by_code(session, (i["promo_code"] for i in items if i.get("promo_code")))
     customer_type = session.get(Customer, visit.customer_id).type
     for line_no, item in enumerate(items, start=1):
         if not item.get("qty") or item.get("sku") not in prices:
             raise ValueError(f"意向第 {line_no} 項缺少品項或數量")
-        # 報價以標準供貨價為基準（連鎖 9 折、獨立藥局 95 折、診所原價），與歷史報價一致
-        price = supply_price(prices[item["sku"]], customer_type)
+        if code := item.get("promo_code"):
+            if code not in packs:
+                raise ValueError(f"意向第 {line_no} 項的促銷 {code} 不存在")
+            line = promo_packs.pack_line(packs[code], item["qty"])
+            values = {
+                "promo_code": code, "packs": item["qty"], "qty": line.qty, "free_qty": line.free_qty,
+                "unit_price": line.unit_price, "amount": line.amount,
+            }
+        else:
+            # 報價以標準供貨價為基準（連鎖 9 折、獨立藥局 95 折、診所原價），與歷史報價一致
+            price = supply_price(prices[item["sku"]], customer_type)
+            values = {"qty": item["qty"], "unit_price": price, "amount": price * item["qty"]}
         session.execute(
             insert(SapQuotationDraft).values(
                 quote_no=visit.id, visit_id=visit.id, line_no=line_no, customer_id=visit.customer_id,
-                sku=item["sku"], qty=item["qty"], created_by=visit.user_id,
-                unit_price=price, amount=price * item["qty"],
+                sku=item["sku"], created_by=visit.user_id, **values,
             ).on_conflict_do_nothing(index_elements=["visit_id", "line_no"])
         )
 

@@ -44,9 +44,11 @@ class FakeTranscriber:
 class FakeExtractor:
     def __init__(self, fields=FIELDS, sources=SOURCES):
         self.fields, self.sources = fields, sources
+        self.packs = ()
 
-    def extract(self, transcript, visit_date, products):
+    def extract(self, transcript, visit_date, products, packs=()):
         assert any(p.sku == "HS-FO30" for p in products)  # 品項表有帶給模型
+        self.packs = packs
         return Extraction(self.fields, self.sources)
 
 
@@ -270,3 +272,48 @@ def test_a_competitor_never_mentioned_before_is_marked_first(client, providers):
     visit_id = make_draft(client, providers, FakeExtractor(fields))
     # 御松田在忠孝店上次拜訪（10/19）就提過了，只有新和生技是第一次
     assert client.get(f"/api/visits/{visit_id}").json()["first_competitors"] == ["新和生技"]
+
+
+# ── 促銷的口（docs/superpowers/specs/2026-10-07-quote-promotion-packs-design.md）────────────
+
+
+def premium_small(engine):
+    with engine.connect() as conn:
+        return conn.execute(
+            text("SELECT item_code FROM v_promotion_item WHERE status = '進行中' AND item_name = 'Premium眼藥水(小口)'")
+        ).scalar_one()
+
+
+def test_a_pack_in_the_voice_note_is_quoted_as_that_pack(client, providers, engine):
+    code = premium_small(engine)
+    pack = {"product_text": "小口 Premium 眼藥水", "sku": "F749579", "qty": 2, "unit": "口", "promo_code": code}
+    extractor = FakeExtractor(fields={**FIELDS, "intent": [pack, *FIELDS["intent"]]})
+    visit_id = make_draft(client, providers, extractor)
+    assert code in {p.code for p in extractor.packs}  # 這一期的口有帶給模型
+    assert client.get(f"/api/visits/{visit_id}").json()["fields"]["intent"][0] == pack
+
+    visit = client.post(f"/api/visits/{visit_id}/confirm").json()
+    assert statuses(visit)["sap"] == "success"
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text(
+                "SELECT promo_code, packs, qty, free_qty, amount, unit_price FROM sap_quotation_draft"
+                " WHERE visit_id = :v ORDER BY line_no"
+            ),
+            {"v": visit_id},
+        ).all()
+    assert [tuple(r) for r in rows] == [(code, 2, 44, 2, 11000, 250), (None, None, 20, 0, 8100, 405)]
+
+
+def test_a_pack_the_ai_made_up_is_cleared_for_the_rep_to_pick(client, providers):
+    made_up = {"product_text": "小口眼藥水", "sku": "F749579", "qty": 1, "unit": "口", "promo_code": "PP-999999"}
+    visit_id = make_draft(client, providers, FakeExtractor(fields={**FIELDS, "intent": [made_up]}))
+    assert client.get(f"/api/visits/{visit_id}").json()["fields"]["intent"] == [made_up | {"sku": None, "promo_code": None}]
+    assert "缺少品項" in str(client.post(f"/api/visits/{visit_id}/confirm").json())
+
+
+def test_the_rep_cannot_save_a_pack_for_another_product(client, providers, engine):
+    visit_id = make_draft(client, providers)
+    wrong = [{"product_text": "魚油", "sku": "HS-FO30", "qty": 1, "unit": "口", "promo_code": premium_small(engine)}]
+    response = client.put(f"/api/visits/{visit_id}/fields", json={"fields": {**FIELDS, "intent": wrong}})
+    assert response.status_code == 422 and "不是這個品項" in str(response.json())

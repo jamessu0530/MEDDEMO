@@ -17,7 +17,13 @@ from app.models import AppUser, WRITEBACK_TARGETS, ChannelMessage, Customer, Fol
 from app.services import privacy, writeback
 from app.services import channel_memory, risk
 from app.services.scope import SHARING_LEVEL, Scope, owner_path
-from app.services.extraction import empty_fields, missing_sap_details, unsourced_fields, validate_fields
+from app.services.extraction import (
+    empty_fields,
+    intent_pack_problems,
+    missing_sap_details,
+    unsourced_fields,
+    validate_fields,
+)
 from app.services.reminders import create_reminder
 from app.tasks import get_progress, visit_queue
 
@@ -237,6 +243,8 @@ def update_fields(session: SessionDep, visit_id: str, body: FieldsInput, user: C
         raise HTTPException(409, "只有待確認的紀錄可以修改欄位")
     if errors := validate_fields(body.fields):
         raise HTTPException(422, errors)
+    if problems := intent_pack_problems(session, body.fields.get("intent")):
+        raise HTTPException(422, problems)
     visit.fields_final = body.fields
     session.commit()
     return _detail(session, visit)

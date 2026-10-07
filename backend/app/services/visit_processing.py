@@ -9,7 +9,8 @@ from sqlalchemy.orm import Session
 
 from app.db import session_factory
 from app.models import Visit, VisitAudio
-from app.services.extraction import empty_fields, get_extractor, product_hints, validate_fields
+from app.services.extraction import drop_unknown_packs, empty_fields, get_extractor, product_hints, validate_fields
+from app.services.promo_packs import current_packs
 from app.services.transcription import get_transcriber, visit_hotwords
 from app.tasks import set_progress
 from app.timeutil import local_date
@@ -51,11 +52,13 @@ def _extract(session: Session, visit: Visit) -> None:
     set_progress(visit.id, "extracting")
     note = None
     try:
-        extraction = get_extractor().extract(visit.transcript, local_date(visit.visited_at), product_hints(session))
+        packs = current_packs(session)
+        extraction = get_extractor().extract(visit.transcript, local_date(visit.visited_at), product_hints(session), packs)
         errors = validate_fields(extraction.fields)
         if errors:
             raise ValueError("；".join(errors))
-        fields = extraction.fields
+        # AI 抽出的口對不上這一期，就清掉讓業務在確認頁選
+        fields = {**extraction.fields, "intent": drop_unknown_packs(extraction.fields["intent"], packs)}
         sources = {key: quote for key, quote in extraction.sources.items() if quote and fields.get(key) is not None}
     except Exception as exc:
         log.warning("整理欄位失敗 visit=%s：%s", visit.id, exc)

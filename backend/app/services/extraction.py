@@ -4,6 +4,7 @@
 """
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import date
 from functools import cache
@@ -16,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.llm import LLM, get_llm
 from app.models import Product
+from app.services.promo_packs import Pack, packs_by_code
 
 SCHEMA_FILE = Path(__file__).resolve().parents[1] / "schemas" / "visit_fields.schema.json"
 FIELD_KEYS = ("competitor", "complaint", "intent", "commitment", "follow_up_date")
@@ -32,9 +34,13 @@ PROMPT = """你是藥品通路業務的助理。下面是業務拜訪客戶後�
 6. complaint 只收客戶對我方產品、配送、價格或服務的不滿；店況觀察（例如某個品項賣得慢）不算。
 7. intent 的品項對照下方品項表填 sku；對不到或可能是好幾個品項時 sku 填 null，product_text 保留業務原本的講法。沒講數量 qty 填 null。
 8. competitor 的 detail 填競品開的條件或做的事，沒講就填 null。
+9. intent 講到促銷的口才填 promo_code：業務講了小口、中口、大口，或講了幾口、某一口的搭贈（例如「買 11 送 2」「直走」），而且對得到下方促銷表裡唯一的一口，promo_code 填那一口的編號、sku 填那一口的 sku、qty 填口數、unit 填「口」。講了口但沒講幾口算 1 口。沒講口就照第 7 條填數量，promo_code 填 null。講了口卻對不到唯一的一口（例如好幾個品項都有小口），sku 與 promo_code 都填 null，product_text 照原話。
 
 品項表（sku｜名稱｜單位｜口語別名）：
 {catalog}
+
+這一期的促銷（編號｜sku｜名稱｜搭贈）：
+{packs}
 
 逐字稿：
 {transcript}
@@ -56,7 +62,9 @@ class Extraction:
 
 
 class FieldExtractor(Protocol):
-    def extract(self, transcript: str, visit_date: date, products: list[ProductHint]) -> Extraction: ...
+    def extract(
+        self, transcript: str, visit_date: date, products: list[ProductHint], packs: Sequence[Pack] = ()
+    ) -> Extraction: ...
 
 
 @cache
@@ -83,12 +91,14 @@ def output_schema() -> dict[str, Any]:
     }
 
 
-def build_prompt(transcript: str, visit_date: date, products: list[ProductHint]) -> str:
+def build_prompt(transcript: str, visit_date: date, products: list[ProductHint], packs: Sequence[Pack] = ()) -> str:
     catalog = "\n".join(f"{p.sku}｜{p.name}｜{p.unit}｜{'、'.join(p.aliases)}" for p in products)
+    pack_table = "\n".join(f"{p.code}｜{p.sku}｜{p.name}｜{p.deal}" for p in packs) or "（這一期沒有促銷）"
     return PROMPT.format(
         visit_date=visit_date.isoformat(),
         weekday=WEEKDAYS[visit_date.weekday()],
         catalog=catalog,
+        packs=pack_table,
         transcript=transcript,
     )
 
@@ -124,6 +134,37 @@ def missing_sap_details(fields: dict[str, Any]) -> list[str]:
     ]
 
 
+def drop_unknown_packs(intent: list[dict[str, Any]] | None, packs: Sequence[Pack]) -> list[dict[str, Any]] | None:
+    """AI 抽出的口不是這一期的、或跟品項對不上：品項與口都清掉，讓確認頁標「缺少品項」請業務選。
+    數量是口數，只清口的話會變成 1 盒。"""
+    if not intent:
+        return intent
+    by_code = {p.code: p for p in packs}
+
+    def check(item: dict[str, Any]) -> dict[str, Any]:
+        code = item.get("promo_code")
+        if code and (code not in by_code or by_code[code].sku != item.get("sku")):
+            return {**item, "sku": None, "promo_code": None}
+        return item
+
+    return [check(item) for item in intent]
+
+
+def intent_pack_problems(session: Session, intent: list[dict[str, Any]] | None) -> list[str]:
+    """確認頁存檔時檢查：有口的項目，那一口要存在、而且是同一個品項。不檢查期別，確認頁只列進行中的口。"""
+    items = intent or []
+    found = packs_by_code(session, (i["promo_code"] for i in items if i.get("promo_code")))
+    problems = []
+    for number, item in enumerate(items, start=1):
+        if not (code := item.get("promo_code")):
+            continue
+        if code not in found:
+            problems.append(f"意向第 {number} 項的促銷 {code} 不存在")
+        elif found[code].sku != item.get("sku"):
+            problems.append(f"意向第 {number} 項的促銷不是這個品項")
+    return problems
+
+
 SYSTEM = "你是藥品通路業務的助理，負責把業務的拜訪口述整理成固定的五個欄位，只寫口述裡真的講到的內容。"
 
 
@@ -133,8 +174,11 @@ class LLMFieldExtractor:
     def __init__(self, llm: LLM):
         self.llm = llm
 
-    def extract(self, transcript: str, visit_date: date, products: list[ProductHint]) -> Extraction:
-        data = self.llm.json(system=SYSTEM, prompt=build_prompt(transcript, visit_date, products), schema=output_schema())
+    def extract(
+        self, transcript: str, visit_date: date, products: list[ProductHint], packs: Sequence[Pack] = ()
+    ) -> Extraction:
+        prompt = build_prompt(transcript, visit_date, products, packs)
+        data = self.llm.json(system=SYSTEM, prompt=prompt, schema=output_schema())
         return Extraction(fields=data["fields"], sources={k: v for k, v in (data.get("sources") or {}).items() if v})
 
 
