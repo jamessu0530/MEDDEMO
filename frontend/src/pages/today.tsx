@@ -1,5 +1,16 @@
 import { useEffect, useRef, useState, type CSSProperties, type Ref } from "react"
-import { Bell, BookOpenText, ChevronRight, FileText, Flag, Loader2, Map as MapIcon, Route, TriangleAlert } from "lucide-react"
+import {
+  Bell,
+  BookOpenText,
+  CalendarDays,
+  ChevronRight,
+  FileText,
+  Flag,
+  Loader2,
+  Map as MapIcon,
+  Route,
+  TriangleAlert,
+} from "lucide-react"
 import { Link, useNavigate, useSearchParams } from "react-router"
 
 import { ApiError } from "@/api/client"
@@ -211,7 +222,15 @@ export function TodayPage() {
           <div className="min-w-0 flex-1 px-4 py-2.5">
             {route && (
               <p className="text-xs font-semibold opacity-85">
-                {formatDayLabel(route.date)}
+                {/* 點日期進日曆：每一天要帶什麼、講過什麼（pages/calendar.tsx）。負的外距讓點得到的範圍大一點，橫幅不變高 */}
+                <Link
+                  to="/calendar"
+                  aria-label="打開日曆"
+                  className="-mx-1 -my-2 inline-flex items-center gap-1 rounded-md px-1 py-2 underline decoration-dotted underline-offset-2 active:bg-black/10"
+                >
+                  <CalendarDays className="size-3.5" />
+                  {formatDayLabel(route.date)}
+                </Link>
                 {route.total > 0 && ` · ${route.total} 站`}
                 {/* 手機上存的舊行程（這一版以前）沒有交通方式 */}
                 {route.total > 0 && route.travel_mode && ` · ${TRAVEL_MODE_LABEL[route.travel_mode]}`}

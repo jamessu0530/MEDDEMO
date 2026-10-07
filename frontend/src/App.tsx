@@ -13,6 +13,7 @@ import { clearMyPresence, loadMyPresence } from "@/lib/presence"
 import { realtime } from "@/lib/realtime"
 import { AdminPage } from "@/pages/admin"
 import { AskPage } from "@/pages/ask"
+import { CalendarPage } from "@/pages/calendar"
 import { ChannelPage } from "@/pages/channel"
 import { ChannelThreadsPage } from "@/pages/channel-threads"
 import { ChannelsPage } from "@/pages/channels"
@@ -167,6 +168,7 @@ export default function App() {
             <Route path="/route/edit/add" element={<RouteAddPage />} />
             <Route path="/route/habits" element={<RouteHabitsPage />} />
             <Route path="/ask" element={<AskPage />} />
+            <Route path="/calendar" element={<CalendarPage />} />
             {/* 頻道：業務、主管、IT 都進得去，看得到哪些頻道由後端依組織樹決定 */}
             <Route path="/channels" element={<ChannelsPage />} />
             <Route path="/channels/search" element={<ChannelSearchPage />} />
