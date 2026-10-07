@@ -3,7 +3,7 @@ import { Bell, BookOpenText, ChevronRight, FileText, Flag, Loader2, Map as MapIc
 import { Link, useNavigate, useSearchParams } from "react-router"
 
 import { ApiError } from "@/api/client"
-import { getTodayRoute, sendRouteFeedback, type RouteAction, type TodayRoute } from "@/api/route"
+import { getTodayRoute, sendRouteFeedback, setLegMode, type LegMode, type RouteAction, type TodayRoute } from "@/api/route"
 import { BottomNav } from "@/components/bottom-nav"
 import { Mascot } from "@/components/mascot"
 import { Notice } from "@/components/notice"
@@ -120,6 +120,27 @@ export function TodayPage() {
       setBusy(false)
     } catch (error) {
       if (error instanceof ApiError && (error.status === 409 || error.status === 404)) {
+        setHint(error.message)
+        reload()
+        return
+      }
+      setHint(error instanceof ApiError ? error.message : "連不上伺服器，這次沒有改到，請再試一次。")
+      setBusy(false)
+    }
+  }
+
+  // 換一段的交通方式：後端重算之後回整份行程。行程剛被別人改過（409）、
+  // 或這兩家已經不相鄰（422，例如剛被別人拖過）都重新載入最新的
+  async function pickMode(from: string | null, to: string, mode: LegMode) {
+    if (!user || !route) return
+    setBusy(true)
+    try {
+      const next = await setLegMode(user.id, route.version, from, to, mode)
+      setState({ status: "ready", route: next, cached: false })
+      setHint(null)
+      setBusy(false)
+    } catch (error) {
+      if (error instanceof ApiError && (error.status === 409 || error.status === 422)) {
         setHint(error.message)
         reload()
         return
@@ -309,7 +330,12 @@ export function TodayPage() {
                   onRoute={(next) => setState({ status: "ready", route: next, cached: false })}
                 />
               ) : (
-                <RoutePath stops={route.stops} />
+                <RoutePath
+                  stops={route.stops}
+                  dayMode={route.travel_mode}
+                  officeStart={route.office_start}
+                  onPickMode={state.status === "ready" && !state.cached && !busy ? pickMode : undefined}
+                />
               )}
             </div>
           ))}

@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server"
 import { MemoryRouter } from "react-router"
 import { describe, expect, it } from "vitest"
 
-import type { RouteStop } from "@/api/route"
+import type { LegMode, RouteStop } from "@/api/route"
 import { RoutePath } from "@/components/route-path"
 
 function stop(id: string, status: RouteStop["status"], extra: Partial<RouteStop> = {}): RouteStop {
@@ -34,8 +34,32 @@ function stop(id: string, status: RouteStop["status"], extra: Partial<RouteStop>
   }
 }
 
-const render = (stops: RouteStop[]) =>
-  renderToStaticMarkup(createElement(MemoryRouter, null, createElement(RoutePath, { stops })))
+const render = (stops: RouteStop[], onPickMode?: (from: string | null, to: string, mode: LegMode) => void) =>
+  renderToStaticMarkup(createElement(MemoryRouter, null, createElement(RoutePath, { stops, onPickMode })))
+
+describe("RoutePath 的出處與舊資料", () => {
+  it("還沒走的段有 Google 算的才標 Google Maps", () => {
+    const gone = (extra: Partial<RouteStop>) => [stop("a", "done"), stop("b", "next", extra)]
+    expect(render(gone({ travel_estimated: false }))).toContain("Google Maps")
+    expect(render(gone({ travel_estimated: true }))).not.toContain("Google Maps")
+    // 只有已走完的段是 Google 算的：不算
+    expect(render([stop("a", "done", { travel_estimated: false }), stop("b", "next", { travel_estimated: true })])).not.toContain(
+      "Google Maps"
+    )
+  })
+
+  it("沒有辦公室起點時，第一段不算 Google 的", () => {
+    const stops = [stop("a", "next", { travel_estimated: false }), stop("b", "todo", { travel_estimated: true })]
+    const html = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(RoutePath, { stops, officeStart: false })))
+    expect(html).not.toContain("Google Maps")
+    expect(render(stops)).toContain("Google Maps")
+  })
+
+  it("站沒有 travel_mode（舊快取）時不丟錯，寫開車", () => {
+    const old = stop("b", "next", { travel_mode: undefined as never })
+    expect(render([old])).toContain("開車")
+  })
+})
 
 describe("RoutePath", () => {
   const day = [stop("a", "done", { visit_id: "v1" }), stop("b", "done"), stop("c", "next"), stop("d", "todo"), stop("e", "todo")]
@@ -58,7 +82,8 @@ describe("RoutePath", () => {
   it("小卡一開始是收起來的", () => {
     const html = render(day)
     expect(html).not.toContain("data-stop-popover")
-    expect(html.match(/aria-expanded="false"/g)).toHaveLength(5)
+    // 5 顆圓鈕 + 3 顆還沒走完的膠囊（走完的段不能展開，沒有 aria-expanded）
+    expect(html.match(/aria-expanded="false"/g)).toHaveLength(8)
   })
 
   it("熊熊滾站在路旁，點了進問答；還沒跑完是待機", () => {
@@ -80,5 +105,38 @@ describe("RoutePath", () => {
     const html = render([stop("a", "next", { window_kind: "before", window_time: "10:00", late_minutes: 25 }), stop("b", "todo")])
     expect(html).toContain("會晚到 25 分")
     expect(html.match(/會晚到/g)).toHaveLength(1)
+  })
+
+  it("每站上面一顆膠囊寫怎麼過來；第一站從辦公室", () => {
+    const html = render(
+      [
+        stop("a", "next", { travel_minutes: 18, travel_estimated: true }),
+        stop("b", "todo", { travel_mode: "scooter", travel_minutes: 11 }),
+      ],
+      () => {}
+    )
+    expect(html.match(/data-leg-chip/g)).toHaveLength(2)
+    expect(html).toContain("從辦公室")
+    expect(html).toContain("開車 約 18 分")
+    expect(html).toContain("機車 11 分")
+  })
+
+  it("已經走完的段不能點；沒給 onPickMode 時全部不能點", () => {
+    const done = render([stop("a", "done", { travel_minutes: null }), stop("b", "next")], () => {})
+    expect(done.match(/disabled=""/g)).toHaveLength(1)
+    const readOnly = render([stop("a", "next"), stop("b", "todo")])
+    expect(readOnly.match(/disabled=""/g)).toHaveLength(2)
+  })
+
+  it("沒有辦公室起點時第一站上面不放膠囊", () => {
+    const html = renderToStaticMarkup(
+      createElement(
+        MemoryRouter,
+        null,
+        createElement(RoutePath, { stops: [stop("a", "next"), stop("b", "todo")], officeStart: false, onPickMode: () => {} })
+      )
+    )
+    expect(html.match(/data-leg-chip/g)).toHaveLength(1)
+    expect(html).not.toContain("從辦公室")
   })
 })

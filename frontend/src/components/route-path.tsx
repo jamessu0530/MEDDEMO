@@ -1,11 +1,13 @@
-import { useEffect, useState, type CSSProperties } from "react"
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react"
 import { Check, Flag } from "lucide-react"
 import { Link } from "react-router"
 
-import { SIGNAL_LABEL, type RouteSignal, type RouteStop } from "@/api/route"
+import { SIGNAL_LABEL, type RouteSignal, type LegMode, type RouteStop, type TravelMode } from "@/api/route"
 import { Mascot } from "@/components/mascot"
+import { LegChip, LegMenu } from "@/components/route/leg-chip"
 import { buttonVariants } from "@/components/ui/button"
 import { bearStopIndex, labelSide, pathOffset, signalTone, TONE_CLASS } from "@/lib/route-path"
+import { legFrom } from "@/lib/travel-mode"
 import { cn } from "@/lib/utils"
 
 // 圓鈕 58×54（跟 Duolingo 一樣略寬），名字離圓鈕 12px
@@ -18,25 +20,44 @@ function popoverId(stop: RouteStop) {
   return `stop-popover-${stop.customer_id}`
 }
 
+type Opened = { kind: "stop" | "leg"; id: string } | null
+
 /**
  * 今日路線畫成 Duolingo 那樣的路（docs/superpowers/specs/2026-10-01-duolingo-home-design.md）：
  * 一站一顆厚圓鈕左右蛇行往下，名字標在旁邊空的那一側，下一站上面跳著「出發」；
  * 點圓鈕在底下彈出一張小卡寫為什麼排這家。熊熊滾站在路旁，點了進問答；最後是終點「收工」。
+ * 每站上面一顆膠囊寫從上一站（第一站從辦公室）怎麼過來，點了換交通方式
+ * （docs/superpowers/specs/2026-10-07-ride-vehicles-design.md）；沒給 onPickMode 時膠囊不能點。
  */
-export function RoutePath({ stops }: { stops: RouteStop[] }) {
-  const [openId, setOpenId] = useState<string | null>(null)
+export function RoutePath({
+  stops,
+  dayMode = "drive",
+  officeStart = true,
+  onPickMode,
+}: {
+  stops: RouteStop[]
+  dayMode?: TravelMode
+  officeStart?: boolean
+  onPickMode?: (from: string | null, to: string, mode: LegMode) => void
+}) {
+  // 同時只開一個：站的小卡或某一段的選單
+  const [opened, setOpened] = useState<Opened>(null)
   const finished = stops.length > 0 && stops.every((stop) => stop.status === "done")
   const bearAt = bearStopIndex(stops)
 
-  // 小卡開著時：點小卡和圓鈕以外的地方、按 Esc 都收起來（點別顆圓鈕由圓鈕自己換）
+  // 開著時：點小卡、選單、圓鈕、膠囊以外的地方、按 Esc 都收起來（點別顆由那一顆自己換）
   useEffect(() => {
-    if (!openId) return
+    if (!opened) return
     function onPointerDown(event: PointerEvent) {
-      if (event.target instanceof Element && event.target.closest("[data-stop-popover], [data-stop-node]")) return
-      setOpenId(null)
+      if (
+        event.target instanceof Element &&
+        event.target.closest("[data-stop-popover], [data-stop-node], [data-leg-menu], [data-leg-chip]:not(:disabled)")
+      )
+        return
+      setOpened(null)
     }
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setOpenId(null)
+      if (event.key === "Escape") setOpened(null)
     }
     document.addEventListener("pointerdown", onPointerDown)
     document.addEventListener("keydown", onKeyDown)
@@ -44,26 +65,54 @@ export function RoutePath({ stops }: { stops: RouteStop[] }) {
       document.removeEventListener("pointerdown", onPointerDown)
       document.removeEventListener("keydown", onKeyDown)
     }
-  }, [openId])
+  }, [opened])
+
+  function toggle(kind: "stop" | "leg", id: string) {
+    setOpened((now) => (now?.kind === kind && now.id === id ? null : { kind, id }))
+  }
 
   return (
     <ol aria-label="今日路線" className="flex flex-col pt-2">
       {stops.map((stop, index) => {
         const offset = pathOffset(index)
-        const open = openId === stop.customer_id
+        const from = legFrom(stops, index)
+        const stopOpen = opened?.kind === "stop" && opened.id === stop.customer_id
         return (
-          // 下一站上面多留一點高度給「出發」泡泡
-          <li key={stop.customer_id} className={cn("relative h-[92px]", stop.status === "next" && "mt-9")}>
-            <StopNode
+          <li key={stop.customer_id}>
+            <LegRow
               stop={stop}
-              index={index}
-              offset={offset}
-              open={open}
-              onToggle={() => setOpenId(open ? null : stop.customer_id)}
+              fromOffice={from === null}
+              hideChip={from === null && !officeStart}
+              x={(pathOffset(Math.max(index - 1, 0)) + offset) / 2}
+              open={opened?.kind === "leg" && opened.id === stop.customer_id}
+              onToggle={onPickMode ? () => toggle("leg", stop.customer_id) : undefined}
+              menu={(id) => (
+                <LegMenu
+                  id={id}
+                  from={from}
+                  to={stop.customer_id}
+                  current={stop.travel_mode}
+                  dayMode={dayMode}
+                  onPick={(mode) => {
+                    setOpened(null)
+                    if (mode !== stop.travel_mode) onPickMode?.(from, stop.customer_id, mode)
+                  }}
+                />
+              )}
             />
-            <StopLabel stop={stop} offset={offset} />
-            {bearAt === index && <Bear finished={false} />}
-            {open && <StopPopover stop={stop} index={index} offset={offset} />}
+            {/* 下面這一列跟以前一樣；下一站上面多留一點高度給「出發」泡泡 */}
+            <div className={cn("relative h-[92px]", stop.status === "next" && "mt-12")}>
+              <StopNode
+                stop={stop}
+                index={index}
+                offset={offset}
+                open={stopOpen}
+                onToggle={() => toggle("stop", stop.customer_id)}
+              />
+              <StopLabel stop={stop} offset={offset} />
+              {bearAt === index && <Bear finished={false} />}
+              {stopOpen && <StopPopover stop={stop} index={index} offset={offset} />}
+            </div>
           </li>
         )
       })}
@@ -80,9 +129,56 @@ export function RoutePath({ stops }: { stops: RouteStop[] }) {
           <Flag className="size-6" />
         </span>
         <p className="mt-1 text-sm font-semibold">{finished ? `今天 ${stops.length} 站都跑完了` : "收工"}</p>
+        {/* 還沒走的段只要有一段是 Google 算的就標出處（Google 的使用條款，不翻譯） */}
+        {/* 沒有辦公室起點時第一段是同一點到同一點，不是 Google 算的，不算 */}
+        {stops.some((stop, index) => stop.status !== "done" && !stop.travel_estimated && (index > 0 || officeStart)) && (
+          <p className="font-[Roboto,sans-serif] text-[0.6875rem] text-muted-foreground">Google Maps</p>
+        )}
         {bearAt === null && <Bear finished={finished} />}
       </li>
     </ol>
+  )
+}
+
+/** 一站上面那一列：膠囊放在上一站與這一站兩顆圓鈕的正中間（x 是離中線多少 px），選單從膠囊底下彈出 */
+function LegRow({
+  stop,
+  fromOffice,
+  hideChip,
+  x,
+  open,
+  onToggle,
+  menu,
+}: {
+  stop: RouteStop
+  fromOffice: boolean
+  hideChip: boolean
+  x: number
+  open: boolean
+  onToggle?: () => void
+  menu: (id: string) => ReactNode
+}) {
+  const id = `leg-menu-${stop.customer_id}`
+  return (
+    <div className="relative h-11">
+      {/* 沒有辦公室起點的第一站：這一列照樣留高度，只是不放膠囊；
+          開著時要蓋過底下那一列的圓鈕：整組（含 translate 造成的疊層）抬到小卡（z-5）上面、頁首（z-10）下面 */}
+      {!hideChip && (
+        <div className={cn("absolute top-1 -translate-x-1/2", open && "z-[6]")} style={{ left: `calc(50% + ${x}px)` }}>
+          <LegChip
+            mode={stop.travel_mode}
+            minutes={stop.travel_minutes}
+            estimated={stop.travel_estimated}
+            fromOffice={fromOffice}
+            done={stop.status === "done"}
+            open={open}
+            controls={id}
+            onClick={onToggle}
+          />
+          {open && menu(id)}
+        </div>
+      )}
+    </div>
   )
 }
 
