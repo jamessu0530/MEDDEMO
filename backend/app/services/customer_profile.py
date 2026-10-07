@@ -11,7 +11,8 @@ from typing import Any
 from sqlalchemy import column, func, select, table
 from sqlalchemy.orm import Session
 
-from app.models import Customer, Product, SalesTransaction, SapQuotationDraft, Visit
+from app.models import Customer, Product, PromotionItem, SalesTransaction, SapQuotationDraft, Visit
+from app.services import promo_packs
 from app.timeutil import local_date
 
 # 原型的進貨間隔圖看近六個月
@@ -170,10 +171,12 @@ def _open_quotes(session: Session, customer_id: str) -> list[OpenQuote]:
     """
     rows = session.execute(
         select(
-            SapQuotationDraft.quote_no, SapQuotationDraft.visit_id, SapQuotationDraft.qty, SapQuotationDraft.amount,
-            SapQuotationDraft.created_at, SapQuotationDraft.status, Product.name, Visit.visited_at,
+            SapQuotationDraft.quote_no, SapQuotationDraft.visit_id, SapQuotationDraft.qty, SapQuotationDraft.packs,
+            SapQuotationDraft.amount, SapQuotationDraft.created_at, SapQuotationDraft.status, Product.name,
+            PromotionItem.name.label("pack_name"), Visit.visited_at,
         )
         .join(Product, Product.sku == SapQuotationDraft.sku)
+        .outerjoin(PromotionItem, PromotionItem.code == SapQuotationDraft.promo_code)
         .outerjoin(Visit, Visit.id == SapQuotationDraft.visit_id)
         .where(SapQuotationDraft.customer_id == customer_id, SapQuotationDraft.status.in_(OPEN_QUOTE_STATUSES))
         .order_by(func.coalesce(Visit.visited_at, SapQuotationDraft.created_at).desc(), SapQuotationDraft.line_no)
@@ -182,7 +185,8 @@ def _open_quotes(session: Session, customer_id: str) -> list[OpenQuote]:
     for row in rows:
         day = local_date(row.visited_at or row.created_at)
         quote = quotes.setdefault(row.quote_no, OpenQuote(row.quote_no, row.visit_id, day, "", 0.0, row.status))
-        quote.items = "、".join(filter(None, [quote.items, f"{row.name} × {row.qty}"]))
+        label = promo_packs.line_label(row.name, row.qty, row.pack_name, row.packs)
+        quote.items = "、".join(filter(None, [quote.items, label]))
         quote.amount += float(row.amount)
     return list(quotes.values())
 

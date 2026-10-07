@@ -292,3 +292,20 @@ def test_bad_pack_quotes_are_rejected(tx, api, auth, model):
     assert only_packs.status_code == 422 and "沒促銷的品項" in only_packs.json()["detail"]
     # 同一個品項的小口與不走促銷可以同時開
     assert post({"items": [pack, {"sku": "F749579", "qty": 5}]}).status_code == 201
+
+
+def test_profile_and_route_name_the_pack(tx, api, auth):
+    code = pack_code(tx, "Premium眼藥水(小口)")
+    quote = api.post(
+        "/api/customers/C001/quotes", json={"items": [{"promo_code": code, "packs": 1}, {"sku": "HS-FO30", "qty": 20}]},
+        headers=auth("U01"),
+    ).json()
+    opened = open_quotes(api, auth)[quote["quote_no"]]
+    assert opened["items"] == "Premium眼藥水(小口) × 1 口、魚油 30 入 × 20" and opened["amount"] == 13600
+    # 今日路線一家只寫最近的一張報價：假資料的拜訪排在決賽日之前，把這張挪到決賽日當天才會是最近的
+    tx.execute(
+        update(SapQuotationDraft).where(SapQuotationDraft.quote_no == quote["quote_no"])
+        .values(created_at=dt.datetime(2026, 10, 28, 9, tzinfo=dt.timezone(dt.timedelta(hours=8))))
+    )
+    route = today_route._opportunities(tx, "U01", dt.date(2026, 10, 28))
+    assert route["C001"] == "10/28 想進Premium眼藥水(小口) × 1 口，報價草稿還沒成交"

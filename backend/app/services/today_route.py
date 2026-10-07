@@ -12,8 +12,10 @@ from dataclasses import dataclass, field
 from sqlalchemy import case, func, select, text
 from sqlalchemy.orm import Session
 
-from app.models import AppUser, Customer, Product, RouteSignalWeight, RouteSnooze, SalesTransaction, SapQuotationDraft, Visit
-from app.services import customer_profile, route_model
+from app.models import (
+    AppUser, Customer, Product, PromotionItem, RouteSignalWeight, RouteSnooze, SalesTransaction, SapQuotationDraft, Visit,
+)
+from app.services import customer_profile, promo_packs, route_model
 from app.timeutil import TAIPEI, local_date
 
 # 一位業務一天跑 3～5 家，路線取上限。少於這個數字是因為被暫緩或今天客戶不夠
@@ -125,10 +127,12 @@ def _opportunities(session: Session, owner_id: str, today: dt.date) -> dict[str,
     found: dict[str, str] = {}
 
     quotes = session.execute(
-        select(SapQuotationDraft.customer_id, SapQuotationDraft.sku, SapQuotationDraft.qty, Product.name,
+        select(SapQuotationDraft.customer_id, SapQuotationDraft.sku, SapQuotationDraft.qty, SapQuotationDraft.packs,
+               Product.name, PromotionItem.name.label("pack_name"),
                func.coalesce(Visit.visited_at, SapQuotationDraft.created_at).label("quoted_at"))
         .join(Customer, Customer.id == SapQuotationDraft.customer_id)
         .join(Product, Product.sku == SapQuotationDraft.sku)
+        .outerjoin(PromotionItem, PromotionItem.code == SapQuotationDraft.promo_code)
         .outerjoin(Visit, Visit.id == SapQuotationDraft.visit_id)
         .where(Customer.owner_user_id == owner_id, SapQuotationDraft.status == "draft")
         .order_by(text("quoted_at DESC"))
@@ -144,7 +148,8 @@ def _opportunities(session: Session, owner_id: str, today: dt.date) -> dict[str,
             )
         )
         if not converted:
-            found[q.customer_id] = f"{quoted_on:%m/%d} 想進{q.name} × {q.qty}，報價草稿還沒成交"
+            label = promo_packs.line_label(q.name, q.qty, q.pack_name, q.packs)
+            found[q.customer_id] = f"{quoted_on:%m/%d} 想進{label}，報價草稿還沒成交"
 
     growing = session.execute(
         select(customer_profile.customer_summary.c.customer_id,
