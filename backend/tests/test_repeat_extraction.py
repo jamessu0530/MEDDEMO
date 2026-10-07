@@ -33,6 +33,7 @@ def test_the_prompt_explains_same_as_last_time_and_relative_changes():
     prompt = extraction.build_prompt("逐字稿", date(2026, 10, 28), [], [])
     assert "repeat_last" in prompt and "跟上次一樣" in prompt and "except_skus" in prompt and "relative" in prompt
     assert "delta" in prompt and "照上次填 0" in prompt
+    assert "沒講哪一口" in prompt and "promo_code 填 null" in prompt
 
 
 def test_the_extractor_passes_repeat_last_through():

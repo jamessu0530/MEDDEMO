@@ -143,3 +143,25 @@ def test_a_customer_who_never_ordered_keeps_only_what_was_said():
 def test_skipping_everything_leaves_no_intent():
     every = [l.sku for l in LAST.lines]
     assert repeat_order.expand(LAST, repeat(except_skus=every), None, None, PACKS, HINTS).intent is None
+
+
+def test_a_relative_change_that_names_no_pack_lands_on_the_only_line_of_that_product():
+    found = repeat_order.expand(LAST, repeat(relative=[rel("F749579", 1)]), None, "Premium 再加一口", PACKS, HINTS)
+    assert item("F749579", "Premium眼藥水(小口)", 2, "口", "NOW-P") in found.intent
+    assert found.snapshot["relative"] == [{"sku": "F749579", "promo_code": "NOW-P", "last_qty": 1, "delta": 1}]
+
+
+def test_a_relative_change_that_names_no_pack_is_unmatched_when_the_product_has_several_lines():
+    two = LastOrder(
+        order=LAST.order, quote=LAST.quote,
+        lines=(
+            line("F749579", "Premium眼藥水", "盒", 1, Repeat("F749579", 1, PREMIUM), pack=PREMIUM_OLD),
+            line("F749579", "Premium眼藥水", "盒", 1, Repeat("F749579", 1, PREMIUM_BIG), pack=PREMIUM_BIG),
+        ),
+    )
+    found = repeat_order.expand(two, repeat(relative=[rel("F749579", 1, text="Premium")]), None, "x", PACKS, HINTS)
+    assert found.intent[-1] == item(None, "Premium", None, None)
+    assert found.snapshot["relative"] == []
+
+
+PREMIUM_BIG = pack("NOW-PB", "Premium眼藥水(大口)", "F749579", 110, 18, 27500)

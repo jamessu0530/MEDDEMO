@@ -36,5 +36,6 @@ OA 出差單不讀這些欄位，只用客戶和拜訪日期。
     | 跟上次一樣，魚油改 40 盒 | `all` true；`intent` 魚油 30 入 × 40 盒 |
     | 老樣子，威鎮這次先不要 | `all` true；`except_skus` 威鎮凝膠 |
     | 跟上次一樣，再加一口小口 Premium | `all` true；`relative` Premium眼藥水小口 +1 |
+    | 跟上次一樣，Premium 再加一口 | `all` true；`relative` Premium眼藥水 +1（沒講哪一口，對到上次那一口） |
     | 魚油比上次少 5 盒 | `all` false；`relative` 魚油 30 入 −5 |
     | 人工淚液照上次，其他不用 | `all` false；`relative` 人工淚液 0 |

@@ -96,6 +96,14 @@ def expand(
             continue
         if last is None:
             continue
+        # 沒講哪一口：對到上次這個品項唯一的那一列；有好幾列就請業務在確認頁選
+        if code is None and not any(_key(i) == (r["sku"], None) for i in base):
+            same = [i for i in base if i["sku"] == r["sku"]]
+            if len(same) > 1:
+                unmatched.append(_unmatched(r["product_text"]))
+                continue
+            if same:
+                code = same[0]["promo_code"]
         key = (r["sku"], code)
         before = next((i for i in base if _key(i) == key), None)
         at = next((n for n, i in enumerate(result) if _key(i) == key), None)
