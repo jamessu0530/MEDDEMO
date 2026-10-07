@@ -1,10 +1,10 @@
-// 產生座騎的定案表：npm run ride-sheet（在 frontend/ 底下跑）。
+// 產生座騎的定案表：npm --prefix frontend run ride-sheet（路徑照這個檔自己的位置算，從哪裡跑都一樣）。
 // 用 Vite 的 SSR 載入跟 App 同一批元件（含 @/ 別名），所以表上畫的就是程式畫的。
 import fs from "node:fs"
 import path from "node:path"
 import { createServer } from "vite"
 
-const root = process.cwd()
+const root = path.resolve(import.meta.dirname, "..")
 const out = path.resolve(root, "../docs/superpowers/specs/assets/2026-10-07-ride-sheet.html")
 const server = await createServer({ root, logLevel: "warn", server: { middlewareMode: true, hmr: false }, appType: "custom" })
 try {

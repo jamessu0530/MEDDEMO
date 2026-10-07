@@ -52,7 +52,7 @@ describe("Mascot", () => {
     expect(svg).not.toContain("aria-hidden")
   })
 
-  it("七個狀態加起來只用定案的那幾個顏色", () => {
+  it("八個狀態加起來只用定案的那幾個顏色", () => {
     const states: MascotState[] = ["idle", "hi", "listen", "think", "talk", "wait", "yay", "ride"]
     const colors = new Set(states.flatMap((state) => render({ state }).match(/#[0-9A-Fa-f]{6}\b|#fff\b/g) ?? []))
     // 主色、淺紫、深色；舌頭；泡泡與聲波；星星；眼睛的反光
