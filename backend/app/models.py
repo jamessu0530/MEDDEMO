@@ -367,6 +367,9 @@ class Visit(Base):
     client_ref: Mapped[str | None] = mapped_column(unique=True)
     # 轉文字或整理欄位失敗的原因，畫面上會顯示，並提供手動接手的方式
     error_message: Mapped[str | None]
+    # 講了「跟上次一樣」或跟上次比的加減時，展開那一刻的快照（services/repeat_order.py）。這次拜訪確認後
+    # 也會開一張報價，「上次」就變成這一張，所以不能每次重算
+    repeat_last: Mapped[dict[str, Any] | None]
 
 
 class VisitAudio(Base):
@@ -444,8 +447,9 @@ class CrmVisitRecord(Base):
     created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
 
 
-# draft：可以送給客戶；pending_approval：折扣超過業務的權限，等簽核；rejected：簽核被駁回或退回
-QUOTE_STATUSES = ("draft", "pending_approval", "rejected")
+# draft：可以送給客戶；pending_approval：折扣超過業務的權限，等簽核；rejected：簽核被駁回或退回；
+# ordered：客戶下單了，已寫進交易紀錄與應收帳款（services/orders.py）
+QUOTE_STATUSES = ("draft", "pending_approval", "rejected", "ordered")
 
 
 class SapQuotationDraft(Base):

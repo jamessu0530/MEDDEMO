@@ -41,7 +41,7 @@ def test_promotions_list_every_period_newest_first(client):
         ("202610保藥特搭活動", "進行中"), ("202609保藥特搭活動", "已結束"), ("202608保藥特搭活動", "已結束"),
     ]
     current = promotions[0]
-    assert len(current["items"]) == 37 and "骨營滿額贈" in current["pm_note"]
+    assert len(current["items"]) == 34 and "骨營滿額贈" in current["pm_note"]
     # 數字跟問答查的 v_promotion_item 是同一份：骨營膠囊小口 <11+1>，每口 11,550、平均每個 962.5
     small = next(i for i in current["items"] if i["name"] == "骨營膠囊600T(小口)")
     assert (small["buy_qty"], small["free_qty"], small["deal_price"], small["unit_deal_price"]) == (11, 1, 11550, 962.5)

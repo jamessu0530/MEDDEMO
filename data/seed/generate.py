@@ -569,6 +569,7 @@ def build_visits(rng, customers, baskets, products, as_of, transactions, receiva
                 "quote_no": visit_id, "visit_id": visit_id, "line_no": line_no, "customer_id": c["id"], "sku": item["sku"],
                 "created_by": c["owner_user_id"],
                 "qty": item["qty"], "unit_price": price, "amount": price * item["qty"],
+                "free_qty": 0, "promo_code": None, "packs": None, "discount_pct": 0, "status": "draft",
                 "created_at": confirmed_at,
             })
         tables["oa_expense_form"].append({
@@ -598,6 +599,7 @@ def build_promotions(as_of):
 
     模擬的每一期品項與搭贈照舊（獅王本來就標「常態搭贈」），PM 提醒只留還在期限內的段落。
     促銷品項編號接著往下編，一期用掉一段，同一個品項在每一期的相對位置不變。
+    最後一期（as_of 那個月）套 catalog.LAST_PERIOD_CHANGES。
     """
     promotions, items = [], []
     ship_price = {sku: ship for sku, _, _, _, _, ship, _, _ in catalog.PROMO_PRODUCTS}
@@ -608,6 +610,7 @@ def build_promotions(as_of):
         end = (start + timedelta(days=31)).replace(day=1) - timedelta(days=1)
         month = f"{start:%Y%m}"
         promotion_id = f"PR-{month}"
+        last = end >= as_of
         active = [(until, text, tag) for until, text, tag in catalog.PROMOTION_NOTES if until is None or month <= until]
         ended = [tag for until, _, tag in catalog.PROMOTION_NOTES if tag and until and month > until]
         promotions.append({
@@ -616,6 +619,11 @@ def build_promotions(as_of):
             "start_date": start, "end_date": end, "pm_note": "\n".join(text for _, text, _ in active),
         })
         for group, code, name, sku, deal, buy, free, price in catalog.PROMOTION_ITEMS:
+            if last and code in catalog.LAST_PERIOD_CHANGES:
+                change = catalog.LAST_PERIOD_CHANGES[code]
+                if change is None:
+                    continue  # 這一期沒有這一口；其他口的編號照舊
+                deal, buy, free, price = change
             for tag in ended:
                 deal = deal.removesuffix(f", {tag}")
             items.append({
@@ -827,6 +835,41 @@ def request_row(kind, prefix, seq, customer, at, payload, level, features, statu
         # 歷史單是人簽的，當時沒有模型；展示用的五張在灌資料時用訓練好的模型補上機率（seed.py）
         "model_probability": None, "model_features": features, "auto_approved": auto_approved,
     }
+
+
+def build_ordered_quotes(as_of, customers, products, promotion_items):
+    """上個月已成交的報價（catalog.ORDERED_QUOTES）：「上次訂的」才有口可以跟這一期比。
+
+    口用那天進行中那一期的編號，金額照報價頁的算法（沒促銷照供貨價、不打折；口照每口售價 × 口數）。
+    不補交易：問答的標準答案、常進品項、忠孝店「進貨間隔拉長」的情境都讀交易。
+    """
+    day = as_of - timedelta(days=catalog.ORDERED_QUOTE_DAYS)
+    packs = {i["name"]: i for i in promotion_items if i["promotion_id"] == f"PR-{day:%Y%m}"}
+    by_id = {c["id"]: c for c in customers}
+    created_at = datetime.combine(day, time(15, 0), TAIPEI)
+    rows = []
+    for n, (customer_id, lines) in enumerate(catalog.ORDERED_QUOTES, start=1):
+        c = by_id[customer_id]
+        for line_no, (kind, key, count) in enumerate(lines, start=1):
+            row = {
+                "quote_no": f"Q{day:%Y%m%d}-{n:04d}", "visit_id": None, "line_no": line_no, "customer_id": customer_id,
+                "created_by": c["owner_user_id"], "status": "ordered", "created_at": created_at, "discount_pct": 0,
+            }
+            if kind == "pack":
+                p = packs[key]
+                row |= {
+                    "sku": p["sku"], "qty": p["buy_qty"] * count, "free_qty": p["free_qty"] * count,
+                    "unit_price": round(p["deal_price"] / p["buy_qty"], 2), "amount": p["deal_price"] * count,
+                    "promo_code": p["code"], "packs": count,
+                }
+            else:
+                price = round(products[key]["unit_price"] * PRICE_FACTOR[c["type"]])
+                row |= {
+                    "sku": key, "qty": count, "free_qty": 0, "unit_price": price, "amount": price * count,
+                    "promo_code": None, "packs": None,
+                }
+            rows.append(row)
+    return rows
 
 
 def build_approval_history(rng, customers, baskets, products, as_of, transactions, receivables, visits):
@@ -1046,4 +1089,6 @@ def generate(as_of: date, seed: int = SEED) -> dict[str, list[dict]]:
     data["oa_expense_form"] += build_approval_history(
         random.Random(seed + 102), customers, baskets, products, as_of, transactions, receivables, data["visit"],
     )
+    # 上個月已成交的報價加在最後、不抽亂數：上面每一張表都跟加這一段之前一模一樣
+    data["sap_quotation_draft"] += build_ordered_quotes(as_of, customers, products, promotion_items)
     return data

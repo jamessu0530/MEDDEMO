@@ -196,9 +196,9 @@ def test_every_synced_visit_landed_in_all_three_targets(db):
         SELECT coalesce(sum(jsonb_array_length(fields_final->'intent')), 0) FROM visit
         WHERE jsonb_typeof(fields_final->'intent') = 'array'
     """)[0][0]
-    assert rows(db, "SELECT count(*) FROM sap_quotation_draft")[0][0] == intent_lines
+    assert rows(db, "SELECT count(*) FROM sap_quotation_draft WHERE visit_id IS NOT NULL")[0][0] == intent_lines
     # 歷史報價草稿沒有促銷：每一列的金額就是單價 × 數量
-    assert rows(db, "SELECT count(*) FROM sap_quotation_draft WHERE amount <> unit_price * qty OR promo_code IS NOT NULL")[0][0] == 0
+    assert rows(db, "SELECT count(*) FROM sap_quotation_draft WHERE visit_id IS NOT NULL AND (amount <> unit_price * qty OR promo_code IS NOT NULL)")[0][0] == 0
     skipped = rows(db, "SELECT count(*) FROM writeback_log WHERE target = 'sap' AND status = 'skipped'")[0][0]
     no_intent = rows(db, "SELECT count(*) FROM visit WHERE fields_final->'intent' = 'null'::jsonb")[0][0]
     assert skipped == no_intent > 0
@@ -265,7 +265,7 @@ def test_every_seeded_trip_form_has_two_signed_steps_and_two_log_lines(db):
 def test_approval_history_leaves_the_trip_forms_and_quotes_alone(db):
     # 既有的 5,223 張出差單照舊；歷史優惠單不建報價草稿（會影響今日路線的商機）
     assert rows(db, "SELECT count(*), count(visit_id), count(payload) FROM oa_expense_form WHERE kind = 'trip'")[0] == (5223, 5223, 0)
-    assert rows(db, "SELECT count(*) FROM sap_quotation_draft")[0][0] == 295
+    assert rows(db, "SELECT count(*) FROM sap_quotation_draft WHERE visit_id IS NOT NULL")[0][0] == 295
     assert rows(db, "SELECT count(*) FROM oa_expense_form WHERE kind = 'discount' AND payload->>'quote_no' IS NOT NULL")[0][0] == 0
     # 單號各自編號，不重複
     assert rows(db, "SELECT DISTINCT left(form_no, 2) FROM oa_expense_form WHERE kind = 'discount'") == [("DC",)]
@@ -331,8 +331,47 @@ def test_promotions_run_monthly_up_to_the_as_of_month(db):
         ("202610保藥特搭活動", datetime(2026, 10, 1).date(), datetime(2026, 10, 31).date(), "進行中"),
     ]
     assert dict(rows(db, "SELECT promotion_name, count(*) FROM v_promotion_item GROUP BY 1")) == {
-        "202608保藥特搭活動": 37, "202609保藥特搭活動": 37, "202610保藥特搭活動": 37,
+        "202608保藥特搭活動": 37, "202609保藥特搭活動": 37, "202610保藥特搭活動": 34,
     }
+
+
+def test_the_last_period_changes_three_promotions(db):
+    # 202610（決賽日那一期）：40EXa 只剩小口、金舒胃平小口要買的量變多、威鎮凝膠這期沒有；前幾期照舊
+    def packs(period, sku):
+        return [tuple(r) for r in rows(db, """
+            SELECT item_name, buy_qty, free_qty, deal_price::float FROM v_promotion_item
+            WHERE promotion_name = :p AND sku = :s ORDER BY item_code
+        """, p=f"{period}保藥特搭活動", s=sku)]
+
+    assert [p[0] for p in packs("202609", "F763630")] == ["40EXa眼藥水(小口)", "40EXa眼藥水(中口)", "40EXa眼藥水(大口)"]
+    assert [p[0] for p in packs("202610", "F763630")] == ["40EXa眼藥水(小口)"]
+    assert packs("202609", "C130082")[0] == ("金舒胃平(小口)", 10, 2, 800.0)
+    assert packs("202610", "C130082")[0] == ("金舒胃平(小口)", 15, 2, 1200.0)
+    assert packs("202609", "D120013") == [("威鎮凝膠", 11, 2, 990.0)]
+    assert packs("202610", "D120013") == []
+
+
+def test_last_months_quotes_are_ordered(db):
+    # 上個月已成交的兩張報價：忠孝店三種變化都有，士林店的口都沒變。口是 202609 那一期的；不補交易
+    found = [tuple(r) for r in rows(db, """
+        SELECT q.quote_no, q.customer_id, (q.created_at AT TIME ZONE 'Asia/Taipei')::date::text,
+               string_agg(coalesce(i.name || ' × ' || q.packs || ' 口', q.sku || ' × ' || q.qty), '、' ORDER BY q.line_no)
+        FROM sap_quotation_draft q LEFT JOIN promotion_item i ON i.code = q.promo_code
+        WHERE q.status = 'ordered' GROUP BY 1, 2, 3 ORDER BY 1
+    """)]
+    assert found == [
+        ("Q20260930-0001", "C001", "2026-09-30",
+         "40EXa眼藥水(中口) × 1 口、金舒胃平(小口) × 3 口、威鎮凝膠 × 2 口、Premium眼藥水(小口) × 1 口、HS-FO30 × 40"),
+        ("Q20260930-0002", "C009", "2026-09-30", "Premium眼藥水(小口) × 2 口、骨營膠囊600T(小口) × 1 口"),
+    ]
+    periods = rows(db, """
+        SELECT DISTINCT i.promotion_id FROM sap_quotation_draft q JOIN promotion_item i ON i.code = q.promo_code
+        WHERE q.status = 'ordered'
+    """)
+    assert [p[0] for p in periods] == ["PR-202609"]
+    # 金額照報價的算法：口照每口售價 × 口數；魚油 30 入連鎖供貨價 405 × 40
+    total = rows(db, "SELECT sum(amount)::float FROM sap_quotation_draft WHERE quote_no = 'Q20260930-0001'")[0][0]
+    assert total == 7980 + 800 * 3 + 990 * 2 + 5500 + 405 * 40
 
 
 def test_promotion_prices_match_the_cyh_page(db):

@@ -18,7 +18,8 @@ from app.tasks import redis
 def client(engine, sign_in):
     yield sign_in(TestClient(app), "U01")
     with engine.begin() as conn:
-        conn.execute(text("DELETE FROM sap_quotation_draft WHERE quote_no LIKE 'Q%'"))
+        # 只刪這次開的（單號是系統日）；上個月已成交的兩張是假資料
+        conn.execute(text("DELETE FROM sap_quotation_draft WHERE quote_no LIKE 'Q' || to_char(app_today(), 'YYYYMMDD') || '-%'"))
     redis().flushdb()
 
 
