@@ -3,9 +3,17 @@
 import datetime as dt
 from decimal import Decimal
 
-from app.services import last_order
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import delete, text
+from sqlalchemy.orm import Session
+
+from app.main import app
+from app.models import SalesTransaction, SapQuotationDraft
+from app.services import last_order, promo_packs
 from app.services.last_order import Change, Repeat, Source, SourceLine
 from app.services.promo_packs import Pack
+from app.tasks import redis
 
 
 def pack(code, name, sku, buy, free, price, period="202609", deal=None):
@@ -115,3 +123,63 @@ def test_packs_with_the_same_name_match_by_rank():
     assert last_order.compare(old[2], 1, old, now[:2], "固循魚油")[1].text == (
         "固循魚油這期沒了，只剩固循魚油（直走 5，$4,650）、固循魚油（買 9 送 1，$8,500）"
     )
+
+
+@pytest.fixture
+def client(engine, sign_in):
+    yield sign_in(TestClient(app), "U01")
+    redis().flushdb()
+
+
+def current_code(engine, name):
+    with Session(engine) as session:
+        return next(p.code for p in promo_packs.current_packs(session) if p.name == name)
+
+
+def test_last_order_of_a_store_whose_packs_changed(client, engine):
+    last = client.get("/api/customers/C001/last-order").json()
+    # 10/5 進貨比 9/30 報價新、差 5 天：進貨整張照抄（18 項），報價補上 4 個口；魚油兩邊都有，照進貨
+    assert last["order"] == {"order_no": "SO20261005-C001", "date": "2026-10-05"}
+    assert last["quote"] == {"quote_no": "Q20260930-0001", "date": "2026-09-30"}
+    assert len(last["lines"]) == 18 + 4 and last["changed"] == 3
+    first = last["lines"][:3]
+    assert [(line["pack"]["name"], line["change"]["kind"]) for line in first] == [
+        ("40EXa眼藥水(中口)", "pack_gone"), ("金舒胃平(小口)", "terms"), ("威鎮凝膠", "promo_gone"),
+    ]
+    assert [line["change"]["text"] for line in first] == [
+        "中口這期沒了，只剩小口（買 22 送 1，$3,080）",
+        "從買 10 送 2 變成買 15 送 2，一口 $800 → $1,200",
+        "這期沒有促銷了",
+    ]
+    assert [line["change"]["short"] for line in first] == ["40EXa眼藥水(中口)沒了", "金舒胃平(小口)要買的量變多", "威鎮凝膠沒有促銷了"]
+    # 口沒了、促銷沒了：不走促銷，數量是上次付錢的數量；條件變了：這期那一口、口數不變
+    assert [line["repeat"] for line in first] == [
+        {"sku": "F763630", "qty": 57}, {"promo_code": current_code(engine, "金舒胃平(小口)"), "packs": 3}, {"sku": "D120013", "qty": 22},
+    ]
+    # 沒變的：進貨照金額由大到小，報價補的口在最後
+    assert last["lines"][3]["sku"] == "HS-FO90" and last["lines"][3]["source"] == "order"
+    premium = last["lines"][-1]
+    assert (premium["pack"]["name"], premium["change"], premium["repeat"]) == (
+        "Premium眼藥水(小口)", None, {"promo_code": current_code(engine, "Premium眼藥水(小口)"), "packs": 1},
+    )
+    with engine.connect() as conn:
+        fish_qty = conn.execute(text("SELECT qty FROM sales_transaction WHERE order_no = 'SO20261005-C001' AND sku = 'HS-FO30'")).scalar_one()
+    fish = next(line for line in last["lines"] if line["sku"] == "HS-FO30")
+    assert (fish["source"], fish["qty"], fish["pack"], fish["unit"], fish["supply_price"]) == ("order", fish_qty, None, "盒", 405)
+
+
+def test_unchanged_packs_carry_no_warning(client):
+    last = client.get("/api/customers/C009/last-order").json()
+    assert last["changed"] == 0 and len(last["lines"]) == 15 + 2
+    assert [line["pack"]["name"] for line in last["lines"] if line["pack"]] == ["Premium眼藥水(小口)", "骨營膠囊600T(小口)"]
+
+
+def test_someone_elses_customer_is_not_found(client, auth):
+    assert client.get("/api/customers/C001/last-order", headers=auth("U03")).status_code == 404
+
+
+def test_a_customer_who_never_ordered_has_no_last_order(tx, auth):
+    tx.execute(delete(SalesTransaction).where(SalesTransaction.customer_id == "C001"))
+    tx.execute(delete(SapQuotationDraft).where(SapQuotationDraft.customer_id == "C001"))
+    found = TestClient(app).get("/api/customers/C001/last-order", headers=auth("U01"))
+    assert found.status_code == 200 and found.json() is None

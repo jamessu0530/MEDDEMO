@@ -9,7 +9,14 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from sqlalchemy import Date, cast, func, select
+from sqlalchemy.orm import Session
+
+from app.models import Customer, Product, SalesTransaction, SapQuotationDraft, Visit
+from app.pricing import supply_price
+from app.services import promo_packs
 from app.services.promo_packs import Pack
+from app.timeutil import local_date
 
 # 舊的那張只在跟新的相差這麼多天以內才拿來補：促銷一個月一期，太舊的單不湊
 SUPPLEMENT_DAYS = 31
@@ -55,6 +62,35 @@ class Repeat:
     @property
     def promo_code(self) -> str | None:
         return self.pack.code if self.pack else None
+
+
+@dataclass(frozen=True)
+class Line:
+    sku: str
+    name: str
+    spec: str
+    unit: str
+    # 這家的供貨價：報價頁「照上次填」加列時用
+    supply_price: int
+    # 沒走口是數量；走口是口數
+    qty: int
+    # 上次走的那一口
+    pack: Pack | None
+    source: str  # order／quote
+    change: Change | None
+    repeat: Repeat
+
+
+@dataclass(frozen=True)
+class LastOrder:
+    # 有用到的那次進貨與那張報價
+    order: Source | None
+    quote: Source | None
+    lines: tuple[Line, ...]
+
+    @property
+    def changed(self) -> int:
+        return sum(1 for line in self.lines if line.change)
 
 
 def merge(order: Source | None, quote: Source | None) -> tuple[list[tuple[Source, SourceLine]], list[Source]]:
@@ -148,3 +184,79 @@ def compare(
         left = "、".join(f"{_label(p)}（{_deal(p)}，{_money(p.deal_price)}）" for p in others)
         return plain, Change("pack_gone", f"{_label(pack)}這期沒了，只剩{left}", f"{pack.name}沒了")
     return plain, Change("promo_gone", "這期沒有促銷了", f"{product_name}沒有促銷了")
+
+
+def _last_order(session: Session, customer_id: str) -> Source | None:
+    """最新的一張訂單：同一個 order_no 的品項，日期取最早的那天；品項照金額由大到小。"""
+    first_day = func.min(SalesTransaction.date)
+    head = session.execute(
+        select(SalesTransaction.order_no, first_day.label("date"))
+        .where(SalesTransaction.customer_id == customer_id)
+        .group_by(SalesTransaction.order_no)
+        .order_by(first_day.desc(), SalesTransaction.order_no.desc())
+        .limit(1)
+    ).one_or_none()
+    if head is None:
+        return None
+    rows = session.execute(
+        select(SalesTransaction.sku, func.sum(SalesTransaction.qty).label("qty"))
+        .where(SalesTransaction.customer_id == customer_id, SalesTransaction.order_no == head.order_no)
+        .group_by(SalesTransaction.sku)
+        .order_by(func.sum(SalesTransaction.amount).desc(), SalesTransaction.sku)
+    ).all()
+    return Source("order", head.order_no, head.date, tuple(SourceLine(row.sku, int(row.qty)) for row in rows))
+
+
+def _last_quote(session: Session, customer_id: str) -> Source | None:
+    """最新的一張已成交的報價：日期跟待處理事項一樣取拜訪時間、沒有拜訪取建立時間；同一天好幾張取最後建的。"""
+    quoted_at = func.max(func.coalesce(Visit.visited_at, SapQuotationDraft.created_at))
+    created_at = func.max(SapQuotationDraft.created_at)
+    head = session.execute(
+        select(SapQuotationDraft.quote_no, quoted_at.label("quoted_at"))
+        .outerjoin(Visit, Visit.id == SapQuotationDraft.visit_id)
+        .where(SapQuotationDraft.customer_id == customer_id, SapQuotationDraft.status.in_(QUOTE_STATUSES))
+        .group_by(SapQuotationDraft.quote_no)
+        .order_by(cast(func.timezone("Asia/Taipei", quoted_at), Date).desc(), created_at.desc())
+        .limit(1)
+    ).one_or_none()
+    if head is None:
+        return None
+    rows = session.execute(
+        select(SapQuotationDraft.sku, SapQuotationDraft.qty, SapQuotationDraft.promo_code, SapQuotationDraft.packs)
+        .where(SapQuotationDraft.quote_no == head.quote_no)
+        .order_by(SapQuotationDraft.line_no)
+    ).all()
+    packs = promo_packs.packs_by_code(session, (row.promo_code for row in rows if row.promo_code))
+    lines = tuple(
+        SourceLine(row.sku, row.packs, packs[row.promo_code]) if row.promo_code else SourceLine(row.sku, row.qty)
+        for row in rows
+    )
+    return Source("quote", head.quote_no, local_date(head.quoted_at), lines)
+
+
+def build(session: Session, customer: Customer) -> LastOrder | None:
+    """這家上次訂的；還沒訂過是 None。變了的列在前，其餘照來源的順序。"""
+    rows, used = merge(_last_order(session, customer.id), _last_quote(session, customer.id))
+    if not rows:
+        return None
+    current = promo_packs.current_packs(session)
+    previous = promo_packs.period_packs(session, (line.pack.promotion_name for _, line in rows if line.pack))
+    products = {p.sku: p for p in session.scalars(select(Product).where(Product.sku.in_({line.sku for _, line in rows})))}
+    lines = []
+    for source, line in rows:
+        product = products[line.sku]
+        if line.pack:
+            repeat, change = compare(line.pack, line.qty, previous[line.pack.promotion_name], current, product.name)
+        else:
+            repeat, change = Repeat(line.sku, line.qty), None
+        lines.append(Line(
+            sku=line.sku, name=product.name, spec=product.spec, unit=product.unit,
+            supply_price=supply_price(product.unit_price, customer.type), qty=line.qty, pack=line.pack,
+            source=source.kind, change=change, repeat=repeat,
+        ))
+    lines.sort(key=lambda line: line.change is None)  # sort 是穩定的：同一組裡照原本的順序
+    return LastOrder(
+        order=next((s for s in used if s.kind == "order"), None),
+        quote=next((s for s in used if s.kind == "quote"), None),
+        lines=tuple(lines),
+    )

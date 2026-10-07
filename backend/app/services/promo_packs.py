@@ -60,6 +60,20 @@ def packs_by_code(session: Session, codes: Iterable[str]) -> dict[str, Pack]:
     return {row["code"]: Pack(**row) for row in session.execute(query, {"codes": codes}).mappings()}
 
 
+def period_packs(session: Session, names: Iterable[str]) -> dict[str, list[Pack]]:
+    """照促銷名稱查那幾期的每一口，鍵是促銷名稱。上次訂的要知道上次那一口在那一期排第幾。"""
+    names = sorted(set(names))
+    if not names:
+        return {}
+    query = text(f"SELECT {COLUMNS} FROM v_promotion_item WHERE promotion_name IN :names ORDER BY item_code").bindparams(
+        bindparam("names", expanding=True)
+    )
+    found: dict[str, list[Pack]] = {name: [] for name in names}
+    for row in session.execute(query, {"names": names}).mappings():
+        found[row["promotion_name"]].append(Pack(**row))
+    return found
+
+
 def pack_line(pack: Pack, packs: int) -> PackLine:
     return PackLine(
         qty=pack.buy_qty * packs,

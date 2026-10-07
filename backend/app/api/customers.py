@@ -16,7 +16,7 @@ from app.api.methods import MethodCardOut
 from app.db import get_session
 from app.models import AppUser, Customer, Product, SalesTransaction, SapQuotationDraft, Visit
 from app.pricing import supply_price
-from app.services import approvals, customer_profile, negotiation, promo_packs, writeback
+from app.services import approvals, customer_profile, last_order, negotiation, promo_packs, writeback
 from app.services.scope import SHARING_LEVEL, Scope
 
 router = APIRouter(prefix="/api/customers", tags=["customers"])
@@ -273,6 +273,101 @@ def get_negotiation_card(session: SessionDep, customer_id: str, user: CurrentUse
     profile = customer_profile.build_profile(session, customer)
     card = negotiation.negotiation_card(session, customer, profile, user)
     return NegotiationCard(customer=item, **dataclasses.asdict(card))
+
+
+# ── 上次訂的（docs/superpowers/specs/2026-10-07-repeat-last-order-design.md）─────────────
+
+
+class LastOrderPack(BaseModel):
+    code: str
+    name: str
+    deal: str
+    buy_qty: int
+    free_qty: int
+    deal_price: float
+
+
+class LastOrderChange(BaseModel):
+    # terms：同一口條件變了；pack_gone：這一口沒了；promo_gone：這期沒有促銷
+    kind: Literal["terms", "pack_gone", "promo_gone"]
+    text: str
+    short: str
+
+
+class RepeatPlain(BaseModel):
+    sku: str
+    qty: int
+
+
+class RepeatPack(BaseModel):
+    promo_code: str
+    packs: int
+
+
+class LastOrderLine(BaseModel):
+    sku: str
+    name: str
+    spec: str
+    unit: str
+    supply_price: int
+    # 沒走口是數量；走口是口數
+    qty: int
+    pack: LastOrderPack | None
+    source: Literal["order", "quote"]
+    change: LastOrderChange | None
+    # 這次照抄成什麼：品項 × 數量，或這一期的某一口 × 口數
+    repeat: RepeatPlain | RepeatPack
+
+
+class OrderRef(BaseModel):
+    order_no: str
+    date: date
+
+
+class QuoteRef(BaseModel):
+    quote_no: str
+    date: date
+
+
+class LastOrderOut(BaseModel):
+    order: OrderRef | None
+    quote: QuoteRef | None
+    lines: list[LastOrderLine]
+    changed: int
+
+
+def _last_order_out(found: last_order.LastOrder) -> LastOrderOut:
+    lines = []
+    for line in found.lines:
+        pack = line.pack
+        repeat = line.repeat
+        lines.append(LastOrderLine(
+            sku=line.sku, name=line.name, spec=line.spec, unit=line.unit, supply_price=line.supply_price, qty=line.qty,
+            pack=LastOrderPack(
+                code=pack.code, name=pack.name, deal=pack.deal, buy_qty=pack.buy_qty, free_qty=pack.free_qty,
+                deal_price=float(pack.deal_price),
+            ) if pack else None,
+            source=line.source,
+            change=LastOrderChange(**dataclasses.asdict(line.change)) if line.change else None,
+            repeat=RepeatPack(promo_code=repeat.pack.code, packs=repeat.qty) if repeat.pack else RepeatPlain(sku=repeat.sku, qty=repeat.qty),
+        ))
+    return LastOrderOut(
+        order=OrderRef(order_no=found.order.no, date=found.order.date) if found.order else None,
+        quote=QuoteRef(quote_no=found.quote.no, date=found.quote.date) if found.quote else None,
+        lines=lines,
+        changed=found.changed,
+    )
+
+
+@router.get("/{customer_id}/last-order", response_model=LastOrderOut | None)
+def get_last_order(session: SessionDep, customer_id: str, user: CurrentUser):
+    """上次訂的：上一次進貨與上一張報價合起來，上次走口的列跟這一期比（services/last_order.py）。沒訂過回 null。
+
+    權限跟報價一樣：報價的內容與交易條件是負責人自己的。
+    """
+    customer, _ = _load(session, customer_id, user, SHARING_LEVEL["quote"])
+    found = last_order.build(session, customer)
+    return _last_order_out(found) if found else None
 
 
 # ── 開報價（原型客戶檔案的「開報價」）────────────────────────────────
