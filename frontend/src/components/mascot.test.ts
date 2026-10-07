@@ -2,7 +2,7 @@ import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 import { describe, expect, it } from "vitest"
 
-import { Mascot } from "@/components/mascot"
+import { Mascot, MascotFigure } from "@/components/mascot"
 import { voiceMascotState, type MascotState } from "@/lib/mascot"
 
 const render = (props: Parameters<typeof Mascot>[0] = {}) => renderToStaticMarkup(createElement(Mascot, props))
@@ -22,6 +22,7 @@ describe("Mascot", () => {
     const face: Record<MascotState, [string, string]> = {
       idle: ["open", "smile"], hi: ["happy", "open"], listen: ["open", "smile"], think: ["up", "hmm"],
       talk: ["open", "open"], wait: ["open", "smile"], yay: ["happy", "open"],
+      ride: ["happy", "open"],
     }
     for (const [state, [eyes, mouth]] of Object.entries(face) as [MascotState, [string, string]][]) {
       const svg = render({ state })
@@ -34,6 +35,7 @@ describe("Mascot", () => {
     expect(render({ state: "wait" }).match(/mascot-load/g)).toHaveLength(3)
     expect(render({ state: "yay" }).match(/mascot-star/g)).toHaveLength(4)
     expect(render({ state: "idle" })).not.toMatch(/mascot-(wave|dot|load|star)/)
+    expect(render({ state: "ride" })).not.toMatch(/mascot-(wave|dot|load|star)/)
   })
 
   it("半身特寫切到頭和肩膀，不畫影子", () => {
@@ -51,10 +53,21 @@ describe("Mascot", () => {
   })
 
   it("七個狀態加起來只用定案的那幾個顏色", () => {
-    const states: MascotState[] = ["idle", "hi", "listen", "think", "talk", "wait", "yay"]
+    const states: MascotState[] = ["idle", "hi", "listen", "think", "talk", "wait", "yay", "ride"]
     const colors = new Set(states.flatMap((state) => render({ state }).match(/#[0-9A-Fa-f]{6}\b|#fff\b/g) ?? []))
     // 主色、淺紫、深色；舌頭；泡泡與聲波；星星；眼睛的反光
     expect([...colors].sort()).toEqual(["#2B1B47", "#9B51E0", "#C9A2F5", "#EADBFD", "#FF8FB3", "#FFC93C", "#fff"].sort())
+  })
+})
+
+describe("MascotFigure", () => {
+  it("MascotFigure 只有熊本身，可以疊到別的 svg 裡", () => {
+    const g = renderToStaticMarkup(createElement("svg", null, createElement(MascotFigure, { state: "ride", props: false })))
+    expect(g).toContain('class="mascot-all"')
+    expect(g).toContain('data-eyes="happy"')
+    expect(g).toContain('data-mouth="open"')
+    expect(g).not.toContain("mascot-shadow")
+    expect(g).not.toContain("<svg viewBox")
   })
 })
 

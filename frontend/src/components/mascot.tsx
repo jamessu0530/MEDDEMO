@@ -29,6 +29,7 @@ const FACE: Record<MascotState, [Eyes, Mouth]> = {
   talk: ["open", "open"],
   wait: ["open", "smile"],
   yay: ["happy", "open"],
+  ride: ["happy", "open"],
 }
 
 type MascotProps = {
@@ -43,7 +44,6 @@ type MascotProps = {
 }
 
 export function Mascot({ state = "idle", size = 96, bust = false, label, className }: MascotProps) {
-  const [eyes, mouth] = FACE[state]
   return (
     <svg
       className={cn("mascot", `mascot-${state}`, className)}
@@ -54,31 +54,43 @@ export function Mascot({ state = "idle", size = 96, bust = false, label, classNa
       {...(label ? { role: "img", "aria-label": label } : { "aria-hidden": true })}
     >
       {!bust && <ellipse className="mascot-shadow" cx="120" cy="222" rx="60" ry="7" fill={INK} opacity=".13" />}
-      <g className="mascot-all">
-        <g className="mascot-body">
-          <Ear side="l" x={80} />
-          <Ear side="r" x={160} />
-          {/* 頭和身體是同一個形狀，底下分出兩條短腿 */}
-          <path
-            d="M56 118 C56 80 84 56 120 56 C156 56 184 80 184 118 V188 C184 204 173 215 159 215 C147 215 139 209 135 200 H105 C101 209 93 215 81 215 C67 215 56 204 56 188 Z"
-            fill={BASE}
-          />
-          <g transform="translate(120 120)">
-            <g className="mascot-face">
-              <g className="mascot-eyes" data-eyes={eyes}>
-                <EyesShape kind={eyes} />
-              </g>
-              <ellipse cx="0" cy="9" rx="24" ry="17" fill={LIGHT} />
-              <path d="M-9 0 Q0 -4 9 0 Q10.5 5 0 10 Q-10.5 5 -9 0 Z" fill={INK} />
-              <g data-mouth={mouth}>
-                <MouthShape kind={mouth} />
-              </g>
+      <MascotFigure state={state} props={!bust} />
+    </svg>
+  )
+}
+
+/**
+ * 熊熊滾本身：身體、耳朵、臉，加上這個狀態的道具（props），畫布座標 0 0 240 240，不含影子。
+ * 座騎（components/rides/ride.tsx）把它疊進自己的 svg。狀態的動畫掛在外層的 .mascot-<state> 上，
+ * 疊到別處時外面要包一層 <g className={`mascot mascot-${state}`}>。
+ */
+export function MascotFigure({ state = "idle", props = true }: { state?: MascotState; props?: boolean }) {
+  const [eyes, mouth] = FACE[state]
+  return (
+    <g className="mascot-all">
+      <g className="mascot-body">
+        <Ear side="l" x={80} />
+        <Ear side="r" x={160} />
+        {/* 頭和身體是同一個形狀，底下分出兩條短腿 */}
+        <path
+          d="M56 118 C56 80 84 56 120 56 C156 56 184 80 184 118 V188 C184 204 173 215 159 215 C147 215 139 209 135 200 H105 C101 209 93 215 81 215 C67 215 56 204 56 188 Z"
+          fill={BASE}
+        />
+        <g transform="translate(120 120)">
+          <g className="mascot-face">
+            <g className="mascot-eyes" data-eyes={eyes}>
+              <EyesShape kind={eyes} />
+            </g>
+            <ellipse cx="0" cy="9" rx="24" ry="17" fill={LIGHT} />
+            <path d="M-9 0 Q0 -4 9 0 Q10.5 5 0 10 Q-10.5 5 -9 0 Z" fill={INK} />
+            <g data-mouth={mouth}>
+              <MouthShape kind={mouth} />
             </g>
           </g>
         </g>
-        {!bust && <Props state={state} />}
       </g>
-    </svg>
+      {props && <Props state={state} />}
+    </g>
   )
 }
 

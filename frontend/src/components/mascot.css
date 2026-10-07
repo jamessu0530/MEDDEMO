@@ -97,6 +97,8 @@
   70% { transform: scale(1) rotate(12deg); opacity: 1; } 100% { transform: scale(.4) rotate(30deg); opacity: 0; }
 }
 
+/* 騎乘：坐在座騎上，笑到瞇起來、張嘴；身體不另外動，由座騎晃（components/rides/ride.css） */
+
 /* 系統設定「減少動態效果」：停在該狀態的表情，不動。道具原本靠動畫才顯現，這時直接顯示 */
 @media (prefers-reduced-motion: reduce) {
   .mascot, .mascot * { animation: none !important; }

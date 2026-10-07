@@ -53,6 +53,7 @@ AI 助理的吉祥物：一隻紫色、站著的小熊，叫「熊熊滾」。AI
 | 回答 | `talk` | 嘴巴開合；身體跟著點 | 張開／張嘴 |
 | 等待 | `wait` | 左右腳輪流踏步；耳朵跟著擺；頭上三顆點輪流跳 | 張開／微笑 |
 | 完成 | `yay` | 蓄力下壓、跳起拉長、落地壓扁、回彈；耳朵慢半拍；四顆星星彈出來 | 笑到瞇起來／張嘴 |
+| 騎乘 | `ride` | 坐在座騎上，身體不另外動（由座騎晃） | 笑到瞇起來／張嘴 |
 
 半身特寫裡聲波、泡泡、點、星星會被切掉，只剩臉、耳朵與身體的動作，這是預期的：頭像太小，那些東西本來就看不清楚。
 
@@ -81,7 +82,7 @@ AI 助理的吉祥物：一隻紫色、站著的小熊，叫「熊熊滾」。AI
 `frontend/src/components/mascot.tsx`：
 
 ```tsx
-type MascotState = "idle" | "hi" | "listen" | "think" | "talk" | "wait" | "yay"
+type MascotState = "idle" | "hi" | "listen" | "think" | "talk" | "wait" | "yay" | "ride"
 
 <Mascot state="think" size={28} bust />
 <Mascot state="wait" size={140} label="正在整理拜訪紀錄" />
@@ -89,6 +90,7 @@ type MascotState = "idle" | "hi" | "listen" | "think" | "talk" | "wait" | "yay"
 
 - `state` 預設 `idle`；`size` 是邊長（px）；`bust` 是半身特寫。
 - 預設是裝飾（`aria-hidden`）。旁邊沒有文字說明狀態時傳 `label`，會變成 `role="img"` 加 `aria-label`。
+- 熊本身是 `MascotFigure`（一個 `<g>`），座騎把它疊進自己的 svg（2026-10-07 加）。
 - 動畫寫在 `frontend/src/components/mascot.css`，由元件自己 import；class 都以 `mascot-` 開頭，不跟 Tailwind 撞名。
 - 語音 dock 的狀態對應寫成一個純函式 `voiceMascotState(status, pending)`，好測。
 
