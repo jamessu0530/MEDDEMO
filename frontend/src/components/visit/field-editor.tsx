@@ -12,11 +12,14 @@ import {
   type VisitFields,
 } from "@/api/visits"
 import { FIELD_LABEL } from "@/components/visit/field-format"
+import { usePromotions } from "@/components/visit/use-promotions"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { formatMoney } from "@/lib/format"
+import { packDeal } from "@/lib/quote"
 import { cn } from "@/lib/utils"
 
 type FieldEditorProps = {
@@ -209,6 +212,9 @@ function useProducts() {
 
 function IntentEditor({ initial, saving, onSave }: EditorProps<IntentItem[]>) {
   const products = useProducts()
+  const promotions = usePromotions()
+  const running = promotions.find((p) => p.status === "進行中")?.items ?? []
+  const allPacks = promotions.flatMap((p) => p.items)
   const [rows, setRows] = useState<IntentItem[]>(initial ?? [{ product_text: "", sku: null, qty: null, unit: null, promo_code: null }])
   const update = (index: number, row: IntentItem) => setRows(rows.map((r, i) => (i === index ? row : r)))
 
@@ -224,6 +230,20 @@ function IntentEditor({ initial, saving, onSave }: EditorProps<IntentItem[]>) {
     )
   }
 
+  // 選了某一口，數量就是口數、單位是「口」；改回不走促銷，單位回到品項的單位
+  function choosePack(index: number, code: string) {
+    const row = rows[index]
+    const product = products.find((p) => p.sku === row.sku)
+    update(index, { ...row, promo_code: code || null, unit: code ? "口" : (product?.unit ?? row.unit) })
+  }
+
+  // 這個品項在這一期的口；已經選了別期的口（換期前抽的）也列出來，選單才不會跳掉
+  function packOptions(row: IntentItem) {
+    const options = running.filter((pack) => pack.sku === row.sku)
+    const chosen = allPacks.find((pack) => pack.code === row.promo_code)
+    return chosen && !options.includes(chosen) ? [...options, chosen] : options
+  }
+
   function save() {
     const cleaned = rows
       .map((r) => ({ ...r, product_text: r.product_text.trim() || products.find((p) => p.sku === r.sku)?.name || "" }))
@@ -233,7 +253,7 @@ function IntentEditor({ initial, saving, onSave }: EditorProps<IntentItem[]>) {
 
   return (
     <>
-      <p className="text-xs text-muted-foreground">送出 SAP 報價草稿需要每一項都有品項和數量。</p>
+      <p className="text-xs text-muted-foreground">送出 SAP 報價草稿需要每一項都有品項和數量；選了促銷的口，數量就是口數。</p>
       {rows.map((row, index) => (
         <div key={index} className="flex flex-col gap-2 rounded-xl border-2 bg-card p-3 shadow-lip">
           {row.product_text && <p className="text-xs text-muted-foreground">口述講法：{row.product_text}</p>}
@@ -256,6 +276,21 @@ function IntentEditor({ initial, saving, onSave }: EditorProps<IntentItem[]>) {
             </select>
             <RemoveButton onClick={() => setRows(rows.filter((_, i) => i !== index))} />
           </div>
+          {row.sku && packOptions(row).length > 0 && (
+            <select
+              value={row.promo_code ?? ""}
+              onChange={(e) => choosePack(index, e.target.value)}
+              aria-label="促銷的口"
+              className="h-11 min-w-0 rounded-xl border-2 border-input bg-card px-3 text-sm shadow-lip"
+            >
+              <option value="">不走促銷</option>
+              {packOptions(row).map((pack) => (
+                <option key={pack.code} value={pack.code}>
+                  {pack.name} · {packDeal(pack)} · {formatMoney(pack.deal_price)}/口
+                </option>
+              ))}
+            </select>
+          )}
           <div className="flex items-center gap-2">
             <Input
               type="number"
@@ -263,8 +298,8 @@ function IntentEditor({ initial, saving, onSave }: EditorProps<IntentItem[]>) {
               min={1}
               value={row.qty ?? ""}
               onChange={(e) => update(index, { ...row, qty: e.target.value ? Math.max(1, Math.floor(Number(e.target.value))) : null })}
-              placeholder="數量"
-              aria-label="數量"
+              placeholder={row.promo_code ? "口數" : "數量"}
+              aria-label={row.promo_code ? "口數" : "數量"}
               className={cn("h-11 w-28", !row.qty && "border-destructive")}
             />
             <span className="text-sm text-muted-foreground">{row.unit ?? ""}</span>

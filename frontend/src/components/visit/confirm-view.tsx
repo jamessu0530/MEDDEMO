@@ -6,6 +6,7 @@ import { confirmVisit, discardVisit, type FieldKey, type Visit } from "@/api/vis
 import { CompetitorNames } from "@/components/visit/competitor-names"
 import { FieldEditor } from "@/components/visit/field-editor"
 import { FIELD_LABEL, FIELD_ORDER, summarize } from "@/components/visit/field-format"
+import { usePromotions } from "@/components/visit/use-promotions"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
@@ -22,6 +23,9 @@ export function ConfirmView({ visit, onChange }: ConfirmViewProps) {
   const [confirming, setConfirming] = useState(false)
   const [problem, setProblem] = useState<string | null>(null)
   const [askDiscard, setAskDiscard] = useState(false)
+  // 意向裡的口照編號查（不管哪一期），摘要才寫得出搭贈與金額
+  const promotions = usePromotions()
+  const packs = Object.fromEntries(promotions.flatMap((p) => p.items).map((pack) => [pack.code, pack]))
 
   const filled = FIELD_ORDER.filter((key) => visit.fields[key] !== null).length
 
@@ -56,7 +60,7 @@ export function ConfirmView({ visit, onChange }: ConfirmViewProps) {
           <FieldRow
             key={key}
             label={FIELD_LABEL[key]}
-            value={summarize(key, visit.fields)}
+            value={summarize(key, visit.fields, packs)}
             unsourced={visit.unsourced.includes(key)}
             onEdit={() => setEditing(key)}
           >
