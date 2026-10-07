@@ -2,8 +2,10 @@ import type { LegMode } from "@/api/route"
 import type { CityVehicles } from "@/components/rides/vehicles/types"
 import { changhua } from "@/components/rides/vehicles/changhua"
 import { hsinchu } from "@/components/rides/vehicles/hsinchu"
+import { kaohsiung } from "@/components/rides/vehicles/kaohsiung"
 import { newTaipei } from "@/components/rides/vehicles/new-taipei"
 import { taichung } from "@/components/rides/vehicles/taichung"
+import { tainan } from "@/components/rides/vehicles/tainan"
 import { taipei } from "@/components/rides/vehicles/taipei"
 import type { RideCity } from "@/lib/rides"
 
@@ -14,6 +16,8 @@ export const VEHICLES: Partial<Record<RideCity, CityVehicles>> = {
   新竹市: hsinchu,
   台中市: taichung,
   彰化縣: changhua,
+  台南市: tainan,
+  高雄市: kaohsiung,
 }
 
 export function vehicleFor(city: RideCity, mode: LegMode) {

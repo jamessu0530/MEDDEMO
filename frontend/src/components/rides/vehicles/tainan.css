@@ -1,0 +1,9 @@
+/* 台南市（虱目魚）的座騎動畫：走路時魚嘴前的水泡往上冒、變大、淡掉，三顆放同一組，用 nth-of-type 錯開 */
+.ride-tainan-bubble { transform-box: fill-box; transform-origin: center; animation: ride-tainan-bubble 1.5s ease-out infinite; }
+.ride-tainan-bubble:nth-of-type(2) { animation-delay: -.5s; }
+.ride-tainan-bubble:nth-of-type(3) { animation-delay: -1s; }
+@keyframes ride-tainan-bubble {
+  0% { transform: translateY(10px) scale(.6); opacity: 0; }
+  25% { opacity: 1; }
+  100% { transform: translateY(-14px) scale(1); opacity: 0; }
+}
