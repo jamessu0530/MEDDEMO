@@ -1,4 +1,4 @@
-import type { MapStop, RouteStop, TodayMap, TravelMode } from "@/api/route"
+import type { LegMode, MapStop, RouteStop, TodayMap } from "@/api/route"
 import type { LatLng } from "@/api/team-routes"
 import { NAVIGATION_MODE } from "@/lib/travel-mode"
 
@@ -8,7 +8,7 @@ import { NAVIGATION_MODE } from "@/lib/travel-mode"
  */
 
 /** 「導航」：照業務的交通方式打開 Google 地圖導航到這一站；手機上有裝 Google 地圖就直接開 App。只是一個網址，不用金鑰 */
-export function navigationUrl({ lat, lng }: LatLng, mode: TravelMode) {
+export function navigationUrl({ lat, lng }: LatLng, mode: LegMode) {
   return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=${NAVIGATION_MODE[mode]}`
 }
 

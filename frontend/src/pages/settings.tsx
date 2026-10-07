@@ -162,6 +162,7 @@ function TravelModePicker({ userId }: { userId: string }) {
         <p className="text-xs leading-relaxed text-muted-foreground">
           行程的時間、排順路與地圖上的路線都照它算。換了之後今天的順序不動，要照新的方式排順路，到調整行程按「幫我排順一點」。
         </p>
+        <p className="text-xs leading-relaxed text-muted-foreground">這是整天的預設；每一段可以在首頁的路線上另外選。</p>
       </div>
       <div role="radiogroup" aria-label="交通方式" className="grid grid-cols-3 gap-2">
         {TRAVEL_MODES.map((option) => (

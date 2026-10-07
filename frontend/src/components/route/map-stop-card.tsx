@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils"
 
 /**
  * 首頁地圖底部那張卡：一站的第幾站、時間、店名、理由與車程，還沒去的加一顆「導航」打開 Google 地圖。
- * 車程與導航照業務的交通方式；Google 的機車路線是測試版，Google 要求註明。
+ * 車程與導航照這一段自己的交通方式（沒有就用業務整天的）；Google 的機車、走路路線是測試版，Google 要求註明。
  * 不碰 Google 地圖的程式，跟著首頁一起打包；地圖本身在 home-map.tsx 另外載入。
  */
 export function MapStopCard({
@@ -28,6 +28,8 @@ export function MapStopCard({
   className?: string
 }) {
   const done = stop.status === "done"
+  // 這一段實際的交通方式；找不到那一站時用整天的預設
+  const legMode = detail?.travel_mode ?? mode
   return (
     <div className={cn("flex items-center gap-3 rounded-2xl border-2 bg-card p-3 shadow-lip", className)}>
       <div className="min-w-0 flex-1">
@@ -52,7 +54,7 @@ export function MapStopCard({
                 {detail.travel_minutes != null && (
                   <>
                     <wbr />
-                    <span className="whitespace-nowrap">{` · ${TRAVEL_MODE_LABEL[mode]}約 ${detail.travel_minutes} 分`}</span>
+                    <span className="whitespace-nowrap">{` · ${TRAVEL_MODE_LABEL[legMode]}約 ${detail.travel_minutes} 分`}</span>
                     <wbr />
                     <span className="whitespace-nowrap">
                       <DriveSource estimated={estimated} />
@@ -63,13 +65,15 @@ export function MapStopCard({
             )}
           </p>
         )}
-        {mode === "scooter" && !estimated && (
-          <p className="mt-0.5 text-[0.6875rem] text-muted-foreground">Google 的機車路線是測試版，可能少了部分小路</p>
+        {(legMode === "scooter" || legMode === "walk") && !estimated && (
+          <p className="mt-0.5 text-[0.6875rem] text-muted-foreground">
+            {legMode === "walk" ? "Google 的走路路線是測試版，可能少了部分步道" : "Google 的機車路線是測試版，可能少了部分小路"}
+          </p>
         )}
       </div>
       {!done && (
         <a
-          href={navigationUrl(stop, mode)}
+          href={navigationUrl(stop, legMode)}
           target="_blank"
           rel="noreferrer"
           className={cn(buttonVariants(), "h-11 shrink-0 gap-1.5 px-4")}

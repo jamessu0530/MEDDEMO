@@ -62,6 +62,13 @@ describe("MapStopCard", () => {
     expect(render(pin(3, "next"), detail(), true, "scooter")).not.toContain("測試版")
   })
 
+  it("這一段自己是走路、整天是開車：寫走路約、導航走路，提醒走路是測試版", () => {
+    const html = render(pin(3, "next"), detail({ travel_mode: "walk" }), false, "drive")
+    expect(html).toContain("走路約 12 分")
+    expect(html).toContain("travelmode=walking")
+    expect(html).toContain("Google 的走路路線是測試版")
+  })
+
   it("搭大眾運輸：寫大眾運輸約幾分、導航開大眾運輸", () => {
     const html = render(pin(3, "next"), detail({ travel_minutes: 28 }), false, "transit")
     expect(html).toContain("大眾運輸約 28 分")

@@ -70,9 +70,17 @@ describe("一位業務的詳細", () => {
   it("地圖下面那一行標明是 Google 的道路車程還是估計", () => {
     expect(totalsLine(repRoute())).toBe("共 18.2 公里 · 開車 1 小時 25 分（估計）")
     expect(totalsLine(repRoute({ estimated: false }))).toBe("共 18.2 公里 · 開車 1 小時 25 分（Google 路線）")
-    expect(totalsLine(repRoute({ estimated: false, travel_mode: "scooter" }))).toBe(
+    const scooterStops = [teamStop(1, "done"), teamStop(2, "next", { travel_mode: "scooter" }), teamStop(3, "todo", { travel_mode: "scooter" })]
+    expect(totalsLine(repRoute({ estimated: false, travel_mode: "scooter", stops: scooterStops }))).toBe(
       "共 18.2 公里 · 機車 1 小時 25 分（Google 機車路線測試版）"
     )
+  })
+
+  it("有一段不是整天的預設就寫「路上」；跑完的段不算", () => {
+    const stops = [teamStop(1, "done", { travel_mode: "walk" }), teamStop(2, "todo")]
+    expect(totalsLine(repRoute({ stops }))).toBe("共 18.2 公里 · 開車 1 小時 25 分（估計）")
+    const mixed = [teamStop(1, "todo"), teamStop(2, "todo", { travel_mode: "walk" })]
+    expect(totalsLine(repRoute({ stops: mixed }))).toBe("共 18.2 公里 · 路上 1 小時 25 分（估計）")
   })
 
   it("約的時間", () => {

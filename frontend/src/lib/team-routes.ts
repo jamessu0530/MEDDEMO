@@ -59,7 +59,9 @@ export function formatDriveTime(minutes: number) {
 
 /** 詳細頁地圖下面那一行：「共 18.2 公里 · 機車 1 小時 25 分（Google 機車路線測試版）」或「（估計）」 */
 export function totalsLine(route: RepRoute) {
-  const mode = TRAVEL_MODE_LABEL[route.travel_mode]
+  // 還沒跑的站全部用整天的預設就寫那種交通方式，有任何一段不一樣就只寫「路上」
+  const mixed = route.stops.some((stop) => stop.status !== "done" && stop.travel_mode !== route.travel_mode)
+  const mode = mixed ? "路上" : TRAVEL_MODE_LABEL[route.travel_mode]
   return `共 ${route.travel_km} 公里 · ${mode} ${formatDriveTime(route.travel_minutes)}${routeSource(route.travel_mode, route.estimated)}`
 }
 

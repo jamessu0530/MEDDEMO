@@ -124,7 +124,7 @@ function Body({ proposal, onPick }: { proposal: RouteProposal; onPick: (customer
             <Column title="改成" side={proposal.after} marks={marks} />
           </div>
           <p className="mt-1 px-1 text-[0.6875rem] text-muted-foreground">
-            車程
+            路上
             <DriveSource estimated={proposal.estimated} />
           </p>
         </>

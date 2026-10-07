@@ -54,6 +54,7 @@ import {
   type RuleNote,
 } from "@/lib/itinerary"
 import { routeDraft, useRouteDraft } from "@/lib/route-draft"
+import { TRAVEL_MODE_LABEL } from "@/lib/travel-mode"
 import { useProposal } from "@/lib/use-proposal"
 import { cn } from "@/lib/utils"
 
@@ -400,7 +401,7 @@ export function RouteEditPage() {
       />
       <main className="flex flex-1 flex-col px-4 pt-3 pb-10">
         <p className="text-xs text-muted-foreground tabular-nums">
-          共 {view.travel_km} 公里 · 車程 {formatMinutes(view.travel_minutes)}
+          共 {view.travel_km} 公里 · 路上 {formatMinutes(view.travel_minutes)}
           {view.finish_time && ` · 約 ${view.finish_time} 收工`}
           <DriveSource estimated={view.estimated} />
         </p>
@@ -440,7 +441,7 @@ export function RouteEditPage() {
                         <>
                           {stop.travel_minutes !== null && (
                             <p className="py-1.5 pl-11 text-xs text-muted-foreground tabular-nums">
-                              車程 {stop.travel_minutes} 分 · {stop.travel_km} 公里
+                              {TRAVEL_MODE_LABEL[stop.travel_mode]} {stop.travel_minutes} 分 · {stop.travel_km} 公里
                             </p>
                           )}
                           <StopCard
