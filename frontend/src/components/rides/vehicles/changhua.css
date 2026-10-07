@@ -1,0 +1,29 @@
+/*
+ * 彰化縣（肉圓）的座騎動畫，都以底邊中間為軸：
+ * 開車整台 Q 彈地壓扁、拉長；走路是跳跳床：熊落下時肉圓被壓扁，接著回彈把熊送上去（兩個動畫同一個節拍 .9s）。
+ */
+.ride-changhua-jiggle, .ride-changhua-jump, .ride-changhua-squash { transform-box: fill-box; transform-origin: 50% 100%; }
+
+.ride-changhua-jiggle { animation: ride-changhua-jiggle .8s ease-in-out infinite; }
+@keyframes ride-changhua-jiggle {
+  0%, 100% { transform: scale(1.04, .94); }
+  50% { transform: translateY(-4px) scale(.97, 1.05); }
+}
+
+/* 熊：0% 踩到最低（肉圓壓到最扁），接著被彈上去，50% 最高，落回來 */
+.ride-changhua-jump { animation: ride-changhua-jump .9s infinite; }
+@keyframes ride-changhua-jump {
+  0%, 100% { transform: translateY(12px) scale(1.06, .92); animation-timing-function: ease-out; }
+  12% { transform: translateY(-4px) scale(.96, 1.05); animation-timing-function: cubic-bezier(.2, .6, .4, 1); }
+  50% { transform: translateY(-40px) scale(1, 1); animation-timing-function: cubic-bezier(.6, 0, .8, .4); }
+  88% { transform: translateY(2px) scale(.98, 1.03); animation-timing-function: ease-in; }
+}
+
+/* 肉圓：熊踩下來時壓扁，放開後回彈、晃兩下停住，等熊再落下 */
+.ride-changhua-squash { animation: ride-changhua-squash .9s infinite; }
+@keyframes ride-changhua-squash {
+  0%, 100% { transform: scale(1.1, .8); animation-timing-function: ease-out; }
+  14% { transform: scale(.95, 1.08); animation-timing-function: ease-in-out; }
+  28% { transform: scale(1.03, .97); animation-timing-function: ease-in-out; }
+  40%, 88% { transform: scale(1, 1); animation-timing-function: ease-in; }
+}

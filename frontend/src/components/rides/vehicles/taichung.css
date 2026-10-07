@@ -1,0 +1,21 @@
+/*
+ * 台中市（珍珠奶茶）的座騎動畫：走路時地上的珍珠一格一格往左移（一格 54），跟 ride-hop 同一個節拍（.6s），
+ * 只在熊跳在空中時移；最左邊那顆邊移邊縮小不見，最右邊在原地長出一顆新的，落地時看起來跟開始一模一樣。
+ * 沒有動畫時（減少動態效果、still）新的那顆藏起來。
+ */
+.ride-taichung-row, .ride-taichung-out, .ride-taichung-in { transform-box: fill-box; transform-origin: center; }
+.ride-taichung-row { animation: ride-taichung-row .6s ease-in-out infinite; }
+@keyframes ride-taichung-row {
+  0%, 12% { transform: translateX(0); }
+  88%, 100% { transform: translateX(-54px); }
+}
+.ride-taichung-out { animation: ride-taichung-out .6s ease-in-out infinite; }
+@keyframes ride-taichung-out {
+  0%, 12% { transform: translateX(0) scale(1); opacity: 1; }
+  50%, 100% { transform: translateX(-27px) scale(0); opacity: 0; }
+}
+.ride-taichung-in { transform: scale(0); opacity: 0; animation: ride-taichung-in .6s ease-in-out infinite; }
+@keyframes ride-taichung-in {
+  0%, 50% { transform: scale(0); opacity: 0; }
+  88%, 100% { transform: scale(1); opacity: 1; }
+}

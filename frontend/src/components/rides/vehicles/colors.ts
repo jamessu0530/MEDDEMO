@@ -4,3 +4,5 @@ export const LIGHT = "#EADBFD"
 export const INK = "#2B1B47"
 export const PROP = "#C9A2F5"
 export const STAR = "#FFC93C"
+/** 舌頭的粉紅（熊熊滾張嘴時看得到），珍奶的吸管用它 */
+export const TONGUE = "#FF8FB3"
