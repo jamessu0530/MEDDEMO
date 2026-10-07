@@ -101,7 +101,7 @@ export function RoutePath({
               )}
             />
             {/* 下面這一列跟以前一樣；下一站上面多留一點高度給「出發」泡泡 */}
-            <div className={cn("relative h-[92px]", stop.status === "next" && "mt-12")}>
+            <div className={cn("relative h-[92px]", stop.status === "next" && "mt-14")}>
               <StopNode
                 stop={stop}
                 index={index}
