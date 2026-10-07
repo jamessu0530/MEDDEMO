@@ -177,10 +177,11 @@
 - `mascot.tsx` 把熊的身體抽成 `MascotFigure`（一個 `<g>`），`Mascot` 與座騎都用它；`Mascot` 原本的用法不變。
 - 熊熊滾多一個狀態 `ride`：眼睛笑到瞇起來、張嘴，身體不另外動（由座騎晃）。`2026-09-30-mascot-design.md` 的狀態表一起補上。
 - `components/rides/`
-  - `ride.tsx`：`<Ride city mode size flipped />`，熊疊在座騎上（座騎擋住熊的腳）。
-  - `vehicles/<縣市>.tsx`：一個縣市一個檔，各匯出四種交通方式的圖。
+  - `ride.tsx`：`<Ride city mode size flipped still label />`，熊疊在座騎上（座騎擋住熊的腳）。
+  - `vehicles/<縣市>.tsx`：一個縣市一個檔，各匯出四種交通方式的圖；`vehicles/index.ts` 收成 `VEHICLES` 與 `vehicleFor(city, mode)`。
   - `ride.css`：輪子轉、上下浮、各縣市走路的動法；class 都以 `ride-` 開頭。
-- `lib/rides.ts`：七個縣市的清單、`vehicleFor(city, mode)`、一段路跨不跨縣市、這次該播哪一段（給停靠站與播過的記錄，回要播的那段或沒有）。
+- `lib/rides.ts`：七個縣市的清單、特產、`rideCity`（不在七個縣市裡是 null）。「一段路跨不跨縣市」「這次該播哪一段」
+  （給停靠站與播過的記錄，回要播的那段或沒有）第三階段接上首頁時再加進去。
   交通方式的清單用 `lib/travel-mode.ts` 的 `LEG_MODES`。
 - 不在七個縣市裡的客戶（目前沒有）：不騎座騎，熊熊滾用 `wait` 的踏步走過去。
 
@@ -254,7 +255,7 @@
 - `lib/travel-mode.ts`：兩組清單、字、圖示、導航用的值對得起來。
 - 首頁的膠囊：交通方式與分鐘數、估算加「約」、已完成的段不能點、沒有辦公室起點時不顯示第一顆、舊格式的站不會壞。
 - 選單：四種、整天預設的標記、查不到路線、Google Maps 與（估計）的規則。
-- `lib/rides.ts`：`vehicleFor`、跨不跨縣市、該播哪一段（剛完成一站、今天第一次打開、都播過、全部跑完、沒有辦公室起點）。
+- `lib/rides.ts`：`rideCity`、跨不跨縣市、該播哪一段（剛完成一站、今天第一次打開、都播過、全部跑完、沒有辦公室起點）。
 - 28 種座騎都畫得出來；`ride` 狀態的表情。
 - 圖鑑：騎過的有顏色、沒騎過的是剪影與「還沒騎過」。
 

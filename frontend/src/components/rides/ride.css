@@ -1,0 +1,62 @@
+/*
+ * 座騎的動畫（components/rides）。共用的 class 都在這裡；各縣市自己的寫在 vehicles/<縣市>.css，以 ride-<縣市>- 開頭。
+ * 只用 transform 與 opacity；減少動態效果或 .ride-still 時全部停住。
+ */
+.ride { display: block; overflow: visible; }
+.ride-spin, .ride-roll, .ride-bob, .ride-sway, .ride-bounce, .ride-float, .ride-hop, .ride-swim, .ride-slide, .ride-step {
+  transform-box: fill-box;
+}
+
+/* 輪子轉、整顆特產滾 */
+.ride-spin { transform-origin: center; animation: ride-spin 1s linear infinite; }
+.ride-roll { transform-origin: center; animation: ride-spin 2.2s linear infinite; }
+@keyframes ride-spin { to { transform: rotate(360deg); } }
+
+/* 車身上下浮 */
+.ride-bob { animation: ride-bob .45s ease-in-out infinite alternate; }
+@keyframes ride-bob { to { transform: translateY(-3px); } }
+
+/* 以底部為軸左右晃（站在東西上保持平衡） */
+.ride-sway { transform-origin: 50% 100%; animation: ride-sway 1.1s ease-in-out infinite alternate; }
+@keyframes ride-sway { from { transform: rotate(-7deg); } to { transform: rotate(7deg); } }
+
+/* 走路踏步 */
+.ride-step { transform-origin: 50% 100%; animation: ride-step .5s ease-in-out infinite alternate; }
+@keyframes ride-step { from { transform: rotate(-5deg); } to { transform: rotate(5deg) translateY(-4px); } }
+
+/* 彈：落地壓扁、彈起拉長 */
+.ride-bounce { transform-origin: 50% 100%; animation: ride-bounce .7s cubic-bezier(.3, 0, .4, 1) infinite; }
+@keyframes ride-bounce {
+  0%, 100% { transform: translateY(0) scale(1.08, .92); }
+  45% { transform: translateY(-22px) scale(.95, 1.05); }
+}
+
+/* 飄：慢慢上下、輕輕擺 */
+.ride-float { transform-origin: 50% 50%; animation: ride-float 2.4s ease-in-out infinite alternate; }
+@keyframes ride-float { from { transform: translateY(4px) rotate(-3deg); } to { transform: translateY(-8px) rotate(3deg); } }
+
+/* 跳：一格一格往前跳（回到原位再跳，畫面上看起來在原地連跳） */
+.ride-hop { transform-origin: 50% 100%; animation: ride-hop .6s ease-in-out infinite; }
+@keyframes ride-hop { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-26px); } }
+
+/* 游：上下起伏、頭尾擺 */
+.ride-swim { transform-origin: 50% 50%; animation: ride-swim 1.2s ease-in-out infinite; }
+@keyframes ride-swim {
+  0%, 100% { transform: translateY(0) rotate(-4deg); }
+  50% { transform: translateY(-6px) rotate(4deg); }
+}
+
+/* 滑：往前傾、身體拉長 */
+.ride-slide { transform-origin: 30% 100%; animation: ride-slide .9s ease-in-out infinite alternate; }
+@keyframes ride-slide { from { transform: rotate(-6deg) translateX(-4px); } to { transform: rotate(-12deg) translateX(6px); } }
+
+/* 風：從右往左吹過去 */
+.ride-wind { animation: ride-wind 1.3s linear infinite; }
+.ride-wind:nth-of-type(2) { animation-delay: -.45s; }
+.ride-wind:nth-of-type(3) { animation-delay: -.9s; }
+@keyframes ride-wind { 0% { transform: translateX(30px); opacity: 0; } 30% { opacity: 1; } 100% { transform: translateX(-30px); opacity: 0; } }
+
+.ride-still, .ride-still * { animation: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  .ride, .ride * { animation: none !important; }
+}
