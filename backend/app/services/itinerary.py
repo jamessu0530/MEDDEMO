@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 
 from app.models import (
     LEG_MODES, TRAVEL_MODES, AppUser, Customer, Itinerary, ItineraryLeg, ItineraryPrecedence, ItineraryStop, OrgUnit,
-    RouteHabit, RouteSignalWeight, RouteSnooze, Visit,
+    RouteHabit, RouteSignalWeight, RouteSnooze, VehicleRide, Visit,
 )
 from app.services import customer_profile, route_habits, route_planner, today_route, travel
 from app.services.google_routes import TravelMode
@@ -619,6 +619,7 @@ def reset_today(session: Session, user_id: str) -> None:
     session.execute(delete(RouteSnooze).where(RouteSnooze.user_id == user_id))
     session.execute(delete(RouteSignalWeight).where(RouteSignalWeight.user_id == user_id))
     route_habits.reset_demo(session, user_id)
+    session.execute(delete(VehicleRide).where(VehicleRide.user_id == user_id))  # 座騎圖鑑也清空
     rep = session.get(AppUser, user_id)
     if rep is not None:
         rep.travel_mode = "drive"

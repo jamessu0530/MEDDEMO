@@ -1144,6 +1144,26 @@ class ItineraryLeg(Base):
     mode: Mapped[str]
 
 
+# 座騎圖鑑的七個縣市（跟前端 lib/rides.ts 的 RIDE_CITIES 同一組、同順序）
+RIDE_CITIES = ("台北市", "新北市", "新竹市", "台中市", "彰化縣", "台南市", "高雄市")
+
+
+class VehicleRide(Base):
+    """這位業務騎過哪些座騎（docs/superpowers/specs/2026-10-07-ride-vehicles-design.md〈座騎圖鑑〉）。
+    七個縣市 × 四種交通方式共 28 種，騎過一次就記一列、之後不再動，first_ridden_at 是第一次的時間。"""
+
+    __tablename__ = "vehicle_ride"
+    __table_args__ = (
+        one_of("city", RIDE_CITIES, "city"),
+        one_of("mode", LEG_MODES, "mode"),
+    )
+
+    user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), primary_key=True)
+    city: Mapped[str] = mapped_column(primary_key=True)
+    mode: Mapped[str] = mapped_column(primary_key=True)
+    first_ridden_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class RouteSnooze(Base):
     """「暫緩」「誤判」：這家到哪一天以前不排進每天的建議。原本存在手機上，改存伺服器。"""
 

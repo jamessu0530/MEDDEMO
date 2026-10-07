@@ -8,7 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app import usage
-from app.api import admin, asks, attachments, auth, avatars, channel_search, channels, customers, documents, escalations, first_week, itinerary, manager, memory, methods, mock_systems, oa, presence, products, promotions, transcription, visits, voice
+from app.api import admin, asks, attachments, auth, avatars, channel_search, channels, customers, documents, escalations, first_week, itinerary, manager, memory, methods, mock_systems, oa, presence, products, promotions, transcription, vehicles, visits, voice
 from app.api import maps  # 行程第 4 階段：主管頁的地圖金鑰
 from app.api import location  # 行程第 6 階段：即時位置
 from app.api import route_habits as route_habits_api
@@ -49,6 +49,7 @@ app.include_router(avatars.router)
 app.include_router(maps.router)
 app.include_router(location.router)
 app.include_router(notes.router)
+app.include_router(vehicles.router)
 
 
 @app.get("/health")
