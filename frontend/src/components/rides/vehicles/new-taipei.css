@@ -1,0 +1,11 @@
+/* 新北市（平溪天燈）的座騎動畫：火苗一閃一閃；纜車的每盞天燈以頂上的夾頭為軸輕輕晃，用 nth-of-type 錯開 */
+.ride-new-taipei-flame, .ride-new-taipei-swing { transform-box: fill-box; }
+.ride-new-taipei-flame { transform-origin: 50% 100%; animation: ride-new-taipei-flame .3s ease-in-out infinite alternate; }
+@keyframes ride-new-taipei-flame {
+  from { transform: scale(.86, .78); opacity: .75; }
+  to { transform: scale(1.06, 1.1); opacity: 1; }
+}
+.ride-new-taipei-swing { transform-origin: 50% 0; animation: ride-new-taipei-swing 1.6s ease-in-out infinite alternate; }
+.ride-new-taipei-swing:nth-of-type(2) { animation-delay: -.5s; }
+.ride-new-taipei-swing:nth-of-type(3) { animation-delay: -1s; }
+@keyframes ride-new-taipei-swing { from { transform: rotate(-3deg); } to { transform: rotate(3deg); } }

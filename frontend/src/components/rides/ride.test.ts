@@ -18,6 +18,17 @@ describe("Ride", () => {
     }
   })
 
+  it("台北市、新北市的四種座騎都畫得出來，熊坐在上面", () => {
+    for (const city of ["台北市", "新北市"]) {
+      for (const mode of LEG_MODES) {
+        const svg = render({ city, mode })
+        expect(svg, `${city} ${mode}`).toContain(`data-city="${city}"`)
+        expect(svg, `${city} ${mode}`).not.toContain('data-city="other"')
+        expect(svg, `${city} ${mode}`).toContain("mascot mascot-ride")
+      }
+    }
+  })
+
   it("大小照寬度算，高度是寬的三分之二", () => {
     const svg = render({ city: "新竹市", mode: "drive", size: 150 })
     expect(svg).toContain('width="150"')
