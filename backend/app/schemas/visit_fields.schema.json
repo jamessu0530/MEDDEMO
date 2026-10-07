@@ -1,11 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "visit_fields",
-  "title": "拜訪紀錄五欄位",
+  "title": "拜訪紀錄六個欄位",
   "description": "口述中沒提到的欄位一律為 null，不得推測填入。規則見 docs/visit-fields.md。",
   "type": "object",
   "additionalProperties": false,
-  "required": ["competitor", "complaint", "intent", "commitment", "follow_up_date"],
+  "required": ["competitor", "complaint", "intent", "commitment", "follow_up_date", "notes"],
   "properties": {
     "competitor": {
       "description": "本次提到的競品與對方的動作",
@@ -58,6 +58,21 @@
       "description": "業務說要再去追的日期",
       "type": ["string", "null"],
       "format": "date"
+    },
+    "notes": {
+      "description": "下次要帶的東西與跟客戶講過的促銷",
+      "type": ["array", "null"],
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "text", "date"],
+        "properties": {
+          "kind": { "enum": ["bring", "told"], "description": "bring=下次要帶的東西，told=跟客戶講過的促銷或條件" },
+          "text": { "type": "string", "minLength": 1, "maxLength": 200, "description": "業務的講法，精簡成一句" },
+          "date": { "type": ["string", "null"], "format": "date", "description": "要帶的東西業務講了哪天；沒講或講過的填 null" }
+        }
+      }
     }
   }
 }

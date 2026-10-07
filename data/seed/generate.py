@@ -22,7 +22,8 @@ from app.services.auth import MIN_PASSWORD_LENGTH, hash_password
 SEED = 20260914
 TAIPEI = timezone(timedelta(hours=8))
 HISTORY_DAYS = 365
-FIELD_KEYS = ("competitor", "complaint", "intent", "commitment", "follow_up_date")
+# 備忘（notes）假資料一律留白：示範的備忘是手寫的（catalog.NOTES）
+FIELD_KEYS = ("competitor", "complaint", "intent", "commitment", "follow_up_date", "notes")
 
 # 刻意設計「進貨間隔拉長、單次進貨金額持平」的五家客戶，是警示規則與數字查詢的驗證案例。
 # 前三家同時是「北區保健品下滑」的主角：魚油縮量最多，其中兩家近期拜訪紀錄提到御松田。

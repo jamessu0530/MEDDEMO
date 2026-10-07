@@ -1,4 +1,4 @@
-"""把逐字稿整理成五個欄位（SDD 的 Field Extraction Service，規則見 docs/visit-fields.md）。
+"""把逐字稿整理成六個欄位（SDD 的 Field Extraction Service，規則見 docs/visit-fields.md）。
 
 供應商由設定決定；沒設定就丟 NotConfigured，欄位留白讓業務手動填。
 """
@@ -20,10 +20,10 @@ from app.models import Product
 from app.services.promo_packs import Pack, packs_by_code
 
 SCHEMA_FILE = Path(__file__).resolve().parents[1] / "schemas" / "visit_fields.schema.json"
-FIELD_KEYS = ("competitor", "complaint", "intent", "commitment", "follow_up_date")
+FIELD_KEYS = ("competitor", "complaint", "intent", "commitment", "follow_up_date", "notes")
 WEEKDAYS = "一二三四五六日"
 
-PROMPT = """你是藥品通路業務的助理。下面是業務拜訪客戶後的口述逐字稿，請整理成五個欄位。
+PROMPT = """你是藥品通路業務的助理。下面是業務拜訪客戶後的口述逐字稿，請整理成六個欄位。
 
 規則：
 1. 口述裡沒提到的欄位填 null，不要推測，也不要用常識補。陣列欄位沒提到也填 null。
@@ -35,6 +35,7 @@ PROMPT = """你是藥品通路業務的助理。下面是業務拜訪客戶後�
 7. intent 的品項對照下方品項表填 sku；對不到或可能是好幾個品項時 sku 填 null，product_text 保留業務原本的講法。沒講數量 qty 填 null。
 8. competitor 的 detail 填競品開的條件或做的事，沒講就填 null。
 9. intent 講到促銷的口才填 promo_code：業務講了小口、中口、大口，或講了幾口、某一口的搭贈（例如「買 11 送 2」「直走」），而且對得到下方促銷表裡唯一的一口，promo_code 填那一口的編號、sku 填那一口的 sku、qty 填口數、unit 填「口」。講了口但沒講幾口算 1 口。沒講口就照第 7 條填數量，promo_code 填 null。講了口卻對不到唯一的一口（例如好幾個品項都有小口），sku 與 promo_code 都填 null，product_text 照原話。
+10. notes 收兩種：bring 是業務說下次要帶給客戶的東西（DM、POP、海報、試用包、樣品、衛教單張、比價表…）；told 是業務跟客戶講了哪些促銷、實銷、搭贈、活動條件。text 用業務的講法、精簡成一句。date 只在業務講了哪天要帶、或下次哪天去時才填（照第 3 條換算），told 一律填 null。可以跟 commitment、intent 重複，例如「我答應下次帶比價表」兩邊都填。
 
 品項表（sku｜名稱｜單位｜口語別名）：
 {catalog}
@@ -73,7 +74,7 @@ def fields_schema() -> dict[str, Any]:
 
 
 def output_schema() -> dict[str, Any]:
-    """交給模型的輸出格式：五個欄位，加上每個有值欄位的逐字稿原文片段。"""
+    """交給模型的輸出格式：六個欄位，加上每個有值欄位的逐字稿原文片段。"""
     return {
         "type": "object",
         "additionalProperties": False,
@@ -165,7 +166,7 @@ def intent_pack_problems(session: Session, intent: list[dict[str, Any]] | None) 
     return problems
 
 
-SYSTEM = "你是藥品通路業務的助理，負責把業務的拜訪口述整理成固定的五個欄位，只寫口述裡真的講到的內容。"
+SYSTEM = "你是藥品通路業務的助理，負責把業務的拜訪口述整理成固定的六個欄位，只寫口述裡真的講到的內容。"
 
 
 class LLMFieldExtractor:

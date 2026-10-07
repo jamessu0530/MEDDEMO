@@ -3,7 +3,7 @@
 import datetime as dt
 
 from app.models import CustomerNote, Visit
-from app.services import customer_notes
+from app.services import customer_notes, extraction
 
 TAIPEI = dt.timezone(dt.timedelta(hours=8))
 
@@ -67,6 +67,12 @@ def test_without_visit_notes_all_hand_written_ones_show(tx):
     # 要帶的排前面
     assert [n.text for n in customer_notes.next_notes(tx, "C005")] == ["寫的第二則", "寫的第一則"]
     assert customer_notes.next_notes(tx, "C007") == []
+
+
+def test_the_prompt_asks_for_notes():
+    prompt = extraction.build_prompt("逐字稿", dt.date(2026, 10, 28), [])
+    assert "10. notes" in prompt and "bring" in prompt and "told" in prompt
+    assert "notes" in extraction.FIELD_KEYS
 
 
 def test_a_month_of_notes_and_visits_for_one_rep(tx):

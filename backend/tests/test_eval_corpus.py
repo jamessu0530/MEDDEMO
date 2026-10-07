@@ -32,6 +32,8 @@ def as_fields(expected):
         else None,
         "commitment": {"by": commitment["by"], "text": commitment["keyword"], "due": commitment["due"]} if commitment else None,
         "follow_up_date": expected["follow_up_date"],
+        # 題庫沒有備忘的答案
+        "notes": None,
     }
 
 
@@ -39,7 +41,7 @@ def as_fields(expected):
 def test_the_gold_answer_scores_full_marks_and_is_valid(item):
     fields = as_fields(item["expected"])
     assert validate_fields(fields) == []
-    assert all(eval_voice.is_correct(key, item["expected"][key], fields[key]) for key in FIELD_KEYS)
+    assert all(eval_voice.is_correct(key, item["expected"][key], fields[key]) for key in eval_voice.SCORED_KEYS)
     assert all(sku in SKUS for sku, _ in item["expected"]["intent"] or [])
 
 

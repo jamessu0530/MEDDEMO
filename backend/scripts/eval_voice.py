@@ -18,6 +18,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.config import NotConfigured  # noqa: E402
 from app.db import session_factory
 from app.services.extraction import FIELD_KEYS, get_extractor, product_hints
+
+# 題庫只寫了原本五個欄位的答案；備忘不評（docs/superpowers/specs/2026-10-07-calendar-notes-design.md）
+SCORED_KEYS = tuple(key for key in FIELD_KEYS if key != "notes")
 from app.services.transcription import get_transcriber, load_hotwords
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -69,7 +72,7 @@ def main() -> int:
     with session_factory()() as session:
         products, hotwords = product_hints(session), load_hotwords(session)
 
-    correct = dict.fromkeys(FIELD_KEYS, 0)
+    correct = dict.fromkeys(SCORED_KEYS, 0)
     rates: list[float] = []
     for item in items:
         audio = next(AUDIO_DIR.glob(f"{item['id']}.*"), None)
@@ -78,15 +81,15 @@ def main() -> int:
             transcript = get_transcriber().transcribe(audio.read_bytes(), MIME.get(audio.suffix, "application/octet-stream"), hotwords).text
             rates.append(char_error_rate(item["text"], transcript))
         fields = extractor.extract(transcript, visit_date, products).fields
-        misses = [key for key in FIELD_KEYS if not is_correct(key, item["expected"][key], fields.get(key))]
-        for key in FIELD_KEYS:
+        misses = [key for key in SCORED_KEYS if not is_correct(key, item["expected"][key], fields.get(key))]
+        for key in SCORED_KEYS:
             correct[key] += key not in misses
         cer = f"字錯率 {rates[-1]:.0%}" if audio is not None else "無錄音"
         print(f"{item['id']}  {cer:10}  {'全對' if not misses else '錯：' + '、'.join(misses)}")
 
     total = len(items)
-    print("\n欄位正確率：" + "　".join(f"{key} {correct[key]}/{total}" for key in FIELD_KEYS))
-    print(f"五欄合計：{sum(correct.values())}/{total * len(FIELD_KEYS)}")
+    print("\n欄位正確率：" + "　".join(f"{key} {correct[key]}/{total}" for key in SCORED_KEYS))
+    print(f"五欄合計：{sum(correct.values())}/{total * len(SCORED_KEYS)}")
     if rates:
         print(f"平均字錯率（{len(rates)} 句有錄音）：{sum(rates) / len(rates):.1%}")
     return 0

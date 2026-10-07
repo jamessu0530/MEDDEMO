@@ -57,6 +57,10 @@ def test_nullable_fields_keep_their_structure():
     assert fields["competitor"]["items"]["additionalProperties"] is False
     assert fields["follow_up_date"]["type"] == ["string", "null"]
     assert fields["follow_up_date"]["format"] == "date"
+    notes = fields["notes"]
+    assert notes["type"] == ["array", "null"]
+    assert notes["items"]["properties"]["kind"]["enum"] == ["bring", "told"]
+    assert notes["items"]["properties"]["date"]["type"] == ["string", "null"]
     assert "minLength" not in fields["complaint"]
     intent = fields["intent"]["items"]
     assert intent["properties"]["promo_code"]["type"] == ["string", "null"]

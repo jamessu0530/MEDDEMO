@@ -25,6 +25,7 @@ FIELDS = {
     "intent": [{"product_text": "魚油", "sku": "HS-FO30", "qty": 20, "unit": "盒", "promo_code": None}],
     "commitment": {"by": "us", "text": "回報檔期", "due": "2026-10-24"},
     "follow_up_date": "2026-10-24",
+    "notes": None,
 }
 SOURCES = {
     "competitor": "御松田有來談，條件比我們好。",
@@ -63,7 +64,7 @@ def client(engine, sign_in):
     yield sign_in(TestClient(app), "U01")
     # 清掉這個測試建的拜訪（編號都排在測試開始前的最後一筆之後），其他測試看到的仍是原本的假資料
     with engine.begin() as conn:
-        for table in ("writeback_log", "crm_visit_record", "sap_quotation_draft", "oa_expense_form"):
+        for table in ("writeback_log", "crm_visit_record", "sap_quotation_draft", "oa_expense_form", "customer_note"):
             conn.execute(text(f"DELETE FROM {table} WHERE visit_id > :last"), {"last": last})
         conn.execute(text("DELETE FROM visit WHERE id > :last"), {"last": last})
     redis().flushdb()
@@ -178,6 +179,19 @@ def test_confirm_writes_all_three_systems_and_creates_a_reminder(client, provide
         sap = conn.execute(text("SELECT sku, qty, unit_price FROM sap_quotation_draft WHERE visit_id = :v"), params).one()
         assert sap == ("HS-FO30", 20, 405)
         assert conn.execute(text("SELECT count(*) FROM oa_expense_form WHERE visit_id = :v"), params).scalar_one() == 1
+
+
+def test_confirming_files_the_notes(client, providers, engine):
+    notes = [{"kind": "bring", "text": "骨營 DM", "date": None}, {"kind": "told", "text": "小口買 22 送 1", "date": None}]
+    visit_id = make_draft(client, providers, FakeExtractor(fields={**FIELDS, "notes": notes}))
+    client.post(f"/api/visits/{visit_id}/confirm")
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text("SELECT kind, text, on_date FROM customer_note WHERE visit_id = :v ORDER BY id"), {"v": visit_id}
+        ).all()
+    # 要帶的沒講日期，用這次的追蹤日 10/24；講過的放拜訪日
+    assert [(kind, note, str(day)) for kind, note, day in rows][0] == ("bring", "骨營 DM", "2026-10-24")
+    assert rows[1].kind == "told" and rows[1].on_date is not None
 
 
 def test_one_system_down_does_not_block_the_others_and_can_be_resent_alone(client, providers, engine):

@@ -15,7 +15,7 @@ from app.db import get_session
 from app import realtime
 from app.models import AppUser, WRITEBACK_TARGETS, ChannelMessage, Customer, FollowUpReminder, OaExpenseForm, Visit, VisitAudio, ManagerNotice
 from app.services import privacy, writeback
-from app.services import channel_memory, risk
+from app.services import channel_memory, customer_notes, risk
 from app.services.scope import SHARING_LEVEL, Scope, owner_path
 from app.services.extraction import (
     empty_fields,
@@ -265,6 +265,8 @@ def confirm(session: SessionDep, visit_id: str, user: CurrentUser):
     # NFR-8：送出之後的用途（AI 查詢、客戶檔案）都算後續利用，逐字稿先去識別；送出前業務要對著原文核對
     privacy.deidentify_visit(session, visit)
     create_reminder(session, visit)
+    # 要帶的、講過的寫進備忘表：下次去這家、日曆都讀它（services/customer_notes.py）
+    customer_notes.notes_from_visit(session, visit)
     session.flush()
     # 風險分要把這次拜訪算進去，所以放在狀態改成已確認之後
     risk.notify_manager(session, visit)

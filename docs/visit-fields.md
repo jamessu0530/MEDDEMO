@@ -1,4 +1,4 @@
-# 拜訪紀錄五欄位定義
+# 拜訪紀錄六個欄位定義
 
 機器可讀的版本是 [visit_fields.schema.json](../backend/app/schemas/visit_fields.schema.json)。語音抽取、確認頁驗證和測試都照它；兩邊不一致時以 schema 為準，改欄位要兩邊一起改。
 
@@ -11,8 +11,9 @@
 | `intent` | 客戶想進的品項 | `[{product_text, sku, qty, unit, promo_code}]` | `[{"product_text": "魚油", "sku": "HS-FO30", "qty": 20, "unit": "盒", "promo_code": null}]` | CRM、SAP 報價草稿 |
 | `commitment` | 這次談定、有期限的一件事 | `{by, text, due}`，`by` 為 `us` 或 `customer` | `{"by": "us", "text": "回報檔期", "due": "2026-10-24"}` | CRM |
 | `follow_up_date` | 業務說要再去追的日期 | `YYYY-MM-DD` | `2026-10-24` | CRM、追蹤提醒 |
+| `notes` | 下次要帶的東西（bring）與跟客戶講過的促銷（told） | `[{kind, text, date}]` | `[{"kind": "bring", "text": "骨營的 DM", "date": null}]` | 拜訪備忘（客戶檔案、今日路線、日曆） |
 
-OA 出差單不讀這五個欄位，只用客戶和拜訪日期。
+OA 出差單不讀這些欄位，只用客戶和拜訪日期。
 
 ## 規則
 
@@ -23,5 +24,6 @@ OA 出差單不讀這五個欄位，只用客戶和拜訪日期。
 5. **品項用 `product.aliases` 對到 sku。** 對不到或對到不只一個品項時，`sku` 填 null、保留 `product_text`，由業務在確認頁選。
 6. **沒講數量，`qty` 就填 null。** SAP 報價草稿每一行都需要 sku 和數量，缺的要先在確認頁補齊才能寫入 SAP。
 7. **競品的「首次」標記不是抽取欄位。** 由系統比對這家客戶過去的拜訪紀錄來判斷。口述裡不會講「這是第一次」，讓模型判斷等於讓它猜。
-8. **抱怨只收針對我方的不滿。** 店況觀察（例如「魚油最近賣得比較慢」）不放進五個欄位，留在逐字稿裡；數字查詢會去搜逐字稿。
+8. **抱怨只收針對我方的不滿。** 店況觀察（例如「魚油最近賣得比較慢」）不放進欄位，留在逐字稿裡；數字查詢會去搜逐字稿。
 9. **講到促銷的口才填 `promo_code`。** 業務講了小口、中口、大口或某一口的搭贈，而且對得到這一期唯一的一口，`promo_code` 填促銷品項編號，`qty` 是口數、`unit` 是「口」；只講「開小口」沒講幾口算 1 口。沒講口就填 null，照第 5、6 條填數量。講了口卻對不到唯一的一口（例如「小口眼藥水」，好幾種眼藥水都有小口），`sku` 與 `promo_code` 都填 null，由業務在確認頁選。回寫 SAP 時一口照每口售價記（見 `docs/superpowers/specs/2026-10-07-quote-promotion-packs-design.md`）。
+10. **備忘收兩種。** `bring` 是下次要帶給客戶的東西（DM、POP、海報、試用包、樣品、衛教單張、比價表…），`told` 是跟客戶講過的促銷、實銷、搭贈、活動條件。`date` 只在業務講了哪天要帶、或下次哪天去時才填，講過的一律 null。可以跟承諾、意向重複。確認時寫進拜訪備忘：要帶的沒講日期就放追蹤日，講過的放拜訪日（見 `docs/superpowers/specs/2026-10-07-calendar-notes-design.md`）。
