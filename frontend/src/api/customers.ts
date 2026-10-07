@@ -182,6 +182,28 @@ export type QuoteItem = {
   usual_qty: number
 }
 
+// 開報價時這一期的促銷：依品項列出每一口。supply_price 是這家的供貨價，給「不走促銷」那一列；
+// usual 是這個品項已經在常進品項裡，不重複列「不走促銷」
+export type QuotePack = { code: string; name: string; deal: string; buy_qty: number; free_qty: number; deal_price: number }
+export type QuotePromotion = {
+  name: string
+  // PM 提醒原文：滿額贈這類看整張訂單的活動，系統不算
+  pm_note: string
+  products: {
+    group_name: string
+    sku: string
+    name: string
+    spec: string
+    unit: string
+    supply_price: number
+    usual: boolean
+    packs: QuotePack[]
+  }[]
+}
+
+// 報價的一列：品項 × 數量，或是促銷的某一口 × 口數
+export type QuoteLineInput = { sku: string; qty: number } | { promo_code: string; packs: number }
+
 // 送出優惠或續約之後的簽核結果：系統核准了（auto_approved），或是現在等誰簽（waiting_for）
 export type Approval = {
   form_id: number
@@ -196,7 +218,18 @@ export type Approval = {
 export type Quote = {
   quote_no: string
   customer_id: string
-  items: { sku: string; name: string; qty: number; unit_price: number; amount: number }[]
+  // 促銷的列：qty 是付錢的數量，promo_code、packs、free_qty、deal 說明是哪一口
+  items: {
+    sku: string
+    name: string
+    qty: number
+    unit_price: number
+    amount: number
+    promo_code: string | null
+    packs: number | null
+    free_qty: number
+    deal: string | null
+  }[]
   amount: number
   discount_pct: number
   // draft：可以送給客戶；pending_approval：折扣超過業務的權限，等簽核
@@ -210,8 +243,16 @@ export function getQuoteItems(id: string, signal?: AbortSignal) {
   return request<QuoteItem[]>(`/api/customers/${encodeURIComponent(id)}/quote-items`, { signal })
 }
 
-/** 開 SAP 報價草稿；數量 0 的品項不要送（後端對沒有品項或數量 ≤ 0 回 422）。折扣超過 3% 要附理由，後端會開優惠申請單 */
-export function createQuote(id: string, items: { sku: string; qty: number }[], discountPct = 0, reason = "") {
+/** 沒有進行中的一期是 null */
+export function getQuotePromotion(id: string, signal?: AbortSignal) {
+  return request<QuotePromotion | null>(`/api/customers/${encodeURIComponent(id)}/quote-promotion`, { signal })
+}
+
+/**
+ * 開 SAP 報價草稿；數量或口數 0 的列不要送（後端對沒有列或 ≤ 0 回 422）。
+ * 折扣只套在沒促銷的列，超過 3% 要附理由，後端會開優惠申請單
+ */
+export function createQuote(id: string, items: QuoteLineInput[], discountPct = 0, reason = "") {
   return request<Quote>(
     `/api/customers/${encodeURIComponent(id)}/quotes`,
     jsonBody("POST", { items, discount_pct: discountPct, reason: reason || null })

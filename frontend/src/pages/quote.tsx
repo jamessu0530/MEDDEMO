@@ -2,7 +2,15 @@ import { useEffect, useState } from "react"
 import { useNavigate, useParams } from "react-router"
 
 import { ApiError } from "@/api/client"
-import { createQuote, getCustomer, getQuoteItems, type Customer, type QuoteItem } from "@/api/customers"
+import {
+  createQuote,
+  getCustomer,
+  getQuoteItems,
+  getQuotePromotion,
+  type Customer,
+  type QuoteItem,
+  type QuotePromotion,
+} from "@/api/customers"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
@@ -11,6 +19,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { approvalFlash, DISCOUNT_MAX, DISCOUNT_STEP, discountSteps, parseDiscount, REASON_MAX_LENGTH } from "@/lib/approval"
 import { useAuth } from "@/lib/auth"
 import { formatMoney } from "@/lib/format"
+import { packDeal, quoteBlocked, quoteTotal } from "@/lib/quote"
 import { customerNotFoundText } from "@/lib/scope"
 import { cn } from "@/lib/utils"
 import type { CustomerLocationState } from "@/pages/customer"
@@ -19,7 +28,8 @@ type LoadState =
   | { status: "loading" }
   // missing：後端回 404（沒有這家，或不是登入者看得到的客戶）
   | { status: "error"; missing: boolean }
-  | { status: "ready"; customer: Customer; items: QuoteItem[] }
+  // promotion：這一期的促銷，沒有進行中的一期是 null
+  | { status: "ready"; customer: Customer; items: QuoteItem[]; promotion: QuotePromotion | null }
 
 // 數量輸入框的內容；打字途中可能是空字串，算金額時當 0
 type Quantities = Record<string, string>
@@ -29,15 +39,17 @@ function parseQty(text: string | undefined) {
   return Number.isFinite(value) && value > 0 ? value : 0
 }
 
-/** 折扣後的單價到分、整張報價到元，算法跟後端一樣（api/customers.py），畫面上的金額才跟開出來的報價對得上 */
-function discountedTotal(lines: { qty: number; unitPrice: number }[], pct: number) {
-  const keep = 200 - Math.round(pct * 2)
-  return Math.round(lines.reduce((sum, line) => sum + (Math.round((line.unitPrice * keep) / 2) / 100) * line.qty, 0))
+/** 依 key 分組，保留第一次出現的順序：促銷品項的編號本來就依品牌排在一起 */
+function groupBy<T>(rows: T[], key: (row: T) => string): [string, T[]][] {
+  const groups = new Map<string, T[]>()
+  for (const row of rows) groups.set(key(row), [...(groups.get(key(row)) ?? []), row])
+  return [...groups]
 }
 
 /**
- * 開報價（原型客戶檔案的「開報價」）：列這家近半年常進的品項，改數量後開 SAP 報價草稿；數量 0 的品項不送。
- * 折扣在業務的權限（3%）內直接開；超過的會開優惠申請單送簽，模型有把握就由系統核准
+ * 開報價（原型客戶檔案的「開報價」）：列這家近半年常進的品項與這一期的促銷，改數量或口數後開 SAP 報價草稿；
+ * 0 的列不送。促銷的口照每口售價、不打折；折扣只套在沒促銷的列，在業務的權限（3%）內直接開，
+ * 超過的會開優惠申請單送簽，模型有把握就由系統核准
  */
 export function QuotePage() {
   const { customerId = "" } = useParams()
@@ -47,6 +59,8 @@ export function QuotePage() {
   const [state, setState] = useState<LoadState>({ status: "loading" })
   const [attempt, setAttempt] = useState(0)
   const [quantities, setQuantities] = useState<Quantities>({})
+  // 促銷的口數，key 是促銷品項編號
+  const [packCounts, setPackCounts] = useState<Quantities>({})
   const [discountText, setDiscountText] = useState("")
   const [reason, setReason] = useState("")
   const [sending, setSending] = useState(false)
@@ -54,12 +68,19 @@ export function QuotePage() {
 
   useEffect(() => {
     const controller = new AbortController()
-    Promise.all([getCustomer(customerId, controller.signal), getQuoteItems(customerId, controller.signal)])
-      .then(([customer, items]) => {
+    Promise.all([
+      getCustomer(customerId, controller.signal),
+      getQuoteItems(customerId, controller.signal),
+      getQuotePromotion(customerId, controller.signal),
+    ])
+      .then(([customer, items, promotion]) => {
         // 預設都不列入：報價通常只有一兩項，全部預填常進數量的話，直接按送出就是一張十幾項的報價單寫進 SAP。
-        // 每一列的「常進 N」點一下就填入
-        setQuantities(Object.fromEntries(items.map((item) => [item.sku, "0"])))
-        setState({ status: "ready", customer, items })
+        // 每一列的「常進 N」點一下就填入；促銷的口與「不走促銷」也從 0 開始
+        const products = promotion?.products ?? []
+        const skus = [...items.map((item) => item.sku), ...products.filter((p) => !p.usual).map((p) => p.sku)]
+        setQuantities(Object.fromEntries(skus.map((sku) => [sku, "0"])))
+        setPackCounts(Object.fromEntries(products.flatMap((p) => p.packs.map((pack) => [pack.code, "0"]))))
+        setState({ status: "ready", customer, items, promotion })
       })
       .catch((err) => {
         if (controller.signal.aborted) return
@@ -69,24 +90,29 @@ export function QuotePage() {
   }, [customerId, attempt])
 
   const items = state.status === "ready" ? state.items : []
+  const promotion = state.status === "ready" ? state.promotion : null
   const lines = items.map((item) => ({ item, qty: parseQty(quantities[item.sku]) }))
-  const chosen = lines.filter((line) => line.qty > 0)
-  const listTotal = chosen.reduce((sum, line) => sum + line.qty * line.item.unit_price, 0)
+  // 促銷品項沒有交易、不在常進品項裡：「不走促銷」那一列照供貨價，跟常進品項一樣算
+  const extraPlain: QuoteItem[] = (promotion?.products ?? [])
+    .filter((p) => !p.usual)
+    .map((p) => ({ sku: p.sku, name: p.name, spec: p.spec, unit: p.unit, unit_price: p.supply_price, usual_qty: 0 }))
+  const chosen = [...items, ...extraPlain]
+    .map((item) => ({ item, qty: parseQty(quantities[item.sku]) }))
+    .filter((line) => line.qty > 0)
+  const chosenPacks = (promotion?.products ?? [])
+    .flatMap((p) => p.packs)
+    .map((pack) => ({ pack, count: parseQty(packCounts[pack.code]) }))
+    .filter((line) => line.count > 0)
+  const plainLines = chosen.map((line) => ({ qty: line.qty, unitPrice: line.item.unit_price }))
+  const packLines = chosenPacks.map((line) => ({ packs: line.count, dealPrice: line.pack.deal_price }))
   const discount = parseDiscount(discountText)
   const route = discountSteps(discount)
   const needsApproval = route.steps.length > 0
-  const total = route.valid
-    ? discountedTotal(chosen.map((line) => ({ qty: line.qty, unitPrice: line.item.unit_price })), discount)
-    : listTotal
+  const listTotal = quoteTotal(plainLines, packLines, 0)
+  const total = route.valid ? quoteTotal(plainLines, packLines, discount) : listTotal
   // 送不出去的原因，寫在按鈕上
-  const blocked =
-    chosen.length === 0
-      ? "至少要有一項數量大於 0"
-      : !route.valid
-        ? route.text
-        : needsApproval && !reason.trim()
-          ? "要送簽核，請寫申請理由"
-          : null
+  const blocked = quoteBlocked({ plainCount: chosen.length, packCount: chosenPacks.length, discount, route, reason })
+  const hasLines = items.length > 0 || promotion !== null
 
   async function submit() {
     setSending(true)
@@ -94,7 +120,10 @@ export function QuotePage() {
     try {
       const quote = await createQuote(
         customerId,
-        chosen.map((line) => ({ sku: line.item.sku, qty: line.qty })),
+        [
+          ...chosen.map((line) => ({ sku: line.item.sku, qty: line.qty })),
+          ...chosenPacks.map((line) => ({ promo_code: line.pack.code, packs: line.count })),
+        ],
         discount,
         needsApproval ? reason.trim() : ""
       )
@@ -132,9 +161,9 @@ export function QuotePage() {
             secondary={{ label: "回客戶檔案", onClick: () => navigate(profilePath) }}
           />
         )}
-        {state.status === "ready" && items.length === 0 && (
+        {state.status === "ready" && !hasLines && (
           <Notice
-            text="這家近半年沒有進貨紀錄，沒有可以帶入的品項。"
+            text="這家近半年沒有進貨紀錄，也沒有進行中的促銷，沒有可以帶入的品項。"
             action={{ label: "回客戶檔案", onClick: () => navigate(profilePath) }}
           />
         )}
@@ -181,9 +210,18 @@ export function QuotePage() {
             </ul>
           </>
         )}
+        {promotion && (
+          <PromotionSection
+            promotion={promotion}
+            packCounts={packCounts}
+            quantities={quantities}
+            onPackChange={(code, value) => setPackCounts((current) => ({ ...current, [code]: value }))}
+            onQtyChange={(sku, value) => setQuantities((current) => ({ ...current, [sku]: value }))}
+          />
+        )}
       </main>
 
-      {items.length > 0 && (
+      {hasLines && (
         <div className="fixed inset-x-0 bottom-0 z-10 mx-auto flex max-w-md flex-col gap-2 border-t bg-card px-4 pt-3 pb-[max(env(safe-area-inset-bottom),0.75rem)]">
           {/* 折扣跟合計、送出鈕放在一起：清單有十幾項，放在清單後面要捲到底才看得到 */}
           <div className="flex items-center gap-2">
@@ -209,6 +247,9 @@ export function QuotePage() {
               {route.valid && discount === 0 ? "3% 以內不用簽核" : route.text}
             </p>
           </div>
+          {chosenPacks.length > 0 && (
+            <p className="text-xs text-muted-foreground">折扣只套在沒促銷的品項，促銷的口照每口售價</p>
+          )}
           {needsApproval && (
             <Textarea
               value={reason}
@@ -222,7 +263,7 @@ export function QuotePage() {
           )}
           <div className="flex items-baseline justify-between gap-3">
             <span className="text-sm text-muted-foreground">
-              合計 {chosen.length} 項{route.valid && discount > 0 && `，折扣 ${discount}%`}
+              合計 {chosen.length + chosenPacks.length} 項{route.valid && discount > 0 && `，折扣 ${discount}%`}
             </span>
             <span className="flex items-baseline gap-2">
               {total !== listTotal && (
@@ -238,5 +279,110 @@ export function QuotePage() {
         </div>
       )}
     </div>
+  )
+}
+
+type PromotionSectionProps = {
+  promotion: QuotePromotion
+  packCounts: Quantities
+  quantities: Quantities
+  onPackChange: (code: string, value: string) => void
+  onQtyChange: (sku: string, value: string) => void
+}
+
+/**
+ * 這一期的促銷：依品牌、品項列出每一口，填口數就照每口售價列入。促銷品項沒有交易、不在常進品項裡，
+ * 每個品項另外有一列「不走促銷」照供貨價填數量
+ */
+function PromotionSection({ promotion, packCounts, quantities, onPackChange, onQtyChange }: PromotionSectionProps) {
+  return (
+    <section className="flex flex-col gap-2 pt-2">
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className="text-sm font-semibold">這一期的促銷</h2>
+        <span className="min-w-0 truncate text-xs text-muted-foreground">{promotion.name}</span>
+      </div>
+      {promotion.pm_note && (
+        <details className="rounded-xl border-2 bg-card px-4 py-1 text-xs shadow-lip">
+          <summary className="flex min-h-11 cursor-pointer items-center font-medium">整張訂單的活動</summary>
+          <p className="whitespace-pre-line text-muted-foreground">{promotion.pm_note}</p>
+          <p className="mt-2 mb-2 text-muted-foreground">系統不算滿額贈與禮券，給你跟客戶談的時候參考。</p>
+        </details>
+      )}
+      {groupBy(promotion.products, (p) => p.group_name).map(([group, products]) => (
+        <div key={group} className="flex flex-col gap-2">
+          <h3 className="pt-1 text-xs font-medium text-muted-foreground">{group}</h3>
+          {products.map((product) => {
+            const qty = parseQty(quantities[product.sku])
+            return (
+              <ul key={product.sku} className="flex flex-col gap-2">
+                {product.packs.map((pack) => {
+                  const count = parseQty(packCounts[pack.code])
+                  return (
+                    <li
+                      key={pack.code}
+                      className={cn("rounded-xl border-2 bg-card px-4 py-3 shadow-lip", count === 0 && "bg-muted/60")}
+                    >
+                      <div className="flex items-baseline justify-between gap-3">
+                        <p className={cn("min-w-0 text-sm font-medium", count === 0 && "text-muted-foreground")}>{pack.name}</p>
+                        <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                          {formatMoney(pack.deal_price)} / 口
+                        </span>
+                      </div>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {packDeal(pack)}・{pack.deal}
+                      </p>
+                      <div className="mt-2 flex items-center gap-2">
+                        <Input
+                          type="number"
+                          inputMode="numeric"
+                          min={0}
+                          step={1}
+                          value={packCounts[pack.code] ?? ""}
+                          onChange={(event) => onPackChange(pack.code, event.target.value)}
+                          aria-label={`${pack.name} 口數`}
+                          className="h-11 w-24 bg-card tabular-nums"
+                        />
+                        <span className="text-sm text-muted-foreground">口</span>
+                        <span className={cn("ml-auto text-sm tabular-nums", count === 0 ? "text-muted-foreground" : "font-medium")}>
+                          {count === 0 ? "不列入" : formatMoney(count * pack.deal_price)}
+                        </span>
+                      </div>
+                    </li>
+                  )
+                })}
+                {!product.usual && (
+                  <li className={cn("rounded-xl border-2 bg-card px-4 py-3 shadow-lip", qty === 0 && "bg-muted/60")}>
+                    <div className="flex items-baseline justify-between gap-3">
+                      <p className={cn("min-w-0 text-sm font-medium", qty === 0 && "text-muted-foreground")}>
+                        {product.name} 不走促銷
+                      </p>
+                      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                        {formatMoney(product.supply_price)} / {product.unit}
+                      </span>
+                    </div>
+                    <div className="mt-2 flex items-center gap-2">
+                      <Input
+                        type="number"
+                        inputMode="numeric"
+                        min={0}
+                        step={1}
+                        value={quantities[product.sku] ?? ""}
+                        onChange={(event) => onQtyChange(product.sku, event.target.value)}
+                        aria-label={`${product.name} 不走促銷的數量`}
+                        className="h-11 w-24 bg-card tabular-nums"
+                      />
+                      <span className="text-sm text-muted-foreground">{product.unit}</span>
+                      <span className={cn("ml-auto text-sm tabular-nums", qty === 0 ? "text-muted-foreground" : "font-medium")}>
+                        {qty === 0 ? "不列入" : formatMoney(qty * product.supply_price)}
+                      </span>
+                    </div>
+                  </li>
+                )}
+              </ul>
+            )
+          })}
+        </div>
+      ))}
+    </section>
   )
 }
