@@ -202,8 +202,9 @@ function Dots({ day, inverted }: { day?: CalendarDay; inverted: boolean }) {
   ].filter(Boolean)
   return (
     <span className="flex h-1.5 gap-0.5" aria-hidden>
+      {/* 選到的那天底色是主色，要帶的那顆主色點會看不見：一律換成白點 */}
       {kinds.map((kind) => (
-        <span key={kind} className={cn("size-1.5 rounded-full", DOT_CLASS[kind as DotKind], inverted && "ring-1 ring-primary-foreground")} />
+        <span key={kind} className={cn("size-1.5 rounded-full", inverted ? "bg-primary-foreground" : DOT_CLASS[kind as DotKind])} />
       ))}
     </span>
   )
