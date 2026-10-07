@@ -12,6 +12,7 @@ import {
   type CustomerProfile,
   type ProfileStats,
 } from "@/api/customers"
+import { NextNotes } from "@/components/next-notes"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
 import { ReassignOwner } from "@/components/reassign-owner"
@@ -159,6 +160,8 @@ export function CustomerPage() {
             ))}
           </ul>
         </section>
+
+        <NextNotes customerId={customer.id} customerName={customer.name} today={profile.today} />
 
         <section className="grid grid-cols-3 gap-2">
           <StatCard label="近 3 月進貨" value={wan(stats.amount_last_90d)} unit="萬" note={amountNote(stats)} />
