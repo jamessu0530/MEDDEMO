@@ -58,7 +58,7 @@ def pending_quote(tx, customer_id: str, quote_no: str, discount_pct: float) -> d
     price = round(405 * (1 - discount_pct / 100), 2)
     tx.add(SapQuotationDraft(
         quote_no=quote_no, line_no=1, customer_id=customer_id, sku="HS-FO30", qty=100, created_by="U01",
-        unit_price=price, discount_pct=discount_pct, status="pending_approval",
+        unit_price=price, amount=price * 100, discount_pct=discount_pct, status="pending_approval",
     ))
     tx.flush()
     return {

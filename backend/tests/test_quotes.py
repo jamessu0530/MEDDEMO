@@ -4,13 +4,13 @@ import datetime as dt
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select, text, update
 from test_approvals import fake_model, model  # noqa: F401  model 是 fixture
 
 from app.main import app
 from app.models import AppUser, OaExpenseForm, SapQuotationDraft
 from app.services import auth as auth_service
-from app.services import today_route
+from app.services import promo_packs, today_route
 from app.tasks import redis
 
 
@@ -127,7 +127,7 @@ def test_a_deeper_discount_waits_for_the_manager_before_it_counts(tx, api, auth,
     assert (form.applicant_id, form.required_level) == ("U01", "manager")
     assert form.payload == {
         "quote_no": quote["quote_no"], "discount_pct": 7.0, "list_amount": 40500, "amount": 37665, "cost": 27000,
-        "reason": "競品開買十送一",
+        "reason": "競品開買十送一", "total_amount": 37665,
     }
     # 客戶檔案列出來並標明還在等簽核；還沒核准的報價不算今日路線的商機
     assert open_quotes(api, auth)[quote["quote_no"]]["status"] == "pending_approval"
@@ -213,3 +213,82 @@ def test_who_can_see_and_sign_a_discount_request(tx, api, auth, model):
     assert api.post(f"/api/oa/forms/{form.id}/decide", json={"action": "approve"}, headers=auth("U01")).status_code == 403
     signed = api.post(f"/api/oa/forms/{form.id}/decide", json={"action": "approve"}, headers=auth("A01")).json()
     assert signed["status"] == "approved" and signed["steps"][-1]["name"] == "James"
+
+
+# ── 促銷的口：照每口售價、不再打折（docs/superpowers/specs/2026-10-07-quote-promotion-packs-design.md）────
+
+
+def pack_code(session, name):
+    return next(p.code for p in promo_packs.current_packs(session) if p.name == name)
+
+
+def test_the_quote_page_lists_this_period_by_product(tx, api, auth):
+    promotion = api.get("/api/customers/C001/quote-promotion", headers=auth("U01")).json()
+    assert promotion["name"] == "202610保藥特搭活動" and "滿額贈" in promotion["pm_note"]
+    premium = next(p for p in promotion["products"] if p["sku"] == "F749579")
+    # 連鎖的供貨價打 9 折：Premium 眼藥水原出貨價 250 元
+    assert (premium["group_name"], premium["supply_price"], premium["usual"]) == ("獅王眼藥水", 225, False)
+    assert [p["name"] for p in premium["packs"]] == ["Premium眼藥水(小口)", "Premium眼藥水(中口)", "Premium眼藥水(大口)"]
+    assert premium["packs"][0] | {"code": None} == {
+        "code": None, "name": "Premium眼藥水(小口)", "deal": "常態搭贈<22+1>", "buy_qty": 22, "free_qty": 1, "deal_price": 5500,
+    }
+    assert api.get("/api/customers/C002/quote-promotion", headers=auth("U01")).status_code == 404  # 王冠宇的客戶
+
+
+def test_no_running_period_means_no_promotion_section(tx, api, auth):
+    tx.execute(text("UPDATE promotion SET end_date = start_date WHERE end_date >= DATE '2026-10-28'"))
+    tx.flush()
+    assert api.get("/api/customers/C001/quote-promotion", headers=auth("U01")).json() is None
+
+
+def test_a_pack_is_quoted_at_its_deal_price(tx, api, auth):
+    code = pack_code(tx, "Premium眼藥水(小口)")
+    created = api.post(
+        "/api/customers/C001/quotes", json={"items": [{"promo_code": code, "packs": 2}, {"sku": "HS-FO30", "qty": 20}]},
+        headers=auth("U01"),
+    )
+    assert created.status_code == 201
+    quote = created.json()
+    assert quote["amount"] == 11000 + 8100 and quote["status"] == "draft"
+    pack, fish = quote["items"]
+    assert pack == {
+        "sku": "F749579", "name": "Premium眼藥水(小口)", "qty": 44, "unit_price": 250.0, "amount": 11000.0,
+        "promo_code": code, "packs": 2, "free_qty": 2, "deal": "常態搭贈<22+1>",
+    }
+    assert fish["promo_code"] is None and fish["amount"] == 8100.0
+    row = tx.execute(
+        select(SapQuotationDraft).where(SapQuotationDraft.quote_no == quote["quote_no"], SapQuotationDraft.line_no == 1)
+    ).scalar_one()
+    assert (row.promo_code, row.packs, row.qty, row.free_qty, float(row.amount), float(row.discount_pct)) == (code, 2, 44, 2, 11000, 0)
+
+
+def test_the_discount_only_applies_to_lines_without_a_promotion(tx, api, auth, model):
+    code = pack_code(tx, "Premium眼藥水(小口)")
+    quote = open_quote(api, auth, 7, items=[*FISH_OIL, {"promo_code": code, "packs": 1}]).json()
+    # 魚油 100 盒 405 元打 93 折是 37,665 元，小口照 5,500 元不打折
+    assert (quote["status"], quote["amount"]) == ("pending_approval", 37665 + 5500)
+    assert [i["amount"] for i in quote["items"]] == [37665.0, 5500.0]
+    form = tx.get(OaExpenseForm, quote["approval"]["form_id"])
+    # 簽核只看有打折的那幾列：模型是用沒有促銷的單訓練的
+    assert form.payload == {
+        "quote_no": quote["quote_no"], "discount_pct": 7.0, "list_amount": 40500, "amount": 37665, "cost": 27000,
+        "reason": "競品開買十送一", "total_amount": 43165,
+    }
+    inbox = api.get("/api/oa/inbox", headers=auth("M01")).json()["items"]
+    assert next(i for i in inbox if i["id"] == form.id)["summary"] == "折扣 7%，打折的品項 NT$ 37,665，整張報價 NT$ 43,165"
+
+
+def test_bad_pack_quotes_are_rejected(tx, api, auth, model):
+    code = pack_code(tx, "Premium眼藥水(小口)")
+    post = lambda body: api.post("/api/customers/C001/quotes", json=body, headers=auth("U01"))  # noqa: E731
+    pack = {"promo_code": code, "packs": 1}
+    assert post({"items": [pack, pack]}).status_code == 422  # 同一口只能列一次
+    assert post({"items": [{"promo_code": code, "packs": 0}]}).status_code == 422
+    assert post({"items": [{"sku": "HS-FO30", "qty": 1, "promo_code": code, "packs": 1}]}).status_code == 422
+    assert post({"items": [{"sku": "HS-FO30"}]}).status_code == 422
+    ended = post({"items": [{"promo_code": "PP-027942", "packs": 1}]})  # 202608 那一期，已經結束
+    assert ended.status_code == 422 and "換期" in ended.json()["detail"]
+    only_packs = post({"items": [pack], "discount_pct": 2})
+    assert only_packs.status_code == 422 and "沒促銷的品項" in only_packs.json()["detail"]
+    # 同一個品項的小口與不走促銷可以同時開
+    assert post({"items": [pack, {"sku": "F749579", "qty": 5}]}).status_code == 201

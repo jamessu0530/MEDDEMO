@@ -6,8 +6,8 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
-from sqlalchemy import Date, case, cast, func, select
+from pydantic import BaseModel, Field, model_validator
+from sqlalchemy import Date, case, cast, func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -16,7 +16,7 @@ from app.api.methods import MethodCardOut
 from app.db import get_session
 from app.models import AppUser, Customer, Product, SalesTransaction, SapQuotationDraft, Visit
 from app.pricing import supply_price
-from app.services import approvals, customer_profile, negotiation, writeback
+from app.services import approvals, customer_profile, negotiation, promo_packs, writeback
 from app.services.scope import SHARING_LEVEL, Scope
 
 router = APIRouter(prefix="/api/customers", tags=["customers"])
@@ -279,7 +279,7 @@ def get_negotiation_card(session: SessionDep, customer_id: str, user: CurrentUse
 
 # 報價頁列這家客戶近半年進過的品項，跟談判卡看的時間窗一樣
 QUOTE_ITEM_DAYS = customer_profile.TOP_SKU_DAYS
-# 一張報價最多幾項：這家客戶常進的品項大約 10～15 項，再多多半是誤操作
+# 一張報價最多幾列（品項與促銷的口合計）：這家客戶常進的品項大約 10～15 項，再多多半是誤操作
 MAX_QUOTE_LINES = 20
 
 
@@ -293,8 +293,19 @@ class QuoteItemOption(BaseModel):
 
 
 class QuoteLineInput(BaseModel):
-    sku: str
-    qty: int = Field(gt=0)
+    """一列是品項 × 數量（照供貨價，可以打折），或是促銷的某一口 × 口數（照每口售價，不打折），兩種擇一。"""
+
+    sku: str | None = None
+    qty: int | None = Field(default=None, gt=0)
+    promo_code: str | None = None
+    packs: int | None = Field(default=None, gt=0)
+
+    @model_validator(mode="after")
+    def one_kind(self):
+        given = {key for key in ("sku", "qty", "promo_code", "packs") if getattr(self, key) is not None}
+        if given not in ({"sku", "qty"}, {"promo_code", "packs"}):
+            raise ValueError("每一列是品項與數量，或是促銷的口與口數，兩種擇一")
+        return self
 
 
 # 申請理由最多幾個字：一兩句話講客戶的進貨金額與競品條件
@@ -311,10 +322,16 @@ class QuoteInput(BaseModel):
 class QuoteLine(BaseModel):
     sku: str
     name: str
+    # 促銷的列是付錢的數量（每口買的 × 口數）
     qty: int
-    # 折扣後的單價，到分
+    # 折扣後的單價，到分；促銷的列是每口售價 ÷ 每口買的數量
     unit_price: float
     amount: float
+    # 促銷的列才有：哪一口、幾口、同品送幾個、搭贈說明原文
+    promo_code: str | None = None
+    packs: int | None = None
+    free_qty: int = 0
+    deal: str | None = None
 
 
 class WaitingFor(BaseModel):
@@ -373,6 +390,68 @@ def quote_items(session: SessionDep, customer_id: str, user: CurrentUser):
     ]
 
 
+class QuotePack(BaseModel):
+    code: str
+    name: str
+    deal: str
+    buy_qty: int
+    free_qty: int
+    deal_price: float
+
+
+class QuotePromotionProduct(BaseModel):
+    group_name: str
+    sku: str
+    name: str
+    spec: str
+    unit: str
+    # 這家的供貨價，給「不走促銷」那一列
+    supply_price: int
+    # 已經在常進品項裡：畫面上不重複列「不走促銷」
+    usual: bool
+    packs: list[QuotePack]
+
+
+class QuotePromotion(BaseModel):
+    name: str
+    # PM 提醒原文：滿額贈這類看整張訂單的活動，系統不算，給業務參考
+    pm_note: str
+    products: list[QuotePromotionProduct]
+
+
+@router.get("/{customer_id}/quote-promotion", response_model=QuotePromotion | None)
+def quote_promotion(session: SessionDep, customer_id: str, user: CurrentUser):
+    """開報價時這一期的促銷：依品項列出每一口；沒有進行中的一期回 null。"""
+    customer, _ = _load(session, customer_id, user, SHARING_LEVEL["quote"])
+    packs = promo_packs.current_packs(session)
+    if not packs:
+        return None
+    # 正常只有一期進行中；萬一有兩期重疊，只列編號最前面那一期
+    name = packs[0].promotion_name
+    packs = [p for p in packs if p.promotion_name == name]
+    today = customer_profile.app_today(session)
+    usual = set(session.scalars(
+        select(SalesTransaction.sku).distinct().where(
+            SalesTransaction.customer_id == customer.id,
+            SalesTransaction.date > today - timedelta(days=QUOTE_ITEM_DAYS),
+        )
+    ))
+    products = {p.sku: p for p in session.scalars(select(Product).where(Product.sku.in_({p.sku for p in packs})))}
+    grouped: dict[str, QuotePromotionProduct] = {}
+    for pack in packs:
+        product = products[pack.sku]
+        entry = grouped.setdefault(pack.sku, QuotePromotionProduct(
+            group_name=pack.group_name, sku=pack.sku, name=product.name, spec=product.spec, unit=product.unit,
+            supply_price=supply_price(product.unit_price, customer.type), usual=pack.sku in usual, packs=[],
+        ))
+        entry.packs.append(QuotePack(
+            code=pack.code, name=pack.name, deal=pack.deal, buy_qty=pack.buy_qty, free_qty=pack.free_qty,
+            deal_price=float(pack.deal_price),
+        ))
+    pm_note = session.scalar(text("SELECT pm_note FROM v_promotion WHERE promotion_name = :name"), {"name": name})
+    return QuotePromotion(name=name, pm_note=pm_note or "", products=list(grouped.values()))
+
+
 def _next_quote_no(session: Session, today: date) -> str:
     prefix = f"Q{today:%Y%m%d}-"
     count = session.scalar(
@@ -409,13 +488,23 @@ def create_quote(session: SessionDep, customer_id: str, body: QuoteInput, user: 
     模型有把握就由系統核准、報價立刻可以送出（services/approvals.py）。
     """
     customer, _ = _load(session, customer_id, user, SHARING_LEVEL["quote"])
-    skus = [line.sku for line in body.items]
+    plain = [line for line in body.items if line.sku is not None]
+    promo = [line for line in body.items if line.promo_code is not None]
+    skus = [line.sku for line in plain]
     if len(set(skus)) != len(skus):
         raise HTTPException(422, "同一個品項只能列一次")
+    codes = [line.promo_code for line in promo]
+    if len(set(codes)) != len(codes):
+        raise HTTPException(422, "同一口只能列一次")
     products = {p.sku: p for p in session.scalars(select(Product).where(Product.sku.in_(skus)))}
     if missing := [sku for sku in skus if sku not in products]:
         raise HTTPException(422, f"找不到品項：{'、'.join(missing)}")
+    current = {p.code: p for p in promo_packs.current_packs(session)}
+    if any(code not in current for code in codes):
+        raise HTTPException(422, "促銷已經換期，請重新整理")
     level, reason = _discount_level(body)
+    if body.discount_pct and not plain:
+        raise HTTPException(422, "折扣只套在沒促銷的品項上，這張報價沒有可以打折的品項")
     # 跟拜訪回寫一樣受模擬系統開關影響：展示「SAP 停機」時這裡也開不成
     if writeback.is_mock_down("sap"):
         raise HTTPException(503, "SAP 暫時連不上，報價草稿沒有開成，請稍後再試")
@@ -427,19 +516,33 @@ def create_quote(session: SessionDep, customer_id: str, body: QuoteInput, user: 
     keep = Decimal(200 - round(body.discount_pct * 2)) / 200
     supply = {sku: supply_price(products[sku].unit_price, customer.type) for sku in skus}
     prices = {sku: (Decimal(price) * keep).quantize(Decimal("0.01"), ROUND_HALF_UP) for sku, price in supply.items()}
-    # 整張報價的金額到元，四捨五入（跟畫面上金額的進位方式一樣）
-    amount = int(sum(prices[line.sku] * line.qty for line in body.items).quantize(Decimal("1"), ROUND_HALF_UP))
+    # 促銷的口照每口售價，不打折
+    pack_lines = {line.promo_code: promo_packs.pack_line(current[line.promo_code], line.packs) for line in promo}
+    discounted = sum((prices[line.sku] * line.qty for line in plain), Decimal(0))
+    # 金額到元，四捨五入（跟畫面上金額的進位方式一樣）。簽核只看有打折的那幾列：模型是用沒有促銷的單訓練的
+    whole = discounted + sum((line.amount for line in pack_lines.values()), Decimal(0))
+    amount = int(whole.quantize(Decimal("1"), ROUND_HALF_UP))
+    discounted_amount = int(discounted.quantize(Decimal("1"), ROUND_HALF_UP))
+    status = "pending_approval" if level else "draft"
     form = None
     for _attempt in range(3):  # 兩個人同時開報價可能拿到同一個單號，撞到唯一限制就換下一號
         quote_no = _next_quote_no(session, today)
-        lines = [
-            SapQuotationDraft(
-                quote_no=quote_no, visit_id=None, created_by=user.id, line_no=n, customer_id=customer.id,
-                sku=line.sku, qty=line.qty, unit_price=prices[line.sku], amount=prices[line.sku] * line.qty,
-                discount_pct=body.discount_pct, status="pending_approval" if level else "draft",
+        lines = []
+        for n, line in enumerate(body.items, start=1):
+            common = dict(
+                quote_no=quote_no, visit_id=None, created_by=user.id, line_no=n, customer_id=customer.id, status=status,
             )
-            for n, line in enumerate(body.items, start=1)
-        ]
+            if line.promo_code:
+                pack, pl = current[line.promo_code], pack_lines[line.promo_code]
+                lines.append(SapQuotationDraft(
+                    **common, sku=pack.sku, qty=pl.qty, free_qty=pl.free_qty, unit_price=pl.unit_price, amount=pl.amount,
+                    discount_pct=0, promo_code=pack.code, packs=line.packs,
+                ))
+            else:
+                lines.append(SapQuotationDraft(
+                    **common, sku=line.sku, qty=line.qty, unit_price=prices[line.sku], amount=prices[line.sku] * line.qty,
+                    discount_pct=body.discount_pct,
+                ))
         session.add_all(lines)
         try:
             session.flush()
@@ -450,9 +553,9 @@ def create_quote(session: SessionDep, customer_id: str, body: QuoteInput, user: 
                     applicant=session.get(AppUser, customer.owner_user_id),
                     payload={
                         "quote_no": quote_no, "discount_pct": body.discount_pct,
-                        "list_amount": sum(supply[line.sku] * line.qty for line in body.items), "amount": amount,
-                        "cost": round(sum(products[line.sku].unit_cost * line.qty for line in body.items)),
-                        "reason": reason,
+                        "list_amount": sum(supply[line.sku] * line.qty for line in plain), "amount": discounted_amount,
+                        "cost": round(sum(products[line.sku].unit_cost * line.qty for line in plain)),
+                        "reason": reason, "total_amount": amount,
                     },
                 )
             session.commit()
@@ -464,7 +567,9 @@ def create_quote(session: SessionDep, customer_id: str, body: QuoteInput, user: 
 
     items = [
         QuoteLine(
-            sku=l.sku, name=products[l.sku].name, qty=l.qty, unit_price=float(l.unit_price), amount=float(l.amount),
+            sku=l.sku, name=current[l.promo_code].name if l.promo_code else products[l.sku].name, qty=l.qty,
+            unit_price=float(l.unit_price), amount=float(l.amount), promo_code=l.promo_code, packs=l.packs,
+            free_qty=l.free_qty, deal=current[l.promo_code].deal if l.promo_code else None,
         )
         for l in lines
     ]

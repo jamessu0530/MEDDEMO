@@ -139,7 +139,12 @@ def summary(form: OaExpenseForm, customer: Customer) -> str:
     """清單與簽核匣上的一句話：這張單在申請什麼。"""
     payload = form.payload or {}
     if form.kind == "discount":
-        return f"折扣 {_percent(payload['discount_pct'])}，報價 NT$ {payload['amount']:,.0f}"
+        pct, amount = _percent(payload["discount_pct"]), payload["amount"]
+        # 報價裡有促銷的口時，口不打折：分開寫打折的部分與整張報價（歷史單沒有 total_amount）
+        total = payload.get("total_amount")
+        if total is not None and total != amount:
+            return f"折扣 {pct}，打折的品項 NT$ {amount:,.0f}，整張報價 NT$ {total:,.0f}"
+        return f"折扣 {pct}，報價 NT$ {amount:,.0f}"
     if form.kind == "contract":
         changes = list(filter(None, [
             _rate_change("上架費率", payload["listing_fee_rate"]),
