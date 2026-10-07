@@ -33,12 +33,13 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["product_text", "sku", "qty", "unit"],
+        "required": ["product_text", "sku", "qty", "unit", "promo_code"],
         "properties": {
           "product_text": { "type": "string", "minLength": 1, "description": "口述原本的講法" },
           "sku": { "type": ["string", "null"], "description": "對不到唯一品項時為 null" },
-          "qty": { "type": ["integer", "null"], "minimum": 1 },
-          "unit": { "type": ["string", "null"] }
+          "qty": { "type": ["integer", "null"], "minimum": 1, "description": "數量；促銷的口是口數" },
+          "unit": { "type": ["string", "null"], "description": "單位；促銷的口是「口」" },
+          "promo_code": { "type": ["string", "null"], "description": "促銷的哪一口（促銷品項編號）；沒講口為 null" }
         }
       }
     },

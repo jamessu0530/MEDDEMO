@@ -58,6 +58,9 @@ def test_nullable_fields_keep_their_structure():
     assert fields["follow_up_date"]["type"] == ["string", "null"]
     assert fields["follow_up_date"]["format"] == "date"
     assert "minLength" not in fields["complaint"]
+    intent = fields["intent"]["items"]
+    assert intent["properties"]["promo_code"]["type"] == ["string", "null"]
+    assert "promo_code" in intent["required"]
 
 
 def test_output_that_breaks_the_full_schema_is_rejected_locally():

@@ -22,7 +22,7 @@ TRANSCRIPT = (
 FIELDS = {
     "competitor": [{"name": "御松田", "detail": "條件比我們好"}],
     "complaint": "補貨延遲三天",
-    "intent": [{"product_text": "魚油", "sku": "HS-FO30", "qty": 20, "unit": "盒"}],
+    "intent": [{"product_text": "魚油", "sku": "HS-FO30", "qty": 20, "unit": "盒", "promo_code": None}],
     "commitment": {"by": "us", "text": "回報檔期", "due": "2026-10-24"},
     "follow_up_date": "2026-10-24",
 }
@@ -157,6 +157,12 @@ def test_fields_can_be_edited_one_by_one_but_must_stay_valid(client, providers):
     assert edited["unsourced"] == []  # 業務自己改的欄位不標
 
 
+def test_an_intent_line_must_say_whether_it_is_a_pack(client, providers):
+    visit_id = make_draft(client, providers)
+    without = [{"product_text": "魚油", "sku": "HS-FO30", "qty": 20, "unit": "盒"}]
+    assert client.put(f"/api/visits/{visit_id}/fields", json={"fields": {**FIELDS, "intent": without}}).status_code == 422
+
+
 def test_confirm_writes_all_three_systems_and_creates_a_reminder(client, providers, engine):
     visit_id = make_draft(client, providers)
     visit = client.post(f"/api/visits/{visit_id}/confirm").json()
@@ -191,7 +197,7 @@ def test_one_system_down_does_not_block_the_others_and_can_be_resent_alone(clien
 
 
 def test_sap_needs_product_and_quantity_before_confirming(client, providers):
-    unclear = {**FIELDS, "intent": [{"product_text": "那個大罐的", "sku": None, "qty": None, "unit": None}]}
+    unclear = {**FIELDS, "intent": [{"product_text": "那個大罐的", "sku": None, "qty": None, "unit": None, "promo_code": None}]}
     visit_id = make_draft(client, providers, FakeExtractor(fields=unclear))
     response = client.post(f"/api/visits/{visit_id}/confirm")
     assert response.status_code == 422

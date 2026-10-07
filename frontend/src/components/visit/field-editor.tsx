@@ -209,13 +209,19 @@ function useProducts() {
 
 function IntentEditor({ initial, saving, onSave }: EditorProps<IntentItem[]>) {
   const products = useProducts()
-  const [rows, setRows] = useState<IntentItem[]>(initial ?? [{ product_text: "", sku: null, qty: null, unit: null }])
+  const [rows, setRows] = useState<IntentItem[]>(initial ?? [{ product_text: "", sku: null, qty: null, unit: null, promo_code: null }])
   const update = (index: number, row: IntentItem) => setRows(rows.map((r, i) => (i === index ? row : r)))
 
   function choose(index: number, sku: string) {
     const row = rows[index]
     const product = products.find((p) => p.sku === sku)
-    update(index, product ? { ...row, sku: product.sku, unit: product.unit, product_text: row.product_text || product.name } : { ...row, sku: null })
+    // 換品項時口一起清掉：口是跟著品項的
+    update(
+      index,
+      product
+        ? { ...row, sku: product.sku, unit: product.unit, promo_code: null, product_text: row.product_text || product.name }
+        : { ...row, sku: null, promo_code: null }
+    )
   }
 
   function save() {
@@ -265,7 +271,7 @@ function IntentEditor({ initial, saving, onSave }: EditorProps<IntentItem[]>) {
           </div>
         </div>
       ))}
-      <AddButton label="新增品項" onClick={() => setRows([...rows, { product_text: "", sku: null, qty: null, unit: null }])} />
+      <AddButton label="新增品項" onClick={() => setRows([...rows, { product_text: "", sku: null, qty: null, unit: null, promo_code: null }])} />
       <EditorFooter saving={saving} onClear={() => onSave(null)} onSave={save} />
     </>
   )

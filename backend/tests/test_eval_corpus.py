@@ -27,7 +27,7 @@ def as_fields(expected):
     return {
         "competitor": [{"name": name, "detail": None} for name in expected["competitor"]] if expected["competitor"] else None,
         "complaint": expected["complaint"],
-        "intent": [{"product_text": sku, "sku": sku, "qty": qty, "unit": None} for sku, qty in expected["intent"]]
+        "intent": [{"product_text": sku, "sku": sku, "qty": qty, "unit": None, "promo_code": None} for sku, qty in expected["intent"]]
         if expected["intent"]
         else None,
         "commitment": {"by": commitment["by"], "text": commitment["keyword"], "due": commitment["due"]} if commitment else None,

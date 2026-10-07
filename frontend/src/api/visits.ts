@@ -2,7 +2,14 @@ import { jsonBody, request } from "@/api/client"
 
 // 五個欄位的格式與 backend/app/schemas/visit_fields.schema.json 一致
 export type Competitor = { name: string; detail: string | null }
-export type IntentItem = { product_text: string; sku: string | null; qty: number | null; unit: string | null }
+// promo_code 有值時是促銷的某一口：qty 是口數、unit 是「口」
+export type IntentItem = {
+  product_text: string
+  sku: string | null
+  qty: number | null
+  unit: string | null
+  promo_code: string | null
+}
 export type Commitment = { by: "us" | "customer"; text: string; due: string | null }
 export type VisitFields = {
   competitor: Competitor[] | null

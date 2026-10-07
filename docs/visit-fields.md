@@ -8,7 +8,7 @@
 | --- | --- | --- | --- | --- |
 | `competitor` | 本次提到的競品，以及對方做了什麼 | `[{name, detail}]` | `[{"name": "御松田", "detail": "條件比我們好"}]` | CRM |
 | `complaint` | 客戶對我方產品、配送、價格或服務的不滿 | 字串 | `補貨延遲三天` | CRM |
-| `intent` | 客戶想進的品項 | `[{product_text, sku, qty, unit}]` | `[{"product_text": "魚油", "sku": "HS-FO30", "qty": 20, "unit": "盒"}]` | CRM、SAP 報價草稿 |
+| `intent` | 客戶想進的品項 | `[{product_text, sku, qty, unit, promo_code}]` | `[{"product_text": "魚油", "sku": "HS-FO30", "qty": 20, "unit": "盒", "promo_code": null}]` | CRM、SAP 報價草稿 |
 | `commitment` | 這次談定、有期限的一件事 | `{by, text, due}`，`by` 為 `us` 或 `customer` | `{"by": "us", "text": "回報檔期", "due": "2026-10-24"}` | CRM |
 | `follow_up_date` | 業務說要再去追的日期 | `YYYY-MM-DD` | `2026-10-24` | CRM、追蹤提醒 |
 
@@ -24,3 +24,4 @@ OA 出差單不讀這五個欄位，只用客戶和拜訪日期。
 6. **沒講數量，`qty` 就填 null。** SAP 報價草稿每一行都需要 sku 和數量，缺的要先在確認頁補齊才能寫入 SAP。
 7. **競品的「首次」標記不是抽取欄位。** 由系統比對這家客戶過去的拜訪紀錄來判斷。口述裡不會講「這是第一次」，讓模型判斷等於讓它猜。
 8. **抱怨只收針對我方的不滿。** 店況觀察（例如「魚油最近賣得比較慢」）不放進五個欄位，留在逐字稿裡；數字查詢會去搜逐字稿。
+9. **講到促銷的口才填 `promo_code`。** 業務講了小口、中口、大口或某一口的搭贈，而且對得到這一期唯一的一口，`promo_code` 填促銷品項編號，`qty` 是口數、`unit` 是「口」；只講「開小口」沒講幾口算 1 口。沒講口就填 null，照第 5、6 條填數量。講了口卻對不到唯一的一口（例如「小口眼藥水」，好幾種眼藥水都有小口），`sku` 與 `promo_code` 都填 null，由業務在確認頁選。回寫 SAP 時一口照每口售價記（見 `docs/superpowers/specs/2026-10-07-quote-promotion-packs-design.md`）。

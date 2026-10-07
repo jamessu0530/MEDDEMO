@@ -441,7 +441,7 @@ def render_visit(rng, customer, visited_on, content, products):
         items = []
         for sku, qty in intent:
             p = products[sku]
-            items.append({"product_text": p["aliases"][0], "sku": sku, "qty": qty, "unit": p["unit"]})
+            items.append({"product_text": p["aliases"][0], "sku": sku, "qty": qty, "unit": p["unit"], "promo_code": None})
         fields["intent"] = items
         say("intent", "他想先進" + "、".join(f"{i['product_text']}{num_zh(i['qty'])}{i['unit']}" for i in items) + "。")
     if commitment := content.get("commitment"):
