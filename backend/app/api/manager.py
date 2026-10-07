@@ -124,6 +124,7 @@ class TeamStop(BaseModel):
     reason: str
     window_kind: str | None
     window_time: str | None
+    travel_mode: str  # 到這一站那一段實際用的交通方式
 
 
 class TeamLegStep(BaseModel):

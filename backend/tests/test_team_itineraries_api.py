@@ -15,7 +15,7 @@ ROUTE_FIELDS = {
 }
 STOP_FIELDS = {
     "number", "customer_id", "customer_name", "area", "lat", "lng", "status", "planned_time", "duration_minutes",
-    "late_minutes", "source", "signal", "reason", "window_kind", "window_time",
+    "late_minutes", "source", "signal", "reason", "window_kind", "window_time", "travel_mode",
 }
 
 
@@ -35,6 +35,7 @@ def test_a_manager_gets_the_team_overview(client, auth):
     assert set(first) == ROUTE_FIELDS
     assert first["rep"] == {"id": "U01", "name": "林昱辰", "region": "北區"}
     assert set(first["stops"][0]) == STOP_FIELDS
+    assert {stop["travel_mode"] for stop in first["stops"]} == {"drive"}
     assert set(first["origin"]) == {"lat", "lng"}
     assert len(first["legs"]) == len(first["stops"])
     assert first["legs"][0] == {"polyline": None, "done": False, "steps": []}

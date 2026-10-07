@@ -33,10 +33,50 @@ def test_today_has_the_fields_the_home_page_needs(client, auth):
         "customer_id", "customer_name", "type", "grade", "planned_time", "status", "signal", "reason", "visit_id",
         "source", "duration_minutes", "late_minutes", "travel_minutes", "travel_km",
         "window_kind", "window_time", "note", "locked", "habit_ids",
+        "travel_estimated", "travel_mode", "city",
     }
-    assert {"rules", "violations", "precedences", "skipped_habits", "travel_mode"} <= set(data)
+    assert {"rules", "violations", "precedences", "skipped_habits", "travel_mode", "start_city", "office_start"} <= set(data)
     assert data["urgent"]["customer_id"] == first["customer_id"]
     assert data["finish_time"] > first["planned_time"]
+
+
+def put_leg(client, auth, body, user_id="U01"):
+    return client.put("/api/itinerary/today/legs", json=body, headers=auth(user_id))
+
+
+def test_change_a_leg_through_the_api(client, auth):
+    data = today(client, auth)
+    assert data["start_city"] == "台北市" and data["office_start"] is True
+    a, b = data["stops"][0]["customer_id"], data["stops"][1]["customer_id"]
+    changed = put_leg(client, auth, {"from": a, "to": b, "mode": "walk", "version": data["version"]})
+    assert changed.status_code == 200, changed.text
+    after = changed.json()
+    assert after["version"] == data["version"] + 1 and after["stops"][1]["travel_mode"] == "walk"
+    assert after["travel_mode"] == "drive"
+    assert today(client, auth)["stops"][1]["travel_mode"] == "walk"
+
+    stale = put_leg(client, auth, {"from": a, "to": b, "mode": "transit", "version": data["version"]})
+    assert stale.status_code == 409 and stale.json()["detail"] == "行程剛被改過，已幫你重新整理"
+    apart = put_leg(client, auth, {"from": b, "to": a, "mode": "walk", "version": after["version"]})
+    assert apart.status_code == 422 and apart.json()["detail"] == "這兩家現在不是還沒走的一段，請重新整理"
+    assert put_leg(client, auth, {"from": a, "to": b, "mode": "rocket", "version": after["version"]}).status_code == 422
+    assert put_leg(client, auth, {"to": a, "mode": "walk", "version": after["version"]}).status_code == 422  # 少了 from
+    office = put_leg(client, auth, {"from": None, "to": a, "mode": "scooter", "version": after["version"]})
+    assert office.status_code == 200 and office.json()["stops"][0]["travel_mode"] == "scooter"
+    assert put_leg(client, auth, {"from": None, "to": a, "mode": "walk", "version": 1}, "M01").status_code == 403
+
+
+def test_leg_options_through_the_api(client, auth):
+    data = today(client, auth)
+    a, c = data["stops"][0]["customer_id"], data["stops"][2]["customer_id"]
+    response = client.get("/api/itinerary/today/legs/options", params={"to": a}, headers=auth())
+    assert response.status_code == 200, response.text
+    options = response.json()["options"]
+    assert [o["mode"] for o in options] == ["drive", "scooter", "transit", "walk"]
+    assert all(set(o) == {"mode", "minutes", "km", "estimated", "found"} for o in options)
+    apart = client.get("/api/itinerary/today/legs/options", params={"from": a, "to": c}, headers=auth())
+    assert apart.status_code == 422
+    assert client.get("/api/itinerary/today/legs/options", params={"to": a}, headers=auth("M01")).status_code == 403
 
 
 def test_only_a_signed_in_sales_rep_has_an_itinerary(client, auth):

@@ -8,7 +8,7 @@ import logging
 from datetime import date, time
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from google.genai import errors
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.orm import Session
@@ -22,7 +22,7 @@ from app.models import AppUser
 from app.services import itinerary as service
 from app.services import itinerary_ai
 from app.services import team_itineraries as team
-from app.services.google_routes import DayMode
+from app.services.google_routes import DayMode, TravelMode
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/itinerary", tags=["itinerary"])
@@ -69,6 +69,9 @@ class Stop(BaseModel):
     note: str | None
     locked: bool
     habit_ids: list[int]
+    travel_estimated: bool
+    travel_mode: TravelMode  # 到這一站那一段實際用的交通方式
+    city: str
 
 
 class Rule(BaseModel):
@@ -105,6 +108,8 @@ class TodayItinerary(BaseModel):
     estimated: bool
     # 車程照哪種交通方式算：drive（開車）、scooter（機車）、transit（大眾運輸）
     travel_mode: DayMode
+    start_city: str | None
+    office_start: bool
     rules: list[Rule]
     violations: list[str]
     precedences: list[PrecedenceOut]
@@ -210,6 +215,27 @@ class CandidateList(BaseModel):
     full: bool
 
 
+class LegInput(BaseModel):
+    """改一段路的交通方式。from 是 null 代表從辦公室出發。"""
+
+    from_: str | None = Field(alias="from")  # 必填、可以是 null（辦公室）：漏寫不能默默改到辦公室那一段
+    to: str
+    mode: TravelMode
+    version: int
+
+
+class LegOptionOut(BaseModel):
+    mode: TravelMode
+    minutes: int
+    km: float
+    estimated: bool
+    found: bool
+
+
+class LegOptions(BaseModel):
+    options: list[LegOptionOut]
+
+
 class AskInput(BaseModel):
     question: str = Field(min_length=1, max_length=300)
     # 「要選一個」時業務按的那一家，跟原句一起再送一次
@@ -303,6 +329,7 @@ def _out(view: service.ItineraryView) -> TodayItinerary:
         stops=[Stop(**dataclasses.asdict(stop)) for stop in view.stops],
         travel_minutes=view.travel_minutes, travel_km=view.travel_km, finish_time=view.finish_time,
         estimated=view.estimated, travel_mode=view.travel_mode,
+        start_city=view.start_city, office_start=view.office_start,
         rules=[Rule(**dataclasses.asdict(r)) for r in view.rules], violations=view.violations,
         precedences=[PrecedenceOut(**dataclasses.asdict(p)) for p in view.precedences],
         skipped_habits=[SkippedHabit(**dataclasses.asdict(h)) for h in view.skipped_habits],
@@ -440,6 +467,37 @@ def list_candidates(session: SessionDep, user: CurrentUser, order: str | None = 
     )
     session.commit()
     return result
+
+
+@router.get("/today/legs/options", response_model=LegOptions)
+def leg_options(
+    session: SessionDep, user: CurrentUser, to: str, from_: Annotated[str | None, Query(alias="from")] = None,
+):
+    """這一段四種交通方式各要多久（首頁膠囊的選單）。沒帶 from 是從辦公室出發。"""
+    try:
+        found = service.leg_options(session, _rep_id(user), from_, to)
+    except service.NotALeg as exc:
+        raise HTTPException(422, str(exc)) from None
+    except LookupError:
+        raise HTTPException(403, NO_ROUTE) from None
+    session.commit()
+    return LegOptions(options=[LegOptionOut(**dataclasses.asdict(o)) for o in found])
+
+
+@router.put("/today/legs", response_model=TodayItinerary)
+def set_leg(session: SessionDep, body: LegInput, user: CurrentUser):
+    """改一段路的交通方式，回改好的行程。"""
+    try:
+        itinerary = service.set_leg_mode(session, _rep_id(user), body.from_, body.to, body.mode, body.version)
+    except service.VersionConflict:
+        raise HTTPException(409, STALE) from None
+    except service.NotALeg as exc:
+        raise HTTPException(422, str(exc)) from None
+    except LookupError:
+        raise HTTPException(403, NO_ROUTE) from None
+    # 先提交、放掉列鎖再算畫面：算車程可能要等 Google
+    session.commit()
+    return _out(service.view(session, itinerary))
 
 
 @router.post("/today/ask", response_model=ProposalOut)

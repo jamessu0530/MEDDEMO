@@ -19,7 +19,6 @@ from sqlalchemy.orm import Session
 from app.models import AppUser, Customer, Itinerary, UserLocation
 from app.services import customer_profile, locations, travel
 from app.services import itinerary as itineraries
-from app.services.google_routes import TravelMode
 from app.services.scope import SHARING_LEVEL, Scope
 from app.services.today_route import SIGNAL_LABEL
 
@@ -41,6 +40,7 @@ class MapStop:
     reason: str
     window_kind: str | None  # 約的時間：at 幾點到、before 幾點以前、after 幾點以後
     window_time: str | None  # HH:MM
+    travel_mode: str  # 到這一站那一段實際用的交通方式
 
 
 @dataclass
@@ -137,7 +137,7 @@ def route(session: Session, rep: AppUser) -> RepRoute:
 
     # 跟 itinerary._start 同一個出發點
     origin = itineraries.office(session, rep)
-    legs = _legs(origin, [(s.lat, s.lng, s.status == "done") for s in stops], rep.travel_mode)
+    legs = _legs(origin, [(s.lat, s.lng, s.status == "done") for s in stops], _modes(session, itinerary, origin))
 
     on_route = set(current_ids)
     removed = [_removed(customers[item["customer_id"]], item) for item in suggested if item["customer_id"] not in on_route]
@@ -167,14 +167,20 @@ def rep_map(session: Session, rep: AppUser, itinerary: Itinerary) -> RepMap:
         for n, (customer, finished) in enumerate(ordered)
     ]
     origin = itineraries.office(session, rep)
-    legs = _legs(origin, [(s.lat, s.lng, s.status == "done") for s in stops], rep.travel_mode)
+    legs = _legs(origin, [(s.lat, s.lng, s.status == "done") for s in stops], _modes(session, itinerary, origin))
     return RepMap(version=itinerary.version, travel_mode=rep.travel_mode, origin=origin, stops=stops, legs=legs)
 
 
-def _legs(origin: travel.Point | None, stops: list[tuple[float, float, bool]], mode: TravelMode) -> list[Leg]:
-    """從出發點（或第一站）一段一段走到最後一站，照業務的交通方式；stops 是各站的 (緯度, 經度, 跑完了嗎)。"""
+def _modes(session: Session, itinerary: Itinerary, origin: travel.Point | None) -> list[str]:
+    """每一段的交通方式，跟 _legs 的段數一樣多：沒有辦公室時線從第一站畫起，去掉辦公室到第一站那一個。"""
+    modes = itineraries.path_modes(session, itinerary)
+    return modes if origin else modes[1:]
+
+
+def _legs(origin: travel.Point | None, stops: list[tuple[float, float, bool]], modes: list[str]) -> list[Leg]:
+    """從出發點（或第一站）一段一段走到最後一站，每段照它自己的交通方式；stops 是各站的 (緯度, 經度, 跑完了嗎)。"""
     path = ([origin] if origin else []) + [(lat, lng) for lat, lng, _ in stops]
-    found = travel.lines(path, mode)
+    found = travel.lines(path, modes)
     # 第 n 段到 path 的第 n + 1 點：有辦公室時就是第 n 站，沒有時是第 n + 1 站
     ends = stops if origin else stops[1:]
     legs = []
@@ -272,6 +278,7 @@ def _map_stop(number: int, stop: itineraries.StopView, customer: Customer) -> Ma
         lat=customer.lat, lng=customer.lng, status=stop.status, planned_time=stop.planned_time,
         duration_minutes=stop.duration_minutes, late_minutes=stop.late_minutes, source=stop.source,
         signal=stop.signal, reason=stop.reason, window_kind=stop.window_kind, window_time=stop.window_time,
+        travel_mode=stop.travel_mode,
     )
 
 
