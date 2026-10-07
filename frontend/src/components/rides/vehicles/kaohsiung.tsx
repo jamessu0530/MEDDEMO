@@ -1,6 +1,6 @@
 import "./kaohsiung.css"
 
-import { INK, LIGHT, PROP, STAR } from "@/components/rides/vehicles/colors"
+import { INK, PROP, STAR } from "@/components/rides/vehicles/colors"
 import { Ground, Wheel } from "@/components/rides/vehicles/parts"
 import type { CityVehicles, VehicleProps } from "@/components/rides/vehicles/types"
 
@@ -115,9 +115,12 @@ function Scooter({ bear }: VehicleProps) {
   )
 }
 
+// 車頭上那三根短香蕉：根部 [x, y]、往哪個角度長（度，-90 是朝上）
+const HAND: [number, number, number][] = [[248, 130, -102], [259, 126, -87], [269, 130, -74]]
+
 /**
- * 大眾運輸：一串香蕉當列車。最前面是香蕉梳的根部（深色的蒂頭當車頭，頂上一截切開的梗），
- * 後面三根香蕉當車廂，每根的蒂接在前一節的尾巴上串成一串；熊熊滾坐在第一根，每根底下一節淺紫的車台與兩個小輪子
+ * 大眾運輸：一串香蕉當列車。最前面是香蕉梳的根部當車頭：寬寬的深色圓丘，上面還長著三根往上張開的短香蕉；
+ * 後面三根香蕉當車廂，每根的蒂接在前一節的尾巴上（第一根接進根部）串成一串；熊熊滾坐在第一根，每根底下一節淺紫的車台與兩個小輪子
  */
 function Transit({ bear }: VehicleProps) {
   const cars = [20, 94, 168]
@@ -125,11 +128,14 @@ function Transit({ bear }: VehicleProps) {
     <>
       <Ground />
       <g className="ride-bob">
-        <line x1="262" y1="126" x2="270" y2="96" stroke={STEM} strokeWidth="18" strokeLinecap="round" />
-        <ellipse cx="270" cy="94" rx="8" ry="4.5" fill={BANANA_DARK} transform="rotate(15 270 94)" />
-        <path d="M240 158 C240 136 250 122 266 122 C280 122 288 136 288 158 Q288 166 280 166 H248 Q240 166 240 158 Z" fill={STEM} />
-        <rect x="256" y="132" width="22" height="16" rx="5" fill={LIGHT} />
-        <circle cx="281" cy="156" r="4.5" fill={STAR} />
+        {/* 短香蕉的蒂那端插在圓丘裡（圓丘畫在後面蓋住） */}
+        {HAND.map(([x, y, deg]) => (
+          <g key={deg} transform={`rotate(${deg} ${x} ${y})`}>
+            <Banana x0={x} x1={x + 46} y={y} sag={6} thick={18} />
+          </g>
+        ))}
+        <path d="M232 160 V150 C232 130 244 118 261 118 C278 118 290 130 290 150 V160 Q290 166 284 166 H238 Q232 166 232 160 Z" fill={STEM} />
+        <circle cx="282" cy="154" r="4.5" fill={STAR} />
         {bear({ x: 162, y: 74, size: 80 })}
         {cars.map((x) => (
           <g key={x}>
@@ -178,17 +184,18 @@ function Petal({ p0, p1, p2, w0, w1 }: { p0: Pt; p1: Pt; p2: Pt; w0: number; w1:
 }
 
 /**
- * 香蕉皮：中間一截立著的根部，三瓣從根部頂上攤開成星形：左、右兩瓣往外彎成拱形、尖端落到地上（左邊那瓣的尖端連著蒂），
- * 前面一瓣直直垂下來蓋住根部（front 時只畫這瓣，要畫在熊前面擋住熊的腳）。底邊中心 (cx, by)，熊踩在根部頂上（約 by - 32）。
+ * 香蕉皮：中間一截立著的根部，三瓣從根部頂上攤開成星形：左、右兩瓣往外彎成大大的拱形、尖端落到地上（左邊那瓣的尖端連著蒂），
+ * 前面一瓣直直垂下來蓋住根部（front 時只畫這瓣，要畫在熊前面擋住熊的腳）。底邊中心 (cx, by)，熊踩在根部頂上（約 by - 38）。
  */
 function Peel({ cx, by, front = false }: { cx: number; by: number; front?: boolean }) {
-  if (front) return <Petal p0={[cx, by - 32]} p1={[cx + 7, by - 22]} p2={[cx + 5, by - 11]} w0={28} w1={20} />
+  if (front) return <Petal p0={[cx, by - 38]} p1={[cx + 8, by - 26]} p2={[cx + 6, by - 12]} w0={32} w1={22} />
   return (
     <g>
-      <line x1={cx - 82} y1={by - 8} x2={cx - 96} y2={by - 16} stroke={STEM} strokeWidth="7" strokeLinecap="round" />
-      <Petal p0={[cx - 8, by - 30]} p1={[cx - 64, by - 56]} p2={[cx - 80, by - 8]} w0={22} w1={13} />
-      <Petal p0={[cx + 8, by - 30]} p1={[cx + 64, by - 56]} p2={[cx + 80, by - 8]} w0={22} w1={13} />
-      <path d={`M${cx - 12} ${by} V${by - 24} Q${cx - 12} ${by - 34} ${cx} ${by - 34} Q${cx + 12} ${by - 34} ${cx + 12} ${by - 24} V${by} Z`} fill={BANANA_DARK} />
+      {/* 蒂：從左瓣的尖端往左上翹出去 */}
+      <rect x={cx - 136} y={by - 14} width="28" height="12" rx="6" fill={STEM} transform={`rotate(40 ${cx - 110} ${by - 8})`} />
+      <Petal p0={[cx - 8, by - 36]} p1={[cx - 72, by - 82]} p2={[cx - 110, by - 8]} w0={28} w1={16} />
+      <Petal p0={[cx + 8, by - 36]} p1={[cx + 72, by - 82]} p2={[cx + 110, by - 8]} w0={28} w1={16} />
+      <path d={`M${cx - 14} ${by} V${by - 28} Q${cx - 14} ${by - 40} ${cx} ${by - 40} Q${cx + 14} ${by - 40} ${cx + 14} ${by - 28} V${by} Z`} fill={BANANA_DARK} />
     </g>
   )
 }
@@ -200,13 +207,13 @@ function Walk({ bear }: VehicleProps) {
       <Ground />
       {/* 三條風線放同一組：ride.css 用 nth-of-type 錯開時間；往左吹到盡頭也不出畫布 */}
       <g>
-        <path className="ride-wind" d="M46 96 H80" fill="none" stroke={PROP} strokeWidth="5" strokeLinecap="round" />
-        <path className="ride-wind" d="M40 122 H76" fill="none" stroke={PROP} strokeWidth="5" strokeLinecap="round" />
-        <path className="ride-wind" d="M50 148 H80" fill="none" stroke={PROP} strokeWidth="5" strokeLinecap="round" />
+        <path className="ride-wind" d="M46 70 H80" fill="none" stroke={PROP} strokeWidth="5" strokeLinecap="round" />
+        <path className="ride-wind" d="M40 94 H76" fill="none" stroke={PROP} strokeWidth="5" strokeLinecap="round" />
+        <path className="ride-wind" d="M50 118 H80" fill="none" stroke={PROP} strokeWidth="5" strokeLinecap="round" />
       </g>
       <g className="ride-kaohsiung-skid">
         <Peel cx={150} by={186} />
-        <g className="ride-slide">{bear({ x: 94, y: 54, size: 112 })}</g>
+        <g className="ride-slide">{bear({ x: 100, y: 58, size: 100 })}</g>
         <Peel cx={150} by={186} front />
       </g>
     </>
