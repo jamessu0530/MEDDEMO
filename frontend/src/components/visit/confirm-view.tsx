@@ -6,6 +6,7 @@ import { confirmVisit, discardVisit, type FieldKey, type Visit } from "@/api/vis
 import { CompetitorNames } from "@/components/visit/competitor-names"
 import { FieldEditor } from "@/components/visit/field-editor"
 import { FIELD_LABEL, FIELD_ORDER, summarize } from "@/components/visit/field-format"
+import { IntentLines } from "@/components/visit/intent-lines"
 import { usePromotions } from "@/components/visit/use-promotions"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -56,18 +57,26 @@ export function ConfirmView({ visit, onChange }: ConfirmViewProps) {
 
       <p className="text-sm text-muted-foreground">已整理出 {filled} 個欄位 · 點欄位可以修改</p>
       <ul className="flex flex-col gap-2">
-        {FIELD_ORDER.map((key) => (
-          <FieldRow
-            key={key}
-            label={FIELD_LABEL[key]}
-            value={summarize(key, visit.fields, packs)}
-            unsourced={visit.unsourced.includes(key)}
-            onEdit={() => setEditing(key)}
-          >
-            {/* 競品要在名稱旁邊標「首次」，不能只給一串文字 */}
-            {key === "competitor" && visit.fields.competitor?.length ? <CompetitorNames visit={visit} /> : null}
-          </FieldRow>
-        ))}
+        {FIELD_ORDER.map((key) => {
+          // 有給就取代純文字摘要：競品要標「首次」，意向照上次展開時一項一行、寫變了什麼
+          const detail =
+            key === "competitor" && visit.fields.competitor?.length ? (
+              <CompetitorNames visit={visit} />
+            ) : key === "intent" && visit.repeat_last ? (
+              <IntentLines visit={visit} packs={packs} />
+            ) : null
+          return (
+            <FieldRow
+              key={key}
+              label={FIELD_LABEL[key]}
+              value={summarize(key, visit.fields, packs)}
+              unsourced={visit.unsourced.includes(key)}
+              onEdit={() => setEditing(key)}
+            >
+              {detail}
+            </FieldRow>
+          )
+        })}
       </ul>
 
       <p className="text-xs text-muted-foreground">確認後會同時寫入 CRM · SAP · OA</p>
