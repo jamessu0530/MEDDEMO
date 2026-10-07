@@ -21,9 +21,11 @@ from app.services.promo_packs import Pack, packs_by_code
 
 SCHEMA_FILE = Path(__file__).resolve().parents[1] / "schemas" / "visit_fields.schema.json"
 FIELD_KEYS = ("competitor", "complaint", "intent", "commitment", "follow_up_date", "notes")
+# sources 還多一格 repeat_last：講「跟上次一樣」的原話
+SOURCE_KEYS = (*FIELD_KEYS, "repeat_last")
 WEEKDAYS = "一二三四五六日"
 
-PROMPT = """你是藥品通路業務的助理。下面是業務拜訪客戶後的口述逐字稿，請整理成六個欄位。
+PROMPT = """你是藥品通路業務的助理。下面是業務拜訪客戶後的口述逐字稿，請整理成六個欄位，另外判斷這次是不是照上次的單下（repeat_last）。
 
 規則：
 1. 口述裡沒提到的欄位填 null，不要推測，也不要用常識補。陣列欄位沒提到也填 null。
@@ -36,6 +38,8 @@ PROMPT = """你是藥品通路業務的助理。下面是業務拜訪客戶後�
 8. competitor 的 detail 填競品開的條件或做的事，沒講就填 null。
 9. intent 講到促銷的口才填 promo_code：業務講了小口、中口、大口，或講了幾口、某一口的搭贈（例如「買 11 送 2」「直走」），而且對得到下方促銷表裡唯一的一口，promo_code 填那一口的編號、sku 填那一口的 sku、qty 填口數、unit 填「口」。講了口但沒講幾口算 1 口。沒講口就照第 7 條填數量，promo_code 填 null。講了口卻對不到唯一的一口（例如好幾個品項都有小口），sku 與 promo_code 都填 null，product_text 照原話。
 10. notes 收兩種：bring 是業務說下次要帶給客戶的東西（DM、POP、海報、試用包、樣品、衛教單張、比價表…）；told 是業務跟客戶講了哪些促銷、實銷、搭贈、活動條件。text 用業務的講法、精簡成一句。date 只在業務講了哪天要帶、或下次哪天去時才填（照第 3 條換算），told 一律填 null。可以跟 commitment、intent 重複，例如「我答應下次帶比價表」兩邊都填。
+11. repeat_last 是照上次的單：業務講了「跟上次一樣」「照上次」「老樣子」這類話，表示這次照上次那張單再下一次，all 填 true；說這次不要的品項（例如「威鎮這次先不要」）對照品項表把 sku 填進 except_skus。都沒講就整個 repeat_last 填 null，sources 的 repeat_last 照第 2 條附原文。
+12. 業務講跟上次比的加減（例如「再加一口小口 Premium」「魚油比上次少 5 盒」「人工淚液照上次」），填進 repeat_last.relative：品項與口照第 7、9 條對，delta 是加減的數量（口是口數，少就是負數，照上次填 0）；這些不要再填進 intent。講了確定的總數（例如「魚油這次 40 盒」）才照第 7 條填 intent。只講加減、沒講跟上次一樣時 all 填 false。
 
 品項表（sku｜名稱｜單位｜口語別名）：
 {catalog}
@@ -60,6 +64,8 @@ class ProductHint:
 class Extraction:
     fields: dict[str, Any]
     sources: dict[str, str] = field(default_factory=dict)
+    # 照上次的單（REPEAT_SCHEMA）；沒講是 None。展開在 services/repeat_order.py
+    repeat_last: dict[str, Any] | None = None
 
 
 class FieldExtractor(Protocol):
@@ -73,21 +79,49 @@ def fields_schema() -> dict[str, Any]:
     return json.loads(SCHEMA_FILE.read_text(encoding="utf-8"))
 
 
+REPEAT_SCHEMA: dict[str, Any] = {
+    "description": "照上次的單：講了跟上次一樣、這次不要哪些、跟上次比的加減；都沒講是 null",
+    "type": ["object", "null"],
+    "additionalProperties": False,
+    "required": ["all", "except_skus", "relative"],
+    "properties": {
+        "all": {"type": "boolean", "description": "講了跟上次一樣、照上次、老樣子：照整張再下一次"},
+        "except_skus": {"type": "array", "items": {"type": "string"}, "description": "這次不要的品項"},
+        "relative": {
+            "type": "array",
+            "description": "跟上次比的加減",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["product_text", "sku", "promo_code", "delta"],
+                "properties": {
+                    "product_text": {"type": "string", "minLength": 1, "description": "口述原本的講法"},
+                    "sku": {"type": ["string", "null"], "description": "對不到唯一品項時為 null"},
+                    "promo_code": {"type": ["string", "null"], "description": "講到促銷的口才填"},
+                    "delta": {"type": "integer", "description": "跟上次比加減多少；口是口數，照上次是 0"},
+                },
+            },
+        },
+    },
+}
+
+
 def output_schema() -> dict[str, Any]:
-    """交給模型的輸出格式：六個欄位，加上每個有值欄位的逐字稿原文片段。"""
+    """交給模型的輸出格式：六個欄位、每個有值欄位的逐字稿原文片段，加上照上次的單（repeat_last）。"""
     return {
         "type": "object",
         "additionalProperties": False,
-        "required": ["fields", "sources"],
+        "required": ["fields", "sources", "repeat_last"],
         "properties": {
             "fields": fields_schema(),
             # 每個欄位都要列出來，沒有原文的填 null（結構化輸出要求物件的欄位全部明列）
             "sources": {
                 "type": "object",
                 "additionalProperties": False,
-                "required": list(FIELD_KEYS),
-                "properties": {key: {"type": ["string", "null"]} for key in FIELD_KEYS},
+                "required": list(SOURCE_KEYS),
+                "properties": {key: {"type": ["string", "null"]} for key in SOURCE_KEYS},
             },
+            "repeat_last": REPEAT_SCHEMA,
         },
     }
 
@@ -180,7 +214,11 @@ class LLMFieldExtractor:
     ) -> Extraction:
         prompt = build_prompt(transcript, visit_date, products, packs)
         data = self.llm.json(system=SYSTEM, prompt=prompt, schema=output_schema())
-        return Extraction(fields=data["fields"], sources={k: v for k, v in (data.get("sources") or {}).items() if v})
+        return Extraction(
+            fields=data["fields"],
+            sources={k: v for k, v in (data.get("sources") or {}).items() if v},
+            repeat_last=data.get("repeat_last"),
+        )
 
 
 def get_extractor() -> FieldExtractor:
