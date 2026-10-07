@@ -114,6 +114,8 @@ class OrgUnit(Base):
     # 區處辦公室的位置，今日路線每天從這裡出發；只有三個區有值
     lat: Mapped[float | None]
     lng: Mapped[float | None]
+    # 區處辦公室所在的縣市（熊熊滾從辦公室出發時騎哪個縣市的座騎）；跟位置一樣只有三個區有值
+    city: Mapped[str | None]
 
 
 class AppUser(Base):
@@ -1086,6 +1088,26 @@ class ItineraryPrecedence(Base):
     itinerary_id: Mapped[int] = mapped_column(ForeignKey("itinerary.id", ondelete="CASCADE"), primary_key=True)
     before_customer_id: Mapped[str] = mapped_column(ForeignKey("customer.id"), primary_key=True)
     after_customer_id: Mapped[str] = mapped_column(ForeignKey("customer.id"), primary_key=True)
+
+
+class ItineraryLeg(Base):
+    """今天的行程裡一段路怎麼去（docs/superpowers/specs/2026-10-07-ride-vehicles-design.md〈資料〉）。
+    只存跟業務的預設（app_user.travel_mode）不一樣的段：沒有這一列就照預設。
+    拿掉一站、存檔、加一站、三顆鈕之後，不再相鄰的列刪掉；換整天的預設時今天這份行程的列全部刪掉。"""
+
+    __tablename__ = "itinerary_leg"
+    __table_args__ = (
+        # 從辦公室出發的那段（from 是 NULL）也只能有一列
+        UniqueConstraint("itinerary_id", "from_customer_id", "to_customer_id", postgresql_nulls_not_distinct=True),
+        one_of("mode", LEG_MODES, "mode"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    itinerary_id: Mapped[int] = mapped_column(ForeignKey("itinerary.id", ondelete="CASCADE"))
+    # NULL：從辦公室出發
+    from_customer_id: Mapped[str | None] = mapped_column(ForeignKey("customer.id"))
+    to_customer_id: Mapped[str] = mapped_column(ForeignKey("customer.id"))
+    mode: Mapped[str]
 
 
 class RouteSnooze(Base):

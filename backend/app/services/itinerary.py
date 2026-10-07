@@ -6,6 +6,8 @@
 
 還沒跑的站，不管是存著的（ItineraryStop）還是調整清單上改到一半的，都先整理成 _Open，
 再用同一支 _compose 算時間、車程、要守的規則與違反了哪幾條。
+每一段路照業務的預設交通方式（app_user.travel_mode）；另外選的段存在 ItineraryLeg，只認現在還相鄰的兩站
+（docs/superpowers/specs/2026-10-07-ride-vehicles-design.md）。
 """
 
 from __future__ import annotations
@@ -22,8 +24,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import (
-    TRAVEL_MODES, AppUser, Customer, Itinerary, ItineraryPrecedence, ItineraryStop, OrgUnit, RouteHabit,
-    RouteSignalWeight, RouteSnooze, Visit,
+    LEG_MODES, TRAVEL_MODES, AppUser, Customer, Itinerary, ItineraryLeg, ItineraryPrecedence, ItineraryStop, OrgUnit,
+    RouteHabit, RouteSignalWeight, RouteSnooze, Visit,
 )
 from app.services import customer_profile, route_habits, route_planner, today_route, travel
 from app.services.google_routes import TravelMode
@@ -55,6 +57,10 @@ class InvalidDraft(ValueError):
     """調整清單送來的內容不合：不是自己的客戶、同一家排兩次、超過 8 站、習慣的欄位不對。訊息寫給業務看。"""
 
 
+class NotALeg(ValueError):
+    """這兩家現在不是還沒走的一段（不相鄰，或到的那家已經跑完了）。訊息寫給業務看。"""
+
+
 @dataclass
 class StopView:
     customer_id: str
@@ -77,6 +83,10 @@ class StopView:
     locked: bool = False
     # 套用在這一站的習慣（存著的才算），調整清單的卡片上標綠色「習慣」
     habit_ids: list[int] = field(default_factory=list)
+    # 從上一站（或辦公室）過來的那一段：是不是估算的、實際用哪種交通方式（另外選的，或業務的預設）
+    travel_estimated: bool = False
+    travel_mode: str = "drive"
+    city: str = ""  # 客戶在哪個縣市（熊熊滾騎哪個縣市的座騎）
 
 
 @dataclass
@@ -118,11 +128,13 @@ class ItineraryView:
     travel_km: float
     finish_time: str | None  # 最後一站離開的時間
     estimated: bool  # 車程是直線估算的
-    travel_mode: str = "drive"  # 車程照哪種交通方式算（行程主人的設定）
+    travel_mode: str = "drive"  # 整天的預設交通方式（行程主人的設定）；每一段實際用的見 StopView.travel_mode
     rules: list[RuleView] = field(default_factory=list)
     violations: list[str] = field(default_factory=list)  # 目前的順序違反的規則 id
     precedences: list[Precedence] = field(default_factory=list)  # 今天設的先後
     skipped_habits: list[SkippedHabit] = field(default_factory=list)  # 今天套用、但今天不套用的習慣
+    start_city: str | None = None  # 區處辦公室所在的縣市；新開的區沒有
+    office_start: bool = True  # 今天從辦公室出發（區處有位置）；新開的區從第一站出發，沒有第一段
 
 
 @dataclass
@@ -270,10 +282,23 @@ def stop_order(session: Session, itinerary: Itinerary) -> list[tuple[Customer, b
     return [(c, True) for _, c in day.done] + [(o.customer, False) for o in _saved_open(session, day)]
 
 
+def path_modes(session: Session, itinerary: Itinerary) -> list[str]:
+    """今天每一段的交通方式，順序跟 stop_order 一樣、跟站數一樣多：第 0 個是辦公室到第 1 站，第 n 個是第 n 站到
+    第 n + 1 站。地圖的線用；區處沒有位置時線從第一站畫起，呼叫端去掉第 0 個。不算時間、不問 Google。"""
+    day = _day(session, itinerary)
+    return _leg_modes(session, day, _chain(day, _saved_open(session, day)))
+
+
 def office(session: Session, rep: AppUser) -> travel.Point | None:
     """區處辦公室的位置：還沒跑任何一站時從這裡出發。區處沒有位置（組織管理新開的區）回 None。"""
-    found = session.scalar(select(OrgUnit).where(OrgUnit.kind == "region", OrgUnit.name == rep.region))
+    found = _region(session, rep)
     return (found.lat, found.lng) if found and found.lat is not None and found.lng is not None else None
+
+
+def office_city(session: Session, rep: AppUser) -> str | None:
+    """區處辦公室所在的縣市（熊熊滾從辦公室出發時騎哪個縣市的座騎）；新開的區沒有，回 None。"""
+    found = _region(session, rep)
+    return found.city if found else None
 
 
 def apply_feedback(session: Session, user_id: str, customer_id: str, action: FeedbackAction, version: int) -> Itinerary:
@@ -303,6 +328,7 @@ def apply_feedback(session: Session, user_id: str, customer_id: str, action: Fee
         itinerary.urgent = None
     _touch(itinerary)
     session.flush()
+    _prune_legs(session, itinerary)
     return itinerary
 
 
@@ -348,6 +374,8 @@ def add_stops(
         _write(session, day, open_)
         _touch(itinerary)
     session.flush()
+    if added:
+        _prune_legs(session, itinerary)
     return itinerary, added, skipped
 
 
@@ -404,6 +432,7 @@ def save(session: Session, user_id: str, version: int, draft: Draft, habit_sourc
     itinerary.skip_reasons = {str(i): reasons[str(i)] for i in sorted(skipped)}
     _touch(itinerary)
     session.flush()
+    _prune_legs(session, itinerary)
     return itinerary
 
 
@@ -544,8 +573,41 @@ def broken_rules(session: Session, itinerary: Itinerary, draft: Draft) -> list[s
     return [rule.id for rule in route_planner.violations([o.customer.id for o in open_], rules)]
 
 
+def set_leg_mode(session: Session, user_id: str, from_id: str | None, to_id: str, mode: str, version: int) -> Itinerary:
+    """改一段路的交通方式（首頁的膠囊）。只能改還沒走的段（到的那家還沒跑）；from_id 是 None 代表從辦公室出發。
+    跟業務的預設一樣就不存（原本另外選的那一列刪掉），不一樣才存一列；同一段只會有一列。"""
+    if mode not in LEG_MODES:
+        raise ValueError(mode)
+    itinerary = get_or_create(session, user_id)
+    _lock(session, itinerary)
+    if itinerary.version != version:
+        raise VersionConflict
+    day = _day(session, itinerary)
+    _leg_index(day, _saved_open(session, day), from_id, to_id)
+    session.execute(delete(ItineraryLeg).where(
+        ItineraryLeg.itinerary_id == itinerary.id,
+        ItineraryLeg.from_customer_id.is_not_distinct_from(from_id),
+        ItineraryLeg.to_customer_id == to_id,
+    ))
+    if mode != day.rep.travel_mode:
+        session.add(ItineraryLeg(itinerary_id=itinerary.id, from_customer_id=from_id, to_customer_id=to_id, mode=mode))
+    _touch(itinerary)
+    session.flush()
+    return itinerary
+
+
+def leg_options(session: Session, user_id: str, from_id: str | None, to_id: str) -> list[travel.Option]:
+    """這一段四種交通方式各要多久（膠囊的選單）。跟 set_leg_mode 一樣只能問還沒走的段；只讀，不鎖、不比版本。"""
+    itinerary = get_or_create(session, user_id)
+    day = _day(session, itinerary)
+    open_ = _saved_open(session, day)
+    n = _leg_index(day, open_, from_id, to_id)
+    _, points = _points(session, day.rep, itinerary.date, day.done, day.durations(), [o.customer for o in open_])
+    return travel.options(points[n], points[n + 1])
+
+
 def reset_today(session: Session, user_id: str) -> None:
-    """IT 用：刪掉這位業務今天的行程（站與先後跟著 ON DELETE CASCADE 一起刪）、所有的暫緩與訊號權重，
+    """IT 用：刪掉這位業務今天的行程（站、先後與另外選的段跟著 ON DELETE CASCADE 一起刪）、所有的暫緩與訊號權重，
     排序習慣也回到一開始那三條（route_habits.DEMO_HABITS），下次讀取就照模型的建議重新建一份。
 
     示範業務的行程給所有用第三方登入的評審共用：系統日期固定在決賽日不會換天，行程第一次建好之後
@@ -563,8 +625,9 @@ def reset_today(session: Session, user_id: str) -> None:
 
 
 def set_travel_mode(session: Session, user_id: str, mode: str) -> Itinerary:
-    """換交通方式：存在行程主人身上，之後每天的建議、加一站、排順路與車程都照它算。
+    """換整天的預設交通方式：存在行程主人身上，之後每天的建議、加一站、排順路與車程都照它算。
     今天的行程換一版：順序是存著的、不動，時間照新的交通方式重算；換版讓還沒套用的提案作廢、主管頁跟著更新。
+    今天另外選的段全部刪掉：那些是跟舊的預設比才另外存的，換了預設就每一段都照新的。
     要照新的方式重排順路，按「幫我排順一點」。"""
     if mode not in TRAVEL_MODES:
         raise ValueError(mode)
@@ -573,6 +636,7 @@ def set_travel_mode(session: Session, user_id: str, mode: str) -> Itinerary:
     rep = session.get(AppUser, user_id)
     if rep.travel_mode != mode:
         rep.travel_mode = mode
+        session.execute(delete(ItineraryLeg).where(ItineraryLeg.itinerary_id == itinerary.id))
         _touch(itinerary)
     return itinerary
 
@@ -752,12 +816,10 @@ def _inserted(
     return [*open_[:index], new, *open_[index:]]
 
 
-def _estimated(points: list[travel.Point], mode: TravelMode) -> travel.Matrix:
-    """直線估算的車程矩陣。調整清單的 preview（拖一下就算一次）與加一站的候選（一次約 50 家）只用估算，不打 Google。"""
-    pairs = [[travel.estimate(a, b, mode) for b in points] for a in points]
-    return travel.Matrix(
-        minutes=[[m for m, _ in row] for row in pairs], km=[[k for _, k in row] for row in pairs], estimated=True,
-    )
+def _estimated(points: list[travel.Point], mode: TravelMode, modes: Sequence[TravelMode] = ()) -> travel.Matrix:
+    """直線估算的車程矩陣：相鄰的段照 modes（每段的交通方式，沒給就照 mode），其他格子照 mode。
+    調整清單的 preview（拖一下就算一次）與加一站的候選（一次約 50 家）只用估算，不打 Google。"""
+    return travel.fill(points, {}, google=False, mode=mode, modes=modes)
 
 
 def _draft_stop(stop: _Open) -> DraftStop:
@@ -849,13 +911,15 @@ def _points(
     return start, [origin or (points[0] if points else (0.0, 0.0)), *points]
 
 
-def _timed(points: list[travel.Point], mode: TravelMode, estimate: bool = False) -> travel.Matrix:
+def _timed(
+    points: list[travel.Point], mode: TravelMode, modes: list[TravelMode], estimate: bool = False,
+) -> travel.Matrix:
     """照這個順序跑的車程（順序已經定了：讀取、調整清單的 preview 與存檔）。只會用到相鄰兩點
-    （第 n 點到第 n + 1 點）那幾格，所以用 travel.along 一次問 Google 整條路線，不必問整份矩陣；
+    （第 n 點到第 n + 1 點）那幾格，所以用 travel.along 照每段的交通方式問 Google，不必問整份矩陣；
     回來的 estimated 跟著 Google 有沒有給（畫面的「（估計）」／Google Maps）。
     順序還要由程式挑的地方（每天的建議、插入新的一站、排順路）直接用 travel.matrix：along 不相鄰的格子是估算的。
-    mode：行程主人的交通方式。estimate：只要直線估算（調整清單的 preview）。"""
-    return _estimated(points, mode) if estimate else travel.along(points, mode)
+    mode：行程主人的預設交通方式；modes：每一段實際用的（_leg_modes）。estimate：只要直線估算（調整清單的 preview）。"""
+    return _estimated(points, mode, modes) if estimate else travel.along(points, modes)
 
 
 def _rules(
@@ -943,7 +1007,10 @@ def _compose(
     itinerary, rep = day.itinerary, day.rep
     durations = day.durations() | {o.customer.id: o.duration_minutes for o in open_}
     start, points = _points(session, rep, itinerary.date, day.done, durations, [o.customer for o in open_])
-    matrix = _timed(points, rep.travel_mode, estimate)
+    # 每一段的交通方式（辦公室 → 跑完的站 → 還沒跑的站）；算時間只要還沒跑的那幾段，第一段從出發點過來
+    modes = _leg_modes(session, day, _chain(day, open_))
+    ahead = modes[len(day.done):]
+    matrix = _timed(points, rep.travel_mode, ahead, estimate)
     planned = route_planner.schedule(start, 0, [o.plan_stop(n + 1) for n, o in enumerate(open_)], matrix.minutes)
     rules = _rules(open_, precedences, day.habits, skipped, pending)
     order = [o.customer.id for o in open_]
@@ -956,7 +1023,7 @@ def _compose(
 
     by_row = {r.customer_id: r for r in day.rows}
     stops = []
-    for visit, customer in day.done:
+    for k, (visit, customer) in enumerate(day.done):
         row = by_row.get(customer.id)
         stops.append(StopView(
             customer_id=customer.id, customer_name=customer.name, type=customer.type, grade=customer.grade,
@@ -964,6 +1031,7 @@ def _compose(
             signal="routine", reason="已完成", visit_id=visit.id, source=row.source if row else "rep",
             duration_minutes=row.duration_minutes if row else DEFAULT_DURATION, late_minutes=0,
             travel_minutes=None, travel_km=None, note=row.note if row else None,
+            travel_mode=modes[k], city=customer.city,
         ))
     total_km = 0.0
     for n, (o, slot) in enumerate(zip(open_, planned.slots, strict=True)):
@@ -977,6 +1045,7 @@ def _compose(
             travel_minutes=slot.travel_minutes, travel_km=km,
             window_kind=o.window_kind, window_time=o.window_time.strftime("%H:%M") if o.window_time else None,
             note=o.note, locked=o.locked, habit_ids=_habit_ids(applied, o, habit_customers),
+            travel_estimated=matrix.estimated_legs[n], travel_mode=ahead[n], city=o.customer.city,
         ))
     open_ids = set(order)
     urgent = itinerary.urgent if itinerary.urgent and itinerary.urgent["customer_id"] in open_ids else None
@@ -988,6 +1057,7 @@ def _compose(
         rules=[RuleView(r.id, r.text, r.kind, r.id.split(":")[0], list(r.customer_ids)) for r in rules],
         violations=[r.id for r in route_planner.violations(order, rules)],
         precedences=[Precedence(a, b) for a, b in precedences if a in open_ids and b in open_ids],
+        start_city=office_city(session, rep), office_start=office(session, rep) is not None,
         skipped_habits=[
             SkippedHabit(h.id, h.text, reasons[str(h.id)], reasons[str(h.id)] not in (SKIP_BY_REP, SKIP_BY_ORDER))
             for h in day.habits if h.id in skipped
@@ -1015,6 +1085,54 @@ def _reasons(itinerary: Itinerary, skipped: set[int]) -> dict[str, str]:
     """今天不套用的每一條習慣為什麼不套用：記過原因的照舊，其他（這次在紅框上按了「今天不套用」）寫成業務選的。"""
     saved = itinerary.skip_reasons or {}
     return {str(i): saved.get(str(i), SKIP_BY_REP) for i in skipped}
+
+
+def _region(session: Session, rep: AppUser) -> OrgUnit | None:
+    return session.scalar(select(OrgUnit).where(OrgUnit.kind == "region", OrgUnit.name == rep.region))
+
+
+def _chain(day: _Day, open_: list[_Open]) -> list[str | None]:
+    """今天走的順序：None 是辦公室，接著跑完的站（照拜訪時間）、還沒跑的站（照 open_）。相鄰兩個就是一段路。"""
+    return [None, *(c.id for _, c in day.done), *(o.customer.id for o in open_)]
+
+
+def _leg_modes(session: Session, day: _Day, chain: list[str | None]) -> list[TravelMode]:
+    """chain 上每一段（相鄰兩個）的交通方式，共 len(chain) - 1 個：另外選過的照存著的那一列，其他是業務的預設。"""
+    saved = {
+        (from_id, to_id): mode
+        for from_id, to_id, mode in session.execute(
+            select(ItineraryLeg.from_customer_id, ItineraryLeg.to_customer_id, ItineraryLeg.mode)
+            .where(ItineraryLeg.itinerary_id == day.itinerary.id)
+        )
+    }
+    return [saved.get(leg, day.rep.travel_mode) for leg in zip(chain, chain[1:])]
+
+
+def _leg_index(day: _Day, open_: list[_Open], from_id: str | None, to_id: str) -> int:
+    """這一段是還沒跑的站的第幾段（0 是從出發點到下一站）；不是還沒走的一段丟 NotALeg。"""
+    chain, done = _chain(day, open_), len(day.done)
+    for n in range(len(open_)):
+        if (chain[done + n], chain[done + n + 1]) == (from_id, to_id):
+            return n
+    raise NotALeg("這兩家現在不是還沒走的一段，請重新整理")
+
+
+def _prune_legs(session: Session, itinerary: Itinerary) -> None:
+    """刪掉不再相鄰的段：存檔、加一站、三顆鈕之後順序可能變了，換了順序的兩站不該沿用原本選的交通方式。
+    跑完一站不會改到這裡（確認拜訪不動行程），讀的時候只看現在相鄰的段，所以留著的舊列也不會被用到。"""
+    day = _day(session, itinerary)
+    chain = _chain(day, _saved_open(session, day))
+    keep = set(zip(chain, chain[1:]))
+    gone = [
+        leg_id
+        for leg_id, from_id, to_id in session.execute(
+            select(ItineraryLeg.id, ItineraryLeg.from_customer_id, ItineraryLeg.to_customer_id)
+            .where(ItineraryLeg.itinerary_id == itinerary.id)
+        )
+        if (from_id, to_id) not in keep
+    ]
+    if gone:
+        session.execute(delete(ItineraryLeg).where(ItineraryLeg.id.in_(gone)))
 
 
 def _rows(session: Session, itinerary: Itinerary) -> list[ItineraryStop]:

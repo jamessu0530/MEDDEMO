@@ -964,7 +964,8 @@ def generate(as_of: date, seed: int = SEED) -> dict[str, list[dict]]:
     ]
     org_units = [
         {"id": i, "name": n, "kind": k, "parent_id": p,
-         "lat": catalog.REGION_OFFICE.get(i, (None, None))[0], "lng": catalog.REGION_OFFICE.get(i, (None, None))[1]}
+         "lat": catalog.REGION_OFFICE.get(i, (None, None))[0], "lng": catalog.REGION_OFFICE.get(i, (None, None))[1],
+         "city": catalog.REGION_OFFICE_CITY.get(i)}
         for i, n, k, p in catalog.ORG_UNITS
     ]
     places = [{"id": i, "name": n, "unit_id": u} for i, n, u in catalog.PLACES]

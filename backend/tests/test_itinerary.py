@@ -1,5 +1,6 @@
 """今天的行程：資料表、建立、讀取、三顆鈕、加站。"""
 
+import dataclasses
 import datetime as dt
 import itertools
 import threading
@@ -12,8 +13,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import (
-    AppUser, Customer, Itinerary, ItineraryPrecedence, ItineraryStop, RouteHabit, RouteSignalWeight, RouteSnooze,
-    Visit,
+    AppUser, Customer, Itinerary, ItineraryLeg, ItineraryPrecedence, ItineraryStop, RouteHabit, RouteSignalWeight,
+    RouteSnooze, Visit,
 )
 from app.services import itinerary as service
 from app.services import google_routes, route_habits, route_planner, today_route, travel
@@ -702,4 +703,157 @@ def test_saving_an_ai_draft_records_new_habits_as_ai_and_disables_old_ones(tx):
     habits = route_habits.mine(tx, "U01")
     assert not next(h for h in habits if h.id == old.id).active
     assert (habits[-1].source, habits[-1].text) == ("ai", "星期一先跑板橋")
+
+
+def legs_of(tx, itinerary):
+    return {
+        (leg.from_customer_id, leg.to_customer_id): leg.mode
+        for leg in tx.scalars(select(ItineraryLeg).where(ItineraryLeg.itinerary_id == itinerary.id))
+    }
+
+
+def point_of(tx, customer_id):
+    customer = tx.get(Customer, customer_id)
+    return customer.lat, customer.lng
+
+
+def confirm_visit_today(tx, user_id, customer_id):
+    """今天 10:00 跑完這一家（已確認的拜訪紀錄）。"""
+    at = dt.datetime.combine(TODAY, dt.time(10, 0), TAIPEI)
+    tx.add(Visit(id=f"VLEG-{customer_id}", customer_id=customer_id, user_id=user_id, visited_at=at,
+                 transcript="測試", status="synced", confirmed_at=at))
+    tx.flush()
+
+
+def test_every_stop_says_how_it_is_reached_and_in_which_city(tx):
+    view = service.view(tx, service.get_or_create(tx, "U01"))
+    assert view.start_city == "台北市" and view.office_start is True
+    assert all(s.travel_mode == "drive" and s.travel_estimated for s in view.stops)
+    assert [s.city for s in view.stops] == [tx.get(Customer, s.customer_id).city for s in view.stops]
+
+
+def test_a_leg_row_is_unique_even_from_the_office(tx):
+    itinerary = new_itinerary(tx)
+    tx.add(ItineraryLeg(itinerary_id=itinerary.id, from_customer_id=None, to_customer_id="C001", mode="walk"))
+    tx.flush()
+    with pytest.raises(IntegrityError), tx.begin_nested():
+        tx.add(ItineraryLeg(itinerary_id=itinerary.id, from_customer_id=None, to_customer_id="C001", mode="transit"))
+        tx.flush()
+
+
+def test_changing_a_leg_retimes_it_and_the_stops_after_it(tx):
+    itinerary = service.get_or_create(tx, "U01")
+    before = service.view(tx, itinerary)
+    a, b = before.stops[0].customer_id, before.stops[1].customer_id
+    service.set_leg_mode(tx, "U01", a, b, "transit", before.version)
+    after = service.view(tx, itinerary)
+    assert after.version == before.version + 1 and after.travel_mode == "drive"
+    assert after.stops[1].travel_mode == "transit"
+    assert after.stops[1].travel_minutes == travel.estimate(point_of(tx, a), point_of(tx, b), "transit")[0]
+    assert after.stops[2].planned_time >= before.stops[2].planned_time
+    assert legs_of(tx, itinerary) == {(a, b): "transit"}
+
+
+def test_picking_the_days_mode_deletes_the_row(tx):
+    itinerary = service.get_or_create(tx, "U01")
+    view = service.view(tx, itinerary)
+    a = view.stops[0].customer_id
+    service.set_leg_mode(tx, "U01", None, a, "walk", view.version)
+    assert legs_of(tx, itinerary) == {(None, a): "walk"}
+    service.set_leg_mode(tx, "U01", None, a, "drive", view.version + 1)
+    assert legs_of(tx, itinerary) == {}
+
+
+def test_a_leg_is_stored_against_the_default_not_against_driving(tx):
+    itinerary = service.get_or_create(tx, "U01")
+    service.set_travel_mode(tx, "U01", "scooter")
+    view = service.view(tx, itinerary)
+    a, b = view.stops[0].customer_id, view.stops[1].customer_id
+    assert {s.travel_mode for s in view.stops} == {"scooter"}
+    service.set_leg_mode(tx, "U01", a, b, "drive", view.version)
+    assert legs_of(tx, itinerary) == {(a, b): "drive"}
+    assert service.view(tx, itinerary).stops[1].travel_mode == "drive"
+
+
+def test_changing_the_days_mode_clears_todays_legs(tx):
+    itinerary = service.get_or_create(tx, "U01")
+    view = service.view(tx, itinerary)
+    a, b = view.stops[0].customer_id, view.stops[1].customer_id
+    service.set_leg_mode(tx, "U01", a, b, "walk", view.version)
+    service.set_travel_mode(tx, "U01", "transit")
+    assert legs_of(tx, itinerary) == {}
+    assert {s.travel_mode for s in service.view(tx, itinerary).stops} == {"transit"}
+
+
+def test_only_a_leg_still_ahead_can_change(tx):
+    itinerary = service.get_or_create(tx, "U01")
+    view = service.view(tx, itinerary)
+    a, b = view.stops[0].customer_id, view.stops[1].customer_id
+    with pytest.raises(service.NotALeg):
+        service.set_leg_mode(tx, "U01", b, a, "walk", view.version)
+    with pytest.raises(service.VersionConflict):
+        service.set_leg_mode(tx, "U01", a, b, "walk", view.version - 1)
+
+
+def test_reordering_keeps_legs_still_next_to_each_other_and_drops_the_rest(tx):
+    itinerary = service.get_or_create(tx, "U01")
+    view = service.view(tx, itinerary)
+    a, b, c, d, e = [s.customer_id for s in view.stops]
+    service.set_leg_mode(tx, "U01", a, b, "walk", view.version)
+    service.set_leg_mode(tx, "U01", c, d, "transit", view.version + 1)
+    draft = service.draft_of(tx, itinerary)
+    by_id = {s.customer_id: s for s in draft.stops}
+    service.save(tx, "U01", view.version + 2, dataclasses.replace(draft, stops=[by_id[x] for x in (a, c, d, e, b)]))
+    assert legs_of(tx, itinerary) == {(c, d): "transit"}
+
+
+def test_removing_or_pinning_a_stop_drops_legs_no_longer_adjacent(tx):
+    itinerary = service.get_or_create(tx, "U01")
+    view = service.view(tx, itinerary)
+    a, b, c, d, e = [s.customer_id for s in view.stops]
+    service.set_leg_mode(tx, "U01", c, d, "transit", view.version)
+    service.set_leg_mode(tx, "U01", d, e, "walk", view.version + 1)
+    service.apply_feedback(tx, "U01", e, "pin", view.version + 2)  # e 移到下一站：d → e 不再相鄰
+    assert legs_of(tx, itinerary) == {(c, d): "transit"}
+    service.apply_feedback(tx, "U01", d, "snooze", view.version + 3)
+    assert legs_of(tx, itinerary) == {}
+
+
+def test_after_visiting_out_of_order_the_next_leg_starts_from_the_last_visit(tx):
+    """先跑了第 3 站：下一段是「第 3 站 → 還沒跑的第一站」，到已完成那站的段不能改。"""
+    itinerary = service.get_or_create(tx, "U01")
+    view = service.view(tx, itinerary)
+    a, b, c = [s.customer_id for s in view.stops[:3]]
+    confirm_visit_today(tx, "U01", c)
+    after = service.view(tx, itinerary)
+    assert [s.customer_id for s in after.stops[:2]] == [c, a]
+    service.set_leg_mode(tx, "U01", c, a, "walk", after.version)
+    assert service.view(tx, itinerary).stops[1].travel_mode == "walk"
+    with pytest.raises(service.NotALeg):
+        service.set_leg_mode(tx, "U01", None, c, "walk", after.version + 1)
+    assert service.view(tx, itinerary).stops[0].travel_mode == "drive"  # 已完成的站帶著那段的交通方式
+
+
+def test_leg_options_ask_the_four_modes_for_that_leg(tx, monkeypatch):
+    itinerary = service.get_or_create(tx, "U01")
+    a = service.view(tx, itinerary).stops[0].customer_id
+    seen = {}
+
+    def fake_options(x, y):
+        seen["args"] = (x, y)
+        return [travel.Option(m, 1, 0.1, True, True) for m in google_routes.TRAVEL]
+
+    monkeypatch.setattr(travel, "options", fake_options)
+    assert [o.mode for o in service.leg_options(tx, "U01", None, a)] == ["drive", "scooter", "transit", "walk"]
+    assert seen["args"] == (catalog.REGION_OFFICE["TW.N"], point_of(tx, a))
+    with pytest.raises(service.NotALeg):
+        service.leg_options(tx, "U01", a, a)
+
+
+def test_path_modes_follow_the_stop_order_from_the_office(tx):
+    itinerary = service.get_or_create(tx, "U01")
+    view = service.view(tx, itinerary)
+    a, b = view.stops[0].customer_id, view.stops[1].customer_id
+    service.set_leg_mode(tx, "U01", a, b, "walk", view.version)
+    assert service.path_modes(tx, itinerary) == ["drive", "walk", "drive", "drive", "drive"]
 
