@@ -306,3 +306,8 @@ def test_managers_cannot_ask_or_apply(client, auth):
     for path in ("/api/itinerary/today/ask", "/api/itinerary/today/optimize", "/api/itinerary/proposals/1/apply"):
         response = client.post(path, json={"question": "幫我排順一點"}, headers=auth("M01"))
         assert response.status_code == 403, path
+
+
+def test_walking_cannot_be_the_whole_days_mode(client, auth):
+    response = client.put("/api/itinerary/travel-mode", json={"mode": "walk"}, headers=auth())
+    assert response.status_code == 422

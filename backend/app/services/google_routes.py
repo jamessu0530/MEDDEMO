@@ -10,6 +10,7 @@
   Google 的機車路線還是測試版，畫面要註明。
 - 大眾運輸（TRANSIT）：Google 不接受中間點，一段一段問（同時送出）；要出發時間才排得出班次，一律用今天早上 10 點。
   回來的每一段再分成走路與搭車的幾小段，地圖上走路畫虛線。搭不到車的那一段是 None，由呼叫端估算。
+- 走路（WALK）：測試版，跟開車一樣可以帶中間點，不送出發時間；只有單段可以選。
 """
 
 from __future__ import annotations
@@ -24,7 +25,9 @@ import httpx
 from app.timeutil import TAIPEI
 
 Point = tuple[float, float]  # (緯度, 經度)
-TravelMode = Literal["drive", "scooter", "transit"]
+# 單段可以選的交通方式；整天的預設只能是前三種（DayMode，models.TRAVEL_MODES），走路只能單段選
+TravelMode = Literal["drive", "scooter", "transit", "walk"]
+DayMode = Literal["drive", "scooter", "transit"]
 
 MATRIX_URL = "https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix"
 ROUTES_URL = "https://routes.googleapis.com/directions/v2:computeRoutes"
@@ -45,11 +48,12 @@ MATRIX_FIELDS = "originIndex,destinationIndex,duration,distanceMeters,status,con
 ROUTE_FIELDS = "routes.legs.duration,routes.legs.distanceMeters,routes.legs.polyline.encodedPolyline"
 ROUTE_FIELDS_NO_POLYLINE = "routes.legs.duration,routes.legs.distanceMeters"
 TRANSIT_FIELDS = f"{ROUTE_FIELDS},routes.legs.steps.travelMode,routes.legs.steps.polyline.encodedPolyline"
-# 開車與機車都不看即時路況（Essentials）；大眾運輸不能帶 routingPreference
+# 開車與機車不看即時路況（Essentials）；大眾運輸、走路不能帶 routingPreference
 TRAVEL: dict[TravelMode, dict[str, str]] = {
     "drive": {"travelMode": "DRIVE", "routingPreference": "TRAFFIC_UNAWARE"},
     "scooter": {"travelMode": "TWO_WHEELER", "routingPreference": "TRAFFIC_UNAWARE"},
     "transit": {"travelMode": "TRANSIT"},
+    "walk": {"travelMode": "WALK"},
 }
 
 

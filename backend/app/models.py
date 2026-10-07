@@ -94,6 +94,8 @@ ORG_UNIT_KINDS = ("root", "region")
 ROLES = ("sales", "manager", "it")
 # 業務怎麼跑客戶：開車、機車、大眾運輸（services/google_routes.py 的 TravelMode 同一組）
 TRAVEL_MODES = ("drive", "scooter", "transit")
+# 單段可以另外選的交通方式（itinerary_leg.mode）：多一種走路，走路不能當整天的預設
+LEG_MODES = (*TRAVEL_MODES, "walk")
 
 
 class OrgUnit(Base):

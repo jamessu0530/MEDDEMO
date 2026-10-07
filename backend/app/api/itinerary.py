@@ -22,7 +22,7 @@ from app.models import AppUser
 from app.services import itinerary as service
 from app.services import itinerary_ai
 from app.services import team_itineraries as team
-from app.services.google_routes import TravelMode
+from app.services.google_routes import DayMode
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/itinerary", tags=["itinerary"])
@@ -104,7 +104,7 @@ class TodayItinerary(BaseModel):
     finish_time: str | None
     estimated: bool
     # 車程照哪種交通方式算：drive（開車）、scooter（機車）、transit（大眾運輸）
-    travel_mode: TravelMode
+    travel_mode: DayMode
     rules: list[Rule]
     violations: list[str]
     precedences: list[PrecedenceOut]
@@ -112,11 +112,11 @@ class TodayItinerary(BaseModel):
 
 
 class TravelModeOut(BaseModel):
-    mode: TravelMode
+    mode: DayMode
 
 
 class TravelModeInput(BaseModel):
-    mode: TravelMode
+    mode: DayMode
 
 
 class FeedbackInput(BaseModel):
@@ -285,7 +285,7 @@ class MapLeg(BaseModel):
 
 class TodayMap(BaseModel):
     version: int
-    travel_mode: TravelMode
+    travel_mode: DayMode
     origin: MapPoint | None  # 區處辦公室，路線從這裡畫起；還沒有位置的區是 null
     stops: list[MapStop]
     legs: list[MapLeg]

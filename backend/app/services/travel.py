@@ -48,9 +48,11 @@ PACES: dict[TravelMode, Pace] = {
     "scooter": Pace(1.3, 28, 2),
     # 捷運、公車加上走路：走到站、等車、轉乘平均 10 分鐘
     "transit": Pace(1.3, 20, 10),
+    # 走路：時速 4.5，不用停車
+    "walk": Pace(1.3, 4.5, 0),
 }
 # Google 給的時間另外加：開車找車位、機車停好車；大眾運輸的走路與等車 Google 已經算進去了
-GOOGLE_EXTRA_MINUTES: dict[TravelMode, int] = {"drive": 5, "scooter": 2, "transit": 0}
+GOOGLE_EXTRA_MINUTES: dict[TravelMode, int] = {"drive": 5, "scooter": 2, "transit": 0, "walk": 0}
 
 # Google 失敗之後這麼久之內直接用估算：Google 掛掉或金鑰設錯時，不讓每次讀行程都等 5 秒、log 也不洗版。
 # 只記「剛失敗過」，不存 Google 的任何內容

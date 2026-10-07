@@ -344,3 +344,19 @@ def test_along_by_transit_estimates_the_legs_google_cannot_ride(monkeypatch, env
     assert result.minutes[0][1] == 30
     assert result.minutes[1][2] == travel.estimate(POINTS[1], POINTS[2], "transit")[0]
     assert result.estimated is True
+
+
+def test_walking_has_its_own_estimate_and_no_extra_minutes_on_google():
+    # 緯度差 0.1 度約 11.12 公里，×1.3 = 14.46 公里，時速 4.5 要 193 分
+    assert travel.estimate((25.0, 121.5), (25.1, 121.5), "walk") == (193, 14.5)
+    assert travel.road(google_routes.Cell(seconds=600, meters=800), "walk") == (10, 0.8)
+
+
+def test_the_four_mode_tables_stay_aligned():
+    from app import models
+
+    modes = tuple(google_routes.TRAVEL)
+    assert modes == ("drive", "scooter", "transit", "walk")
+    assert set(travel.PACES) == set(travel.GOOGLE_EXTRA_MINUTES) == set(modes)
+    assert models.LEG_MODES == modes
+    assert models.TRAVEL_MODES == modes[:3]

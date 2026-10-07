@@ -235,3 +235,17 @@ def test_transit_between_the_same_point_needs_no_request():
     http, sent = fake(lambda request: (200, {}))
     assert google_routes.route_legs("k", [TAIPEI_MAIN, TAIPEI_MAIN], http=http, mode="transit") == [Leg(0, 0, "")]
     assert sent == []
+
+
+def test_walking_sends_walk_without_a_routing_preference_and_keeps_intermediates():
+    answer = {"routes": [{"legs": [
+        {"duration": "600s", "distanceMeters": 800}, {"duration": "300s", "distanceMeters": 400},
+    ]}]}
+    http, sent = fake(lambda request: (200, answer))
+    legs = google_routes.route_legs("k", [TAIPEI_MAIN, TAIPEI_101, SONGSHAN], http=http, polylines=False, mode="walk")
+    assert [(leg.seconds, leg.meters) for leg in legs] == [(600, 800), (300, 400)]
+    (request,) = sent
+    body = json.loads(request.content)
+    assert body["travelMode"] == "WALK"
+    assert "routingPreference" not in body and "departureTime" not in body
+    assert body["intermediates"] == [waypoint(TAIPEI_101)]
