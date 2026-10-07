@@ -33,8 +33,9 @@ export function Ride({
   className?: string
 }) {
   const known = rideCity(city)
-  // 直接查模組層的表（跟 MODE_ICON[mode] 一樣）：react-hooks 的 lint 把函式回傳的元件當成每次 render 新做的
-  const Vehicle = known ? VEHICLES[known]?.[mode] : undefined
+  // 直接查模組層的表（跟 MODE_ICON[mode] 一樣）：react-hooks 的 lint 把函式回傳的元件當成每次 render 新做的。
+  // 七個縣市的座騎都在，只有不認得的縣市沒有
+  const Vehicle = known ? VEHICLES[known][mode] : undefined
   return (
     <svg
       className={cn("ride", `ride-${mode}`, still && "ride-still", className)}

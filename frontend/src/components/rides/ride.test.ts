@@ -3,52 +3,42 @@ import { renderToStaticMarkup } from "react-dom/server"
 import { describe, expect, it } from "vitest"
 
 import { Ride } from "@/components/rides/ride"
+import { RIDE_CITIES } from "@/lib/rides"
 import { LEG_MODES } from "@/lib/travel-mode"
 
 const render = (props: Parameters<typeof Ride>[0]) => renderToStaticMarkup(createElement(Ride, props))
 
+/** 不算縣市新色的：熊熊滾的主色、淺紫、深色、舌頭、道具淺紫、黃、白，與地面的線 */
+const SHARED_COLORS = new Set(["#9B51E0", "#EADBFD", "#2B1B47", "#FF8FB3", "#C9A2F5", "#FFC93C", "#FFFFFF", "#E6E2EC"])
+
+/** svg 裡的色碼，一律大寫、三位數的展開成六位數（#fff 與 #FFFFFF 算同一色） */
+function hexColors(svg: string) {
+  return (svg.match(/#[0-9A-Fa-f]{6}\b|#[0-9A-Fa-f]{3}\b/g) ?? []).map((hex) => {
+    const upper = hex.toUpperCase()
+    return upper.length === 4 ? `#${[...upper.slice(1)].map((digit) => digit + digit).join("")}` : upper
+  })
+}
+
 describe("Ride", () => {
-  it("新竹的四種座騎都畫得出來，熊坐在上面", () => {
-    for (const mode of LEG_MODES) {
-      const svg = render({ city: "新竹市", mode })
-      expect(svg, mode).toContain('viewBox="0 0 300 200"')
-      expect(svg, mode).toContain(`data-mode="${mode}"`)
-      expect(svg, mode).toContain('data-city="新竹市"')
-      expect(svg, mode).toContain("mascot mascot-ride")
-    }
-  })
-
-  it("台北市、新北市的四種座騎都畫得出來，熊坐在上面", () => {
-    for (const city of ["台北市", "新北市"]) {
+  it("七個縣市 × 四種交通方式，28 種座騎都畫得出來，熊坐在上面", () => {
+    for (const city of RIDE_CITIES) {
       for (const mode of LEG_MODES) {
         const svg = render({ city, mode })
+        expect(svg, `${city} ${mode}`).toContain('viewBox="0 0 300 200"')
         expect(svg, `${city} ${mode}`).toContain(`data-city="${city}"`)
-        expect(svg, `${city} ${mode}`).not.toContain('data-city="other"')
+        expect(svg, `${city} ${mode}`).toContain(`data-mode="${mode}"`)
         expect(svg, `${city} ${mode}`).toContain("mascot mascot-ride")
       }
     }
   })
 
-  it("台中市、彰化縣的四種座騎都畫得出來，熊坐在上面", () => {
-    for (const city of ["台中市", "彰化縣"]) {
-      for (const mode of LEG_MODES) {
-        const svg = render({ city, mode })
-        expect(svg, `${city} ${mode}`).toContain(`data-city="${city}"`)
-        expect(svg, `${city} ${mode}`).not.toContain('data-city="other"')
-        expect(svg, `${city} ${mode}`).toContain("mascot mascot-ride")
-      }
-    }
-  })
-
-  it("台南市、高雄市的四種座騎都畫得出來，熊坐在上面", () => {
-    for (const city of ["台南市", "高雄市"]) {
-      for (const mode of LEG_MODES) {
-        const svg = render({ city, mode })
-        expect(svg, `${city} ${mode}`).toContain(`data-city="${city}"`)
-        expect(svg, `${city} ${mode}`).not.toContain('data-city="other"')
-        expect(svg, `${city} ${mode}`).toContain("mascot mascot-ride")
-      }
-    }
+  it.each(RIDE_CITIES)("%s 的四種座騎只多用自己特產的顏色：扣掉熊熊滾與地面，最多 3 個色碼", (city) => {
+    const svgs = LEG_MODES.map((mode) => render({ city, mode }))
+    // 顏色只能寫成色碼（或 none），不然具名色、rgb()、漸層會繞過下面的計數
+    const paints = svgs.flatMap((svg) => [...svg.matchAll(/\b(?:fill|stroke)="([^"]*)"/g)].map((m) => m[1]))
+    expect(paints.filter((paint) => paint !== "none" && !/^#[0-9A-Fa-f]{3}(?:[0-9A-Fa-f]{3})?$/.test(paint))).toEqual([])
+    const own = new Set(svgs.flatMap(hexColors).filter((hex) => !SHARED_COLORS.has(hex)))
+    expect(own.size, [...own].sort().join(" ")).toBeLessThanOrEqual(3)
   })
 
   it("大小照寬度算，高度是寬的三分之二", () => {

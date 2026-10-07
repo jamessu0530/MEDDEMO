@@ -178,7 +178,7 @@
 - 熊熊滾多一個狀態 `ride`：眼睛笑到瞇起來、張嘴，身體不另外動（由座騎晃）。`2026-09-30-mascot-design.md` 的狀態表一起補上。
 - `components/rides/`
   - `ride.tsx`：`<Ride city mode size flipped still label />`，熊疊在座騎上（座騎擋住熊的腳）。
-  - `vehicles/<縣市>.tsx`：一個縣市一個檔，各匯出四種交通方式的圖；`vehicles/index.ts` 收成 `VEHICLES` 與 `vehicleFor(city, mode)`。
+  - `vehicles/<縣市>.tsx`：一個縣市一個檔，各匯出四種交通方式的圖；`vehicles/index.ts` 收成 `VEHICLES`（`Record<RideCity, CityVehicles>`，`ride.tsx` 用 `VEHICLES[city][mode]` 直接查；不包成函式，react-hooks 的 lint 不讓 render 時畫出函式回傳的元件）。
   - `ride.css`：輪子轉、上下浮、各縣市走路的動法；class 都以 `ride-` 開頭。
 - `lib/rides.ts`：七個縣市的清單、特產、`rideCity`（不在七個縣市裡是 null）。「一段路跨不跨縣市」「這次該播哪一段」
   （給停靠站與播過的記錄，回要播的那段或沒有）第三階段接上首頁時再加進去。

@@ -1,4 +1,3 @@
-import type { LegMode } from "@/api/route"
 import type { CityVehicles } from "@/components/rides/vehicles/types"
 import { changhua } from "@/components/rides/vehicles/changhua"
 import { hsinchu } from "@/components/rides/vehicles/hsinchu"
@@ -9,8 +8,11 @@ import { tainan } from "@/components/rides/vehicles/tainan"
 import { taipei } from "@/components/rides/vehicles/taipei"
 import type { RideCity } from "@/lib/rides"
 
-/** 每個縣市的四種座騎。還沒畫的縣市不在這裡（Task 6 全部畫完後改成完整的 Record） */
-export const VEHICLES: Partial<Record<RideCity, CityVehicles>> = {
+/**
+ * 七個縣市各四種座騎，28 種都在。用的地方直接查表（VEHICLES[city][mode]）：
+ * react-hooks 的 lint 把函式回傳的元件當成每次 render 新做的，所以不包成函式。
+ */
+export const VEHICLES: Record<RideCity, CityVehicles> = {
   台北市: taipei,
   新北市: newTaipei,
   新竹市: hsinchu,
@@ -18,8 +20,4 @@ export const VEHICLES: Partial<Record<RideCity, CityVehicles>> = {
   彰化縣: changhua,
   台南市: tainan,
   高雄市: kaohsiung,
-}
-
-export function vehicleFor(city: RideCity, mode: LegMode) {
-  return VEHICLES[city]?.[mode]
 }
