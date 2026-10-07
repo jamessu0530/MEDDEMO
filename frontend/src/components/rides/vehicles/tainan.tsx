@@ -3,7 +3,8 @@ import "./tainan.css"
 import type { ReactNode } from "react"
 
 import { INK, PROP, STAR } from "@/components/rides/vehicles/colors"
-import { Ground, roundedPath, Wheel } from "@/components/rides/vehicles/parts"
+import { Ground, Wheel } from "@/components/rides/vehicles/parts"
+import { roundedPath } from "@/components/rides/vehicles/shapes"
 import type { CityVehicles, VehicleProps } from "@/components/rides/vehicles/types"
 
 /**
@@ -98,7 +99,7 @@ function Fish({ cx, cy, len, h, hole, rider, dorsal = 0.42 }: { cx: number; cy: 
       {hole && holeAt && (
         <>
           <ellipse cx={holeAt[0]} cy={holeAt[1]} rx={hole.rx} ry={hole.ry} fill={BACK} />
-          <ellipse cx={holeAt[0]} cy={holeAt[1] + 1} rx={hole.rx - 5} ry={hole.ry - 3} fill={INK} />
+          <ellipse cx={holeAt[0]} cy={holeAt[1] + 1} rx={hole.rx - 5} ry={hole.ry - 3} className="ride-ink" fill={INK} />
         </>
       )}
       {rider}
@@ -121,7 +122,7 @@ function Fish({ cx, cy, len, h, hole, rider, dorsal = 0.42 }: { cx: number; cy: 
         strokeLinecap="round"
       />
       <circle cx={ex} cy={ey} r={h * 0.18} fill="#fff" />
-      <circle cx={ex + h * 0.03} cy={ey} r={h * 0.12} fill={INK} />
+      <circle cx={ex + h * 0.03} cy={ey} r={h * 0.12} className="ride-keep" fill={INK} />
       <circle cx={ex - h * 0.01} cy={ey - h * 0.05} r={h * 0.045} fill="#fff" />
     </g>
   )
@@ -152,10 +153,10 @@ function Scooter({ bear }: VehicleProps) {
         {bear({ x: 76, y: 14, size: 100 })}
         <rect x="160" y="140" width="66" height="12" rx="6" fill={PROP} />
         <line x1="228" y1="150" x2="212" y2="74" stroke={PROP} strokeWidth="18" strokeLinecap="round" />
-        <line x1="198" y1="72" x2="228" y2="66" stroke={INK} strokeWidth="7" strokeLinecap="round" />
+        <line x1="198" y1="72" x2="228" y2="66" className="ride-ink" stroke={INK} strokeWidth="7" strokeLinecap="round" />
         <circle cx="228" cy="98" r="6" fill={STAR} />
         <Fish cx={146} cy={130} len={148} h={30} dorsal={0.2} />
-        <rect x="96" y="96" width="62" height="13" rx="6.5" fill={INK} />
+        <rect x="96" y="96" width="62" height="13" rx="6.5" className="ride-ink" fill={INK} />
       </g>
     </>
   )

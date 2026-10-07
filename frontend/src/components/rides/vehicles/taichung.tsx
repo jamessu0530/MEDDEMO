@@ -1,7 +1,8 @@
 import "./taichung.css"
 
 import { INK, LIGHT, PROP, STAR, TONGUE } from "@/components/rides/vehicles/colors"
-import { Ground, roundedPath, Wheel } from "@/components/rides/vehicles/parts"
+import { Ground, Wheel } from "@/components/rides/vehicles/parts"
+import { roundedPath } from "@/components/rides/vehicles/shapes"
 import type { CityVehicles, VehicleProps } from "@/components/rides/vehicles/types"
 
 /**
@@ -124,8 +125,8 @@ function Scooter({ bear }: VehicleProps) {
         <Cup cx={193} by={142} w={26} h={32} />
         <rect x="160" y="140" width="64" height="12" rx="6" fill={PROP} />
         <line x1="226" y1="148" x2="212" y2="74" stroke={PROP} strokeWidth="18" strokeLinecap="round" />
-        <line x1="198" y1="72" x2="228" y2="66" stroke={INK} strokeWidth="7" strokeLinecap="round" />
-        <rect x="92" y="102" width="80" height="14" rx="7" fill={INK} />
+        <line x1="198" y1="72" x2="228" y2="66" className="ride-ink" stroke={INK} strokeWidth="7" strokeLinecap="round" />
+        <rect x="92" y="102" width="80" height="14" rx="7" className="ride-ink" fill={INK} />
         <circle cx="229" cy="96" r="6" fill={STAR} />
       </g>
     </>

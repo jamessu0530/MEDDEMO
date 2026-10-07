@@ -120,8 +120,8 @@ function Scooter({ bear }: VehicleProps) {
         <path d="M58 150 C58 124 76 112 104 112 H170 C178 112 182 120 180 128 L174 150 Z" fill={PROP} />
         <rect x="160" y="140" width="64" height="12" rx="6" fill={PROP} />
         <line x1="226" y1="148" x2="212" y2="74" stroke={PROP} strokeWidth="18" strokeLinecap="round" />
-        <line x1="198" y1="72" x2="228" y2="66" stroke={INK} strokeWidth="7" strokeLinecap="round" />
-        <rect x="92" y="102" width="80" height="14" rx="7" fill={INK} />
+        <line x1="198" y1="72" x2="228" y2="66" className="ride-ink" stroke={INK} strokeWidth="7" strokeLinecap="round" />
+        <rect x="92" y="102" width="80" height="14" rx="7" className="ride-ink" fill={INK} />
         <circle cx="229" cy="96" r="6" fill={STAR} />
       </g>
     </>

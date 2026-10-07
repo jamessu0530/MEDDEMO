@@ -2,8 +2,9 @@
  * 座騎的動畫（components/rides）。共用的 class 都在這裡；各縣市自己的寫在 vehicles/<縣市>.css，以 ride-<縣市>- 開頭。
  * 只用 transform 與 opacity；減少動態效果或 .ride-still 時全部停住。
  */
+/* 沒放進 @layer，所以會蓋過 className 傳進來的 Tailwind 工具類別（跟 .mascot 一樣）；要調位置或間距請在外面包一層，不要覆寫這裡 */
 .ride { display: block; overflow: visible; }
-.ride-spin, .ride-roll, .ride-bob, .ride-sway, .ride-bounce, .ride-float, .ride-hop, .ride-swim, .ride-slide, .ride-step {
+.ride-spin, .ride-roll, .ride-bob, .ride-bounce, .ride-float, .ride-hop, .ride-swim, .ride-slide, .ride-step {
   transform-box: fill-box;
 }
 
@@ -15,10 +16,6 @@
 /* 車身上下浮 */
 .ride-bob { animation: ride-bob .45s ease-in-out infinite alternate; }
 @keyframes ride-bob { to { transform: translateY(-3px); } }
-
-/* 以底部為軸左右晃（站在東西上保持平衡） */
-.ride-sway { transform-origin: 50% 100%; animation: ride-sway 1.1s ease-in-out infinite alternate; }
-@keyframes ride-sway { from { transform: rotate(-7deg); } to { transform: rotate(7deg); } }
 
 /* 走路踏步 */
 .ride-step { transform-origin: 50% 100%; animation: ride-step .5s ease-in-out infinite alternate; }
@@ -46,7 +43,7 @@
   50% { transform: translateY(-6px) rotate(4deg); }
 }
 
-/* 滑：往前傾、身體拉長 */
+/* 滑：往後仰（−6° 到 −12°）並往前移 */
 .ride-slide { transform-origin: 30% 100%; animation: ride-slide .9s ease-in-out infinite alternate; }
 @keyframes ride-slide { from { transform: rotate(-6deg) translateX(-4px); } to { transform: rotate(-12deg) translateX(6px); } }
 
@@ -55,6 +52,15 @@
 .ride-wind:nth-of-type(2) { animation-delay: -.45s; }
 .ride-wind:nth-of-type(3) { animation-delay: -.9s; }
 @keyframes ride-wind { 0% { transform: translateX(30px); opacity: 0; } 30% { opacity: 1; } 100% { transform: translateX(-30px); opacity: 0; } }
+
+/*
+ * 深色主題（<html data-skin="dark">，或範例表裡包著 data-skin="dark" 的外框）：
+ * 座騎上的深色零件（輪胎、座墊、纜線、把手）在 #141414 上幾乎看不見，改成偏灰的紫；地面的線也從亮色壓暗。
+ * 熊熊滾自己不加 ride-ink，顏色不動。只改有畫這個屬性的元素，fill="none" 的線不會被塗滿。
+ */
+:where([data-skin="dark"]) .ride-ink[fill]:not([fill="none"]) { fill: #6B6385; }
+:where([data-skin="dark"]) .ride-ink[stroke]:not([stroke="none"]) { stroke: #6B6385; }
+:where([data-skin="dark"]) .ride-ground { fill: #333332; }
 
 .ride-still, .ride-still * { animation: none !important; }
 @media (prefers-reduced-motion: reduce) {

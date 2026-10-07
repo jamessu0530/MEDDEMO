@@ -104,10 +104,10 @@ function Scooter({ bear }: VehicleProps) {
         {bear({ x: 74, y: -2, size: 100 })}
         <rect x="140" y="138" width="86" height="12" rx="6" fill={PROP} />
         <line x1="228" y1="150" x2="212" y2="74" stroke={PROP} strokeWidth="18" strokeLinecap="round" />
-        <line x1="198" y1="72" x2="228" y2="66" stroke={INK} strokeWidth="7" strokeLinecap="round" />
+        <line x1="198" y1="72" x2="228" y2="66" className="ride-ink" stroke={INK} strokeWidth="7" strokeLinecap="round" />
         <circle cx="228" cy="98" r="6" fill={STAR} />
         <Lantern cx={124} top={84} w={86} h={70} />
-        <rect x="90" y="76" width="68" height="13" rx="6.5" fill={INK} />
+        <rect x="90" y="76" width="68" height="13" rx="6.5" className="ride-ink" fill={INK} />
       </g>
     </>
   )
@@ -125,14 +125,14 @@ function Gondola({ cx, top, w, h, rider }: { cx: number; top: number; w: number;
       <path
         d={`M${cx - w * 0.42} ${top + w * 0.07} L${cx} ${y} L${cx + w * 0.42} ${top + w * 0.07}`}
         fill="none"
-        stroke={INK}
+        className="ride-ink" stroke={INK}
         strokeWidth="3"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
       {rider}
       <Lantern cx={cx} top={top} w={w} h={h} />
-      <circle cx={cx} cy={y} r="5" fill={INK} />
+      <circle cx={cx} cy={y} r="5" className="ride-ink" fill={INK} />
     </g>
   )
 }
@@ -142,7 +142,7 @@ function Transit({ bear }: VehicleProps) {
   return (
     <>
       <Ground />
-      <line x1={CABLE[0]} y1={CABLE[1]} x2={CABLE[2]} y2={CABLE[3]} stroke={INK} strokeWidth="3" strokeLinecap="round" />
+      <line x1={CABLE[0]} y1={CABLE[1]} x2={CABLE[2]} y2={CABLE[3]} className="ride-ink" stroke={INK} strokeWidth="3" strokeLinecap="round" />
       <g>
         <Gondola cx={60} top={108} w={54} h={58} />
         <Gondola cx={142} top={86} w={54} h={58} />

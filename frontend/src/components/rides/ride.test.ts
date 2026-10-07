@@ -19,6 +19,18 @@ function hexColors(svg: string) {
   })
 }
 
+/** 去掉熊的 <g class="mascot …">…</g>（數 <g> 的深度找到對應的結尾） */
+function stripBear(svg: string) {
+  const start = svg.search(/<g class="mascot mascot-/)
+  if (start < 0) return svg
+  let depth = 0
+  for (const m of svg.slice(start).matchAll(/<g\b|<\/g>/g)) {
+    depth += m[0] === "</g>" ? -1 : 1
+    if (depth === 0) return svg.slice(0, start) + svg.slice(start + m.index + m[0].length)
+  }
+  return svg
+}
+
 describe("Ride", () => {
   it("七個縣市 × 四種交通方式，28 種座騎都畫得出來，熊坐在上面", () => {
     for (const city of RIDE_CITIES) {
@@ -27,7 +39,7 @@ describe("Ride", () => {
         expect(svg, `${city} ${mode}`).toContain('viewBox="0 0 300 200"')
         expect(svg, `${city} ${mode}`).toContain(`data-city="${city}"`)
         expect(svg, `${city} ${mode}`).toContain(`data-mode="${mode}"`)
-        expect(svg, `${city} ${mode}`).toContain("mascot mascot-ride")
+        expect(svg.match(/mascot mascot-ride/g), `${city} ${mode}`).toHaveLength(1)
       }
     }
   })
@@ -39,6 +51,20 @@ describe("Ride", () => {
     expect(paints.filter((paint) => paint !== "none" && !/^#[0-9A-Fa-f]{3}(?:[0-9A-Fa-f]{3})?$/.test(paint))).toEqual([])
     const own = new Set(svgs.flatMap(hexColors).filter((hex) => !SHARED_COLORS.has(hex)))
     expect(own.size, [...own].sort().join(" ")).toBeLessThanOrEqual(3)
+  })
+
+  it("深色主題：座騎上的深色零件（熊以外）都帶 ride-ink，地面帶 ride-ground", () => {
+    for (const city of RIDE_CITIES) {
+      for (const mode of LEG_MODES) {
+        const svg = render({ city, mode })
+        // 熊的子樹（<g class="mascot mascot-ride…">…</g>）整段拿掉：眼睛、鼻子的深色畫在紫色上，本來就不動
+        const withoutBear = stripBear(svg)
+        const inked = (withoutBear.match(/<[^>]*#2B1B47[^>]*>/gi) ?? []).filter((tag) => !tag.includes("ride-keep"))
+        expect(inked.filter((tag) => !/class="[^"]*\bride-ink\b/.test(tag)), `${city} ${mode}`).toEqual([])
+        expect(svg, `${city} ${mode}`).toContain("ride-ground")
+      }
+    }
+    expect(render({ city: "台北市", mode: "scooter" })).toContain("ride-ink")
   })
 
   it("大小照寬度算，高度是寬的三分之二", () => {
