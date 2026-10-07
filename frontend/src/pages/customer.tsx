@@ -8,16 +8,19 @@ import {
   CUSTOMER_TYPE_LABEL,
   getContract,
   getCustomerProfile,
+  placeOrder,
   type Contract,
   type CustomerProfile,
   type ProfileStats,
 } from "@/api/customers"
+import { LastOrderSection } from "@/components/last-order-section"
 import { NextNotes } from "@/components/next-notes"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
 import { ReassignOwner } from "@/components/reassign-owner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useAuth } from "@/lib/auth"
 import { formatDate, formatMoney } from "@/lib/format"
 import { customerNotFoundText } from "@/lib/scope"
@@ -51,6 +54,28 @@ export function CustomerPage() {
   const [opening, setOpening] = useState(false)
   // 連鎖客戶的合約條件；記下是哪一家的，換客戶時不會閃一下上一家的合約
   const [contract, setContract] = useState<{ customerId: string; data: Contract } | null>(null)
+  // 待處理事項按了「客戶下單了」的那張報價，確認框開著；notice 是成交之後的提示
+  const [ordering, setOrdering] = useState<CustomerProfile["open_quotes"][number] | null>(null)
+  const [placing, setPlacing] = useState(false)
+  const [orderError, setOrderError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+
+  async function confirmOrder() {
+    if (!ordering || placing) return
+    setPlacing(true)
+    setOrderError(null)
+    try {
+      const placed = await placeOrder(customerId, ordering.quote_no)
+      setNotice(`報價 ${ordering.quote_no} 成交了，已寫進今天的進貨 ${formatMoney(placed.amount)}`)
+      setOrdering(null)
+      // 進貨數字、待處理事項、上次訂的都跟著變：整頁重新載入
+      setAttempt((n) => n + 1)
+    } catch (err) {
+      setOrderError(err instanceof Error ? err.message : "沒有寫成，請再試一次")
+    } finally {
+      setPlacing(false)
+    }
+  }
 
   async function openThread() {
     // 雙擊按鈕不要開兩次討論串、多推兩筆瀏覽紀錄
@@ -149,6 +174,7 @@ export function CustomerPage() {
       />
       <main className="flex flex-1 flex-col gap-4 px-4 pt-4 pb-28">
         {flash && <p className="rounded-xl bg-primary/10 px-3 py-2 text-sm text-primary">{flash}</p>}
+        {notice && <p className="rounded-xl bg-primary/10 px-3 py-2 text-sm text-primary">{notice}</p>}
         {threadError && <p className="rounded-xl bg-destructive/10 px-3 py-2 text-sm text-destructive">{threadError}</p>}
         {/* IT 可以把這家交給別的業務；換完重新載入，負責人就是新的那位 */}
         {user?.role === "it" && <ReassignOwner customer={customer} onDone={() => setAttempt((n) => n + 1)} />}
@@ -162,6 +188,8 @@ export function CustomerPage() {
         </section>
 
         <NextNotes customerId={customer.id} customerName={customer.name} today={profile.today} />
+        {/* 跟著整頁重新載入：成交之後「上次」就是剛成交的那張 */}
+        <LastOrderSection key={attempt} customerId={customer.id} />
 
         <section className="grid grid-cols-3 gap-2">
           <StatCard label="近 3 月進貨" value={wan(stats.amount_last_90d)} unit="萬" note={amountNote(stats)} />
@@ -183,9 +211,35 @@ export function CustomerPage() {
 
         <IntervalChart intervals={profile.intervals} alert={stats.interval_alert} />
         {contract?.customerId === customer.id && <ContractRow customerId={customer.id} contract={contract.data} />}
-        <PendingItems profile={profile} />
+        <PendingItems
+          profile={profile}
+          onOrder={(quote) => {
+            setOrderError(null)
+            setOrdering(quote)
+          }}
+        />
         <Competitors competitors={profile.competitors} />
       </main>
+
+      <Dialog open={ordering !== null} onOpenChange={(open) => !open && !placing && setOrdering(null)}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>把這張報價寫成今天的進貨？</DialogTitle>
+            <DialogDescription>
+              {ordering && `${ordering.quote_no}，${formatMoney(ordering.amount)}。`}會寫進交易紀錄與應收帳款，不能復原。
+            </DialogDescription>
+          </DialogHeader>
+          {orderError && <p className="text-sm text-destructive">{orderError}</p>}
+          <DialogFooter>
+            <Button variant="outline" className="h-11" disabled={placing} onClick={() => setOrdering(null)}>
+              不要
+            </Button>
+            <Button className="h-11" disabled={placing} onClick={confirmOrder}>
+              {placing ? "寫入中…" : "客戶下單了"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <div className="fixed inset-x-0 bottom-0 z-10 mx-auto flex max-w-md gap-2 border-t bg-card px-4 pt-3 pb-[max(env(safe-area-inset-bottom),0.75rem)]">
         {/* 每種客戶都有談判卡：連鎖是顧客導向，獨立藥局與診所是成本導向 */}
@@ -304,8 +358,10 @@ function ContractRow({ customerId, contract }: { customerId: string; contract: C
 }
 
 /** FR-2.2：未結案報價、客訴、逾期承諾 */
-function PendingItems({ profile }: { profile: CustomerProfile }) {
-  const rows: { key: string; tone: Tone; title: string; meta: string; tag?: string }[] = [
+type OpenQuote = CustomerProfile["open_quotes"][number]
+
+function PendingItems({ profile, onOrder }: { profile: CustomerProfile; onOrder: (quote: OpenQuote) => void }) {
+  const rows: { key: string; tone: Tone; title: string; meta: string; tag?: string; quote?: OpenQuote }[] = [
     ...profile.commitments.map((item) => ({
       key: `commitment-${item.visit_id}`,
       tone: (item.overdue ? "alert" : "warn") as Tone,
@@ -318,13 +374,14 @@ function PendingItems({ profile }: { profile: CustomerProfile }) {
       title: `客訴：${item.text}`,
       meta: formatDate(item.visit_date),
     })),
-    // 直接開的報價沒有 visit_id，用報價單號分辨。折扣還在等簽核的標出來：核准之前不能送給客戶
+    // 直接開的報價沒有 visit_id，用報價單號分辨。折扣還在等簽核的標出來：核准之前不能送給客戶，也不能成交
     ...profile.open_quotes.map((item) => ({
       key: `quote-${item.quote_no}`,
       tone: undefined as Tone,
       title: `報價草稿 ${item.quote_no}：${item.items}`,
       meta: formatMoney(item.amount),
       tag: item.status === "pending_approval" ? "待簽核" : undefined,
+      quote: item,
     })),
   ]
   return (
@@ -332,22 +389,30 @@ function PendingItems({ profile }: { profile: CustomerProfile }) {
       <p className="py-3 text-sm font-semibold">待處理事項</p>
       {rows.length === 0 && <p className="pb-3 text-sm text-muted-foreground">沒有待處理的事項。</p>}
       {rows.map((row) => (
-        <div key={row.key} className="flex min-h-12 items-center gap-3 border-t py-2">
-          <span
-            className={cn(
-              "size-2 shrink-0 rounded-full",
-              row.tone === "alert" ? "bg-destructive" : row.tone === "warn" ? "bg-warning" : "bg-muted-foreground/40"
-            )}
-          />
-          <p className="flex-1 text-sm">
-            {row.title}
-            {row.tag && (
-              <Badge variant="outline" className="ml-2 align-middle">
-                {row.tag}
-              </Badge>
-            )}
-          </p>
-          <span className={cn("shrink-0 text-xs", row.tone === "alert" ? "text-destructive" : "text-muted-foreground")}>{row.meta}</span>
+        <div key={row.key} className="flex flex-col gap-1 border-t py-2">
+          <div className="flex min-h-8 items-center gap-3">
+            <span
+              className={cn(
+                "size-2 shrink-0 rounded-full",
+                row.tone === "alert" ? "bg-destructive" : row.tone === "warn" ? "bg-warning" : "bg-muted-foreground/40"
+              )}
+            />
+            <p className="flex-1 text-sm">
+              {row.title}
+              {row.tag && (
+                <Badge variant="outline" className="ml-2 align-middle">
+                  {row.tag}
+                </Badge>
+              )}
+            </p>
+            <span className={cn("shrink-0 text-xs", row.tone === "alert" ? "text-destructive" : "text-muted-foreground")}>{row.meta}</span>
+          </div>
+          {row.quote?.status === "draft" && (
+            <Button variant="outline" className="ml-5 h-11 self-start" onClick={() => onOrder(row.quote!)}>
+              客戶下單了
+            </Button>
+          )}
+          {row.quote?.status === "pending_approval" && <p className="ml-5 text-xs text-muted-foreground">核准後才能成交</p>}
         </div>
       ))}
     </section>
