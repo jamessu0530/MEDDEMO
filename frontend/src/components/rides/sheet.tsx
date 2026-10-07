@@ -4,10 +4,31 @@ import { Ride } from "@/components/rides/ride"
 import { RIDE_CITIES, SPECIALTY } from "@/lib/rides"
 import { LEG_MODES, TRAVEL_MODE_LABEL } from "@/lib/travel-mode"
 
+/** 96px 的 28 種座騎排成一段，放在淺色頁面底或深色主題上（用函式而不是元件，這個檔案只匯出 renderRideSheet） */
+function bgSection(dark: boolean) {
+  return (
+    <section className={dark ? "bg bg-dark" : "bg bg-light"} data-skin={dark ? "dark" : undefined}>
+      <h2>{dark ? "深色主題（#141414，卡片 #1E1E1D）" : "淺色頁面底（#F6F5F9）"}，96px</h2>
+      <div className="grid">
+        {RIDE_CITIES.flatMap((city) =>
+          LEG_MODES.map((mode) => (
+            <div className="cell" key={`${city}-${mode}`}>
+              <Ride city={city} mode={mode} size={96} />
+              <small>{city} {TRAVEL_MODE_LABEL[mode]}</small>
+            </div>
+          ))
+        )}
+      </div>
+    </section>
+  )
+}
+
 /**
  * 座騎的定案表（docs/superpowers/specs/assets/2026-10-07-ride-sheet.html）：七個縣市 × 四種交通方式，
  * 每格一大一小（180 與首頁路線上的 96），最後一列示範往左走與停住的樣子。由 scripts/ride-sheet.mjs 產生，
  * css 是 mascot.css、ride.css 與各縣市的 css 接起來的內容。
+ * 白底的表之外，另外兩段是 96px 的 28 種座騎各放在真實的淺色頁面底（#F6F5F9）與深色主題（#141414，卡片 #1E1E1D）上。
+ * 只給 scripts/ride-sheet.mjs 用，不要從 App import（會把 react-dom/server 打包進去）。
  */
 export function renderRideSheet(css: string): string {
   const body = renderToStaticMarkup(
@@ -50,6 +71,8 @@ export function renderRideSheet(css: string): string {
           </tr>
         </tbody>
       </table>
+      {bgSection(false)}
+      {bgSection(true)}
     </main>
   )
   return `<!doctype html>
@@ -68,6 +91,17 @@ th { font-size: 14px; text-align: left; vertical-align: middle; }
 th small { display: block; font-weight: 400; color: #6E6A78; }
 td { background: #fff; border-radius: 16px; padding: 8px; vertical-align: bottom; }
 td .ride { display: inline-block; vertical-align: bottom; }
+.bg { margin-top: 24px; padding: 16px; border-radius: 16px; }
+.bg h2 { font-size: 15px; margin: 0 0 12px; }
+.bg-light { background: #F6F5F9; }
+.bg-dark { background: #141414; color: #E8E6EC; }
+.bg-dark h2 { color: #E8E6EC; }
+.grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.cell { border-radius: 16px; padding: 8px; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.bg-light .cell { background: #fff; }
+.bg-dark .cell { background: #1E1E1D; }
+.cell small { font-size: 12px; color: #6E6A78; }
+.bg-dark .cell small { color: #A09CAA; }
 ${css}
 </style>
 </head>

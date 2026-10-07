@@ -27,7 +27,7 @@ export default defineConfig([
       'react-refresh/only-export-components': 'off',
     },
   },
-  // 座騎的縣市檔（components/rides/vehicles/<縣市>.tsx）只匯出四種座騎組成的 CityVehicles 物件，元件留在檔內；
+  // 座騎的縣市檔（components/rides/vehicles/<縣市>.tsx）只匯出四種座騎組成的 CityVehicles 物件（不是元件），元件留在檔內；
   // 改圖時 Fast Refresh 往上交給 ride.tsx 重畫就好，所以這個資料夾關掉這條規則
   {
     files: ['src/components/rides/vehicles/*.tsx'],
