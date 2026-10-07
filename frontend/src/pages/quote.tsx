@@ -70,7 +70,9 @@ export function QuotePage() {
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // 上次訂的：沒訂過或載不到是 null，就不顯示「照上次填」
-  const [last, setLast] = useState<LastOrder | null>(null)
+  const [lastState, setLastState] = useState<{ customerId: string; order: LastOrder | null } | null>(null)
+  // 只認這一家的：換客戶時新的回來前不顯示上一家的按鈕
+  const last = lastState?.customerId === customerId ? lastState.order : null
   // 照上次填加的列（頁面上本來沒有的品項）與變了的那幾句（不走促銷用料號、口用促銷品項編號）
   const [extraItems, setExtraItems] = useState<QuoteItem[]>([])
   const [notes, setNotes] = useState<Record<string, string>>({})
@@ -89,6 +91,9 @@ export function QuotePage() {
         const skus = [...items.map((item) => item.sku), ...products.filter((p) => !p.usual).map((p) => p.sku)]
         setQuantities(Object.fromEntries(skus.map((sku) => [sku, "0"])))
         setPackCounts(Object.fromEntries(products.flatMap((p) => p.packs.map((pack) => [pack.code, "0"]))))
+        // 換客戶或重新載入時，照上次填加的列與那幾句一起清掉
+        setExtraItems([])
+        setNotes({})
         setState({ status: "ready", customer, items, promotion })
       })
       .catch((err) => {
@@ -102,9 +107,9 @@ export function QuotePage() {
   useEffect(() => {
     const controller = new AbortController()
     getLastOrder(customerId, controller.signal)
-      .then(setLast)
+      .then((order) => setLastState({ customerId, order }))
       .catch(() => {
-        if (!controller.signal.aborted) setLast(null)
+        if (!controller.signal.aborted) setLastState({ customerId, order: null })
       })
     return () => controller.abort()
   }, [customerId])
