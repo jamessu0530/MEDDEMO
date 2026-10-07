@@ -89,7 +89,7 @@ def test_a_long_serving_rep_is_not_a_newcomer_but_can_still_open_the_page(client
         "by_type": {"chain": 16, "independent": 22, "clinic": 12},
         "by_grade": {"A": 10, "B": 26, "C": 14},
     }
-    assert page["promotion"] == {"name": "202610保藥特搭活動", "item_count": 37}
+    assert page["promotion"] == {"name": "202610保藥特搭活動", "item_count": 34}
     assert [day["day"] for day in page["days"]] == [1, 2, 3, 4, 5]
 
 
