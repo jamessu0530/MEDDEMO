@@ -4,6 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.services import customer_profile
 
 
 @pytest.fixture
@@ -37,3 +38,16 @@ def test_a_steady_customer_gets_no_interval_alert(client):
 
 def test_an_unknown_customer_is_not_found(client):
     assert client.get("/api/customers/C999/profile").status_code == 404
+
+
+def test_the_brief_says_which_packs_changed_since_the_last_order(client):
+    highlights = client.get("/api/customers/C001/profile").json()["highlights"]
+    # 排在進貨間隔那句後面
+    assert highlights[1] == "上次訂的有 3 項這期促銷變了：40EXa眼藥水(中口)沒了、金舒胃平(小口)要買的量變多、威鎮凝膠沒有促銷了"
+    assert not any("上次訂的" in line for line in client.get("/api/customers/C030/profile").json()["highlights"])
+
+
+def test_the_brief_lists_three_changes_at_most():
+    shorts = ["甲沒了", "乙沒了", "丙沒了", "丁沒了"]
+    assert customer_profile.last_order_highlight(shorts) == "上次訂的有 4 項這期促銷變了：甲沒了、乙沒了、丙沒了等"
+    assert customer_profile.last_order_highlight([]) is None

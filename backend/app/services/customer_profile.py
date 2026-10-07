@@ -12,7 +12,7 @@ from sqlalchemy import column, func, select, table
 from sqlalchemy.orm import Session
 
 from app.models import Customer, Product, PromotionItem, SalesTransaction, SapQuotationDraft, Visit
-from app.services import promo_packs
+from app.services import last_order, promo_packs
 from app.timeutil import local_date
 
 # 原型的進貨間隔圖看近六個月
@@ -30,6 +30,9 @@ AR_WATCH_DAYS = 60
 CONTRACT_NOTICE_DAYS = 90
 # 摘要最多四句，進門前幾分鐘看得完
 MAX_HIGHLIGHTS = 4
+# 「上次訂的促銷變了」那句最多列幾項，多的寫「等」；那句的開頭，首頁需立即處理那張卡靠它跳過（today_route._urgent）
+LAST_ORDER_SHORTS = 3
+LAST_ORDER_PREFIX = "上次訂的有"
 # 「這家常進什麼」看近半年：談判卡的架上品項與開報價的品項清單用同一個時間窗
 TOP_SKU_DAYS = 180
 # 跟客戶清單的「上次拜訪」一樣，只算已確認的拜訪
@@ -191,6 +194,14 @@ def _open_quotes(session: Session, customer_id: str) -> list[OpenQuote]:
     return list(quotes.values())
 
 
+def last_order_highlight(shorts: list[str]) -> str | None:
+    """上次訂的走口的列這期變了：「上次訂的有 3 項這期促銷變了：40EXa眼藥水(中口)沒了、…」。"""
+    if not shorts:
+        return None
+    more = "等" if len(shorts) > LAST_ORDER_SHORTS else ""
+    return f"{LAST_ORDER_PREFIX} {len(shorts)} 項這期促銷變了：{'、'.join(shorts[:LAST_ORDER_SHORTS])}{more}"
+
+
 def build_profile(session: Session, customer: Customer) -> Profile:
     today = app_today(session)
     recent_since = today - dt.timedelta(days=RECENT_DAYS)
@@ -244,6 +255,10 @@ def build_profile(session: Session, customer: Customer) -> Profile:
         if stats.avg_order_amount_last_90d and stats.avg_order_amount_before:
             change = stats.avg_order_amount_last_90d / stats.avg_order_amount_before - 1
             sentence += "，單次金額持平" if abs(change) < FLAT_AMOUNT_CHANGE else f"，單次金額{'增加' if change > 0 else '減少'} {abs(change):.0%}"
+        highlights.append(sentence)
+    # 出發前先知道上次訂的哪幾項這期促銷變了，排在進貨間隔後面（docs/superpowers/specs/2026-10-07-repeat-last-order-design.md）
+    last = last_order.build(session, customer)
+    if sentence := last_order_highlight([line.change.short for line in last.lines if line.change] if last else []):
         highlights.append(sentence)
     overdue = [c for c in commitments if c.overdue and c.by == "us"]
     if overdue:

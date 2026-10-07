@@ -236,8 +236,10 @@ def _urgent(session: Session, candidate: route_model.Candidate, signal: str, rea
     keyword = HIGHLIGHT_KEYWORD.get(signal)
     matched = next((h for h in highlights if keyword and keyword in h), None)
     detail = matched or reason
-    # 補一句別的提醒當背景，例如「間隔拉長」旁邊再提「上次提到競品」
-    note = next((h for h in highlights if h != detail), None)
+    # 補一句別的提醒當背景，例如「間隔拉長」旁邊再提「上次提到競品」。「上次訂的…促銷變了」只放客戶檔案，不拿來當背景
+    note = next(
+        (h for h in highlights if h != detail and not h.startswith(customer_profile.LAST_ORDER_PREFIX)), None
+    )
     return Urgent(
         customer_id=candidate.customer_id,
         customer_name=candidate.name,
