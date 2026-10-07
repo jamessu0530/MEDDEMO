@@ -360,3 +360,117 @@ def test_the_four_mode_tables_stay_aligned():
     assert set(travel.PACES) == set(travel.GOOGLE_EXTRA_MINUTES) == set(modes)
     assert models.LEG_MODES == modes
     assert models.TRAVEL_MODES == modes[:3]
+
+
+FIVE = [(25.0, 121.5), (25.01, 121.5), (25.02, 121.5), (25.03, 121.5), (25.04, 121.5)]  # 4 段
+
+
+def legs_by_mode(calls, fail=(), missing=()):
+    """假的 Google：每段 10 分鐘、1 公里，不管交通方式；記下 (交通方式, 幾個點)。
+    fail 裡的交通方式丟 RoutesError；missing 裡的每段回 None（大眾運輸搭不到車）。"""
+
+    def route_legs(key, points, http=None, polylines=True, mode="drive"):
+        calls.append((mode, len(points)))
+        if mode in fail:
+            raise google_routes.RoutesError("逾時")
+        if mode in missing:
+            return [None] * (len(points) - 1)
+        return [google_routes.Leg(600, 1000, f"{mode}{n}") for n in range(len(points) - 1)]
+
+    return route_legs
+
+
+def test_along_groups_neighbouring_legs_of_one_mode(monkeypatch, env):
+    env(GOOGLE_MAPS_SERVER_KEY="server-key")
+    calls = []
+    monkeypatch.setattr(google_routes, "route_legs", legs_by_mode(calls))
+    result = travel.along(FIVE, ["walk", "walk", "transit", "scooter"])
+    assert sorted(calls) == [("scooter", 2), ("transit", 2), ("walk", 3)]
+    assert result.estimated is False and result.estimated_legs == (False,) * 4
+    # 走路、大眾運輸不加，機車加 2 分
+    assert [result.minutes[n][n + 1] for n in range(4)] == [10, 10, 10, 12]
+
+
+def test_along_with_one_mode_is_one_request_as_before(monkeypatch, env):
+    env(GOOGLE_MAPS_SERVER_KEY="server-key")
+    calls = []
+    monkeypatch.setattr(google_routes, "route_legs", legs_by_mode(calls))
+    travel.along(FIVE, "scooter")
+    assert calls == [("scooter", 5)]
+
+
+def test_a_failing_group_only_estimates_its_legs_and_pauses_google(monkeypatch, env):
+    env(GOOGLE_MAPS_SERVER_KEY="server-key")
+    monkeypatch.setattr(google_routes, "route_legs", legs_by_mode([], fail={"walk"}))
+    result = travel.along(FIVE, ["drive", "walk", "drive", "drive"])
+    assert result.estimated_legs == (False, True, False, False)
+    assert result.minutes[1][2] == travel.estimate(FIVE[1], FIVE[2], "walk")[0]
+    assert result.minutes[0][1] == 15
+    assert travel._server_key() == ""
+
+
+def test_no_transit_service_is_estimated_without_pausing(monkeypatch, env):
+    env(GOOGLE_MAPS_SERVER_KEY="server-key")
+    monkeypatch.setattr(google_routes, "route_legs", legs_by_mode([], missing={"transit"}))
+    result = travel.along(FIVE, ["drive", "transit", "drive", "drive"])
+    assert result.estimated_legs == (False, True, False, False)
+    assert travel._server_key() == "server-key"
+
+
+def test_same_point_legs_are_not_sent_to_google(monkeypatch, env):
+    env(GOOGLE_MAPS_SERVER_KEY="server-key")
+    calls = []
+    monkeypatch.setattr(google_routes, "route_legs", legs_by_mode(calls))
+    points = [FIVE[0], FIVE[0], FIVE[1], FIVE[2]]
+    result = travel.along(points, "walk")
+    assert calls == [("walk", 3)]  # 第 0 段兩點相同，從第 1 點開始問
+    assert result.minutes[0][1] == 0 and result.estimated_legs == (False, False, False)
+
+
+def test_without_a_key_each_leg_is_estimated_with_its_own_mode():
+    result = travel.along(FIVE, ["walk", "drive", "drive", "transit"])
+    assert result.estimated is True and result.estimated_legs == (True,) * 4
+    assert result.minutes[0][1] == travel.estimate(FIVE[0], FIVE[1], "walk")[0]
+    assert result.minutes[3][4] == travel.estimate(FIVE[3], FIVE[4], "transit")[0]
+
+
+def test_lines_follow_each_legs_mode_and_cache_by_modes(monkeypatch, env):
+    env(GOOGLE_MAPS_SERVER_KEY="server-key")
+    calls = []
+    monkeypatch.setattr(google_routes, "route_legs", legs_by_mode(calls))
+    first = travel.lines(FIVE, ["walk", "walk", "drive", "drive"])
+    assert [line.polyline for line in first] == ["walk0", "walk1", "drive0", "drive1"]
+    assert travel.lines(FIVE, ["walk", "walk", "drive", "drive"]) == first  # 快取
+    travel.lines(FIVE, ["drive"] * 4)  # 交通方式不同就是不同的線
+    assert sorted(calls) == [("drive", 3), ("drive", 5), ("walk", 3)]
+
+
+def test_lines_with_a_failing_group_are_partial_and_not_cached(monkeypatch, env):
+    env(GOOGLE_MAPS_SERVER_KEY="server-key")
+    calls = []
+    monkeypatch.setattr(google_routes, "route_legs", legs_by_mode(calls, fail={"walk"}))
+    found = travel.lines(FIVE, ["drive", "walk", "drive", "drive"])
+    assert found[0].polyline == "drive0" and found[1] is None and found[2].polyline == "drive0"
+    monkeypatch.setattr(travel, "_google_paused_until", 0.0)
+    monkeypatch.setattr(google_routes, "route_legs", legs_by_mode(calls))
+    assert travel.lines(FIVE, ["drive", "walk", "drive", "drive"])[1].polyline == "walk0"  # 沒有快取壞的那份
+
+
+def test_options_ask_all_four_modes_for_one_leg(monkeypatch, env):
+    env(GOOGLE_MAPS_SERVER_KEY="server-key")
+    calls = []
+    monkeypatch.setattr(google_routes, "route_legs", legs_by_mode(calls, missing={"transit"}))
+    found = travel.options(FIVE[0], FIVE[1])
+    assert [o.mode for o in found] == ["drive", "scooter", "transit", "walk"]
+    by_mode = {o.mode: o for o in found}
+    assert (by_mode["drive"].minutes, by_mode["drive"].estimated, by_mode["drive"].found) == (15, False, True)
+    assert by_mode["walk"].minutes == 10
+    assert by_mode["transit"].found is False and by_mode["transit"].estimated is True
+    assert sorted(calls) == [("drive", 2), ("scooter", 2), ("transit", 2), ("walk", 2)]
+
+
+def test_options_without_a_key_or_for_the_same_point():
+    found = travel.options(FIVE[0], FIVE[1])
+    assert all(o.estimated and o.found for o in found)
+    assert [o.minutes for o in found] == [travel.estimate(FIVE[0], FIVE[1], m)[0] for m in google_routes.TRAVEL]
+    assert all((o.minutes, o.estimated) == (0, False) for o in travel.options(FIVE[0], FIVE[0]))
