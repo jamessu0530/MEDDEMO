@@ -5,12 +5,15 @@ import { ApiError } from "@/api/client"
 import {
   createQuote,
   getCustomer,
+  getLastOrder,
   getQuoteItems,
   getQuotePromotion,
   type Customer,
+  type LastOrder,
   type QuoteItem,
   type QuotePromotion,
 } from "@/api/customers"
+import { ChangeNote } from "@/components/change-note"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
@@ -19,6 +22,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { approvalFlash, DISCOUNT_MAX, DISCOUNT_STEP, discountSteps, parseDiscount, REASON_MAX_LENGTH } from "@/lib/approval"
 import { useAuth } from "@/lib/auth"
 import { formatMoney } from "@/lib/format"
+import { lastOrderSources, repeatFill } from "@/lib/last-order"
 import { packDeal, quoteBlocked, quoteTotal } from "@/lib/quote"
 import { customerNotFoundText } from "@/lib/scope"
 import { cn } from "@/lib/utils"
@@ -65,6 +69,11 @@ export function QuotePage() {
   const [reason, setReason] = useState("")
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // 上次訂的：沒訂過或載不到是 null，就不顯示「照上次填」
+  const [last, setLast] = useState<LastOrder | null>(null)
+  // 照上次填加的列（頁面上本來沒有的品項）與變了的那幾句（不走促銷用料號、口用促銷品項編號）
+  const [extraItems, setExtraItems] = useState<QuoteItem[]>([])
+  const [notes, setNotes] = useState<Record<string, string>>({})
 
   useEffect(() => {
     const controller = new AbortController()
@@ -89,7 +98,20 @@ export function QuotePage() {
     return () => controller.abort()
   }, [customerId, attempt])
 
-  const items = state.status === "ready" ? state.items : []
+  // 上次訂的另外問：問不到就少一個按鈕，不擋開報價
+  useEffect(() => {
+    const controller = new AbortController()
+    getLastOrder(customerId, controller.signal)
+      .then(setLast)
+      .catch(() => {
+        if (!controller.signal.aborted) setLast(null)
+      })
+    return () => controller.abort()
+  }, [customerId])
+
+  const baseItems = state.status === "ready" ? state.items : []
+  // 照上次填加的列接在常進品項後面，算法跟常進品項一樣
+  const items = [...baseItems, ...extraItems]
   const promotion = state.status === "ready" ? state.promotion : null
   const lines = items.map((item) => ({ item, qty: parseQty(quantities[item.sku]) }))
   // 促銷品項沒有交易、不在常進品項裡：「不走促銷」那一列照供貨價，跟常進品項一樣算
@@ -113,6 +135,17 @@ export function QuotePage() {
   // 送不出去的原因，寫在按鈕上
   const blocked = quoteBlocked({ plainCount: chosen.length, packCount: chosenPacks.length, discount, route, reason })
   const hasLines = items.length > 0 || promotion !== null
+
+  function fillFromLast() {
+    if (!last) return
+    const skus = [...baseItems, ...extraPlain].map((item) => item.sku)
+    const codes = (promotion?.products ?? []).flatMap((p) => p.packs.map((pack) => pack.code))
+    const fill = repeatFill(last, skus, codes)
+    setQuantities(fill.quantities)
+    setPackCounts(fill.packCounts)
+    setExtraItems(fill.extra)
+    setNotes(fill.notes)
+  }
 
   async function submit() {
     setSending(true)
@@ -167,6 +200,11 @@ export function QuotePage() {
             action={{ label: "回客戶檔案", onClick: () => navigate(profilePath) }}
           />
         )}
+        {state.status === "ready" && last && (
+          <Button variant="outline" className="h-11" onClick={fillFromLast}>
+            照上次填（{lastOrderSources(last, "、")}）
+          </Button>
+        )}
         {items.length > 0 && (
           <>
             <p className="text-xs text-muted-foreground">這家近半年常進的品項，單價是給這家的供貨價。填了數量的才會列進報價。</p>
@@ -198,13 +236,16 @@ export function QuotePage() {
                       {qty === 0 ? "不列入" : formatMoney(qty * item.unit_price)}
                     </span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setQuantities((current) => ({ ...current, [item.sku]: String(item.usual_qty) }))}
-                    className="mt-1 -ml-2 flex min-h-11 items-center rounded-lg px-2 text-xs text-primary active:bg-muted"
-                  >
-                    填入常進數量 {item.usual_qty} {item.unit}
-                  </button>
+                  {item.usual_qty > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setQuantities((current) => ({ ...current, [item.sku]: String(item.usual_qty) }))}
+                      className="mt-1 -ml-2 flex min-h-11 items-center rounded-lg px-2 text-xs text-primary active:bg-muted"
+                    >
+                      填入常進數量 {item.usual_qty} {item.unit}
+                    </button>
+                  )}
+                  {notes[item.sku] && <ChangeNote text={notes[item.sku]} className="mt-1" />}
                 </li>
               ))}
             </ul>
@@ -215,6 +256,7 @@ export function QuotePage() {
             promotion={promotion}
             packCounts={packCounts}
             quantities={quantities}
+            notes={notes}
             onPackChange={(code, value) => setPackCounts((current) => ({ ...current, [code]: value }))}
             onQtyChange={(sku, value) => setQuantities((current) => ({ ...current, [sku]: value }))}
           />
@@ -286,6 +328,7 @@ type PromotionSectionProps = {
   promotion: QuotePromotion
   packCounts: Quantities
   quantities: Quantities
+  notes: Record<string, string>
   onPackChange: (code: string, value: string) => void
   onQtyChange: (sku: string, value: string) => void
 }
@@ -294,7 +337,7 @@ type PromotionSectionProps = {
  * 這一期的促銷：依品牌、品項列出每一口，填口數就照每口售價列入。促銷品項沒有交易、不在常進品項裡，
  * 每個品項另外有一列「不走促銷」照供貨價填數量
  */
-function PromotionSection({ promotion, packCounts, quantities, onPackChange, onQtyChange }: PromotionSectionProps) {
+function PromotionSection({ promotion, packCounts, quantities, notes, onPackChange, onQtyChange }: PromotionSectionProps) {
   return (
     <section className="flex flex-col gap-2 pt-2">
       <div className="flex items-baseline justify-between gap-3">
@@ -347,6 +390,7 @@ function PromotionSection({ promotion, packCounts, quantities, onPackChange, onQ
                           {count === 0 ? "不列入" : formatMoney(count * pack.deal_price)}
                         </span>
                       </div>
+                      {notes[pack.code] && <ChangeNote text={notes[pack.code]} className="mt-1" />}
                     </li>
                   )
                 })}
@@ -376,6 +420,7 @@ function PromotionSection({ promotion, packCounts, quantities, onPackChange, onQ
                         {qty === 0 ? "不列入" : formatMoney(qty * product.supply_price)}
                       </span>
                     </div>
+                    {notes[product.sku] && <ChangeNote text={notes[product.sku]} className="mt-1" />}
                   </li>
                 )}
               </ul>
