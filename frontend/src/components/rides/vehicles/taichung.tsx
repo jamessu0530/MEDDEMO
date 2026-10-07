@@ -86,33 +86,37 @@ function Cup({ cx, by, w, h }: { cx: number; by: number; w: number; h: number })
   )
 }
 
-// 橫躺的杯子（開車）：就是公車那個直立的杯子轉九十度躺下來，杯口在左（後面），杯底在右（車頭）。
-// 杯口的封膜邊比杯身高一點，緊接著一截透明的杯身，再來是奶茶；珍珠沉在下面
-const LYING_TOP = (x: number) => 72 + (16 * (x - 56)) / 188
-const LYING_CUP = roundedPath([[56, 72, 6], [244, 88, 22], [244, 156, 22], [56, 172, 6]])
-const LYING_AIR = roundedPath([[56, 72, 6], [80, LYING_TOP(80), 0], [80, 244 - LYING_TOP(80), 0], [56, 172, 6]])
-// 杯子裡的珍珠 [x, y, 半徑]：沉在下半截，避開兩個輪子
+// 橫躺的透明杯（開車）：杯口在左（後面，斜斜看過去是一個直的橢圓：杯緣＋封膜），杯底在右（車頭，圓角大）。杯子只比杯底寬一點，
+// 上半截是透明的杯身（淺奶茶色），奶茶的水面是平的（y 120），沉在下半截
+const LYING_CUP = roundedPath([[48, 70, 4], [250, 80, 24], [250, 160, 24], [48, 170, 4]])
+const LYING_TEA = roundedPath([[48, 120, 0], [250, 120, 0], [250, 160, 24], [48, 170, 4]])
+// 奶茶裡的珍珠 [x, y, 半徑]：少一點、大一點，避開兩個輪子
 const LYING_PEARLS: [number, number, number][] = [
-  [94, 150, 7], [122, 143, 7], [138, 156, 8], [157, 146, 8], [173, 155, 7], [190, 138, 7], [226, 142, 7], [214, 127, 6],
+  [68, 152, 10], [118, 134, 9], [146, 151, 11], [176, 138, 10], [226, 144, 10], [204, 128, 8],
 ]
 
-/** 開車：珍奶杯橫躺當車身，熊熊滾坐在靠杯口那頭、從杯子裡探出頭，吸管從杯口的封膜斜插出來當天線，杯底是車頭、一顆黃色車燈 */
+/**
+ * 開車：珍奶杯橫躺當車身。熊熊滾坐在透明杯子裡靠杯口那頭，奶茶淹到腰、臉在水面上，耳朵探出杯子；
+ * 吸管從杯口的封膜中間斜插出來當天線，杯底是車頭、一顆黃色車燈
+ */
 function Drive({ bear }: VehicleProps) {
   return (
     <>
       <Ground />
       <g className="ride-bob">
-        <line x1="58" y1="116" x2="22" y2="48" stroke={TONGUE} strokeWidth="11" strokeLinecap="round" />
-        {bear({ x: 74, y: 4, size: 112 })}
-        <path d={LYING_CUP} fill={TEA} />
-        <path d={LYING_AIR} fill={CLEAR} />
-        <rect x="94" y="96" width="70" height="7" rx="3.5" fill={CLEAR} />
-        <rect x="172" y="97" width="18" height="7" rx="3.5" fill={CLEAR} />
+        <path d={LYING_CUP} fill={CLEAR} />
+        {bear({ x: 52, y: 44, size: 112 })}
+        <path d={LYING_TEA} fill={TEA} />
+        <rect x="150" y="127" width="56" height="6" rx="3" fill={CLEAR} />
         {LYING_PEARLS.map(([x, y, r]) => (
           <Pearl key={`${x},${y}`} cx={x} cy={y} r={r} />
         ))}
-        <rect x="44" y="66" width="16" height="112" rx="7" fill={TEA} />
-        <circle cx="234" cy="122" r="7" fill={STAR} />
+        <rect x="160" y="88" width="64" height="7" rx="3.5" fill="#fff" />
+        {/* 杯口：從側面斜斜看過去的圓，一圈奶茶色的杯緣、裡面是淺色的封膜，吸管從封膜中間插出來 */}
+        <ellipse cx="46" cy="120" rx="16" ry="58" fill={TEA} />
+        <ellipse cx="45" cy="120" rx="10" ry="50" fill={CLEAR} />
+        <line x1="44" y1="112" x2="16" y2="40" stroke={TONGUE} strokeWidth="11" strokeLinecap="round" />
+        <circle cx="240" cy="134" r="7" fill={STAR} />
       </g>
       <Wheel cx={104} cy={168} r={20} />
       <Wheel cx={200} cy={168} r={20} />
