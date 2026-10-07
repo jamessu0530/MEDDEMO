@@ -53,7 +53,8 @@ export function FieldEditor({ visit, field, onClose, onSaved }: FieldEditorProps
 
   return (
     <Dialog open={field !== null} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-h-[90svh] overflow-y-auto">
+      {/* 欄寬鎖在對話框的寬度：選單照最長的選項算寬度（品項名稱、大口的搭贈都很長），不鎖的話會把對話框撐出畫面 */}
+      <DialogContent className="max-h-[90svh] grid-cols-[minmax(0,1fr)] overflow-y-auto">
         {field && (
           <>
             <DialogHeader>
@@ -281,7 +282,7 @@ function IntentEditor({ initial, saving, onSave }: EditorProps<IntentItem[]>) {
               value={row.promo_code ?? ""}
               onChange={(e) => choosePack(index, e.target.value)}
               aria-label="促銷的口"
-              className="h-11 min-w-0 rounded-xl border-2 border-input bg-card px-3 text-sm shadow-lip"
+              className="h-11 w-full min-w-0 rounded-xl border-2 border-input bg-card px-3 text-sm shadow-lip"
             >
               <option value="">不走促銷</option>
               {packOptions(row).map((pack) => (
