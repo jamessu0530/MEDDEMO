@@ -170,7 +170,7 @@ def _open_quotes(session: Session, customer_id: str) -> list[OpenQuote]:
     """
     rows = session.execute(
         select(
-            SapQuotationDraft.quote_no, SapQuotationDraft.visit_id, SapQuotationDraft.qty, SapQuotationDraft.unit_price,
+            SapQuotationDraft.quote_no, SapQuotationDraft.visit_id, SapQuotationDraft.qty, SapQuotationDraft.amount,
             SapQuotationDraft.created_at, SapQuotationDraft.status, Product.name, Visit.visited_at,
         )
         .join(Product, Product.sku == SapQuotationDraft.sku)
@@ -183,7 +183,7 @@ def _open_quotes(session: Session, customer_id: str) -> list[OpenQuote]:
         day = local_date(row.visited_at or row.created_at)
         quote = quotes.setdefault(row.quote_no, OpenQuote(row.quote_no, row.visit_id, day, "", 0.0, row.status))
         quote.items = "、".join(filter(None, [quote.items, f"{row.name} × {row.qty}"]))
-        quote.amount += float(row.unit_price) * row.qty
+        quote.amount += float(row.amount)
     return list(quotes.values())
 
 

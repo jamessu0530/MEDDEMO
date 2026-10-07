@@ -197,6 +197,8 @@ def test_every_synced_visit_landed_in_all_three_targets(db):
         WHERE jsonb_typeof(fields_final->'intent') = 'array'
     """)[0][0]
     assert rows(db, "SELECT count(*) FROM sap_quotation_draft")[0][0] == intent_lines
+    # 歷史報價草稿沒有促銷：每一列的金額就是單價 × 數量
+    assert rows(db, "SELECT count(*) FROM sap_quotation_draft WHERE amount <> unit_price * qty OR promo_code IS NOT NULL")[0][0] == 0
     skipped = rows(db, "SELECT count(*) FROM writeback_log WHERE target = 'sap' AND status = 'skipped'")[0][0]
     no_intent = rows(db, "SELECT count(*) FROM visit WHERE fields_final->'intent' = 'null'::jsonb")[0][0]
     assert skipped == no_intent > 0

@@ -420,6 +420,8 @@ class SapQuotationDraft(Base):
         UniqueConstraint("visit_id", "line_no"),
         UniqueConstraint("quote_no", "line_no"),
         CheckConstraint("qty > 0", name="qty_positive"),
+        # 促銷的列同時有「哪一口」與「幾口」，沒促銷的列兩個都是 NULL
+        CheckConstraint("(promo_code IS NULL) = (packs IS NULL) AND (packs IS NULL OR packs > 0)", name="promo_packs"),
         one_of("status", QUOTE_STATUSES, "status"),
     )
 
@@ -432,10 +434,19 @@ class SapQuotationDraft(Base):
     line_no: Mapped[int]
     customer_id: Mapped[str] = mapped_column(ForeignKey("customer.id"))
     sku: Mapped[str] = mapped_column(ForeignKey("product.sku"))
+    # 沒促銷的列是數量；促銷的列是付錢的數量（每口買的 × 口數）
     qty: Mapped[int]
-    # 折扣後的單價；折扣是整張報價一個百分比，每一列記同一個值
+    # 沒促銷的列是折扣後的單價；促銷的列是每口售價 ÷ 每口買的數量，只供參考，金額看 amount
     unit_price: Mapped[Decimal] = mapped_column(Numeric(10, 2))
+    # 這一列打的折扣：沒促銷的列記整張報價的折扣，促銷的列不打折記 0
     discount_pct: Mapped[Decimal] = mapped_column(Numeric(4, 1), server_default="0")
+    # 哪一口（促銷品項編號）與幾口；沒促銷的列都是 NULL
+    promo_code: Mapped[str | None] = mapped_column(ForeignKey("promotion_item.code"))
+    packs: Mapped[int | None]
+    # 同品送了幾個（每口送的 × 口數）
+    free_qty: Mapped[int] = mapped_column(default=0, server_default="0")
+    # 這一列的金額，到分。有的口除不盡（骨營粉劑直走 7 盒 $3,100），不能用單價 × 數量回推
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     status: Mapped[str] = mapped_column(server_default="draft")
     created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
 

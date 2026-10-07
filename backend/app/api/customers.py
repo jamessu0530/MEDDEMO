@@ -435,8 +435,8 @@ def create_quote(session: SessionDep, customer_id: str, body: QuoteInput, user: 
         lines = [
             SapQuotationDraft(
                 quote_no=quote_no, visit_id=None, created_by=user.id, line_no=n, customer_id=customer.id,
-                sku=line.sku, qty=line.qty, unit_price=prices[line.sku], discount_pct=body.discount_pct,
-                status="pending_approval" if level else "draft",
+                sku=line.sku, qty=line.qty, unit_price=prices[line.sku], amount=prices[line.sku] * line.qty,
+                discount_pct=body.discount_pct, status="pending_approval" if level else "draft",
             )
             for n, line in enumerate(body.items, start=1)
         ]
@@ -464,8 +464,7 @@ def create_quote(session: SessionDep, customer_id: str, body: QuoteInput, user: 
 
     items = [
         QuoteLine(
-            sku=l.sku, name=products[l.sku].name, qty=l.qty, unit_price=float(l.unit_price),
-            amount=float(l.unit_price * l.qty),
+            sku=l.sku, name=products[l.sku].name, qty=l.qty, unit_price=float(l.unit_price), amount=float(l.amount),
         )
         for l in lines
     ]

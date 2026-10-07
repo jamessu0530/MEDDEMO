@@ -95,12 +95,13 @@ def _write_sap(session: Session, visit: Visit) -> None:
     for line_no, item in enumerate(items, start=1):
         if not item.get("qty") or item.get("sku") not in prices:
             raise ValueError(f"意向第 {line_no} 項缺少品項或數量")
+        # 報價以標準供貨價為基準（連鎖 9 折、獨立藥局 95 折、診所原價），與歷史報價一致
+        price = supply_price(prices[item["sku"]], customer_type)
         session.execute(
             insert(SapQuotationDraft).values(
                 quote_no=visit.id, visit_id=visit.id, line_no=line_no, customer_id=visit.customer_id,
                 sku=item["sku"], qty=item["qty"], created_by=visit.user_id,
-                # 報價以標準供貨價為基準（連鎖 9 折、獨立藥局 95 折、診所原價），與歷史報價一致
-                unit_price=supply_price(prices[item["sku"]], customer_type),
+                unit_price=price, amount=price * item["qty"],
             ).on_conflict_do_nothing(index_elements=["visit_id", "line_no"])
         )
 

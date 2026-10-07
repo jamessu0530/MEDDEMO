@@ -44,6 +44,17 @@ def test_an_opened_quote_shows_up_in_the_profile(client):
     assert again["quote_no"] != quote["quote_no"]
 
 
+def test_each_quote_line_keeps_its_own_amount(client, engine):
+    quote = client.post("/api/customers/C001/quotes", json={"items": [{"sku": "HS-FO30", "qty": 20}]}).json()
+    with engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT amount, discount_pct, free_qty, promo_code, packs FROM sap_quotation_draft WHERE quote_no = :q"),
+            {"q": quote["quote_no"]},
+        ).one()
+    # 康泰忠孝店是連鎖：魚油 30 入 405 元 × 20
+    assert (float(row.amount), float(row.discount_pct), row.free_qty, row.promo_code, row.packs) == (8100, 0, 0, None, None)
+
+
 def test_bad_quotes_are_rejected(client):
     post = lambda body, customer="C001": client.post(f"/api/customers/{customer}/quotes", json=body).status_code
     assert post({"items": []}) == 422

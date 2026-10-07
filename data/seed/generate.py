@@ -563,10 +563,11 @@ def build_visits(rng, customers, baskets, products, as_of, transactions, receiva
             "follow_up_date": fields["follow_up_date"], "created_at": confirmed_at,
         })
         for line_no, item in enumerate(fields["intent"] or [], start=1):
+            price = round(products[item["sku"]]["unit_price"] * PRICE_FACTOR[c["type"]])
             tables["sap_quotation_draft"].append({
                 "quote_no": visit_id, "visit_id": visit_id, "line_no": line_no, "customer_id": c["id"], "sku": item["sku"],
                 "created_by": c["owner_user_id"],
-                "qty": item["qty"], "unit_price": round(products[item["sku"]]["unit_price"] * PRICE_FACTOR[c["type"]]),
+                "qty": item["qty"], "unit_price": price, "amount": price * item["qty"],
                 "created_at": confirmed_at,
             })
         tables["oa_expense_form"].append({
