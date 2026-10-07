@@ -83,6 +83,20 @@ describe("一位業務的詳細", () => {
     expect(totalsLine(repRoute({ stops: mixed }))).toBe("共 18.2 公里 · 路上 1 小時 25 分（估計）")
   })
 
+  it("開車的一天裡有一段機車或走路，出處照那一種寫（Google 要求註明測試版）；兩種都有寫走路", () => {
+    const scooter = [teamStop(1, "todo"), teamStop(2, "todo", { travel_mode: "scooter" })]
+    expect(totalsLine(repRoute({ estimated: false, stops: scooter }))).toBe(
+      "共 18.2 公里 · 路上 1 小時 25 分（Google 機車路線測試版）"
+    )
+    const both = [teamStop(1, "todo", { travel_mode: "scooter" }), teamStop(2, "todo", { travel_mode: "walk" })]
+    expect(totalsLine(repRoute({ estimated: false, stops: both }))).toBe(
+      "共 18.2 公里 · 路上 1 小時 25 分（Google 走路路線測試版）"
+    )
+    // 走完的段不算
+    const done = [teamStop(1, "done", { travel_mode: "walk" }), teamStop(2, "todo")]
+    expect(totalsLine(repRoute({ estimated: false, stops: done }))).toBe("共 18.2 公里 · 開車 1 小時 25 分（Google 路線）")
+  })
+
   it("約的時間", () => {
     expect(windowLabel(teamStop(1, "todo"))).toBeNull()
     expect(windowLabel(teamStop(1, "todo", { window_kind: "at", window_time: "11:00" }))).toBe("約 11:00 到")

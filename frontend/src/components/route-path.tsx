@@ -67,6 +67,9 @@ export function RoutePath({
     }
   }, [opened])
 
+  // 選單開著時 onPickMode 不見了（忙著處理急件鈕、或重新載入退回快取的路線）：選了也沒人接，乾脆收起來
+  if (!onPickMode && opened?.kind === "leg") setOpened(null)
+
   function toggle(kind: "stop" | "leg", id: string) {
     setOpened((now) => (now?.kind === kind && now.id === id ? null : { kind, id }))
   }
@@ -88,6 +91,7 @@ export function RoutePath({
               onToggle={onPickMode ? () => toggle("leg", stop.customer_id) : undefined}
               menu={(id) => (
                 <LegMenu
+                  key={`${from}-${stop.customer_id}`}
                   id={id}
                   from={from}
                   to={stop.customer_id}
@@ -130,8 +134,8 @@ export function RoutePath({
         </span>
         <p className="mt-1 text-sm font-semibold">{finished ? `今天 ${stops.length} 站都跑完了` : "收工"}</p>
         {/* 還沒走的段只要有一段是 Google 算的就標出處（Google 的使用條款，不翻譯） */}
-        {/* 沒有辦公室起點時第一段是同一點到同一點，不是 Google 算的，不算 */}
-        {stops.some((stop, index) => stop.status !== "done" && !stop.travel_estimated && (index > 0 || officeStart)) && (
+        {/* 同一點到同一點的段（兩站同座標、沒有辦公室起點的第一段）0 公里、不是 Google 算的，不算 */}
+        {stops.some((stop) => stop.status !== "done" && !stop.travel_estimated && (stop.travel_km ?? 0) > 0) && (
           <p className="font-[Roboto,sans-serif] text-[0.6875rem] text-muted-foreground">Google Maps</p>
         )}
         {bearAt === null && <Bear finished={finished} />}

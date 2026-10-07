@@ -30,6 +30,8 @@ export function MapStopCard({
   const done = stop.status === "done"
   // 這一段實際的交通方式；找不到那一站時用整天的預設
   const legMode = detail?.travel_mode ?? mode
+  // 估不估算也看這一段自己（整條路線有一段是估算，不代表每一段都是）；找不到那一站時用整條路線的
+  const legEstimated = detail?.travel_estimated ?? estimated
   return (
     <div className={cn("flex items-center gap-3 rounded-2xl border-2 bg-card p-3 shadow-lip", className)}>
       <div className="min-w-0 flex-1">
@@ -57,7 +59,7 @@ export function MapStopCard({
                     <span className="whitespace-nowrap">{` · ${TRAVEL_MODE_LABEL[legMode]}約 ${detail.travel_minutes} 分`}</span>
                     <wbr />
                     <span className="whitespace-nowrap">
-                      <DriveSource estimated={estimated} />
+                      <DriveSource estimated={legEstimated} />
                     </span>
                   </>
                 )}
@@ -65,7 +67,7 @@ export function MapStopCard({
             )}
           </p>
         )}
-        {(legMode === "scooter" || legMode === "walk") && !estimated && (
+        {(legMode === "scooter" || legMode === "walk") && !legEstimated && (
           <p className="mt-0.5 text-[0.6875rem] text-muted-foreground">
             {legMode === "walk" ? "Google 的走路路線是測試版，可能少了部分步道" : "Google 的機車路線是測試版，可能少了部分小路"}
           </p>

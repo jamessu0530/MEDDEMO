@@ -69,6 +69,17 @@ describe("MapStopCard", () => {
     expect(html).toContain("Google 的走路路線是測試版")
   })
 
+  it("這一段自己不是估算、整條路線有一段是估算：照這一段寫 Google Maps，走路的測試版提醒也在", () => {
+    const html = render(pin(3, "next"), detail({ travel_mode: "walk", travel_estimated: false }), true, "drive")
+    expect(html).toContain("Google Maps")
+    expect(html).not.toContain("（估計）")
+    expect(html).toContain("Google 的走路路線是測試版")
+    // 反過來：這一段是估算，整條路線不是
+    const est = render(pin(3, "next"), detail({ travel_mode: "walk", travel_estimated: true }), false, "drive")
+    expect(est).toContain("（估計）")
+    expect(est).not.toContain("測試版")
+  })
+
   it("搭大眾運輸：寫大眾運輸約幾分、導航開大眾運輸", () => {
     const html = render(pin(3, "next"), detail({ travel_minutes: 28 }), false, "transit")
     expect(html).toContain("大眾運輸約 28 分")

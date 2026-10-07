@@ -57,12 +57,20 @@ export function formatDriveTime(minutes: number) {
   return rest ? `${hours} 小時 ${rest} 分` : `${hours} 小時`
 }
 
+/** 出處照哪一種交通方式寫：還沒跑的段只要有走路或機車（Google 的測試版，要註明）就用那一種，兩種都有寫走路；否則照整天的預設 */
+function sourceMode(route: RepRoute) {
+  const open = route.stops.filter((stop) => stop.status !== "done")
+  if (open.some((stop) => stop.travel_mode === "walk")) return "walk"
+  if (open.some((stop) => stop.travel_mode === "scooter")) return "scooter"
+  return route.travel_mode
+}
+
 /** 詳細頁地圖下面那一行：「共 18.2 公里 · 機車 1 小時 25 分（Google 機車路線測試版）」或「（估計）」 */
 export function totalsLine(route: RepRoute) {
   // 還沒跑的站全部用整天的預設就寫那種交通方式，有任何一段不一樣就只寫「路上」
   const mixed = route.stops.some((stop) => stop.status !== "done" && stop.travel_mode !== route.travel_mode)
   const mode = mixed ? "路上" : TRAVEL_MODE_LABEL[route.travel_mode]
-  return `共 ${route.travel_km} 公里 · ${mode} ${formatDriveTime(route.travel_minutes)}${routeSource(route.travel_mode, route.estimated)}`
+  return `共 ${route.travel_km} 公里 · ${mode} ${formatDriveTime(route.travel_minutes)}${routeSource(sourceMode(route), route.estimated)}`
 }
 
 /** 約的時間：「約 11:00 到」「11:00 以前到」「14:00 以後到」 */

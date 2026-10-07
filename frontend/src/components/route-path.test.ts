@@ -48,11 +48,18 @@ describe("RoutePath 的出處與舊資料", () => {
     )
   })
 
+  it("0 公里的段（兩站同一個座標）不算 Google 的", () => {
+    expect(render([stop("a", "next", { travel_estimated: false, travel_km: 0 })])).not.toContain("Google Maps")
+  })
+
   it("沒有辦公室起點時，第一段不算 Google 的", () => {
-    const stops = [stop("a", "next", { travel_estimated: false }), stop("b", "todo", { travel_estimated: true })]
+    // 沒有辦公室的第一段是同一點到同一點：0 公里、後端標成不是估算
+    const stops = [stop("a", "next", { travel_estimated: false, travel_km: 0 }), stop("b", "todo", { travel_estimated: true })]
     const html = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(RoutePath, { stops, officeStart: false })))
     expect(html).not.toContain("Google Maps")
-    expect(render(stops)).toContain("Google Maps")
+    // 第二段有公里數、不是估算：照樣標
+    const second = [stops[0], stop("b", "todo", { travel_estimated: false })]
+    expect(renderToStaticMarkup(createElement(MemoryRouter, null, createElement(RoutePath, { stops: second, officeStart: false })))).toContain("Google Maps")
   })
 
   it("站沒有 travel_mode（舊快取）時不丟錯，寫開車", () => {
