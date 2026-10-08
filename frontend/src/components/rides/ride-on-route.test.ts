@@ -110,6 +110,12 @@ describe("RideOnRoute", () => {
 
   it("要自動騎這一段時，開始騎之前先藏起來（減少動態效果時不藏，直接停在這裡）", () => {
     expect(render({ autoPlay: true })).toContain("motion-safe:opacity-0")
+    // 藏起來時不能聚焦、不被讀出來
+    const openTag = (html: string) => html.slice(0, html.indexOf(">"))
+    expect(openTag(render({ autoPlay: true }))).toContain('aria-hidden="true"')
+    expect(openTag(render({ autoPlay: true }))).toContain('tabindex="-1"')
+    expect(openTag(render())).not.toContain("aria-hidden")
+    expect(openTag(render())).not.toContain("tabindex")
     expect(render()).not.toContain("opacity-0")
   })
 

@@ -146,16 +146,29 @@ export function RideOnRoute({
     setRiding({ ...points, turn: shouldFlip(points.from, points.to) !== flipped, cross: crossesCity(leg) })
   }
 
-  // 自動播：等墨退掉、把這一列捲到畫面中間、等捲動停了再騎。條件不成立（切到地圖、開始存檔）或換了一段就不等了
+  // 自動播：等墨退掉、把這一列捲到畫面中間、等捲動停了再騎。條件不成立（切到地圖、開始存檔）或換了一段就不等了；
+  // 頁面在背景（document.hidden）就等回到前景再開始，看不到的時候不記播過、不送記錄。
+  // 正在騎的時候不排（begin 會被鎖擋掉），等這一段播完（riding 回到 null）再看還要不要播：
+  // 播的途中 leg 換了（from 變、to 不變），播完才不會一直藏著
   const autoBegin = useEffectEvent(() => begin())
   useEffect(() => {
-    if (!autoPlay) return
+    if (!autoPlay || started === key || riding) return
     let timer: number | undefined
     let unsubscribe = () => {}
+    let stopWaiting = () => {}
     const go = () => {
       const reduce = reducedMotion()
       buttonRef.current?.parentElement?.scrollIntoView({ block: "center", behavior: reduce ? "auto" : "smooth" })
-      timer = window.setTimeout(() => autoBegin(), reduce ? 0 : SETTLE_MS)
+      timer = window.setTimeout(() => {
+        if (!document.hidden) return autoBegin()
+        const onVisible = () => {
+          if (document.hidden) return
+          stopWaiting()
+          go()
+        }
+        document.addEventListener("visibilitychange", onVisible)
+        stopWaiting = () => document.removeEventListener("visibilitychange", onVisible)
+      }, reduce ? 0 : SETTLE_MS)
     }
     if (ink.phase() === "idle") go()
     else
@@ -166,9 +179,10 @@ export function RideOnRoute({
       })
     return () => {
       unsubscribe()
+      stopWaiting()
       window.clearTimeout(timer)
     }
-  }, [autoPlay, key])
+  }, [autoPlay, key, started, riding])
 
   // 開始騎：畫面換成騎的樣子之後、畫出來之前掛上動畫；播完回到停著的樣子。離開首頁、切到地圖（元件拆掉）就取消，不留殘影
   useLayoutEffect(() => {
@@ -232,6 +246,9 @@ export function RideOnRoute({
       type="button"
       data-ride-park
       aria-label={`${label}，點一下重播這一段`}
+      // 藏起來等著出場的時候不能聚焦、也不被讀出來
+      aria-hidden={waiting || undefined}
+      tabIndex={waiting ? -1 : undefined}
       onClick={begin}
       className={cn(
         "absolute rounded-2xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
