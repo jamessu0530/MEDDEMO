@@ -28,8 +28,8 @@ FLAT_AMOUNT_CHANGE = 0.1
 AR_WATCH_DAYS = 60
 # 《連鎖通路合約條件》：合約到期前 3 個月要啟動續約協商
 CONTRACT_NOTICE_DAYS = 90
-# 摘要最多四句，進門前幾分鐘看得完
-MAX_HIGHLIGHTS = 4
+# 摘要最多五句，進門前幾分鐘看得完（間隔、上次訂的、過期承諾、競品、客訴剛好五句，康泰忠孝店不能被擠掉客訴）
+MAX_HIGHLIGHTS = 5
 # 「上次訂的促銷變了」那句最多列幾項，多的寫「等」；那句的開頭，首頁需立即處理那張卡靠它跳過（today_route._urgent）
 LAST_ORDER_SHORTS = 3
 LAST_ORDER_PREFIX = "上次訂的有"

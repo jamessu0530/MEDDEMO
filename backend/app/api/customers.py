@@ -687,6 +687,9 @@ class OrderPlaced(BaseModel):
 def place_order(session: SessionDep, customer_id: str, quote_no: str, user: CurrentUser):
     """客戶下單了：把這張報價寫成今天的進貨，交易紀錄與應收帳款都寫，報價改成已成交（services/orders.py）。不能復原。"""
     customer, _ = _load(session, customer_id, user, SHARING_LEVEL["quote"])
+    # 跟開報價一樣受模擬系統開關影響：展示「SAP 停機」時成交也寫不進去
+    if writeback.is_mock_down("sap"):
+        raise HTTPException(503, "SAP 暫時連不上，沒有成交，請稍後再試")
     placed = orders.place(session, customer, quote_no)
     if placed is None:
         exists = session.scalar(
@@ -695,7 +698,7 @@ def place_order(session: SessionDep, customer_id: str, quote_no: str, user: Curr
         )
         if not exists:
             raise HTTPException(404, "找不到這張報價")
-        raise HTTPException(409, "這張報價已經成交，或還在等簽核")
+        raise HTTPException(409, "這張報價已經成交、被駁回，或還在等簽核")
     session.commit()
     return OrderPlaced(**dataclasses.asdict(placed))
 

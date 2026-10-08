@@ -29,6 +29,13 @@ def test_profile_shows_the_lengthening_interval_and_open_items(client):
     assert len(profile["open_quotes"]) == 1
 
 
+def test_the_complaint_still_makes_the_brief_when_there_are_five_sentences(client):
+    # 康泰忠孝店有 5 句：間隔、上次訂的、過期承諾、競品、客訴；上限 5 句才不會把客訴擠掉
+    highlights = client.get("/api/customers/C001/profile").json()["highlights"]
+    assert "客訴：補貨延遲三天（10/19）" in highlights
+    assert len(highlights) == 5
+
+
 def test_a_steady_customer_gets_no_interval_alert(client):
     # 明德北投：間隔 34.4 → 36.0 天，變化不到兩成
     profile = client.get("/api/customers/C030/profile").json()

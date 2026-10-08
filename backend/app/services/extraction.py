@@ -152,6 +152,12 @@ def validate_fields(fields: Any) -> list[str]:
     return [f"{'/'.join(map(str, error.path)) or '欄位'}：{error.message}" for error in validator.iter_errors(fields)]
 
 
+def validate_repeat(value: Any) -> list[str]:
+    """AI 回的「照上次的單」要符合 REPEAT_SCHEMA（缺 delta 這類）才拿去展開，免得悄悄展成錯的單。"""
+    validator = Draft202012Validator(REPEAT_SCHEMA)
+    return [f"{'/'.join(map(str, error.path)) or '照上次'}：{error.message}" for error in validator.iter_errors(value)]
+
+
 def unsourced_fields(fields: dict[str, Any], sources: dict[str, str], transcript: str) -> list[str]:
     """有值卻對不到逐字稿原文的欄位。確認頁會標出來，請業務自己核對。"""
     return [

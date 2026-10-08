@@ -72,7 +72,20 @@ def test_placing_an_order_writes_the_sale_and_the_invoice(tx, api):
         ("HS-FO30", None), ("F749579", "Premium眼藥水(小口)"),
     ]
     # 再按一次不會寫兩次
-    assert api.post(f"/api/customers/C001/quotes/{quote_no}/order").status_code == 409
+    refused = api.post(f"/api/customers/C001/quotes/{quote_no}/order")
+    assert refused.status_code == 409 and refused.json()["detail"] == "這張報價已經成交、被駁回，或還在等簽核"
+
+
+def test_an_order_is_refused_while_sap_is_down(tx, api):
+    quote_no = open_quote(api, tx, [{"sku": "HS-FO30", "qty": 20}])
+    api.put("/api/mock-systems/sap", json={"down": True})
+    try:
+        refused = api.post(f"/api/customers/C001/quotes/{quote_no}/order")
+    finally:
+        api.put("/api/mock-systems/sap", json={"down": False})
+    assert refused.status_code == 503 and "沒有成交" in refused.json()["detail"]
+    assert tx.scalar(select(SapQuotationDraft.status).where(SapQuotationDraft.quote_no == quote_no).limit(1)) == "draft"
+    assert api.post(f"/api/customers/C001/quotes/{quote_no}/order").status_code == 200
 
 
 def test_only_draft_quotes_can_be_ordered(tx, api, auth):

@@ -294,7 +294,7 @@ export function getLastOrder(id: string, signal?: AbortSignal) {
 
 export type OrderPlaced = { order_no: string; date: string; amount: number }
 
-/** 客戶下單了：報價寫成今天的進貨與應收帳款，不能復原；已經成交或還在等簽核回 409 */
+/** 客戶下單了：報價寫成今天的進貨與應收帳款，不能復原；已經成交、被駁回或還在等簽核回 409 */
 export function placeOrder(id: string, quoteNo: string) {
   return request<OrderPlaced>(
     `/api/customers/${encodeURIComponent(id)}/quotes/${encodeURIComponent(quoteNo)}/order`,

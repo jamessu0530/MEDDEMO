@@ -407,12 +407,19 @@ function PendingItems({ profile, onOrder }: { profile: CustomerProfile; onOrder:
             </p>
             <span className={cn("shrink-0 text-xs", row.tone === "alert" ? "text-destructive" : "text-muted-foreground")}>{row.meta}</span>
           </div>
-          {row.quote?.status === "draft" && (
-            <Button variant="outline" className="ml-5 h-11 self-start" onClick={() => onOrder(row.quote!)}>
-              客戶下單了
-            </Button>
+          {row.quote && (
+            <div className="ml-5 flex items-center gap-3">
+              <Button
+                variant="outline"
+                className="h-11 shrink-0"
+                disabled={row.quote.status !== "draft"}
+                onClick={() => onOrder(row.quote!)}
+              >
+                客戶下單了
+              </Button>
+              {row.quote.status === "pending_approval" && <p className="text-xs text-muted-foreground">核准後才能成交</p>}
+            </div>
           )}
-          {row.quote?.status === "pending_approval" && <p className="ml-5 text-xs text-muted-foreground">核准後才能成交</p>}
         </div>
       ))}
     </section>

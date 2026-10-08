@@ -74,6 +74,17 @@ def test_same_as_last_time_for_a_customer_who_never_ordered(client, providers, m
     assert visit["error_message"] == repeat_order.EMPTY_NOTE and visit["repeat_last"]["empty"] is True
 
 
+def test_a_malformed_repeat_from_the_ai_falls_into_the_failure_path(client, providers):
+    # 相對加減少了 delta：不能讓它悄悄當成 0 展開
+    visit = draft(client, providers, RepeatExtractor({
+        "all": True, "except_skus": [],
+        "relative": [{"product_text": "Premium 小口", "sku": "F749579", "promo_code": None}],
+    }))
+    assert visit["error_message"].startswith("欄位沒有自動整理出來")
+    assert "relative/0" in visit["error_message"] and "delta" in visit["error_message"]  # 驗證訊息，不是展開時才炸的 KeyError
+    assert visit["repeat_last"] is None and visit["fields"]["intent"] is None
+
+
 def test_no_snapshot_without_same_as_last_time_and_it_is_rebuilt_on_retyping(client, providers):
     visit = draft(client, providers, RepeatExtractor({"all": True, "except_skus": [], "relative": []}))
     assert visit["repeat_last"]["all"] is True

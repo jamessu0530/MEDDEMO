@@ -10,7 +10,9 @@ from sqlalchemy.orm import Session
 from app.db import session_factory
 from app.models import Customer, Visit, VisitAudio
 from app.services import last_order, repeat_order
-from app.services.extraction import drop_unknown_packs, empty_fields, get_extractor, product_hints, validate_fields
+from app.services.extraction import (
+    drop_unknown_packs, empty_fields, get_extractor, product_hints, validate_fields, validate_repeat,
+)
 from app.services.promo_packs import current_packs
 from app.services.transcription import get_transcriber, visit_hotwords
 from app.tasks import set_progress
@@ -60,6 +62,8 @@ def _extract(session: Session, visit: Visit) -> None:
         errors = validate_fields(extraction.fields)
         if errors:
             raise ValueError("；".join(errors))
+        if repeat_errors := validate_repeat(extraction.repeat_last):
+            raise ValueError("；".join(repeat_errors))
         # AI 抽出的口對不上這一期，就清掉讓業務在確認頁選
         fields = {**extraction.fields, "intent": drop_unknown_packs(extraction.fields["intent"], packs)}
         sources = {key: quote for key, quote in extraction.sources.items() if quote and fields.get(key) is not None}

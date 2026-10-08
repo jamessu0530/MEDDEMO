@@ -367,8 +367,8 @@ class Visit(Base):
     client_ref: Mapped[str | None] = mapped_column(unique=True)
     # 轉文字或整理欄位失敗的原因，畫面上會顯示，並提供手動接手的方式
     error_message: Mapped[str | None]
-    # 講了「跟上次一樣」或跟上次比的加減時，展開那一刻的快照（services/repeat_order.py）。這次拜訪確認後
-    # 也會開一張報價，「上次」就變成這一張，所以不能每次重算
+    # 講了「跟上次一樣」或跟上次比的加減時，展開那一刻的快照（services/repeat_order.py）。快照要留著，因為報價
+    # 之後按了客戶下單了，「上次訂的」就變了（這次拜訪的報價成交後，「上次」就是它），不能每次重算
     repeat_last: Mapped[dict[str, Any] | None]
 
 
