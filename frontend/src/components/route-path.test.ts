@@ -93,19 +93,55 @@ describe("RoutePath", () => {
     expect(html.match(/aria-expanded="false"/g)).toHaveLength(8)
   })
 
-  it("熊熊滾站在路旁，點了進問答；還沒跑完是待機", () => {
-    const html = render(day)
-    expect(html).toContain('href="/ask"')
-    expect(html).toContain('aria-label="問熊熊滾（問答）"')
-    expect(html).toContain("mascot-idle")
+  it("熊熊滾騎著到下一站那一段的座騎停在下一站旁邊，點了重播；不再連到問答", () => {
+    const stops = [
+      stop("a", "done", { city: "新北市" }),
+      stop("b", "done", { city: "新北市" }),
+      stop("c", "next", { city: "新竹市", travel_mode: "scooter" }),
+      stop("d", "todo", { city: "新竹市" }),
+    ]
+    const html = render(stops)
+    expect(html.match(/data-ride-park/g)).toHaveLength(1)
+    expect(html).toContain('data-city="新竹市"')
+    expect(html).toContain('data-mode="scooter"')
+    expect(html).toMatch(/aria-label="熊熊滾騎著貢丸的機車，點一下重播這一段"/)
+    expect(html).not.toContain('href="/ask"')
+    expect(html).not.toContain("mascot-yay")
     expect(html).toContain(">收工<")
   })
 
-  it("全部跑完時終點寫跑完幾站，熊熊滾跳起來", () => {
+  it("座騎停在下一站那一列", () => {
+    const html = render(day)
+    // 座騎在下一站（c）的圓鈕之後、下一顆圓鈕（d）之前
+    const ride = html.indexOf("data-ride-park")
+    expect(ride).toBeGreaterThan(html.indexOf('aria-label="第 3 站 客戶c，下一站"'))
+    expect(ride).toBeLessThan(html.indexOf('aria-label="第 4 站 客戶d，待拜訪"'))
+  })
+
+  it("改了到下一站那段的交通方式，停著的座騎跟著換", () => {
+    const html = render([stop("a", "done"), stop("b", "next", { travel_mode: "walk" })])
+    expect(html).toContain('data-mode="walk"')
+    expect(html).toContain("熊熊滾騎著小籠包的走路")
+  })
+
+  it("沒有站就沒有座騎", () => {
+    expect(render([])).not.toContain("data-ride-park")
+  })
+
+  it("全部跑完時終點寫跑完幾站，熊熊滾跳起來，不騎座騎", () => {
     const html = render([stop("a", "done"), stop("b", "done"), stop("c", "done")])
     expect(html).toContain("今天 3 站都跑完了")
     expect(html).toContain("mascot-yay")
+    expect(html).not.toContain("data-ride-park")
+    expect(html).not.toContain('href="/ask"')
     expect(html).not.toContain(">出發<")
+  })
+
+  it("收 startCity（第一段的出發縣市）", () => {
+    const html = renderToStaticMarkup(
+      createElement(MemoryRouter, null, createElement(RoutePath, { stops: [stop("a", "next", { city: "新北市" })], startCity: "台北市" }))
+    )
+    expect(html).toContain('data-city="新北市"')
   })
 
   it("有約的時間又趕不上，標籤第二行改成紅字會晚到幾分", () => {

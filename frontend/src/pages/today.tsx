@@ -353,6 +353,7 @@ export function TodayPage() {
                   stops={route.stops}
                   dayMode={route.travel_mode}
                   officeStart={route.office_start}
+                  startCity={route.start_city}
                   onPickMode={state.status === "ready" && !state.cached && !busy ? pickMode : undefined}
                 />
               )}

@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react"
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react"
 import { Check, Flag } from "lucide-react"
 import { Link } from "react-router"
 
@@ -6,14 +6,16 @@ import { getNextNotes, type Note } from "@/api/notes"
 import { SIGNAL_LABEL, type RouteSignal, type LegMode, type RouteStop, type TravelMode } from "@/api/route"
 import { Mascot } from "@/components/mascot"
 import { NoteRow } from "@/components/note-row"
+import { RideOnRoute } from "@/components/rides/ride-on-route"
 import { LegChip, LegMenu } from "@/components/route/leg-chip"
 import { buttonVariants } from "@/components/ui/button"
-import { bearStopIndex, labelSide, pathOffset, signalTone, TONE_CLASS } from "@/lib/route-path"
+import { ROUTE_WIDTH } from "@/lib/ride-on-route"
+import { parkedLeg, type Leg } from "@/lib/rides"
+import { HALF_NODE, labelSide, pathOffset, signalTone, TONE_CLASS } from "@/lib/route-path"
 import { legFrom } from "@/lib/travel-mode"
 import { cn } from "@/lib/utils"
 
-// 圓鈕 58×54（跟 Duolingo 一樣略寬），名字離圓鈕 12px
-const HALF_NODE = 29
+// 名字離圓鈕 12px（圓鈕的大小在 lib/route-path.ts）
 const LABEL_GAP = 12
 
 const STATUS_LABEL: Record<RouteStop["status"], string> = { done: "已完成", next: "下一站", todo: "待拜訪" }
@@ -27,7 +29,8 @@ type Opened = { kind: "stop" | "leg"; id: string } | null
 /**
  * 今日路線畫成 Duolingo 那樣的路（docs/superpowers/specs/2026-10-01-duolingo-home-design.md）：
  * 一站一顆厚圓鈕左右蛇行往下，名字標在旁邊空的那一側，下一站上面跳著「出發」；
- * 點圓鈕在底下彈出一張小卡寫為什麼排這家。熊熊滾站在路旁，點了進問答；最後是終點「收工」。
+ * 點圓鈕在底下彈出一張小卡寫為什麼排這家。熊熊滾騎著「到下一站那一段」的座騎停在下一站旁邊，點了重播那一段
+ * （onReplay；騎乘動畫在 components/rides/ride-on-route.tsx）；最後是終點「收工」，全部跑完時熊熊滾在旗子旁跳起來。
  * 每站上面一顆膠囊寫從上一站（第一站從辦公室）怎麼過來，點了換交通方式
  * （docs/superpowers/specs/2026-10-07-ride-vehicles-design.md）；沒給 onPickMode 時膠囊不能點。
  */
@@ -35,17 +38,35 @@ export function RoutePath({
   stops,
   dayMode = "drive",
   officeStart = true,
+  startCity = null,
   onPickMode,
+  onReplay,
 }: {
   stops: RouteStop[]
   dayMode?: TravelMode
   officeStart?: boolean
+  /** 辦公室所在的縣市：第一段的出發縣市 */
+  startCity?: string | null
   onPickMode?: (from: string | null, to: string, mode: LegMode) => void
+  /** 點停著的座騎：重播到下一站那一段 */
+  onReplay?: (leg: Leg) => void
 }) {
   // 同時只開一個：站的小卡或某一段的選單
   const [opened, setOpened] = useState<Opened>(null)
   const finished = stops.length > 0 && stops.every((stop) => stop.status === "done")
-  const bearAt = bearStopIndex(stops)
+  // 停著的座騎是到下一站那一段的；全部跑完或沒有站就沒有
+  const parked = parkedLeg(stops, startCity)
+
+  // 路線的寬：座騎停多寬照它算。伺服器 render、還沒排版時照 390 寬的手機（ROUTE_WIDTH）
+  const listRef = useRef<HTMLOListElement>(null)
+  const [width, setWidth] = useState(ROUTE_WIDTH)
+  useLayoutEffect(() => {
+    const list = listRef.current
+    if (!list || typeof ResizeObserver === "undefined") return
+    const observer = new ResizeObserver(([entry]) => setWidth(entry.contentRect.width))
+    observer.observe(list)
+    return () => observer.disconnect()
+  }, [])
 
   // 開著時：點小卡、選單、圓鈕、膠囊以外的地方、按 Esc 都收起來（點別顆由那一顆自己換）
   useEffect(() => {
@@ -77,7 +98,7 @@ export function RoutePath({
   }
 
   return (
-    <ol aria-label="今日路線" className="flex flex-col pt-2">
+    <ol ref={listRef} aria-label="今日路線" className="flex flex-col pt-2">
       {stops.map((stop, index) => {
         const offset = pathOffset(index)
         const from = legFrom(stops, index)
@@ -116,7 +137,14 @@ export function RoutePath({
                 onToggle={() => toggle("stop", stop.customer_id)}
               />
               <StopLabel stop={stop} offset={offset} />
-              {bearAt === index && <Bear finished={false} />}
+              {parked?.to === stop.customer_id && (
+                <RideOnRoute
+                  leg={parked}
+                  offset={offset}
+                  containerWidth={width}
+                  onReplay={onReplay && (() => onReplay(parked))}
+                />
+              )}
               {stopOpen && <StopPopover stop={stop} index={index} offset={offset} />}
             </div>
           </li>
@@ -140,7 +168,7 @@ export function RoutePath({
         {stops.some((stop) => stop.status !== "done" && !stop.travel_estimated && (stop.travel_km ?? 0) > 0) && (
           <p className="font-[Roboto,sans-serif] text-[0.6875rem] text-muted-foreground">Google Maps</p>
         )}
-        {bearAt === null && <Bear finished={finished} />}
+        {finished && <FinishBear />}
       </li>
     </ol>
   )
@@ -326,16 +354,11 @@ function StopNotes({ customerId }: { customerId: string }) {
   )
 }
 
-/** 熊熊滾站在那一列圓鈕的左邊（那一站置中、名字在右，左邊空著）；終點那一列也一樣 */
-function Bear({ finished }: { finished: boolean }) {
+/** 全部跑完：熊熊滾在終點旗子左邊跳起來（只是裝飾；問答從底部分頁進） */
+function FinishBear() {
   return (
-    <Link
-      to="/ask"
-      aria-label="問熊熊滾（問答）"
-      className="absolute -top-3 rounded-2xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-      style={{ right: `calc(50% + ${HALF_NODE + 18}px)` }}
-    >
-      <Mascot state={finished ? "yay" : "idle"} size={72} />
-    </Link>
+    <div aria-hidden className="pointer-events-none absolute -top-3" style={{ right: `calc(50% + ${HALF_NODE + 18}px)` }}>
+      <Mascot state="yay" size={72} />
+    </div>
   )
 }
