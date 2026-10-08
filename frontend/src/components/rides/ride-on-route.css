@@ -1,7 +1,7 @@
 /*
  * 路線上停著的座騎（ride-on-route.tsx）：慢慢上下浮。class 以 ride-park- 開頭，只用 transform；減少動態效果時不浮。
  * 浮做在包住座騎的那一層 span 上，不做在 SVG 上（座騎裡的位置與左右翻是 SVG 的 transform 屬性，CSS 的 transform 會把它蓋掉），
- * 也不做在外層按鈕上（那一層留給騎乘動畫用 Web Animations API 移動，兩個 transform 會互相蓋掉）。
+ * 也不做在外層按鈕上（那一層留給騎乘動畫用 Web Animations API 移動，兩個 transform 會互相蓋掉）。騎的時候拿掉這個 class，到站才又浮起來。
  */
 .ride-park-float { animation: ride-park-float 1.6s ease-in-out infinite alternate; }
 @keyframes ride-park-float {

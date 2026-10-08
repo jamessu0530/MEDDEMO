@@ -29,8 +29,9 @@ type Opened = { kind: "stop" | "leg"; id: string } | null
 /**
  * 今日路線畫成 Duolingo 那樣的路（docs/superpowers/specs/2026-10-01-duolingo-home-design.md）：
  * 一站一顆厚圓鈕左右蛇行往下，名字標在旁邊空的那一側，下一站上面跳著「出發」；
- * 點圓鈕在底下彈出一張小卡寫為什麼排這家。熊熊滾騎著「到下一站那一段」的座騎停在下一站旁邊，點了重播那一段
- * （onReplay；騎乘動畫在 components/rides/ride-on-route.tsx）；最後是終點「收工」，全部跑完時熊熊滾在旗子旁跳起來。
+ * 點圓鈕在底下彈出一張小卡寫為什麼排這家。熊熊滾騎著「到下一站那一段」的座騎停在下一站旁邊：autoRide 時從上一站騎過來，
+ * 點了重播那一段（騎乘動畫在 components/rides/ride-on-route.tsx，開始騎時叫 onRide）；
+ * 最後是終點「收工」，全部跑完時熊熊滾在旗子旁跳起來。
  * 每站上面一顆膠囊寫從上一站（第一站從辦公室）怎麼過來，點了換交通方式
  * （docs/superpowers/specs/2026-10-07-ride-vehicles-design.md）；沒給 onPickMode 時膠囊不能點。
  */
@@ -40,7 +41,8 @@ export function RoutePath({
   officeStart = true,
   startCity = null,
   onPickMode,
-  onReplay,
+  autoRide = false,
+  onRide,
 }: {
   stops: RouteStop[]
   dayMode?: TravelMode
@@ -48,8 +50,10 @@ export function RoutePath({
   /** 辦公室所在的縣市：第一段的出發縣市 */
   startCity?: string | null
   onPickMode?: (from: string | null, to: string, mode: LegMode) => void
-  /** 點停著的座騎：重播到下一站那一段 */
-  onReplay?: (leg: Leg) => void
+  /** 現在自動騎一次到下一站那一段（首頁決定：路線分頁、連得上、不在存檔中、今天還沒播過） */
+  autoRide?: boolean
+  /** 開始騎到下一站那一段（自動播或點了重播；不能動而直接停好也算）：記播過、送騎過的座騎 */
+  onRide?: (leg: Leg) => void
 }) {
   // 同時只開一個：站的小卡或某一段的選單
   const [opened, setOpened] = useState<Opened>(null)
@@ -141,8 +145,10 @@ export function RoutePath({
                 <RideOnRoute
                   leg={parked}
                   offset={offset}
+                  fromOffset={index > 0 ? pathOffset(index - 1) : null}
                   containerWidth={width}
-                  onReplay={onReplay && (() => onReplay(parked))}
+                  autoPlay={autoRide}
+                  onRide={onRide}
                 />
               )}
               {stopOpen && <StopPopover stop={stop} index={index} offset={offset} />}

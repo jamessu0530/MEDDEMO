@@ -15,6 +15,7 @@ import { Link, useNavigate, useSearchParams } from "react-router"
 
 import { ApiError } from "@/api/client"
 import { getTodayRoute, sendRouteFeedback, setLegMode, type LegMode, type RouteAction, type TodayRoute } from "@/api/route"
+import { sendRides } from "@/api/vehicles"
 import { BottomNav } from "@/components/bottom-nav"
 import { Mascot } from "@/components/mascot"
 import { Notice } from "@/components/notice"
@@ -29,6 +30,8 @@ import { Button, buttonVariants } from "@/components/ui/button"
 import { useAuth } from "@/lib/auth"
 import { formatDate, formatDayLabel } from "@/lib/format"
 import { useUnseenReplies } from "@/lib/manager-replies"
+import { markPlayed, readPlayed } from "@/lib/ride-memory"
+import { legKey, legToPlay, ridesOf, type Leg } from "@/lib/rides"
 import { TRAVEL_MODE_LABEL } from "@/lib/travel-mode"
 import { cn } from "@/lib/utils"
 import { FirstWeekEntry } from "@/pages/first-week"
@@ -57,13 +60,18 @@ export function TodayPage() {
   const [attempt, setAttempt] = useState(0)
   const [busy, setBusy] = useState(false)
   const [hint, setHint] = useState<string | null>(null)
+  // 今天播過哪幾段騎乘動畫（lib/ride-memory.ts，記在 localStorage）：路線載進來時讀，騎了一段就加上去
+  const [played, setPlayed] = useState<{ date: string; keys: Set<string> } | null>(null)
   const unseen = useUnseenReplies()
 
   useEffect(() => {
     if (!userId) return
     const controller = new AbortController()
     getTodayRoute(userId, controller.signal)
-      .then(({ route, cached }) => setState({ status: "ready", route, cached }))
+      .then(({ route, cached }) => {
+        setState({ status: "ready", route, cached })
+        setPlayed({ date: route.date, keys: readPlayed(route.date) })
+      })
       .catch((error: unknown) => {
         if (controller.signal.aborted) return
         if (error instanceof ApiError && error.status === 403) setState({ status: "denied", message: error.message })
@@ -106,6 +114,30 @@ export function TodayPage() {
 
   const route = state.status === "ready" ? state.route : null
   const urgent = route?.urgent ?? null
+
+  // 熊熊滾自動騎一次到下一站那段：路線分頁、連得上（不是手機上的舊行程）、不在存檔中、今天還沒播過這一段
+  // （剛完成一站是「最後完成的站 → 下一站」，今天第一次打開是「辦公室 → 第 1 站」，lib/rides.ts 的 legToPlay）
+  const autoRide =
+    state.status === "ready" &&
+    !state.cached &&
+    !onMap &&
+    !busy &&
+    played?.date === state.route.date &&
+    legToPlay(state.route.stops, {
+      played: played.keys,
+      officeStart: state.route.office_start,
+      startCity: state.route.start_city,
+    }) !== null
+
+  // 開始騎一段（自動播、點了重播；減少動態效果或量不到位置而直接停好也算）：記播過，送出騎過的座騎（每騎一次送一次）
+  function recordRide(leg: Leg) {
+    if (!route) return
+    const date = route.date
+    const key = legKey(leg)
+    markPlayed(date, key)
+    setPlayed((now) => ({ date, keys: new Set([...(now?.date === date ? now.keys : []), key]) }))
+    void sendRides(ridesOf(leg))
+  }
 
   // 記在網址上：從客戶檔案按返回，回來還是地圖。按了切換才滑動，一打開頁面不滑
   function showView(view: "route" | "map") {
@@ -355,6 +387,8 @@ export function TodayPage() {
                   officeStart={route.office_start}
                   startCity={route.start_city}
                   onPickMode={state.status === "ready" && !state.cached && !busy ? pickMode : undefined}
+                  autoRide={autoRide}
+                  onRide={recordRide}
                 />
               )}
             </div>

@@ -124,6 +124,13 @@ describe("RoutePath", () => {
     expect(html).toContain("熊熊滾騎著小籠包的走路")
   })
 
+  it("要自動騎到下一站時，停著的座騎先藏起來，等一下從上一站騎過來", () => {
+    const stops = [stop("a", "done"), stop("b", "next")]
+    const auto = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(RoutePath, { stops, autoRide: true })))
+    expect(auto).toContain("motion-safe:opacity-0")
+    expect(render(stops)).not.toContain("motion-safe:opacity-0")
+  })
+
   it("沒有站就沒有座騎", () => {
     expect(render([])).not.toContain("data-ride-park")
   })
