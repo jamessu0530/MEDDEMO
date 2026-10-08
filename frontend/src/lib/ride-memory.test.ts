@@ -75,4 +75,16 @@ describe("還沒送出去的騎乘記錄", () => {
     storage.data.set("meddemo:rides-queue", JSON.stringify([1, { city: "台北市", mode: "drive" }]))
     expect(takeQueuedRides()).toEqual([{ city: "台北市", mode: "drive" }])
   })
+
+  it("縣市或交通方式不合法的項目被丟掉", () => {
+    storage.data.set(
+      "meddemo:rides-queue",
+      JSON.stringify([
+        { city: "火星", mode: "drive" },
+        { city: "台北市", mode: "rocket" },
+        { city: "新竹市", mode: "walk" },
+      ])
+    )
+    expect(takeQueuedRides()).toEqual([{ city: "新竹市", mode: "walk" }])
+  })
 })

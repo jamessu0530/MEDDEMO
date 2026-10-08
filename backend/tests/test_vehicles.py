@@ -1,9 +1,12 @@
 """座騎圖鑑：騎過哪些座騎（docs/superpowers/specs/2026-10-07-ride-vehicles-design.md〈座騎圖鑑〉）。"""
 
+import typing
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+from app.api import vehicles as vehicles_api
 from app.main import app
 from app.models import RIDE_CITIES, AppUser, VehicleRide
 from app.services import auth as auth_service
@@ -75,3 +78,7 @@ def test_resetting_the_demo_itinerary_clears_rides(tx):
     itinerary_service.reset_today(tx, "U01")
     assert vehicles.collection(tx, "U01")[0].ridden_at is None
     assert tx.scalar(select(VehicleRide).where(VehicleRide.user_id == "U01")) is None
+
+
+def test_the_api_city_literal_matches_ride_cities():
+    assert typing.get_args(vehicles_api.RideCityName) == RIDE_CITIES

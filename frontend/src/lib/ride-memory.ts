@@ -1,5 +1,6 @@
 import type { LegMode } from "@/api/route"
-import type { RideCity } from "@/lib/rides"
+import { rideCity, type RideCity } from "@/lib/rides"
+import { LEG_MODES } from "@/lib/travel-mode"
 
 /*
  * 播過哪幾段、還沒送出去的騎乘記錄，都記在 localStorage。
@@ -39,9 +40,17 @@ export function markPlayed(date: string, key: string) {
   write(playedKey(date), [...played])
 }
 
+/** 縣市在七個縣市裡、交通方式是四種之一才算（存的東西壞了或舊版留下的，丟掉，免得整批被後端退回） */
 function isQueuedRide(item: unknown): item is QueuedRide {
   const ride = item as Partial<QueuedRide> | null
-  return typeof ride === "object" && ride !== null && typeof ride.city === "string" && typeof ride.mode === "string"
+  return (
+    typeof ride === "object" &&
+    ride !== null &&
+    typeof ride.city === "string" &&
+    rideCity(ride.city) !== null &&
+    typeof ride.mode === "string" &&
+    (LEG_MODES as readonly string[]).includes(ride.mode)
+  )
 }
 
 /** 送不出去的騎乘記錄先存起來，跟已經存的併在一起 */
