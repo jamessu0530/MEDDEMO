@@ -27,6 +27,7 @@ def test_today_has_the_fields_the_home_page_needs(client, auth):
     data = today(client, auth)
     assert data["date"] == "2026-10-28" and data["rep"]["name"] == "林昱辰"
     assert data["version"] == 1 and data["estimated"] is True
+    assert isinstance(data["id"], int)
     assert data["total"] == len(data["stops"]) == 5
     first = data["stops"][0]
     assert set(first) == {
@@ -177,7 +178,8 @@ def test_stale_version_and_unknown_customer(client, auth):
 
 
 def test_it_resets_the_demo_reps_itinerary(client, auth, tx):
-    urgent_id = today(client, auth)["urgent"]["customer_id"]
+    before = today(client, auth)
+    urgent_id, before_id = before["urgent"]["customer_id"], before["id"]
     # 誤判同時留下 route_snooze 與 route_signal_weight 兩張表的紀錄，reset 兩個都要清掉
     feedback = client.post(
         "/api/itinerary/today/feedback",
@@ -202,6 +204,7 @@ def test_it_resets_the_demo_reps_itinerary(client, auth, tx):
 
     rebuilt = today(client, auth)
     assert rebuilt["version"] == 1 and rebuilt["urgent"] is not None
+    assert rebuilt["id"] != before_id
     habits = client.get("/api/route-habits", headers=auth()).json()["habits"]
     assert [(h["text"], h["active"]) for h in habits] == [
         ("康泰連鎖藥局的店排在診所前面", True),

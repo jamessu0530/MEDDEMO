@@ -117,6 +117,7 @@ class Precedence:
 
 @dataclass
 class ItineraryView:
+    id: int  # 行程那一列的編號；重置示範行程會刪掉那一列，下次讀到的是新編號
     date: dt.date
     rep: AppUser
     version: int
@@ -1051,7 +1052,7 @@ def _compose(
     open_ids = set(order)
     urgent = itinerary.urgent if itinerary.urgent and itinerary.urgent["customer_id"] in open_ids else None
     return ItineraryView(
-        date=itinerary.date, rep=rep, version=itinerary.version, done=len(day.done), total=len(stops), urgent=urgent,
+        id=itinerary.id, date=itinerary.date, rep=rep, version=itinerary.version, done=len(day.done), total=len(stops), urgent=urgent,
         stops=stops, travel_minutes=planned.travel_minutes, travel_km=round(total_km, 1),
         finish_time=planned.slots[-1].leave.strftime("%H:%M") if planned.slots else None,
         estimated=matrix.estimated, travel_mode=rep.travel_mode,

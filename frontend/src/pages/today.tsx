@@ -30,7 +30,7 @@ import { Button, buttonVariants } from "@/components/ui/button"
 import { useAuth } from "@/lib/auth"
 import { formatDate, formatDayLabel } from "@/lib/format"
 import { useUnseenReplies } from "@/lib/manager-replies"
-import { markPlayed, readPlayed } from "@/lib/ride-memory"
+import { markPlayed, playedScope, readPlayed } from "@/lib/ride-memory"
 import { legKey, legToPlay, ridesOf, type Leg } from "@/lib/rides"
 import { TRAVEL_MODE_LABEL } from "@/lib/travel-mode"
 import { cn } from "@/lib/utils"
@@ -61,7 +61,9 @@ export function TodayPage() {
   const [busy, setBusy] = useState(false)
   const [hint, setHint] = useState<string | null>(null)
   // 今天播過哪幾段騎乘動畫（lib/ride-memory.ts，記在 localStorage）：路線載進來時讀，騎了一段就加上去
-  const [played, setPlayed] = useState<{ date: string; keys: Set<string> } | null>(null)
+  const [played, setPlayed] = useState<{ scope: string; keys: Set<string> } | null>(null)
+  // 打開首頁補送上次送不出去的騎乘記錄：每次開頁面只送一次（StrictMode 重跑、輪詢重載都不再送）
+  const flushedRides = useRef(false)
   const unseen = useUnseenReplies()
   // 座騎圖鑑收集了幾台（路線最底下的入口）：拿不到就是 null，入口只寫名字
   const [collected, setCollected] = useState<{ ridden: number; total: number } | null>(null)
@@ -82,7 +84,12 @@ export function TodayPage() {
     getTodayRoute(userId, controller.signal)
       .then(({ route, cached }) => {
         setState({ status: "ready", route, cached })
-        setPlayed({ date: route.date, keys: readPlayed(route.date) })
+        const scope = playedScope(route.date, route.id)
+        setPlayed({ scope, keys: readPlayed(scope) })
+        if (!cached && !flushedRides.current) {
+          flushedRides.current = true
+          void sendRides([]).then(() => setCollectedTick((n) => n + 1))
+        }
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted) return
@@ -134,7 +141,7 @@ export function TodayPage() {
     !state.cached &&
     !onMap &&
     !busy &&
-    played?.date === state.route.date &&
+    played?.scope === playedScope(state.route.date, state.route.id) &&
     legToPlay(state.route.stops, {
       played: played.keys,
       officeStart: state.route.office_start,
@@ -144,10 +151,10 @@ export function TodayPage() {
   // 開始騎一段（自動播、點了重播；減少動態效果或量不到位置而直接停好也算）：記播過，送出騎過的座騎（每騎一次送一次）
   function recordRide(leg: Leg) {
     if (!route) return
-    const date = route.date
+    const scope = playedScope(route.date, route.id)
     const key = legKey(leg)
-    markPlayed(date, key)
-    setPlayed((now) => ({ date, keys: new Set([...(now?.date === date ? now.keys : []), key]) }))
+    markPlayed(scope, key)
+    setPlayed((now) => ({ scope, keys: new Set([...(now?.scope === scope ? now.keys : []), key]) }))
     // 送完（含補送先前存起來的）重拿一次圖鑑的數字
     void sendRides(ridesOf(leg)).then(() => setCollectedTick((n) => n + 1))
   }

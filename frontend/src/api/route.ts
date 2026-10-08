@@ -85,6 +85,8 @@ export type LegMode = TravelMode | "walk"
 export type LegOption = { mode: LegMode; minutes: number; km: number; estimated: boolean; found: boolean }
 
 export type TodayRoute = {
+  // 行程的編號：IT 重置示範行程後會換新的（播過的騎乘動畫以它分開）；舊快取沒有就是 0
+  id: number
   date: string
   rep: { id: string; name: string }
   // 每改一次加一；三顆鈕送出時帶著，行程剛被別人改過後端會回 409
@@ -243,6 +245,7 @@ export function normalizeRoute(route: TodayRoute): TodayRoute {
   const dayMode = route.travel_mode ?? "drive"
   return {
     ...route,
+    id: route.id ?? 0,
     travel_mode: dayMode,
     start_city: route.start_city ?? null,
     office_start: route.office_start ?? true,

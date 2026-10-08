@@ -95,6 +95,8 @@ class SkippedHabit(BaseModel):
 
 
 class TodayItinerary(BaseModel):
+    # 行程那一列的編號：重置示範行程後會換新的（前端用來判斷播過的騎乘動畫要不要作廢）
+    id: int
     date: date
     rep: Rep
     version: int
@@ -323,7 +325,7 @@ def _rep_id(user: AppUser) -> str:
 
 def _out(view: service.ItineraryView) -> TodayItinerary:
     return TodayItinerary(
-        date=view.date, rep=Rep(id=view.rep.id, name=view.rep.name, region=view.rep.region),
+        id=view.id, date=view.date, rep=Rep(id=view.rep.id, name=view.rep.name, region=view.rep.region),
         version=view.version, done=view.done, total=view.total,
         urgent=Urgent(**view.urgent) if view.urgent else None,
         stops=[Stop(**dataclasses.asdict(stop)) for stop in view.stops],

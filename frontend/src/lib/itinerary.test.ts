@@ -53,6 +53,7 @@ function stop(id: string, status: RouteStop["status"] = "todo", extra: Partial<R
 
 function route(stops: RouteStop[], extra: Partial<TodayRoute> = {}): TodayRoute {
   return {
+    id: 1,
     date: "2026-10-28",
     rep: { id: "U01", name: "林昱辰" },
     version: 3,

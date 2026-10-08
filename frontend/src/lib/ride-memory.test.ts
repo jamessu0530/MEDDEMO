@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-import { markPlayed, queueRides, readPlayed, takeQueuedRides } from "@/lib/ride-memory"
+import { markPlayed, playedScope, queueRides, readPlayed, takeQueuedRides } from "@/lib/ride-memory"
 
 function fakeStorage() {
   const data = new Map<string, string>()
@@ -9,6 +9,10 @@ function fakeStorage() {
     getItem: (key: string) => data.get(key) ?? null,
     setItem: (key: string, value: string) => void data.set(key, value),
     removeItem: (key: string) => void data.delete(key),
+    get length() {
+      return data.size
+    },
+    key: (index: number) => [...data.keys()][index] ?? null,
   }
 }
 
@@ -31,6 +35,18 @@ describe("播過的段", () => {
     expect([...readPlayed("2026-10-08")]).toEqual(["office>a", "a>b"])
     expect(readPlayed("2026-10-09").size).toBe(0)
     expect(storage.data.has("meddemo:rides-played:2026-10-08")).toBe(true)
+  })
+
+  it("播放記錄跟著行程編號：重置示範行程換了編號就不算播過", () => {
+    markPlayed(playedScope("2026-10-28", 1), "office>a")
+    expect(readPlayed(playedScope("2026-10-28", 1)).size).toBe(1)
+    expect(readPlayed(playedScope("2026-10-28", 2)).size).toBe(0)
+  })
+
+  it("寫新的時只留最近幾份舊的", () => {
+    for (let id = 1; id <= 5; id++) markPlayed(playedScope("2026-10-28", id), "a>b")
+    const keys = [...storage.data.keys()].filter((key) => key.startsWith("meddemo:rides-played:")).sort()
+    expect(keys).toEqual([3, 4, 5].map((id) => `meddemo:rides-played:2026-10-28:${id}`))
   })
 
   it("壞掉的 JSON 當作空的，之後還能寫", () => {
