@@ -34,16 +34,22 @@ export function formatMoney(amount: number) {
   return `NT$${Math.round(amount).toLocaleString("zh-TW")}`
 }
 
-/** 2026-09-15T06:05:00Z → 9/15 14:05，固定用台北時間（不看手機的時區），圖鑑上「第一次騎」用 */
+/**
+ * 2026-09-15T06:05:00Z → 9/15 14:05，固定用台北時間（不看手機的時區），圖鑑上「第一次騎」用。
+ * 自己把月、日、時、分接起來：不同版本的 ICU 在日期與時間之間放的空白不一樣（Node 24.21 放細空白 U+2009），
+ * 直接用 toLocaleString 的話，畫面看起來一樣、字串卻不同
+ */
 export function formatTaipeiDateTime(iso: string) {
-  return new Date(iso).toLocaleString("zh-TW", {
+  const parts = new Intl.DateTimeFormat("zh-TW", {
     timeZone: "Asia/Taipei",
     month: "numeric",
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
     hourCycle: "h23",
-  })
+  }).formatToParts(new Date(iso))
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? ""
+  return `${part("month")}/${part("day")} ${part("hour")}:${part("minute")}`
 }
 
 /** 962.5 → NT$962.5；促銷的平均單價照 CYH 上的寫法，留到小數兩位 */
