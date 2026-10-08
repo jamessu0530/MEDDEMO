@@ -190,3 +190,22 @@ describe("RoutePath", () => {
     expect(html).not.toContain("從辦公室")
   })
 })
+
+describe("RoutePath 的座騎圖鑑入口", () => {
+  const withCollected = (collected?: { ridden: number; total: number } | null) =>
+    renderToStaticMarkup(
+      createElement(MemoryRouter, null, createElement(RoutePath, { stops: [stop("a", "next")], collected }))
+    )
+
+  it("收工旗子下面寫座騎圖鑑 N/28，連到 /rides", () => {
+    const html = withCollected({ ridden: 3, total: 28 })
+    expect(html).toContain("座騎圖鑑 3/28")
+    expect(html).toContain('href="/rides"')
+  })
+
+  it("拿不到數字就只寫座騎圖鑑", () => {
+    const html = withCollected(null)
+    expect(html).toContain("座騎圖鑑")
+    expect(html).not.toContain("座騎圖鑑 ")
+  })
+})

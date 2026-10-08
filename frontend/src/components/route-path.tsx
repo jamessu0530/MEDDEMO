@@ -43,6 +43,7 @@ export function RoutePath({
   onPickMode,
   autoRide = false,
   onRide,
+  collected = null,
 }: {
   stops: RouteStop[]
   dayMode?: TravelMode
@@ -54,6 +55,8 @@ export function RoutePath({
   autoRide?: boolean
   /** 開始騎到下一站那一段（自動播或點了重播；不能動而直接停好也算）：記播過、送騎過的座騎 */
   onRide?: (leg: Leg) => void
+  /** 座騎圖鑑收集了幾台（首頁拿；拿不到是 null，入口就只寫名字） */
+  collected?: { ridden: number; total: number } | null
 }) {
   // 同時只開一個：站的小卡或某一段的選單
   const [opened, setOpened] = useState<Opened>(null)
@@ -175,6 +178,9 @@ export function RoutePath({
           <p className="font-[Roboto,sans-serif] text-[0.6875rem] text-muted-foreground">Google Maps</p>
         )}
         {finished && <FinishBear />}
+        <Link to="/rides" className="text-xs font-semibold text-primary">
+          座騎圖鑑{collected && ` ${collected.ridden}/${collected.total}`}
+        </Link>
       </li>
     </ol>
   )

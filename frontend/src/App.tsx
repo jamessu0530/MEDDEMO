@@ -30,6 +30,7 @@ import { OAuthCallbackPage } from "@/pages/oauth-callback"
 import { LoginPage } from "@/pages/login"
 import { PrivacyPage } from "@/pages/privacy"
 import { PromotionsPage } from "@/pages/promotions"
+import { RidesPage } from "@/pages/rides"
 import { RegisterPage } from "@/pages/register"
 import { ManagerPage } from "@/pages/manager"
 import { MethodsPage } from "@/pages/methods"
@@ -177,6 +178,8 @@ export default function App() {
             <Route path="/promotions" element={<PromotionsPage />} />
             {/* 方法卡：主管寫的做法，登入的人都看得到 */}
             <Route path="/methods" element={<MethodsPage />} />
+            {/* 座騎圖鑑：熊熊滾騎過的座騎；主管與 IT 打開會看到後端的說明 */}
+            <Route path="/rides" element={<RidesPage />} />
             {/* 語音併進問答頁了，舊書籤與導覽說明還指得到這個網址 */}
             <Route path="/voice" element={<Navigate to="/ask" replace />} />
             <Route path="/customers/:customerId" element={<CustomerPage />} />

@@ -34,6 +34,18 @@ export function formatMoney(amount: number) {
   return `NT$${Math.round(amount).toLocaleString("zh-TW")}`
 }
 
+/** 2026-09-15T06:05:00Z → 9/15 14:05，固定用台北時間（不看手機的時區），圖鑑上「第一次騎」用 */
+export function formatTaipeiDateTime(iso: string) {
+  return new Date(iso).toLocaleString("zh-TW", {
+    timeZone: "Asia/Taipei",
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  })
+}
+
 /** 962.5 → NT$962.5；促銷的平均單價照 CYH 上的寫法，留到小數兩位 */
 export function formatUnitPrice(amount: number) {
   return `NT$${amount.toLocaleString("zh-TW", { maximumFractionDigits: 2 })}`

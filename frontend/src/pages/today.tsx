@@ -15,7 +15,7 @@ import { Link, useNavigate, useSearchParams } from "react-router"
 
 import { ApiError } from "@/api/client"
 import { getTodayRoute, sendRouteFeedback, setLegMode, type LegMode, type RouteAction, type TodayRoute } from "@/api/route"
-import { sendRides } from "@/api/vehicles"
+import { getVehicles, sendRides } from "@/api/vehicles"
 import { BottomNav } from "@/components/bottom-nav"
 import { Mascot } from "@/components/mascot"
 import { Notice } from "@/components/notice"
@@ -63,6 +63,18 @@ export function TodayPage() {
   // 今天播過哪幾段騎乘動畫（lib/ride-memory.ts，記在 localStorage）：路線載進來時讀，騎了一段就加上去
   const [played, setPlayed] = useState<{ date: string; keys: Set<string> } | null>(null)
   const unseen = useUnseenReplies()
+  // 座騎圖鑑收集了幾台（路線最底下的入口）：拿不到就是 null，入口只寫名字
+  const [collected, setCollected] = useState<{ ridden: number; total: number } | null>(null)
+  const [collectedTick, setCollectedTick] = useState(0)
+
+  useEffect(() => {
+    if (!userId) return
+    const controller = new AbortController()
+    getVehicles(controller.signal)
+      .then(({ ridden, total }) => setCollected({ ridden, total }))
+      .catch(() => {})
+    return () => controller.abort()
+  }, [userId, collectedTick])
 
   useEffect(() => {
     if (!userId) return
@@ -136,7 +148,8 @@ export function TodayPage() {
     const key = legKey(leg)
     markPlayed(date, key)
     setPlayed((now) => ({ date, keys: new Set([...(now?.date === date ? now.keys : []), key]) }))
-    void sendRides(ridesOf(leg))
+    // 送完（含補送先前存起來的）重拿一次圖鑑的數字
+    void sendRides(ridesOf(leg)).then(() => setCollectedTick((n) => n + 1))
   }
 
   // 記在網址上：從客戶檔案按返回，回來還是地圖。按了切換才滑動，一打開頁面不滑
@@ -389,6 +402,7 @@ export function TodayPage() {
                   onPickMode={state.status === "ready" && !state.cached && !busy ? pickMode : undefined}
                   autoRide={autoRide}
                   onRide={recordRide}
+                  collected={collected}
                 />
               )}
             </div>
