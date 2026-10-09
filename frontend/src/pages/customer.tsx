@@ -24,6 +24,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useAuth } from "@/lib/auth"
 import { formatDate, formatMoney } from "@/lib/format"
 import { customerNotFoundText } from "@/lib/scope"
+import { useIsDesktop } from "@/lib/use-media-query"
 import { cn } from "@/lib/utils"
 
 type LoadState =
@@ -46,6 +47,8 @@ const wan = (amount: number) => (amount / 10000).toFixed(1)
 export function CustomerPage() {
   const { customerId = "" } = useParams()
   const navigate = useNavigate()
+  // 電腦版左邊看狀況、右邊做事（docs/superpowers/specs/2026-10-09-desktop-layout-design.md）
+  const desktop = useIsDesktop()
   const { flash, backTo = "/" } = (useLocation().state as CustomerLocationState | null) ?? {}
   const user = useAuth()?.user
   const [state, setState] = useState<LoadState>({ status: "loading" })
@@ -154,6 +157,67 @@ export function CustomerPage() {
 
   const { profile } = state
   const { customer, stats } = profile
+  const toRecord = () => navigate(`/customers/${customer.id}/record`)
+  const toQuote = () => navigate(`/customers/${customer.id}/quote`)
+  const toNegotiation = () => navigate(`/customers/${customer.id}/negotiation`)
+
+  const alerts = (
+    <>
+      {flash && <p className="rounded-xl bg-primary/10 px-3 py-2 text-sm text-primary">{flash}</p>}
+      {notice && <p className="rounded-xl bg-primary/10 px-3 py-2 text-sm text-primary">{notice}</p>}
+      {threadError && <p className="rounded-xl bg-destructive/10 px-3 py-2 text-sm text-destructive">{threadError}</p>}
+      {/* IT 可以把這家交給別的業務；換完重新載入，負責人就是新的那位 */}
+      {user?.role === "it" && <ReassignOwner customer={customer} onDone={() => setAttempt((n) => n + 1)} />}
+    </>
+  )
+  const brief = (
+    <section className="rounded-2xl border-2 border-primary/20 bg-primary/10 p-4 shadow-lip-primary-soft">
+      <p className="text-xs font-semibold tracking-wide text-primary">進門前三分鐘</p>
+      <ul className="mt-2 flex list-disc flex-col gap-1.5 pl-4 text-sm leading-relaxed">
+        {profile.highlights.map((line) => (
+          <li key={line}>{line}</li>
+        ))}
+      </ul>
+    </section>
+  )
+  const nextNotes = <NextNotes customerId={customer.id} customerName={customer.name} today={profile.today} />
+  // 跟著整頁重新載入：成交之後「上次」就是剛成交的那張
+  const lastOrderSection = <LastOrderSection key={attempt} customerId={customer.id} />
+  const numbers = (
+    <>
+      <section className="grid grid-cols-3 gap-2">
+        <StatCard label="近 3 月進貨" value={wan(stats.amount_last_90d)} unit="萬" note={amountNote(stats)} />
+        <StatCard
+          label="進貨間隔"
+          value={stats.interval_last_90d === null ? "—" : Math.round(stats.interval_last_90d)}
+          unit="天"
+          tone={stats.interval_alert ? "alert" : undefined}
+          note={stats.interval_before === null ? undefined : `之前 ${Math.round(stats.interval_before)} 天`}
+        />
+        <StatCard
+          label="帳齡"
+          value={stats.ar_max_age_days ?? "—"}
+          unit="天"
+          tone={arTone(stats.ar_max_age_days)}
+          note={`未收 ${wan(stats.ar_outstanding)} 萬`}
+        />
+      </section>
+
+      <IntervalChart intervals={profile.intervals} alert={stats.interval_alert} />
+    </>
+  )
+  const contractRow = contract?.customerId === customer.id && <ContractRow customerId={customer.id} contract={contract.data} />
+  const pendingItems = (
+    <PendingItems
+      profile={profile}
+      onOrder={(quote) => {
+        setOrderError(null)
+        setOrdering(quote)
+      }}
+    />
+  )
+  const competitorList = <Competitors competitors={profile.competitors} />
+
   return (
     <div className="flex min-h-svh flex-col">
       <PageHeader
@@ -172,54 +236,50 @@ export function CustomerPage() {
           </button>
         }
       />
-      <main className="flex flex-1 flex-col gap-4 px-4 pt-4 pb-28">
-        {flash && <p className="rounded-xl bg-primary/10 px-3 py-2 text-sm text-primary">{flash}</p>}
-        {notice && <p className="rounded-xl bg-primary/10 px-3 py-2 text-sm text-primary">{notice}</p>}
-        {threadError && <p className="rounded-xl bg-destructive/10 px-3 py-2 text-sm text-destructive">{threadError}</p>}
-        {/* IT 可以把這家交給別的業務；換完重新載入，負責人就是新的那位 */}
-        {user?.role === "it" && <ReassignOwner customer={customer} onDone={() => setAttempt((n) => n + 1)} />}
-        <section className="rounded-2xl border-2 border-primary/20 bg-primary/10 p-4 shadow-lip-primary-soft">
-          <p className="text-xs font-semibold tracking-wide text-primary">進門前三分鐘</p>
-          <ul className="mt-2 flex list-disc flex-col gap-1.5 pl-4 text-sm leading-relaxed">
-            {profile.highlights.map((line) => (
-              <li key={line}>{line}</li>
-            ))}
-          </ul>
-        </section>
-
-        <NextNotes customerId={customer.id} customerName={customer.name} today={profile.today} />
-        {/* 跟著整頁重新載入：成交之後「上次」就是剛成交的那張 */}
-        <LastOrderSection key={attempt} customerId={customer.id} />
-
-        <section className="grid grid-cols-3 gap-2">
-          <StatCard label="近 3 月進貨" value={wan(stats.amount_last_90d)} unit="萬" note={amountNote(stats)} />
-          <StatCard
-            label="進貨間隔"
-            value={stats.interval_last_90d === null ? "—" : Math.round(stats.interval_last_90d)}
-            unit="天"
-            tone={stats.interval_alert ? "alert" : undefined}
-            note={stats.interval_before === null ? undefined : `之前 ${Math.round(stats.interval_before)} 天`}
-          />
-          <StatCard
-            label="帳齡"
-            value={stats.ar_max_age_days ?? "—"}
-            unit="天"
-            tone={arTone(stats.ar_max_age_days)}
-            note={`未收 ${wan(stats.ar_outstanding)} 萬`}
-          />
-        </section>
-
-        <IntervalChart intervals={profile.intervals} alert={stats.interval_alert} />
-        {contract?.customerId === customer.id && <ContractRow customerId={customer.id} contract={contract.data} />}
-        <PendingItems
-          profile={profile}
-          onOrder={(quote) => {
-            setOrderError(null)
-            setOrdering(quote)
-          }}
-        />
-        <Competitors competitors={profile.competitors} />
-      </main>
+      {desktop ? (
+        <main className="flex flex-1 items-start gap-6 px-6 pt-4 pb-10">
+          <div className="flex min-w-0 flex-1 flex-col gap-4">
+            {alerts}
+            {brief}
+            {numbers}
+            {pendingItems}
+            {competitorList}
+          </div>
+          {/* 要動手的放右邊，捲動時固定在頁首下面；太高時自己捲 */}
+          <aside className="sticky top-[4.5rem] flex max-h-[calc(100svh-5.5rem)] w-80 shrink-0 flex-col gap-4 overflow-y-auto px-1 pb-2">
+            <div className="flex flex-col gap-2">
+              <Button className="h-12 gap-1.5" onClick={toRecord}>
+                <Mic className="size-4" />
+                語音記錄
+              </Button>
+              <div className="flex gap-2">
+                <Button variant="outline" className="h-12 flex-1 gap-1.5" onClick={toQuote}>
+                  <FileText className="size-4" />
+                  開報價
+                </Button>
+                <Button variant="outline" className="h-12 flex-1 gap-1.5" onClick={toNegotiation}>
+                  <Handshake className="size-4" />
+                  談判卡
+                </Button>
+              </div>
+            </div>
+            {nextNotes}
+            {lastOrderSection}
+            {contractRow}
+          </aside>
+        </main>
+      ) : (
+        <main className="flex flex-1 flex-col gap-4 px-4 pt-4 pb-28">
+          {alerts}
+          {brief}
+          {nextNotes}
+          {lastOrderSection}
+          {numbers}
+          {contractRow}
+          {pendingItems}
+          {competitorList}
+        </main>
+      )}
 
       <Dialog open={ordering !== null} onOpenChange={(open) => !open && !placing && setOrdering(null)}>
         <DialogContent showCloseButton={false}>
@@ -241,22 +301,24 @@ export function CustomerPage() {
         </DialogContent>
       </Dialog>
 
-      <div className="fixed inset-x-0 bottom-0 z-10 mx-auto flex max-w-md gap-2 border-t bg-card px-4 pt-3 pb-[max(env(safe-area-inset-bottom),0.75rem)]">
-        {/* 每種客戶都有談判卡：連鎖是顧客導向，獨立藥局與診所是成本導向 */}
-        <Button variant="outline" className="h-12 flex-1 gap-1.5" onClick={() => navigate(`/customers/${customer.id}/negotiation`)}>
-          <Handshake className="size-4" />
-          談判卡
-        </Button>
-        {/* 原型放在「語音記錄」旁邊：不必等拜訪口述，直接挑常進的品項開 SAP 報價草稿 */}
-        <Button variant="outline" className="h-12 flex-1 gap-1.5" onClick={() => navigate(`/customers/${customer.id}/quote`)}>
-          <FileText className="size-4" />
-          開報價
-        </Button>
-        <Button className="h-12 flex-1 gap-1.5" onClick={() => navigate(`/customers/${customer.id}/record`)}>
-          <Mic className="size-4" />
-          語音記錄
-        </Button>
-      </div>
+      {!desktop && (
+        <div className="fixed inset-x-0 bottom-0 z-10 mx-auto flex max-w-md gap-2 border-t bg-card px-4 pt-3 pb-[max(env(safe-area-inset-bottom),0.75rem)]">
+          {/* 每種客戶都有談判卡：連鎖是顧客導向，獨立藥局與診所是成本導向 */}
+          <Button variant="outline" className="h-12 flex-1 gap-1.5" onClick={toNegotiation}>
+            <Handshake className="size-4" />
+            談判卡
+          </Button>
+          {/* 原型放在「語音記錄」旁邊：不必等拜訪口述，直接挑常進的品項開 SAP 報價草稿 */}
+          <Button variant="outline" className="h-12 flex-1 gap-1.5" onClick={toQuote}>
+            <FileText className="size-4" />
+            開報價
+          </Button>
+          <Button className="h-12 flex-1 gap-1.5" onClick={toRecord}>
+            <Mic className="size-4" />
+            語音記錄
+          </Button>
+        </div>
+      )}
     </div>
   )
 }
