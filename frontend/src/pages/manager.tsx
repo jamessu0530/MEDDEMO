@@ -4,7 +4,7 @@ import { Link, useNavigate, useSearchParams } from "react-router"
 
 import { listEscalations, replyEscalation, type Escalation } from "@/api/escalations"
 import { customerTypeLabel, listMyMethods, updateMethod, type MethodCard } from "@/api/methods"
-import { getUnseenNoticeCount, listNotices, markNoticeSeen, type ManagerNotice } from "@/api/notices"
+import { listNotices, markNoticeSeen, type ManagerNotice } from "@/api/notices"
 import { listAutoApproved, listOaInbox, type OaFormItem } from "@/api/oa"
 import { AttachmentGallery } from "@/components/attachments/attachment-gallery"
 import { ChannelsLink } from "@/components/channels-link"
@@ -21,6 +21,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { useAuth, type AuthUser } from "@/lib/auth"
 import { formatProbability, oaDateText } from "@/lib/approval"
 import { formatDateTime } from "@/lib/format"
+import { pendingOa, unseenNotices, usePendingOa, useUnseenNotices } from "@/lib/manager-counts"
 import { tagLabel } from "@/lib/methods"
 import { cn } from "@/lib/utils"
 import type { CustomerLocationState } from "@/pages/customer"
@@ -55,23 +56,12 @@ export function ManagerPage() {
   const user = useAuth()?.user
   const [params, setParams] = useSearchParams()
   const view: View = VIEWS.find((value) => value === params.get("view")) ?? "routes"
-  const [unseenNotices, setUnseenNotices] = useState(0)
-  const [pendingOa, setPendingOa] = useState(0)
-
-  // 分頁上的未讀數：打開主管端、切換分頁時各問一次；主管在這頁按「知道了」會直接減一，不必重問
+  // 分頁上的數字（lib/manager-counts.ts）：每分鐘問一次，切換分頁時馬上再問一次
+  const noticeCount = useUnseenNotices()
+  const oaCount = usePendingOa()
   useEffect(() => {
-    const controller = new AbortController()
-    getUnseenNoticeCount(controller.signal)
-      .then(({ count }) => setUnseenNotices(count))
-      .catch(() => {
-        // 連不上就先不顯示數字，列表那邊會有自己的錯誤訊息
-      })
-    listOaInbox(controller.signal)
-      .then((data) => setPendingOa(data.counts.pending ?? data.items.length))
-      .catch(() => {
-        // 連不上就先不顯示數字
-      })
-    return () => controller.abort()
+    void unseenNotices.refresh()
+    void pendingOa.refresh()
   }, [view])
 
   function switchView(next: View) {
@@ -113,20 +103,20 @@ export function ManagerPage() {
             )}
           >
             {VIEW_TAB[value]}
-            {value === "notices" && unseenNotices > 0 && (
+            {value === "notices" && noticeCount > 0 && (
               <span
-                aria-label={`未讀 ${unseenNotices} 則`}
+                aria-label={`未讀 ${noticeCount} 則`}
                 className="flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[0.625rem] font-semibold text-white"
               >
-                {unseenNotices}
+                {noticeCount}
               </span>
             )}
-            {value === "oa" && pendingOa > 0 && (
+            {value === "oa" && oaCount > 0 && (
               <span
-                aria-label={`待簽 ${pendingOa} 張`}
+                aria-label={`待簽 ${oaCount} 張`}
                 className="flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[0.625rem] font-semibold text-white"
               >
-                {pendingOa}
+                {oaCount}
               </span>
             )}
           </button>
@@ -138,7 +128,7 @@ export function ManagerPage() {
         ) : view === "asks" ? (
           <EscalationsPanel />
         ) : view === "notices" ? (
-          <NoticesPanel onSeen={() => setUnseenNotices((count) => Math.max(0, count - 1))} />
+          <NoticesPanel onSeen={() => void unseenNotices.refresh()} />
         ) : view === "oa" ? (
           <OaInboxPanel />
         ) : (
