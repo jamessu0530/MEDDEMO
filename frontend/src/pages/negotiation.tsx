@@ -14,6 +14,7 @@ import { formatMoney, formatUnitPrice } from "@/lib/format"
 import { replaceCard } from "@/lib/methods"
 import { applyCountdown, festivalCountdown, formatFullDate, formatRate, missedText } from "@/lib/negotiation"
 import { customerNotFoundText } from "@/lib/scope"
+import { FIXED_COLUMN } from "@/lib/desktop-layout"
 import { cn } from "@/lib/utils"
 
 type LoadState =
@@ -125,7 +126,7 @@ export function NegotiationPage() {
         )}
       </main>
 
-      <div className="fixed inset-x-0 bottom-0 z-10 mx-auto flex max-w-md gap-2 border-t bg-card px-4 pt-3 pb-[max(env(safe-area-inset-bottom),0.75rem)]">
+      <div className={cn(FIXED_COLUMN, "bottom-0 z-10 flex gap-2 border-t bg-card px-4 pt-3 pb-[max(env(safe-area-inset-bottom),0.75rem)]")}>
         <Button variant="outline" className="h-12 w-28 shrink-0" onClick={() => navigate(profilePath)}>
           客戶檔案
         </Button>

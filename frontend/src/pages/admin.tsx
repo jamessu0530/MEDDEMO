@@ -109,7 +109,8 @@ export function AdminPage() {
         title="組織管理"
         subtitle="IT"
         trailing={
-          <>
+          // 電腦版這些都在側邊欄
+          <div className="flex gap-1 lg:hidden">
             <MyStatusButton className="size-[44px]" />
             <SkinToggle className="size-[44px]" />
             <ChannelsLink />
@@ -120,7 +121,7 @@ export function AdminPage() {
             >
               <Settings className="size-5" />
             </Link>
-          </>
+          </div>
         }
       />
       <main className="flex flex-1 flex-col gap-5 px-4 pt-4 pb-10">

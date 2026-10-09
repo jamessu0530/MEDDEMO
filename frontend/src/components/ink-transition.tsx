@@ -4,7 +4,10 @@ import { Routes, useLocation, useNavigationType, type Location } from "react-rou
 import { inkColors, pickEffect, type InkEffect } from "@/ink/effects"
 import { ink } from "@/ink/ink"
 import { createInkRenderer } from "@/ink/renderer"
+import { useAuth } from "@/lib/auth"
+import { pageWidth } from "@/lib/desktop-layout"
 import { readSkin } from "@/lib/skin"
+import { cn } from "@/lib/utils"
 
 // 按下去之後這麼久以內發生的換頁才算是這一下按出來的，墨從按的位置出來；
 // 超過（登入等伺服器回來才換頁）或根本沒按（鍵盤操作）就從畫面中間偏上出來
@@ -16,6 +19,10 @@ const POINTER_FRESH_MS = 1200
  */
 export function InkOverlay() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  // 電腦版有側邊欄的頁，墨只蓋內容區、側邊欄不動；沒登入的頁與錄音頁照手機的寬度置中
+  const signedIn = Boolean(useAuth())
+  const { pathname } = useLocation()
+  const shell = signedIn && pageWidth(pathname) !== "bare"
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -63,7 +70,10 @@ export function InkOverlay() {
     <canvas
       ref={canvasRef}
       aria-hidden
-      className="fixed inset-y-0 left-1/2 z-60 h-full w-full max-w-md -translate-x-1/2"
+      className={cn(
+        "fixed inset-y-0 left-1/2 z-60 h-full w-full max-w-md -translate-x-1/2",
+        shell && "lg:right-0 lg:left-56 lg:w-auto lg:max-w-none lg:translate-x-0"
+      )}
       style={{ visibility: "hidden" }}
     />
   )

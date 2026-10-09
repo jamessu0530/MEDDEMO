@@ -74,7 +74,8 @@ export function ManagerPage() {
         title={VIEW_TITLE[view]}
         subtitle="主管端"
         trailing={
-          <>
+          // 電腦版這些都在側邊欄
+          <div className="flex gap-1 lg:hidden">
             <MyStatusButton className="size-[44px]" />
             <SkinToggle className="size-[44px]" />
             <ChannelsLink />
@@ -86,7 +87,7 @@ export function ManagerPage() {
             <Link to="/settings" aria-label="帳號設定" className={HEADER_BUTTON}>
               <Settings className="size-5" />
             </Link>
-          </>
+          </div>
         }
       />
       <div className="flex border-b bg-background px-2" role="tablist">

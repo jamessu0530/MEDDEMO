@@ -68,7 +68,7 @@ export function BottomNav() {
 
   return (
     // 外層不吃點擊，只有那一條列可以按：列的左右和下面露出來的內容照樣捲得動
-    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-20 mx-auto max-w-md px-2.5 pb-[calc(0.5rem+env(safe-area-inset-bottom))]">
+    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-20 mx-auto max-w-md px-2.5 pb-[calc(0.5rem+env(safe-area-inset-bottom))] lg:hidden">
       <nav className="pointer-events-auto relative flex rounded-full border bg-card p-1 shadow-lg shadow-black/10 dark:shadow-black/50">
         <span
           ref={pillRef}

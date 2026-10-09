@@ -47,11 +47,14 @@ export function Onboarding() {
   }
 
   return (
-    <div
+    <>
+      {/* 電腦版是置中的對話框，後面墊一層半透明底；手機照舊鋪滿 */}
+      <div aria-hidden className="fixed inset-0 z-50 hidden bg-black/40 lg:block" />
+      <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="guide-title"
-      className="fixed inset-0 z-50 mx-auto flex max-w-md flex-col bg-background px-6 pt-3 pb-[max(env(safe-area-inset-bottom),1.5rem)]"
+      className="fixed inset-0 z-50 mx-auto flex max-w-md flex-col bg-background px-6 pt-3 pb-[max(env(safe-area-inset-bottom),1.5rem)] lg:inset-auto lg:top-1/2 lg:left-1/2 lg:h-[min(40rem,calc(100svh-4rem))] lg:w-full lg:-translate-x-1/2 lg:-translate-y-1/2 lg:rounded-3xl lg:border-2 lg:shadow-lip"
     >
       <div className="flex h-11 justify-end">
         {!last && (
@@ -89,5 +92,6 @@ export function Onboarding() {
         </Button>
       </div>
     </div>
+    </>
   )
 }

@@ -2,6 +2,7 @@ import { useEffect, type ReactNode } from "react"
 import { BrowserRouter, Navigate, Outlet, Route, useLocation, useNavigate } from "react-router"
 
 import { fetchMe } from "@/api/auth"
+import { AppShell } from "@/components/app-shell"
 import { InkOverlay, InkRoutes } from "@/components/ink-transition"
 import { Mascot } from "@/components/mascot"
 import { Notice } from "@/components/notice"
@@ -43,6 +44,15 @@ import { RouteHabitsPage } from "@/pages/route-habits"
 import { SettingsPage } from "@/pages/settings"
 import { TodayPage } from "@/pages/today"
 import { VisitPage } from "@/pages/visit"
+
+/** 沒登入的頁：電腦版也照手機的寬度置中 */
+function PhoneColumn() {
+  return (
+    <div className="lg:mx-auto lg:max-w-md">
+      <Outlet />
+    </div>
+  )
+}
 
 function NotFound() {
   const navigate = useNavigate()
@@ -95,7 +105,9 @@ function RequireAuth() {
 
   return (
     <>
-      <Outlet />
+      <AppShell user={session.user}>
+        <Outlet />
+      </AppShell>
       {/* FR-11：第一次打開時說明三個主要操作，登入之後才顯示 */}
       <Onboarding />
     </>
@@ -149,17 +161,19 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      {/* 以手機為主：在寬螢幕上置中，維持手機的寬度 */}
-      <div className="mx-auto min-h-svh max-w-md bg-background">
+      {/* 以手機為主：手機與平板維持手機的寬度置中；電腦版（≥1024px）登入後的頁由 AppShell 排，沒登入的頁照舊置中 */}
+      <div className="mx-auto min-h-svh max-w-md bg-background lg:max-w-none">
         {/* 換頁時用墨蓋過去再露出來（components/ink-transition.tsx）；路由的寫法跟 <Routes> 一樣 */}
         <InkRoutes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<RegisterPage />} />
-          {/* 隱私權政策不用登入就要看得到：Google 與 Facebook 審核時會直接打開這個網址 */}
-          <Route path="/privacy" element={<PrivacyPage />} />
-          {/* Google、GitHub 授權完導回來的頁面：登入流程也會走到，所以不能放在要登入的那一層裡 */}
-          <Route path="/auth/github/callback" element={<OAuthCallbackPage provider="github" />} />
-          <Route path="/auth/google/callback" element={<OAuthCallbackPage provider="google" />} />
+          <Route element={<PhoneColumn />}>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
+            {/* 隱私權政策不用登入就要看得到：Google 與 Facebook 審核時會直接打開這個網址 */}
+            <Route path="/privacy" element={<PrivacyPage />} />
+            {/* Google、GitHub 授權完導回來的頁面：登入流程也會走到，所以不能放在要登入的那一層裡 */}
+            <Route path="/auth/github/callback" element={<OAuthCallbackPage provider="github" />} />
+            <Route path="/auth/google/callback" element={<OAuthCallbackPage provider="google" />} />
+          </Route>
           <Route element={<RequireAuth />}>
             {/* 首頁是今日路線；客戶清單移到 /customers，要自己挑一家時從底部分頁進去 */}
             <Route path="/" element={<Home />} />

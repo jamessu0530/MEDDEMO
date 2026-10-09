@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input"
 import { addDraftFiles, shrinkPhoto, type DraftFile } from "@/lib/attachments"
 import { useAuth } from "@/lib/auth"
 import { askScopeText } from "@/lib/scope"
+import { FIXED_COLUMN } from "@/lib/desktop-layout"
 import { cn } from "@/lib/utils"
 
 // 整包 src/voice（Gemini Live SDK 與音訊處理）只從這裡進來，按了麥克風才載
@@ -193,7 +194,7 @@ export function AskPage() {
       </main>
 
       {/* 底色一路墊到最下面，浮著的導覽列兩旁和下面的空隙才不會露出後面捲動的對話 */}
-      <div className="fixed inset-x-0 bottom-0 z-10 mx-auto flex max-w-md flex-col gap-1.5 border-t bg-background px-3 pt-2 pb-[calc(4.5rem+env(safe-area-inset-bottom))]">
+      <div className={cn(FIXED_COLUMN, "bottom-0 z-10 flex flex-col gap-1.5 border-t bg-background px-3 pt-2 pb-[calc(4.5rem+env(safe-area-inset-bottom))] lg:pb-3")}>
         {voiceOn && (
           <VoiceBoundary onFail={failVoice}>
             <Suspense
