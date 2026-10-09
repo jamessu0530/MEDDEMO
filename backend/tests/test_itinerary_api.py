@@ -34,7 +34,7 @@ def test_today_has_the_fields_the_home_page_needs(client, auth):
         "customer_id", "customer_name", "type", "grade", "planned_time", "status", "signal", "reason", "visit_id",
         "source", "duration_minutes", "late_minutes", "travel_minutes", "travel_km",
         "window_kind", "window_time", "note", "locked", "habit_ids",
-        "travel_estimated", "travel_mode", "city",
+        "travel_estimated", "travel_mode", "city", "arrived_at",
     }
     assert {"rules", "violations", "precedences", "skipped_habits", "travel_mode", "start_city", "office_start"} <= set(data)
     assert data["urgent"]["customer_id"] == first["customer_id"]

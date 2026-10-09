@@ -1155,6 +1155,23 @@ class ItineraryLeg(Base):
     mode: Mapped[str]
 
 
+class StopArrival(Base):
+    """首頁點過的站（docs/superpowers/specs/2026-10-09-tap-to-ride-and-personal-page-design.md〈資料〉）。
+
+    點了熊熊滾就騎過去，這一站算到過：不用錄音、不用送出拜訪。first_at 算獎牌的解鎖（第幾家是哪一次點到的），
+    last_at 決定熊熊滾停在哪一站。拿掉這一站時不刪：點過就算跑過，獎牌不會因為改路線掉回去。
+    行程刪掉（IT 重置示範業務的行程）時一起刪，獎牌跟著歸零。
+    """
+
+    __tablename__ = "stop_arrival"
+
+    itinerary_id: Mapped[int] = mapped_column(ForeignKey("itinerary.id", ondelete="CASCADE"), primary_key=True)
+    customer_id: Mapped[str] = mapped_column(ForeignKey("customer.id"), primary_key=True)
+    # clock_timestamp 而不是 now()：now() 是交易開始的時間，同一個交易裡點好幾站會分不出先後
+    first_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.clock_timestamp())
+    last_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.clock_timestamp())
+
+
 # 座騎圖鑑的七個縣市（跟前端 lib/rides.ts 的 RIDE_CITIES 同一組、同順序）
 RIDE_CITIES = ("台北市", "新北市", "新竹市", "台中市", "彰化縣", "台南市", "高雄市")
 

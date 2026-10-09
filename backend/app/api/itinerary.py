@@ -5,7 +5,7 @@
 
 import dataclasses
 import logging
-from datetime import date, time
+from datetime import date, datetime, time
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -72,6 +72,8 @@ class Stop(BaseModel):
     travel_estimated: bool
     travel_mode: TravelMode  # 到這一站那一段實際用的交通方式
     city: str
+    # 首頁點過這一站：這份行程裡最後一次點的時間；沒點過是 null
+    arrived_at: datetime | None
 
 
 class Rule(BaseModel):

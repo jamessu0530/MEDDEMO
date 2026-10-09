@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 
 from app.models import (
     LEG_MODES, TRAVEL_MODES, AppUser, Customer, Itinerary, ItineraryLeg, ItineraryPrecedence, ItineraryStop, OrgUnit,
-    RouteHabit, RouteSignalWeight, RouteSnooze, VehicleRide, Visit,
+    RouteHabit, RouteSignalWeight, RouteSnooze, StopArrival, VehicleRide, Visit,
 )
 from app.services import customer_profile, route_habits, route_planner, today_route, travel
 from app.services.google_routes import TravelMode
@@ -87,6 +87,8 @@ class StopView:
     travel_estimated: bool = False
     travel_mode: str = "drive"
     city: str = ""  # 客戶在哪個縣市（熊熊滾騎哪個縣市的座騎）
+    # 首頁點過這一站：這份行程裡最後一次點的時間（熊熊滾停在最後點的那一站）；沒點過是 None
+    arrived_at: dt.datetime | None = None
 
 
 @dataclass
@@ -237,10 +239,16 @@ class _Day:
     done: list[tuple[Visit, Customer]]
     rows: list[ItineraryStop]
     habits: list[RouteHabit]
+    # 首頁點過的站（客戶 → 那一列）：標成跑完，但位置與時間照存著的
+    arrivals: dict[str, StopArrival] = field(default_factory=dict)
 
     @property
     def done_ids(self) -> set[str]:
         return {c.id for _, c in self.done}
+
+    def arrived_at(self, customer_id: str) -> dt.datetime | None:
+        found = self.arrivals.get(customer_id)
+        return found.last_at if found else None
 
     def durations(self) -> dict[str, int]:
         return {r.customer_id: r.duration_minutes for r in self.rows}
@@ -277,10 +285,12 @@ def view(session: Session, itinerary: Itinerary) -> ItineraryView:
 
 
 def stop_order(session: Session, itinerary: Itinerary) -> list[tuple[Customer, bool]]:
-    """今天的站，順序跟 view() 的站號一樣：跑完的在前（照拜訪時間），其他照存著的順序；(客戶, 跑完了嗎)。
+    """今天的站，順序跟 view() 的站號一樣：跑完的在前（照拜訪時間），其他照存著的順序；(客戶, 跑完了嗎)，到過的站也算跑完。
     不算時間與車程、不問 Google：主管頁收到位置事件時只要站號與座標（services/team_itineraries.py）。"""
     day = _day(session, itinerary)
-    return [(c, True) for _, c in day.done] + [(o.customer, False) for o in _saved_open(session, day)]
+    return [(c, True) for _, c in day.done] + [
+        (o.customer, o.customer.id in day.arrivals) for o in _saved_open(session, day)
+    ]
 
 
 def path_modes(session: Session, itinerary: Itinerary) -> list[str]:
@@ -574,6 +584,29 @@ def broken_rules(session: Session, itinerary: Itinerary, draft: Draft) -> list[s
     return [rule.id for rule in route_planner.violations([o.customer.id for o in open_], rules)]
 
 
+def arrive(session: Session, user_id: str, customer_id: str) -> Itinerary:
+    """首頁點了路線上的一站：記成到過（docs/superpowers/specs/2026-10-09-tap-to-ride-and-personal-page-design.md）。
+
+    第一次點建一列，再點只改最後一次的時間。不比版本、不管順序，點了一定成功；不在今天的行程上丟 NotOnItinerary。
+    行程的版本加一：主管頁收到 itinerary 事件跟著更新（app/realtime.py），手上舊版本的人改行程時會被擋下來重新載入。
+    """
+    itinerary = get_or_create(session, user_id)
+    _lock(session, itinerary)
+    on_route = session.scalar(
+        select(ItineraryStop.id).where(ItineraryStop.itinerary_id == itinerary.id, ItineraryStop.customer_id == customer_id)
+    )
+    if on_route is None:
+        raise NotOnItinerary(customer_id)
+    session.execute(
+        insert(StopArrival)
+        .values(itinerary_id=itinerary.id, customer_id=customer_id)
+        .on_conflict_do_update(index_elements=["itinerary_id", "customer_id"], set_={"last_at": func.clock_timestamp()})
+    )
+    _touch(itinerary)
+    session.flush()
+    return itinerary
+
+
 def set_leg_mode(session: Session, user_id: str, from_id: str | None, to_id: str, mode: str, version: int) -> Itinerary:
     """改一段路的交通方式（首頁的膠囊）。只能改還沒走的段（到的那家還沒跑）；from_id 是 None 代表從辦公室出發。
     跟業務的預設一樣就不存（原本另外選的那一列刪掉），不一樣才存一列；同一段只會有一列。"""
@@ -842,9 +875,11 @@ def _cost_line(cost: route_planner.RuleCost, extra_km: float) -> str:
 
 def _day(session: Session, itinerary: Itinerary) -> _Day:
     rep = session.get(AppUser, itinerary.user_id)
+    arrivals = session.scalars(select(StopArrival).where(StopArrival.itinerary_id == itinerary.id))
     return _Day(
         itinerary=itinerary, rep=rep, done=today_route.done_visits(session, rep.id, itinerary.date),
         rows=_rows(session, itinerary), habits=route_habits.for_day(session, rep.id, itinerary.date),
+        arrivals={a.customer_id: a for a in arrivals},
     )
 
 
@@ -1033,26 +1068,32 @@ def _compose(
             signal="routine", reason="已完成", visit_id=visit.id, source=row.source if row else "rep",
             duration_minutes=row.duration_minutes if row else DEFAULT_DURATION, late_minutes=0,
             travel_minutes=None, travel_km=None, note=row.note if row else None,
-            travel_mode=modes[k], city=customer.city,
+            travel_mode=modes[k], city=customer.city, arrived_at=day.arrived_at(customer.id),
         ))
     total_km = 0.0
+    # 到過的站標成跑完、留在原位；「下一站」是第一個既沒跑完也沒到過的
+    upcoming = next((n for n, o in enumerate(open_) if o.customer.id not in day.arrivals), None)
     for n, (o, slot) in enumerate(zip(open_, planned.slots, strict=True)):
         km = matrix.km[n][n + 1]
         total_km += km
         stops.append(StopView(
             customer_id=o.customer.id, customer_name=o.customer.name, type=o.customer.type, grade=o.customer.grade,
-            planned_time=slot.arrive.strftime("%H:%M"), status="next" if n == 0 else "todo",
+            planned_time=slot.arrive.strftime("%H:%M"), status="done" if o.customer.id in day.arrivals else "next" if n == upcoming else "todo",
             signal=o.signal, reason=o.reason, visit_id=None, source=o.source,
             duration_minutes=o.duration_minutes, late_minutes=slot.late_minutes,
             travel_minutes=slot.travel_minutes, travel_km=km,
             window_kind=o.window_kind, window_time=o.window_time.strftime("%H:%M") if o.window_time else None,
             note=o.note, locked=o.locked, habit_ids=_habit_ids(applied, o, habit_customers),
             travel_estimated=matrix.estimated_legs[n], travel_mode=ahead[n], city=o.customer.city,
+            arrived_at=day.arrived_at(o.customer.id),
         ))
     open_ids = set(order)
-    urgent = itinerary.urgent if itinerary.urgent and itinerary.urgent["customer_id"] in open_ids else None
+    # 到過的那家不再是需立即處理
+    pending_ids = open_ids - set(day.arrivals)
+    urgent = itinerary.urgent if itinerary.urgent and itinerary.urgent["customer_id"] in pending_ids else None
     return ItineraryView(
-        id=itinerary.id, date=itinerary.date, rep=rep, version=itinerary.version, done=len(day.done), total=len(stops), urgent=urgent,
+        id=itinerary.id, date=itinerary.date, rep=rep, version=itinerary.version,
+        done=len(day.done) + sum(1 for o in open_ if o.customer.id in day.arrivals), total=len(stops), urgent=urgent,
         stops=stops, travel_minutes=planned.travel_minutes, travel_km=round(total_km, 1),
         finish_time=planned.slots[-1].leave.strftime("%H:%M") if planned.slots else None,
         estimated=matrix.estimated, travel_mode=rep.travel_mode,
