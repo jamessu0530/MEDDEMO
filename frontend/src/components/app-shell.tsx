@@ -4,6 +4,7 @@ import { useLocation } from "react-router"
 import { AppSidebar } from "@/components/app-sidebar"
 import type { AuthUser } from "@/lib/auth"
 import { pageWidth } from "@/lib/desktop-layout"
+import { useIsDesktop } from "@/lib/use-media-query"
 import { cn } from "@/lib/utils"
 
 /**
@@ -13,10 +14,12 @@ import { cn } from "@/lib/utils"
  */
 export function AppShell({ user, children }: { user: AuthUser; children: ReactNode }) {
   const width = pageWidth(useLocation().pathname)
+  const desktop = useIsDesktop()
   if (width === "bare") return <div className="lg:mx-auto lg:max-w-md">{children}</div>
   return (
     <>
-      <AppSidebar user={user} />
+      {/* 手機上整條側邊欄是隱藏的，不要掛上去，免得它的計數器還在背景一直抓資料 */}
+      {desktop && <AppSidebar user={user} />}
       <div className="lg:pl-56">
         <div className={cn(width === "column" && "lg:mx-auto lg:max-w-2xl")}>{children}</div>
       </div>
