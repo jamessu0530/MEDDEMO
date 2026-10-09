@@ -8,6 +8,7 @@ import { listNotices, markNoticeSeen, type ManagerNotice } from "@/api/notices"
 import { listAutoApproved, listOaInbox, type OaFormItem } from "@/api/oa"
 import { AttachmentGallery } from "@/components/attachments/attachment-gallery"
 import { ChannelsLink } from "@/components/channels-link"
+import { ListRow, MasterDetail } from "@/components/manager/master-detail"
 import { RoutesPanel } from "@/components/manager/routes-panel"
 import { MethodCardForm } from "@/components/method-card-form"
 import { Notice } from "@/components/notice"
@@ -21,8 +22,10 @@ import { Textarea } from "@/components/ui/textarea"
 import { useAuth, type AuthUser } from "@/lib/auth"
 import { formatProbability, oaDateText } from "@/lib/approval"
 import { formatDateTime } from "@/lib/format"
+import { itemParam, nextAfter, pickItem } from "@/lib/master-detail"
 import { pendingOa, unseenNotices, usePendingOa, useUnseenNotices } from "@/lib/manager-counts"
 import { tagLabel } from "@/lib/methods"
+import { useIsDesktop } from "@/lib/use-media-query"
 import { cn } from "@/lib/utils"
 import type { CustomerLocationState } from "@/pages/customer"
 
@@ -49,6 +52,22 @@ const HEADER_BUTTON = "flex size-[44px] shrink-0 items-center justify-center rou
 /** 三個分頁看的是誰的事：主管是自己底下的人，IT 是全公司（後端依組織樹過濾，不看轄區） */
 function whose(user: AuthUser) {
   return user.role === "it" ? "全公司" : "你團隊"
+}
+
+/** 電腦版右邊打開的是哪一張，記在網址的 ?item=：從客戶檔案、申請單回來還停在同一張。換分頁時 switchView 會清掉 */
+function useItemParam(): [number | null, (id: number | null) => void] {
+  const [params, setParams] = useSearchParams()
+  const select = (id: number | null) =>
+    setParams(
+      (current) => {
+        const next = new URLSearchParams(current)
+        if (id === null) next.delete("item")
+        else next.set("item", String(id))
+        return next
+      },
+      { replace: true }
+    )
+  return [itemParam(params.get("item")), select]
 }
 
 /** 主管端（FR-8.4 延伸）：看團隊今天的行程、回覆業務轉過來的提問、看風險通報、簽申請單（出差單、優惠、合約）、寫方法卡。主管看自己底下的人，IT 看全公司 */
@@ -149,6 +168,8 @@ export function ManagerPage() {
 /** 業務查不到答案轉過來的提問，主管在這裡回覆；回覆後業務的首頁會提醒 */
 function EscalationsPanel() {
   const navigate = useNavigate()
+  const desktop = useIsDesktop()
+  const [requested, select] = useItemParam()
   const user = useAuth()?.user
   const [tab, setTab] = useState<Tab>("open")
   const [state, setState] = useState<LoadState>({ status: "loading" })
@@ -169,10 +190,13 @@ function EscalationsPanel() {
     if (next === tab) return
     setState({ status: "loading" })
     setNotice(null)
+    if (desktop) select(null)
     setTab(next)
   }
 
   function replied(item: Escalation) {
+    // 電腦版接著打開下一張；要在拿掉之前算
+    if (desktop && state.status === "ready") select(nextAfter(state.items, item.id))
     setState((current) =>
       current.status === "ready" ? { status: "ready", items: current.items.filter((i) => i.id !== item.id) } : current
     )
@@ -220,34 +244,72 @@ function EscalationsPanel() {
         </p>
       )}
       {state.status === "ready" &&
-        state.items.map((item) => (
-          <article key={item.id} className="rounded-2xl border-2 bg-card p-4 shadow-lip">
-            <p className="text-[0.6875rem] text-muted-foreground">
-              {formatDateTime(item.created_at)} · {item.kind === "data" ? "數字查詢" : "知識查詢"} · 單號 #{item.id}
-            </p>
-            <p className="mt-1.5 text-sm font-medium">{item.question}</p>
-            {item.attachment && <AttachmentGallery attachments={[item.attachment]} className="mt-2 w-56 max-w-full" />}
-            {item.system_answer && (
-              <p className="mt-2 line-clamp-4 rounded-lg bg-muted px-3 py-2 text-xs leading-relaxed text-muted-foreground">
-                系統的回覆：{item.system_answer}
-              </p>
-            )}
-            {item.status === "open" ? (
-              <ReplyForm item={item} onReplied={replied} />
-            ) : (
-              <div className="mt-3 rounded-xl bg-primary/10 px-3 py-2.5">
-                <p className="text-[0.6875rem] font-semibold text-primary">
-                  {item.answered_by} · {item.answered_at && formatDateTime(item.answered_at)}
-                </p>
-                <p className="mt-1 text-sm leading-relaxed whitespace-pre-line">{item.answer}</p>
-                <p className="mt-1.5 text-[0.6875rem] text-muted-foreground">
-                  {item.seen_at ? `業務 ${formatDateTime(item.seen_at)} 看過` : "業務還沒看"}
-                </p>
-              </div>
-            )}
-          </article>
+        state.items.length > 0 &&
+        (desktop ? (
+          <EscalationSplit items={state.items} requested={requested} onSelect={select} onReplied={replied} />
+        ) : (
+          state.items.map((item) => <EscalationArticle key={item.id} item={item} onReplied={replied} />)
         ))}
     </>
+  )
+}
+
+/** 一則提問：問題、附件、系統的回覆；待回覆的有回覆框，回覆過的寫誰、什麼時候回、業務看過沒 */
+function EscalationArticle({ item, onReplied }: { item: Escalation; onReplied: (item: Escalation) => void }) {
+  return (
+    <article className="rounded-2xl border-2 bg-card p-4 shadow-lip">
+      <p className="text-[0.6875rem] text-muted-foreground">
+        {formatDateTime(item.created_at)} · {item.kind === "data" ? "數字查詢" : "知識查詢"} · 單號 #{item.id}
+      </p>
+      <p className="mt-1.5 text-sm font-medium">{item.question}</p>
+      {item.attachment && <AttachmentGallery attachments={[item.attachment]} className="mt-2 w-56 max-w-full" />}
+      {item.system_answer && (
+        <p className="mt-2 line-clamp-4 rounded-lg bg-muted px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+          系統的回覆：{item.system_answer}
+        </p>
+      )}
+      {item.status === "open" ? (
+        <ReplyForm item={item} onReplied={onReplied} />
+      ) : (
+        <div className="mt-3 rounded-xl bg-primary/10 px-3 py-2.5">
+          <p className="text-[0.6875rem] font-semibold text-primary">
+            {item.answered_by} · {item.answered_at && formatDateTime(item.answered_at)}
+          </p>
+          <p className="mt-1 text-sm leading-relaxed whitespace-pre-line">{item.answer}</p>
+          <p className="mt-1.5 text-[0.6875rem] text-muted-foreground">
+            {item.seen_at ? `業務 ${formatDateTime(item.seen_at)} 看過` : "業務還沒看"}
+          </p>
+        </div>
+      )}
+    </article>
+  )
+}
+
+/** 電腦版：左邊一列一則提問，右邊打開選中的那則 */
+function EscalationSplit({
+  items,
+  requested,
+  onSelect,
+  onReplied,
+}: {
+  items: Escalation[]
+  requested: number | null
+  onSelect: (id: number) => void
+  onReplied: (item: Escalation) => void
+}) {
+  const selected = pickItem(items, requested)
+  return (
+    <MasterDetail
+      list={items.map((item) => (
+        <ListRow key={item.id} selected={item.id === selected?.id} onSelect={() => onSelect(item.id)}>
+          <span className="text-[0.6875rem] text-muted-foreground">
+            {formatDateTime(item.created_at)} · {item.kind === "data" ? "數字查詢" : "知識查詢"}
+          </span>
+          <span className="line-clamp-2 text-sm font-medium">{item.question}</span>
+        </ListRow>
+      ))}
+      detail={selected && <EscalationArticle key={selected.id} item={selected} onReplied={onReplied} />}
+    />
   )
 }
 
@@ -289,6 +351,8 @@ function ReplyForm({ item, onReplied }: { item: Escalation; onReplied: (item: Es
 /** 風險通報（原型「回寫完成」的「主管同步收到通報」）：業務確認拜訪時提到競品或客訴，這家的風險分通報到這裡 */
 function NoticesPanel({ onSeen }: { onSeen: () => void }) {
   const navigate = useNavigate()
+  const desktop = useIsDesktop()
+  const [requested, select] = useItemParam()
   const user = useAuth()?.user
   const [state, setState] = useState<NoticeState>({ status: "loading" })
   const [attempt, setAttempt] = useState(0)
@@ -332,8 +396,48 @@ function NoticesPanel({ onSeen }: { onSeen: () => void }) {
       {state.status === "ready" && state.items.length === 0 && (
         <p className="py-10 text-center text-sm text-muted-foreground">目前沒有風險通報。</p>
       )}
-      {state.status === "ready" && state.items.map((item) => <NoticeCard key={item.id} item={item} onSeen={seen} />)}
+      {state.status === "ready" &&
+        state.items.length > 0 &&
+        (desktop ? (
+          <NoticeSplit items={state.items} requested={requested} onSelect={select} onSeen={seen} />
+        ) : (
+          state.items.map((item) => <NoticeCard key={item.id} item={item} onSeen={seen} />)
+        ))}
     </>
+  )
+}
+
+/** 電腦版：左邊一列一則通報（未讀的標「未讀」），右邊打開選中的那則；按「知道了」停在同一則 */
+function NoticeSplit({
+  items,
+  requested,
+  onSelect,
+  onSeen,
+}: {
+  items: ManagerNotice[]
+  requested: number | null
+  onSelect: (id: number) => void
+  onSeen: (item: ManagerNotice) => void
+}) {
+  const selected = pickItem(items, requested)
+  return (
+    <MasterDetail
+      list={items.map((item) => (
+        <ListRow key={item.id} selected={item.id === selected?.id} onSelect={() => onSelect(item.id)}>
+          <span className="flex items-center justify-between gap-2 text-[0.6875rem] text-muted-foreground">
+            <span className="min-w-0 truncate">
+              {formatDateTime(item.created_at)} · 業務 {item.rep_name}
+            </span>
+            {item.seen_at === null && <span className="shrink-0 rounded-md bg-destructive/10 px-2 py-0.5 text-destructive">未讀</span>}
+          </span>
+          <span className="truncate text-sm font-medium">{item.customer_name}</span>
+          <span className="text-xs text-muted-foreground tabular-nums">
+            {item.reason} · {item.score}/{item.max} 項風險
+          </span>
+        </ListRow>
+      ))}
+      detail={selected && <NoticeCard key={selected.id} item={selected} onSeen={onSeen} />}
+    />
   )
 }
 
