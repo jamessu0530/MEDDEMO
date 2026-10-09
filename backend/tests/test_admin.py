@@ -284,13 +284,14 @@ def test_a_new_account_gets_a_sap_employee_record_dated_today(tx, client, auth):
     assert rookie.hire_date == seed.DEFAULT_AS_OF
     assert rookie.product_lines == ["保健品", "一般用藥", "醫材"]
 
-    # 主管也是公司的人，一樣有人員主檔。底下還沒有人，產品線就是品項表的全部類別；他帶的第一位業務也是
+    # 主管也是公司的人，一樣有人員主檔。底下還沒有人，產品線就是品項表的全部類別（含真實型錄才有的日用品）；
+    # 他帶的第一位業務也是
     create(email="boss5@meddemo.tw", role="manager", unit_id="TW.S")
     create(email="rookie2@meddemo.tw", role="sales", manager_id="M05")
     boss, first = tx.get(SapEmployee, "M05"), tx.get(SapEmployee, "U07")
     assert (boss.employee_no, first.employee_no) == (f"E{last + 2:05d}", f"E{last + 3:05d}")
-    assert set(boss.product_lines) == set(first.product_lines) == {"保健品", "慢性處方", "一般用藥", "醫材"}
-    assert len(first.product_lines) == 4
+    assert set(boss.product_lines) == set(first.product_lines) == {"保健品", "慢性處方", "一般用藥", "醫材", "日用品"}
+    assert len(first.product_lines) == 5
 
 
 def test_a_malformed_employee_number_does_not_block_new_accounts(tx, client, auth):

@@ -47,3 +47,5 @@ def test_the_token_locks_a_transcription_only_session_with_our_vocabulary(client
     # 這家客戶的名稱排最前面，競品與通路術語接著，總數不超過官方建議的 100 個
     assert words[:3] == ["康泰連鎖藥局 · 忠孝店", "康泰連鎖藥局", "忠孝店"]
     assert "御松田" in words and "上架費" in words and len(words) <= 100
+    # 只放常用品項：型錄裡一千多樣不常講的不會把魚油這些擠掉
+    assert "魚油 30 入" in words and "中化360海藻鈣錠 60錠" not in words

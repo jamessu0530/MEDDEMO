@@ -9,10 +9,12 @@
 """
 
 import calendar
+import csv
 import hashlib
 import random
 from math import exp, log1p
 from datetime import date, datetime, time, timedelta, timezone
+from pathlib import Path
 
 import catalog
 from app.config import settings
@@ -666,6 +668,25 @@ def build_hsinchu(rng, as_of, first_id, products, visits):
 # 真實品項沒有成本資料，照虛構品項的成本率（約六成）估，毛利相關的欄位才不會是空的
 PROMO_COST_RATIO = 0.6
 
+# 真實型錄：import_products.py 從 Salesforce 的產品清單轉出來，出貨價是虛構的。跟促銷品項一樣只進品項表、沒有交易
+REAL_PRODUCTS_FILE = Path(__file__).resolve().parent / "products.tsv"
+REAL_PRODUCT_COLUMNS = ("料號", "品名", "類別", "單位", "出貨價")
+
+
+def read_real_products(path: Path = REAL_PRODUCTS_FILE) -> list[dict[str, str]]:
+    with path.open(encoding="utf-8", newline="") as f:
+        return list(csv.DictReader(f, delimiter="\t"))
+
+
+def real_product_rows() -> list[dict]:
+    """真實型錄的品項列。catalog.COMMON_REAL_PRODUCTS 裡的是常用品項，帶業務口語的叫法。"""
+    return [
+        {"sku": r["料號"], "name": r["品名"], "category": r["類別"], "spec": "", "unit": r["單位"],
+         "unit_price": int(r["出貨價"]), "unit_cost": round(int(r["出貨價"]) * PROMO_COST_RATIO),
+         "aliases": catalog.COMMON_REAL_PRODUCTS.get(r["料號"], []), "common": r["料號"] in catalog.COMMON_REAL_PRODUCTS}
+        for r in read_real_products()
+    ]
+
 
 def build_promotions(as_of):
     """CYH 的 202608 那一期照搬，之後每個月模擬一期到 as_of 那個月，決賽日才有一期「進行中」。
@@ -1099,7 +1120,7 @@ def generate(as_of: date, seed: int = SEED) -> dict[str, list[dict]]:
     places = [{"id": i, "name": n, "unit_id": u} for i, n, u in catalog.PLACES]
     products = {
         sku: {"sku": sku, "name": name, "category": cat, "spec": spec, "unit": unit,
-              "unit_price": price, "unit_cost": cost, "aliases": aliases}
+              "unit_price": price, "unit_cost": cost, "aliases": aliases, "common": True}
         for sku, name, cat, spec, unit, price, cost, aliases in catalog.PRODUCTS
     }
     assigned = {region: 0 for region in catalog.REGION_SALES}
@@ -1130,7 +1151,7 @@ def generate(as_of: date, seed: int = SEED) -> dict[str, list[dict]]:
     # 促銷的真實品項只進品項表，不放進上面的 products：常進品項是從 products 抽的
     promo_products = [
         {"sku": sku, "name": name, "category": cat, "spec": spec, "unit": unit,
-         "unit_price": ship, "unit_cost": round(ship * PROMO_COST_RATIO), "aliases": aliases}
+         "unit_price": ship, "unit_cost": round(ship * PROMO_COST_RATIO), "aliases": aliases, "common": True}
         for sku, name, cat, spec, unit, ship, _, aliases in catalog.PROMO_PRODUCTS
     ]
     promotions, promotion_items = build_promotions(as_of)
@@ -1139,7 +1160,7 @@ def generate(as_of: date, seed: int = SEED) -> dict[str, list[dict]]:
         "org_unit": org_units,
         "place": places,
         "app_user": users,
-        "product": list(products.values()) + promo_products,
+        "product": list(products.values()) + promo_products + real_product_rows(),
         "promotion": promotions,
         "promotion_item": promotion_items,
         "customer": customers,

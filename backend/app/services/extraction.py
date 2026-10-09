@@ -139,7 +139,10 @@ def build_prompt(transcript: str, visit_date: date, products: list[ProductHint],
 
 
 def product_hints(session: Session) -> list[ProductHint]:
-    rows = session.execute(select(Product.sku, Product.name, Product.unit, Product.aliases).order_by(Product.sku))
+    # 只給常用品項：真實型錄有一千多樣，全部放進提示詞會變慢又容易對錯
+    rows = session.execute(
+        select(Product.sku, Product.name, Product.unit, Product.aliases).where(Product.common).order_by(Product.sku)
+    )
     return [ProductHint(*row) for row in rows]
 
 

@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { formatMoney } from "@/lib/format"
+import { productOptions } from "@/lib/product-search"
 import { packDeal } from "@/lib/quote"
 import { cn } from "@/lib/utils"
 
@@ -324,22 +325,7 @@ function IntentEditor({ initial, saving, onSave }: EditorProps<IntentItem[]>) {
         <div key={index} className="flex flex-col gap-2 rounded-xl border-2 bg-card p-3 shadow-lip">
           {row.product_text && <p className="text-xs text-muted-foreground">口述講法：{row.product_text}</p>}
           <div className="flex gap-2">
-            <select
-              value={row.sku ?? ""}
-              onChange={(e) => choose(index, e.target.value)}
-              aria-label="品項"
-              className={cn(
-                "h-11 min-w-0 flex-1 rounded-xl border-2 border-input bg-card px-3 text-sm shadow-lip",
-                !row.sku && "border-destructive text-muted-foreground"
-              )}
-            >
-              <option value="">請選品項</option>
-              {products.map((p) => (
-                <option key={p.sku} value={p.sku}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
+            <ProductPicker products={products} sku={row.sku} onChoose={(sku) => choose(index, sku)} />
             <RemoveButton onClick={() => setRows(rows.filter((_, i) => i !== index))} />
           </div>
           {row.sku && packOptions(row).length > 0 && (
@@ -375,6 +361,40 @@ function IntentEditor({ initial, saving, onSave }: EditorProps<IntentItem[]>) {
       <AddButton label="新增品項" onClick={() => setRows([...rows, { product_text: "", sku: null, qty: null, unit: null, promo_code: null }])} />
       <EditorFooter saving={saving} onClear={() => onSave(null)} onSave={save} />
     </>
+  )
+}
+
+/** 品項選單：預設只列常用品項，上面的搜尋框打品名、料號或口語叫法，就從整份真實型錄找 */
+function ProductPicker({ products, sku, onChoose }: { products: Product[]; sku: string | null; onChoose: (sku: string) => void }) {
+  const [query, setQuery] = useState("")
+  const options = productOptions(products, query, sku)
+  return (
+    <div className="flex min-w-0 flex-1 flex-col gap-2">
+      <Input
+        type="search"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="搜尋品名或料號"
+        aria-label="搜尋品項"
+        className="h-11"
+      />
+      <select
+        value={sku ?? ""}
+        onChange={(e) => onChoose(e.target.value)}
+        aria-label="品項"
+        className={cn(
+          "h-11 min-w-0 rounded-xl border-2 border-input bg-card px-3 text-sm shadow-lip",
+          !sku && "border-destructive text-muted-foreground"
+        )}
+      >
+        <option value="">{query.trim() && options.length === 0 ? "找不到這個品項" : "請選品項"}</option>
+        {options.map((p) => (
+          <option key={p.sku} value={p.sku}>
+            {p.name}
+          </option>
+        ))}
+      </select>
+    </div>
   )
 }
 

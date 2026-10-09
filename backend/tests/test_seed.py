@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from app import models
 from app.db import reset_schema, schema_version
+from app.services import extraction, transcription
 
 ROOT = Path(__file__).resolve().parents[2]
 AS_OF = seed.DEFAULT_AS_OF
@@ -46,8 +47,10 @@ def test_generation_is_deterministic():
 def test_scale_matches_plan(db):
     # 250 家，加上示範業務在新竹市的三家（catalog.HSINCHU_CUSTOMERS：兩家獨立藥局、一家診所）
     assert rows(db, "SELECT count(*) FROM customer")[0][0] == 253
-    # 40 個虛構品項，加上促銷方案照搬的 20 個真實品項
-    assert rows(db, "SELECT count(*) FROM product")[0][0] == 60
+    # 40 個虛構品項、促銷方案照搬的 20 個真實品項，加上真實型錄（data/seed/products.tsv）
+    real = generate.read_real_products()
+    assert len(real) > 1500
+    assert rows(db, "SELECT count(*) FROM product")[0][0] == 60 + len(real)
     by_type = dict(rows(db, "SELECT type, count(*) FROM customer GROUP BY type"))
     assert by_type == {"chain": 76, "independent": 114, "clinic": 63}
     first, last, months = rows(db, """
@@ -87,6 +90,7 @@ def test_schema_version_matches_the_deploy_workflow_algorithm():
         "backend/app/embeddings.py",
         "data/seed/generate.py",
         "data/seed/catalog.py",
+        "data/seed/products.tsv",
     ]
     workflow = (ROOT / ".github" / "workflows" / "ci-cd.yml").read_text(encoding="utf-8")
     assert f"cat {' '.join(files)} | sha256sum" in workflow
@@ -407,11 +411,21 @@ def test_expired_pm_rules_drop_out_of_later_promotions(db):
 
 
 def test_promotion_products_have_no_sales_history(db):
-    # 真實品項只進品項表，常進品項照舊從虛構的 40 個抽，交易與評測答案不受影響
-    assert rows(db, """
-        SELECT count(*) FROM sales_transaction t
-        WHERE t.sku IN (SELECT sku FROM promotion_item)
-    """)[0][0] == 0
+    # 真實品項（促銷方案與型錄）只進品項表，常進品項照舊從虛構的 40 個抽，交易與評測答案不受影響
+    real = [p[0] for p in catalog.PROMO_PRODUCTS] + [r["料號"] for r in generate.read_real_products()]
+    assert rows(db, "SELECT count(*) FROM sales_transaction WHERE sku = ANY(:skus)", skus=real)[0][0] == 0
+
+
+def test_only_common_products_are_handed_to_the_ai_and_the_speech_recognizer(db):
+    # 虛構品項、促銷品項與 catalog.COMMON_REAL_PRODUCTS 是常用品項，型錄其他的不是
+    common = {r[0] for r in rows(db, "SELECT sku FROM product WHERE common")}
+    expected = {p[0] for p in catalog.PRODUCTS} | {p[0] for p in catalog.PROMO_PRODUCTS} | set(catalog.COMMON_REAL_PRODUCTS)
+    assert common == expected
+    with Session(db) as session:
+        assert {hint.sku for hint in extraction.product_hints(session)} == expected
+        hotwords = transcription.load_hotwords(session)
+    assert "虎讚" in hotwords and "魚油" in hotwords
+    assert "日本獅王細潔寬薄牙刷炭能抗菌" not in hotwords
 
 
 def test_every_customer_sits_on_a_place_in_its_own_region(db):
@@ -453,11 +467,13 @@ def test_the_sap_employee_master_covers_reps_and_managers_but_not_it(db):
     assert all(re.fullmatch(r"E\d{5}", number) for number in numbers.values() if number)
     # 到職日都在一年以前：這九個人在假資料裡有一整年的拜訪紀錄，沒有一個是新人
     assert rows(db, "SELECT count(*) FROM sap_employee WHERE hire_date > app_today() - 365")[0][0] == 0
-    # 產品線的值是品項表的類別。業務四條都負責——他們名下的客戶四類都在進
+    # 產品線的值是品項表的類別。業務四條都負責——他們名下的客戶四類都在進；
+    # 日用品只在真實型錄裡、沒有交易，沒有人負責
     categories = {r[0] for r in rows(db, "SELECT DISTINCT category FROM product")}
     lines = dict(rows(db, "SELECT user_id, product_lines FROM sap_employee"))
     assert all(lines[user] and set(lines[user]) <= categories for user in lines)
-    assert all(set(lines[rep]) == categories for rep in reps) and len(categories) == 4
+    assert all(set(lines[rep]) == set(catalog.PRODUCT_LINES) for rep in reps)
+    assert categories == {*catalog.PRODUCT_LINES, "日用品"}
     assert dict(rows(db, """
         SELECT c.owner_user_id, count(DISTINCT p.category) FROM sales_transaction t
         JOIN customer c ON c.id = t.customer_id JOIN product p ON p.sku = t.sku GROUP BY 1

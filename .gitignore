@@ -5,3 +5,5 @@ __pycache__/
 .DS_Store
 # 測試語料的真人錄音屬於個資（NFR-8），不進 git
 data/eval/audio/
+# 從 Salesforce 產品清單整頁複製下來的原始檔（含庫存），只給 data/seed/import_products.py 轉檔用
+/商品清單*

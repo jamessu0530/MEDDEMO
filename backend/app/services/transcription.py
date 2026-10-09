@@ -75,9 +75,9 @@ def hotword_terms() -> list[str]:
 
 
 def load_hotwords(session: Session) -> list[str]:
-    """熱詞 = 品項名稱與口語別名（資料庫）＋通路術語與競品（熱詞表檔案），去掉重複。"""
+    """熱詞 = 常用品項的名稱與口語別名（資料庫）＋通路術語與競品（熱詞表檔案），去掉重複。"""
     words: list[str] = []
-    for name, aliases in session.execute(select(Product.name, Product.aliases)):
+    for name, aliases in session.execute(select(Product.name, Product.aliases).where(Product.common)):
         words += [name, *aliases]
     return list(dict.fromkeys(words + hotword_terms()))
 

@@ -35,13 +35,13 @@ class TranscriptionSession:
 
 
 def vocabulary(session: Session, customer_id: str | None) -> list[str]:
-    """專有名詞照重要性排：這家客戶的名稱、競品與通路術語、品項名稱、口語別名，取前 100 個。"""
+    """專有名詞照重要性排：這家客戶的名稱、競品與通路術語、常用品項的名稱、口語別名，取前 100 個。"""
     words: list[str] = []
     customer = session.get(Customer, customer_id) if customer_id else None
     if customer:
         words += [customer.name, *(part.strip() for part in customer.name.split("·"))]
     words += hotword_terms()
-    products = session.execute(select(Product.name, Product.aliases).order_by(Product.sku)).all()
+    products = session.execute(select(Product.name, Product.aliases).where(Product.common).order_by(Product.sku)).all()
     words += [name for name, _ in products]
     words += [alias for _, aliases in products for alias in aliases]
     return list(dict.fromkeys(word for word in words if word))[:MAX_VOCABULARY]

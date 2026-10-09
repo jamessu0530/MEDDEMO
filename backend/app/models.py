@@ -255,6 +255,9 @@ class Product(Base):
     unit_cost: Mapped[Decimal] = mapped_column(Numeric(10, 2))
     # 業務口語的叫法，語音抽取時用來把「魚油」對到正確品項，也是熱詞表來源
     aliases: Mapped[list[str]] = mapped_column(server_default="{}")
+    # 常用品項：錄音整理給 AI 的品項清單、語音辨識的熱詞、確認頁挑品項的預設選單只列這些。
+    # 真實型錄有一千多樣（data/seed/products.tsv），全部給 AI 會變慢又容易對錯
+    common: Mapped[bool] = mapped_column(server_default=false())
 
 
 class Promotion(Base):
