@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import type { Channel } from "@/api/channels"
-import { folderExpanded, pickSelected, railItems, railPath, railUnread, shortName, topicsOf } from "@/lib/channel-rail"
+import { folderExpanded, pickSelected, railItems, railPath, railTarget, railUnread, shortName, topicsOf } from "@/lib/channel-rail"
 
 const channel = (id: number, kind: Channel["kind"], name: string, extra: Partial<Channel> = {}) =>
   ({ id, kind, name, region_id: null, parent_id: null, unread: 0, archived: false, can_manage: false, ...extra }) as Channel
@@ -114,5 +114,14 @@ describe("folderExpanded", () => {
     expect(folderExpanded(new Map([["places-2", true]]), "places-2", false)).toBe(true)
     // 點的是別的資料夾，不影響這一個
     expect(folderExpanded(new Map([["archived", false]]), "places-2", true)).toBe(true)
+  })
+})
+
+describe("railTarget", () => {
+  it("文字頻道與客戶討論串算上層，其他是自己", () => {
+    expect(railTarget(news)).toBe(2)
+    expect(railTarget(channel(300, "customer", "健安藥局", { parent_id: 9 }))).toBe(9)
+    expect(railTarget(north)).toBe(2)
+    expect(railTarget(daan)).toBe(9)
   })
 })

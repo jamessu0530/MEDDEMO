@@ -78,10 +78,14 @@ export function pickSelected(channels: Channel[], requested: number | null, reme
   return resolve(requested) ?? resolve(remembered) ?? fallback ?? inRail[0] ?? null
 }
 
+/** 頻道列上代表這個頻道的那一塊：文字頻道與客戶討論串是它的上層，其他是自己 */
+export function railTarget(channel: Pick<Channel, "id" | "kind" | "parent_id">): number {
+  return (channel.kind === "topic" || channel.kind === "customer") && channel.parent_id !== null ? channel.parent_id : channel.id
+}
+
 /** 從對話頁回到兩欄時停在哪個頻道：文字頻道與客戶討論串回上層，其他回自己 */
 export function railPath(channel: Pick<Channel, "id" | "kind" | "parent_id">): string {
-  const up = (channel.kind === "topic" || channel.kind === "customer") && channel.parent_id !== null
-  return `/channels?c=${up ? channel.parent_id : channel.id}`
+  return `/channels?c=${railTarget(channel)}`
 }
 
 export function rememberedChannel(): number | null {
