@@ -1,4 +1,4 @@
-import { MessageSquareQuote, Package } from "lucide-react"
+import { MessageSquareQuote, Package, Swords } from "lucide-react"
 
 import type { Note } from "@/api/notes"
 import { NOTE_KIND_LABEL, noteDate } from "@/lib/calendar"
@@ -12,9 +12,13 @@ type NoteRowProps = {
   showDate?: boolean
 }
 
-/** 一則備忘：要帶的是箱子、講過的是引號，後面是內容與日期 */
+// 要帶的是箱子、講過的是引號、競品是交叉的劍
+const ICON = { bring: Package, told: MessageSquareQuote, competitor: Swords } as const
+const TONE = { bring: "text-primary", told: "text-amber-600 dark:text-amber-400", competitor: "text-destructive" } as const
+
+/** 一則備忘：要帶的是箱子、講過的是引號、競品是劍，後面是內容與日期 */
 export function NoteRow({ note, showCustomer = false, showDate = true }: NoteRowProps) {
-  const Icon = note.kind === "bring" ? Package : MessageSquareQuote
+  const Icon = ICON[note.kind]
   const meta = [showCustomer ? note.customer_name : null, showDate && note.on_date ? noteDate(note.on_date) : null]
     .filter(Boolean)
     .join(" · ")
@@ -22,7 +26,7 @@ export function NoteRow({ note, showCustomer = false, showDate = true }: NoteRow
     <span className="flex min-w-0 items-start gap-2 text-left">
       <Icon
         aria-label={NOTE_KIND_LABEL[note.kind]}
-        className={cn("mt-0.5 size-4 shrink-0", note.kind === "bring" ? "text-primary" : "text-amber-600 dark:text-amber-400")}
+        className={cn("mt-0.5 size-4 shrink-0", TONE[note.kind])}
       />
       <span className="min-w-0 flex-1">
         <span className="block text-sm leading-snug break-words">{note.text}</span>

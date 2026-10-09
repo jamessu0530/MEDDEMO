@@ -1,0 +1,24 @@
+import { createElement } from "react"
+import { renderToStaticMarkup } from "react-dom/server"
+import { MemoryRouter } from "react-router"
+import { describe, expect, it } from "vitest"
+
+import { UnlockToast } from "@/components/route/unlock-toast"
+
+describe("UnlockToast", () => {
+  it("寫解鎖了哪一面，點了進個人頁", () => {
+    const html = renderToStaticMarkup(
+      createElement(
+        MemoryRouter,
+        null,
+        createElement(UnlockToast, {
+          medals: [{ kind: "stores", tier: 2, need: 3, have: 3, unlocked_on: "2026-10-28" }],
+          onDone: () => {},
+        })
+      )
+    )
+    expect(html).toContain("解鎖銀牌：跑過 3 家藥局")
+    expect(html).toContain('href="/me"')
+    expect(html).toContain('role="status"')
+  })
+})

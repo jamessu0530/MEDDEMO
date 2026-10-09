@@ -14,7 +14,8 @@ import {
 import { Link, useNavigate, useSearchParams } from "react-router"
 
 import { ApiError } from "@/api/client"
-import { getTodayRoute, sendRouteFeedback, setLegMode, type LegMode, type RouteAction, type TodayRoute } from "@/api/route"
+import type { Medal } from "@/api/me"
+import { arriveAt, getTodayRoute, sendRouteFeedback, setLegMode, type LegMode, type RouteAction, type TodayRoute } from "@/api/route"
 import { getVehicles, sendRides } from "@/api/vehicles"
 import { BottomNav } from "@/components/bottom-nav"
 import { Mascot } from "@/components/mascot"
@@ -25,13 +26,13 @@ import { EditRouteLink, SkippedHabitsNote } from "@/components/route/home-extras
 import { HomeAsk } from "@/components/route/home-ask"
 import { HomeMapPanel } from "@/components/route/home-map-panel"
 import { ShareBar } from "@/components/route/share-bar"
+import { UnlockToast } from "@/components/route/unlock-toast"
 import { SkinToggle } from "@/components/skin-toggle"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { useAuth } from "@/lib/auth"
 import { formatDate, formatDayLabel } from "@/lib/format"
 import { useUnseenReplies } from "@/lib/manager-replies"
-import { markPlayed, playedScope, readPlayed } from "@/lib/ride-memory"
-import { legKey, legToPlay, ridesOf, type Leg } from "@/lib/rides"
+import { ridesOf, type Leg } from "@/lib/rides"
 import { TRAVEL_MODE_LABEL } from "@/lib/travel-mode"
 import { useIsDesktop } from "@/lib/use-media-query"
 import { cn } from "@/lib/utils"
@@ -62,8 +63,10 @@ export function TodayPage() {
   const [attempt, setAttempt] = useState(0)
   const [busy, setBusy] = useState(false)
   const [hint, setHint] = useState<string | null>(null)
-  // 今天播過哪幾段騎乘動畫（lib/ride-memory.ts，記在 localStorage）：路線載進來時讀，騎了一段就加上去
-  const [played, setPlayed] = useState<{ scope: string; keys: Set<string> } | null>(null)
+  // 送 arrive 失敗的站：小卡寫「沒連上，這一站還沒記到」，下次點成功就拿掉
+  const [unsaved, setUnsaved] = useState<ReadonlySet<string>>(new Set())
+  // 這次點站解鎖的獎牌：底部跳一行，點了進個人頁
+  const [unlocked, setUnlocked] = useState<Medal[]>([])
   // 打開首頁補送上次送不出去的騎乘記錄：每次開頁面只送一次（StrictMode 重跑、輪詢重載都不再送）
   const flushedRides = useRef(false)
   const unseen = useUnseenReplies()
@@ -86,8 +89,6 @@ export function TodayPage() {
     getTodayRoute(userId, controller.signal)
       .then(({ route, cached }) => {
         setState({ status: "ready", route, cached })
-        const scope = playedScope(route.date, route.id)
-        setPlayed({ scope, keys: readPlayed(scope) })
         if (!cached && !flushedRides.current) {
           flushedRides.current = true
           void sendRides([]).then(() => setCollectedTick((n) => n + 1))
@@ -137,29 +138,28 @@ export function TodayPage() {
   const route = state.status === "ready" ? state.route : null
   const urgent = route?.urgent ?? null
 
-  // 熊熊滾自動騎一次到下一站那段：路線分頁、連得上（不是手機上的舊行程）、不在存檔中、今天還沒播過這一段
-  // （剛完成一站是「最後完成的站 → 下一站」，今天第一次打開是「辦公室 → 第 1 站」，lib/rides.ts 的 legToPlay）
-  const autoRide =
-    state.status === "ready" &&
-    !state.cached &&
-    !onMap &&
-    !busy &&
-    played?.scope === playedScope(state.route.date, state.route.id) &&
-    legToPlay(state.route.stops, {
-      played: played.keys,
-      officeStart: state.route.office_start,
-      startCity: state.route.start_city,
-    }) !== null
-
-  // 開始騎一段（自動播、點了重播；減少動態效果或量不到位置而直接停好也算）：記播過，送出騎過的座騎（每騎一次送一次）
+  // 開始騎一段（點站、點座騎重播；減少動態效果或量不到位置而直接停好也算）：送出騎過的座騎（每騎一次送一次）
   function recordRide(leg: Leg) {
-    if (!route) return
-    const scope = playedScope(route.date, route.id)
-    const key = legKey(leg)
-    markPlayed(scope, key)
-    setPlayed((now) => ({ scope, keys: new Set([...(now?.scope === scope ? now.keys : []), key]) }))
     // 送完（含補送先前存起來的）重拿一次圖鑑的數字
     void sendRides(ridesOf(leg)).then(() => setCollectedTick((n) => n + 1))
+  }
+
+  // 點了一站：後端記成到過，回新的行程與這次解鎖的獎牌。熊已經在騎了，不等它
+  async function arrive(customerId: string) {
+    if (!user) return
+    try {
+      const { route: next, unlocked: fresh } = await arriveAt(user.id, customerId)
+      setState({ status: "ready", route: next, cached: false })
+      setUnsaved((now) => new Set([...now].filter((id) => id !== customerId)))
+      if (fresh.length > 0) setUnlocked(fresh)
+    } catch (error) {
+      // 這家剛被別人從路線拿掉（404）、行程剛被重置（409）：重新載入最新的
+      if (error instanceof ApiError && (error.status === 404 || error.status === 409)) {
+        reload()
+        return
+      }
+      setUnsaved((now) => new Set([...now, customerId]))
+    }
   }
 
   // 記在網址上：從客戶檔案按返回，回來還是地圖。按了切換才滑動，一打開頁面不滑
@@ -419,7 +419,8 @@ export function TodayPage() {
                   officeStart={route.office_start}
                   startCity={route.start_city}
                   onPickMode={state.status === "ready" && !state.cached && !busy ? pickMode : undefined}
-                  autoRide={autoRide}
+                  onArrive={arrive}
+                  unsaved={unsaved}
                   onRide={recordRide}
                   collected={collected}
                 />
@@ -448,6 +449,7 @@ export function TodayPage() {
           }}
         />
       )}
+      {unlocked.length > 0 && <UnlockToast medals={unlocked} onDone={() => setUnlocked([])} />}
       <BottomNav />
     </div>
   )

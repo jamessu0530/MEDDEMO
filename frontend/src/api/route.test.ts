@@ -18,7 +18,7 @@ describe("normalizeRoute", () => {
       travel_mode: "drive",
       start_city: "台北市",
       office_start: false,
-      stops: [{ customer_id: "a", travel_mode: "walk", travel_estimated: false, city: "新北市" }],
+      stops: [{ customer_id: "a", travel_mode: "walk", travel_estimated: false, city: "新北市", arrived_at: null }],
     } as unknown as TodayRoute
     expect(normalizeRoute(fresh)).toEqual(fresh)
   })

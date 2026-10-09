@@ -60,14 +60,21 @@ export function NextNotes({ customerId, customerName, today }: NextNotesProps) {
         <ul className="flex flex-col">
           {state.notes.map((note) => (
             <li key={note.id} className="border-t first:border-t-0">
-              <button
-                type="button"
-                onClick={() => setEditing(note)}
-                className="flex min-h-11 w-full items-center py-2 active:bg-muted"
-                aria-label={`改這則備忘：${note.text}`}
-              >
-                <NoteRow note={note} />
-              </button>
+              {/* 競品是確認拜訪時記的，不在這裡改（手寫只能寫要帶的、講過的） */}
+              {note.kind === "competitor" ? (
+                <div className="flex min-h-11 w-full items-center py-2">
+                  <NoteRow note={note} />
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setEditing(note)}
+                  className="flex min-h-11 w-full items-center py-2 active:bg-muted"
+                  aria-label={`改這則備忘：${note.text}`}
+                >
+                  <NoteRow note={note} />
+                </button>
+              )}
             </li>
           ))}
         </ul>
