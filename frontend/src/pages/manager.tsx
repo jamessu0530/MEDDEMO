@@ -469,10 +469,10 @@ function NoticeCard({ item, onSeen }: { item: ManagerNotice; onSeen: (item: Mana
           <span className="shrink-0 rounded-md bg-destructive/10 px-2 py-0.5 text-[0.6875rem] text-destructive">未讀</span>
         )}
       </div>
-      {/* 回來時停在風險通報，不是提問 */}
+      {/* 回來時停在風險通報，不是提問；電腦版選中的那一張記在 ?item=，一起帶回去（手機不看 item） */}
       <Link
         to={`/customers/${item.customer_id}`}
-        state={{ backTo: NOTICES_PATH } satisfies CustomerLocationState}
+        state={{ backTo: `${NOTICES_PATH}&item=${item.id}` } satisfies CustomerLocationState}
         className="flex min-h-11 items-center gap-1 font-medium"
       >
         <span className="min-w-0 flex-1 leading-snug">{item.customer_name}</span>
