@@ -24,6 +24,18 @@ export function InkOverlay() {
   const signedIn = Boolean(useAuth())
   const { pathname } = useLocation()
   const shell = signedIn && pageWidth(pathname) !== "bare"
+  // 墨在換頁一開始就量好大小（那時畫面還是舊的那一頁），所以要記住上一頁是不是有側邊欄：
+  // 在 render 時更新，跟 InkRoutes 的 seen 同一個做法
+  const [shellAt, setShellAt] = useState({ pathname, prev: shell, now: shell })
+  if (shellAt.pathname !== pathname) setShellAt({ pathname, prev: shellAt.now, now: shell })
+  // 兩頁都有側邊欄：只蓋內容區；只有一邊有（例如客戶頁 ↔ 錄音頁）：側邊欄會跟著出現或消失，電腦版整個視窗都蓋；
+  // 兩頁都沒有：照手機的寬度置中。canvas 是替換元素，w-auto 會依高度的長寬比算出寬度（不會被 left/right 撐開），所以寬度要明寫
+  const inkClass =
+    shell && shellAt.prev
+      ? "lg:left-56 lg:w-[calc(100%-14rem)] lg:max-w-none lg:translate-x-0"
+      : shell || shellAt.prev
+        ? "lg:left-0 lg:w-full lg:max-w-none lg:translate-x-0"
+        : ""
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -73,7 +85,7 @@ export function InkOverlay() {
       aria-hidden
       className={cn(
         "fixed inset-y-0 left-1/2 z-60 h-full w-full max-w-md -translate-x-1/2",
-        shell && "lg:right-0 lg:left-56 lg:w-auto lg:max-w-none lg:translate-x-0"
+        inkClass
       )}
       style={{ visibility: "hidden" }}
     />
