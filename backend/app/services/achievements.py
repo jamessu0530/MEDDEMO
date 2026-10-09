@@ -50,7 +50,7 @@ class TopCustomer:
 class MonthSales:
     month: str  # 2026-05
     amount: float
-    through: dt.date | None  # 這個月還沒過完：算到哪天（系統日）；其他月是 None
+    through: dt.date | None  # 這個月：算到哪天（系統日，月底那天也照寫）；其他月是 None
 
 
 @dataclass
@@ -142,9 +142,9 @@ def build(session: Session, rep: AppUser) -> Me:
     monthly = []
     for start in _months(today, MONTHS):
         end = (start.replace(day=28) + dt.timedelta(days=4)).replace(day=1) - dt.timedelta(days=1)
-        partial = end > today
+        current = start.year == today.year and start.month == today.month
         total = session.scalar(sales(SalesTransaction.date >= start, SalesTransaction.date <= min(end, today)))
-        monthly.append(MonthSales(f"{start:%Y-%m}", float(total), today if partial else None))
+        monthly.append(MonthSales(f"{start:%Y-%m}", float(total), today if current else None))
     return Me(
         name=rep.name, region=rep.region, stats=stats, medals=medals(session, rep.id),
         top_customers=[TopCustomer(cid, name, float(total)) for cid, name, total in top], monthly=monthly,

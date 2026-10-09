@@ -5,10 +5,10 @@ import datetime as dt
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import delete
+from sqlalchemy import delete, text
 
 from app.main import app
-from app.models import ItineraryStop
+from app.models import AppUser, ItineraryStop
 from app.services import achievements
 from app.services import itinerary as service
 
@@ -111,3 +111,10 @@ def test_me_has_what_the_personal_page_shows(client, auth):
 def test_managers_have_no_personal_page(client, auth):
     found = client.get("/api/me", headers=auth("M01"))
     assert found.status_code == 403 and found.json()["detail"] == "主管沒有自己的拜訪路線"
+
+
+def test_current_month_carries_the_as_of_date_even_on_its_last_day(tx):
+    tx.execute(text("UPDATE app_setting SET value = '2026-09-30' WHERE key = 'as_of_date'"))
+    monthly = achievements.build(tx, tx.get(AppUser, "U01")).monthly
+    assert monthly[-1].month == "2026-09" and monthly[-1].through == dt.date(2026, 9, 30)
+    assert all(m.through is None for m in monthly[:-1])
