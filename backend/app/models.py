@@ -414,7 +414,7 @@ NOTE_KINDS = ("bring", "told", "competitor")
 
 
 class CustomerNote(Base):
-    """拜訪備忘：下次要帶的東西（bring）與跟客戶講過的促銷（told）。錄音確認時寫進來，業務也能手寫
+    """拜訪備忘：下次要帶的東西（bring）、跟客戶講過的促銷（told）與講到的競品（competitor）。錄音確認時寫進來，業務也能手寫
     （docs/superpowers/specs/2026-10-07-calendar-notes-design.md）。"""
 
     __tablename__ = "customer_note"

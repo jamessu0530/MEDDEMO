@@ -739,6 +739,7 @@ METHOD_CARDS = [
 
 # 拜訪備忘的示範資料（docs/superpowers/specs/2026-10-07-calendar-notes-design.md）：林昱辰的幾家客戶。
 # (客戶, 種類, 內容, 日期離展示日幾天；None 是沒有日期)。都是手寫的（沒有 visit_id），不動亂數
+# 競品那幾則照 docs/superpowers/specs/2026-10-09-tap-to-ride-and-personal-page-design.md，也要維持沒有 visit_id（有的話 next_notes 會把較舊的手寫備忘藏起來）
 NOTES = [
     ("C001", "told", "跟店長說 Premium 眼藥水小口買 22 送 1，大口加送葡萄籽 4 瓶", -8),
     ("C001", "bring", "Premium 眼藥水的貨架卡與試用包", 2),
