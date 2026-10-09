@@ -668,7 +668,7 @@ function OaSplit({
       }
       detail={
         selected && (
-          <div className="flex flex-col overflow-hidden rounded-2xl border-2 bg-background shadow-lip">
+          <div className="flex shrink-0 flex-col rounded-2xl border-2 bg-background shadow-lip">
             <OaFormView
               key={selected.id}
               id={selected.id}
