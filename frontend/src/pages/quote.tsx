@@ -180,8 +180,10 @@ export function QuotePage() {
   return (
     <div className="flex min-h-svh flex-col">
       <PageHeader title="開報價" subtitle={state.status === "ready" ? state.customer.name : undefined} backTo={profilePath} />
-      {/* 底部固定那一塊有折扣、合計與送出鈕；要寫理由時更高，清單最後一項才不會被蓋住 */}
-      <main className={cn("flex flex-1 flex-col gap-3 px-4 pt-4", needsApproval ? "pb-80" : "pb-56")}>
+      {/* 電腦版左邊品項、右邊合計與送出（固定在頁首下面）；手機照舊，合計固定在底部 */}
+      <div className="flex flex-1 flex-col lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-6 lg:px-6">
+        {/* 底部固定那一塊有折扣、合計與送出鈕；要寫理由時更高，清單最後一項才不會被蓋住 */}
+        <main className={cn("flex flex-1 flex-col gap-3 px-4 pt-4 lg:px-0 lg:pb-10", needsApproval ? "pb-80" : "pb-56")}>
         {state.status === "loading" && <p className="py-10 text-center text-sm text-muted-foreground">載入常進品項中…</p>}
         {state.status === "error" && state.missing && (
           <Notice text={customerNotFoundText(user)} action={{ label: "回客戶清單", onClick: () => navigate("/customers") }} />
@@ -269,7 +271,7 @@ export function QuotePage() {
       </main>
 
       {hasLines && (
-        <div className="fixed inset-x-0 bottom-0 z-10 mx-auto flex max-w-md flex-col gap-2 border-t bg-card px-4 pt-3 pb-[max(env(safe-area-inset-bottom),0.75rem)]">
+        <div className="fixed inset-x-0 bottom-0 z-10 mx-auto flex max-w-md flex-col gap-2 border-t bg-card px-4 pt-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] lg:sticky lg:inset-x-auto lg:top-[4.5rem] lg:bottom-auto lg:mt-4 lg:max-w-none lg:rounded-2xl lg:border-2 lg:p-4 lg:shadow-lip">
           {/* 折扣跟合計、送出鈕放在一起：清單有十幾項，放在清單後面要捲到底才看得到 */}
           <div className="flex items-center gap-2">
             <label htmlFor="quote-discount" className="shrink-0 text-sm font-medium">
@@ -325,6 +327,7 @@ export function QuotePage() {
           </Button>
         </div>
       )}
+      </div>
     </div>
   )
 }
