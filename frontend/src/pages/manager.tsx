@@ -90,7 +90,7 @@ export function ManagerPage() {
           </div>
         }
       />
-      <div className="flex border-b bg-background px-2" role="tablist">
+      <div className="flex border-b bg-background px-2 lg:hidden" role="tablist">
         {VIEWS.map((value) => (
           <button
             key={value}
@@ -123,7 +123,13 @@ export function ManagerPage() {
           </button>
         ))}
       </div>
-      <main className="flex flex-1 flex-col gap-3 px-4 pt-3 pb-10">
+      <main
+        className={cn(
+          "flex flex-1 flex-col gap-3 px-4 pt-3 pb-10 lg:px-6",
+          // 方法卡沒有另外排，電腦版放在中間一欄
+          view === "methods" && "lg:mx-auto lg:w-full lg:max-w-2xl"
+        )}
+      >
         {view === "routes" ? (
           <RoutesPanel />
         ) : view === "asks" ? (

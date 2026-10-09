@@ -35,10 +35,10 @@ function subscribeAuth(listener: () => void) {
 }
 const readAuthFailed = () => authFailed
 
-/** 主管頁的地圖區塊：團隊或一位業務的路線 */
-export function MapSlot({ routes, removed }: { routes: RepRoute[]; removed?: RemovedStop[] }) {
+/** 主管頁的地圖區塊：團隊或一位業務的路線。className 是地圖的高度，手機是 h-64 */
+export function MapSlot({ routes, removed, className = "h-64" }: { routes: RepRoute[]; removed?: RemovedStop[]; className?: string }) {
   return (
-    <MapGate className="h-64">
+    <MapGate className={className}>
       {(config, onFail) => <RouteMap config={config} routes={routes} removed={removed} onFail={onFail} />}
     </MapGate>
   )

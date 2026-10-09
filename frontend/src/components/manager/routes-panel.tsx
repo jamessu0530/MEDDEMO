@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import { ChevronLeft, ChevronRight, MapPin } from "lucide-react"
 import { Link, useNavigate, useSearchParams } from "react-router"
 
@@ -16,6 +16,7 @@ import { MapSlot } from "@/components/map-slot"
 import { RepRouteCard } from "@/components/manager/rep-route-card"
 import { Notice } from "@/components/notice"
 import { LiveAvatar } from "@/components/user-avatar"
+import { useIsDesktop } from "@/lib/use-media-query"
 import { realtime, useRealtimeConnected } from "@/lib/realtime"
 import { headerLine, progressLine, SOURCE_LABEL, totalsLine, windowLabel, withLocation, withLocations } from "@/lib/team-routes"
 import { cn } from "@/lib/utils"
@@ -116,8 +117,22 @@ function Loading() {
   return <p className="py-10 text-center text-sm text-muted-foreground">載入中…</p>
 }
 
+// 電腦版團隊行程的地圖：在左邊、固定在頁首下面，高度是視窗扣掉頁首
+const DESKTOP_MAP = "h-[calc(100svh-5.5rem)]"
+
+/** 電腦版：地圖在左邊固定不動，右邊 26rem 是清單或一位業務的詳細 */
+function BesideMap({ map, children }: { map: ReactNode; children: ReactNode }) {
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr)_26rem] items-start gap-6">
+      <div className="sticky top-[4.5rem]">{map}</div>
+      <div className="flex min-w-0 flex-col gap-3">{children}</div>
+    </div>
+  )
+}
+
 function TeamOverview() {
   const navigate = useNavigate()
+  const desktop = useIsDesktop()
   const { state, retry } = useLiveLoad<TeamRoutes>(getTeamRoutes, withLocations, () => true, "team")
   if (state.status === "loading") return <Loading />
   if (state.status === "error") {
@@ -130,26 +145,38 @@ function TeamOverview() {
     )
   }
   const { data } = state
+  const header = <p className="text-xs text-muted-foreground">{headerLine(data)}</p>
+  if (data.reps.length === 0) {
+    return (
+      <>
+        {header}
+        <p className="py-10 text-center text-sm text-muted-foreground">目前沒有業務。</p>
+      </>
+    )
+  }
+  const cards = data.reps.map((route) => <RepRouteCard key={route.rep.id} route={route} />)
+  if (desktop) {
+    return (
+      <BesideMap map={<MapSlot routes={data.reps} className={DESKTOP_MAP} />}>
+        {header}
+        {cards}
+        <GoogleAttribution routes={data.reps} />
+      </BesideMap>
+    )
+  }
   return (
     <>
-      <p className="text-xs text-muted-foreground">{headerLine(data)}</p>
-      {data.reps.length === 0 ? (
-        <p className="py-10 text-center text-sm text-muted-foreground">目前沒有業務。</p>
-      ) : (
-        <>
-          <MapSlot routes={data.reps} />
-          {data.reps.map((route) => (
-            <RepRouteCard key={route.rep.id} route={route} />
-          ))}
-          <GoogleAttribution routes={data.reps} />
-        </>
-      )}
+      {header}
+      <MapSlot routes={data.reps} />
+      {cards}
+      <GoogleAttribution routes={data.reps} />
     </>
   )
 }
 
 function RepDetail({ userId }: { userId: string }) {
   const navigate = useNavigate()
+  const desktop = useIsDesktop()
   const { state, retry } = useLiveLoad<RepRoute>((signal) => getRepRoute(userId, signal), withLocation, (id) => id === userId, userId)
   if (state.status === "loading") return <Loading />
   if (state.status === "error") {
@@ -164,20 +191,23 @@ function RepDetail({ userId }: { userId: string }) {
   const route = state.data
   // 從客戶檔案按返回，回到這位業務的詳細
   const backTo = `/manager?view=routes&rep=${route.rep.id}`
-  return (
-    <>
-      <Link to="/manager" replace className="-ml-1 flex h-11 items-center gap-1 self-start text-sm text-muted-foreground">
-        <ChevronLeft className="size-4" />
-        團隊行程
-      </Link>
-      <div className="flex items-center gap-2.5">
-        <LiveAvatar id={route.rep.id} name={route.rep.name} size="lg" />
-        <div className="min-w-0">
-          <p className="text-base font-semibold">{route.rep.name}</p>
-          <p className="text-xs text-muted-foreground tabular-nums">{progressLine(route)}</p>
-        </div>
+  const back = (
+    <Link to="/manager" replace className="-ml-1 flex h-11 items-center gap-1 self-start text-sm text-muted-foreground">
+      <ChevronLeft className="size-4" />
+      團隊行程
+    </Link>
+  )
+  const who = (
+    <div className="flex items-center gap-2.5">
+      <LiveAvatar id={route.rep.id} name={route.rep.name} size="lg" />
+      <div className="min-w-0">
+        <p className="text-base font-semibold">{route.rep.name}</p>
+        <p className="text-xs text-muted-foreground tabular-nums">{progressLine(route)}</p>
       </div>
-      <MapSlot routes={[route]} removed={route.removed} />
+    </div>
+  )
+  const details = (
+    <>
       <p className="text-xs tabular-nums">{totalsLine(route)}</p>
       <p className="flex items-start gap-1.5 text-xs text-primary">
         <MapPin className="mt-0.5 size-3.5 shrink-0" />
@@ -196,6 +226,23 @@ function RepDetail({ userId }: { userId: string }) {
         </ol>
       </section>
       <GoogleAttribution routes={[route]} />
+    </>
+  )
+  if (desktop) {
+    return (
+      <BesideMap map={<MapSlot routes={[route]} removed={route.removed} className={DESKTOP_MAP} />}>
+        {back}
+        {who}
+        {details}
+      </BesideMap>
+    )
+  }
+  return (
+    <>
+      {back}
+      {who}
+      <MapSlot routes={[route]} removed={route.removed} />
+      {details}
     </>
   )
 }
