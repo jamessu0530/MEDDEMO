@@ -1,17 +1,18 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import { ChevronRight, Network, Settings, TriangleAlert } from "lucide-react"
 import { Link, useNavigate, useSearchParams } from "react-router"
 
 import { listEscalations, replyEscalation, type Escalation } from "@/api/escalations"
 import { customerTypeLabel, listMyMethods, updateMethod, type MethodCard } from "@/api/methods"
 import { listNotices, markNoticeSeen, type ManagerNotice } from "@/api/notices"
-import { listAutoApproved, listOaInbox, type OaFormItem } from "@/api/oa"
+import { listAutoApproved, listOaInbox, type OaFormDetail, type OaFormItem } from "@/api/oa"
 import { AttachmentGallery } from "@/components/attachments/attachment-gallery"
 import { ChannelsLink } from "@/components/channels-link"
 import { ListRow, MasterDetail } from "@/components/manager/master-detail"
 import { RoutesPanel } from "@/components/manager/routes-panel"
 import { MethodCardForm } from "@/components/method-card-form"
 import { Notice } from "@/components/notice"
+import { OaFormView } from "@/components/oa-form-view"
 import { OaModelNote } from "@/components/oa-model"
 import { MyStatusButton } from "@/components/my-status"
 import { SkinToggle } from "@/components/skin-toggle"
@@ -20,7 +21,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { useAuth, type AuthUser } from "@/lib/auth"
-import { formatProbability, oaDateText } from "@/lib/approval"
+import { OA_STATUS_LABEL, formatProbability, oaDateText } from "@/lib/approval"
 import { formatDateTime } from "@/lib/format"
 import { itemParam, nextAfter, pickItem } from "@/lib/master-detail"
 import { pendingOa, unseenNotices, usePendingOa, useUnseenNotices } from "@/lib/manager-counts"
@@ -511,6 +512,9 @@ function OaInboxPanel() {
   })
   const [automatic, setAutomatic] = useState<OaFormItem[]>([])
   const [attempt, setAttempt] = useState(0)
+  const desktop = useIsDesktop()
+  const [requested, select] = useItemParam()
+  const [notice, setNotice] = useState<string | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -527,6 +531,13 @@ function OaInboxPanel() {
     return () => controller.abort()
   }, [attempt])
 
+  // 電腦版在右邊簽完：重拿清單，接著打開下一張（簽完的那張通常就不在等簽的清單裡了）。側邊欄的數字由申請單內容自己更新
+  function decided(form: OaFormDetail) {
+    if (state.status === "ready") select(nextAfter([...state.items, ...automatic], form.id))
+    setNotice(`${form.form_no} ${OA_STATUS_LABEL[form.status]}`)
+    setAttempt((n) => n + 1)
+  }
+
   return (
     <>
       {user && (
@@ -536,6 +547,7 @@ function OaInboxPanel() {
             : "你團隊業務的出差單、優惠與合約申請，會送到這裡簽核"}
         </p>
       )}
+      {notice && <p className="rounded-lg bg-primary/10 px-3 py-2 text-sm text-primary">{notice}</p>}
       {state.status === "loading" && <p className="py-10 text-center text-sm text-muted-foreground">載入中…</p>}
       {state.status === "error" && (
         <Notice
@@ -553,36 +565,45 @@ function OaInboxPanel() {
       {state.status === "ready" && state.items.length === 0 && (
         <p className="py-10 text-center text-sm text-muted-foreground">目前沒有待簽核的申請單。</p>
       )}
-      {state.status === "ready" && state.items.map((item) => <OaInboxCard key={item.id} item={item} />)}
-      {automatic.length > 0 && (
-        <section className="mt-2 flex flex-col gap-2">
-          <p className="text-sm font-semibold">系統已核准</p>
-          <p className="text-xs text-muted-foreground">
-            規則上區處主管就能簽、模型有把握會過的申請，由系統直接核准，列在這裡給你事後查（最近 {automatic.length} 張）。
-          </p>
-          {automatic.map((item) => (
-            <Link key={item.id} to={`/oa/forms/${item.id}`} className="rounded-xl border-2 bg-card px-4 py-3 shadow-lip press">
-              <div className="flex items-start justify-between gap-2">
-                <p className="text-sm">{item.summary}</p>
-                {item.model?.probability != null && (
-                  <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{formatProbability(item.model.probability)}</span>
-                )}
-              </div>
-              <p className="mt-1 text-[0.6875rem] text-muted-foreground">
-                {item.form_no} · {item.applicant_name} · {item.customer_name} · {oaDateText(item)}
+      {desktop ? (
+        state.status === "ready" &&
+        state.items.length + automatic.length > 0 && (
+          <OaSplit items={state.items} automatic={automatic} requested={requested} onSelect={select} onDecided={decided} />
+        )
+      ) : (
+        <>
+          {state.status === "ready" && state.items.map((item) => <OaInboxCard key={item.id} item={item} />)}
+          {automatic.length > 0 && (
+            <section className="mt-2 flex flex-col gap-2">
+              <p className="text-sm font-semibold">系統已核准</p>
+              <p className="text-xs text-muted-foreground">
+                規則上區處主管就能簽、模型有把握會過的申請，由系統直接核准，列在這裡給你事後查（最近 {automatic.length} 張）。
               </p>
-            </Link>
-          ))}
-        </section>
+              {automatic.map((item) => (
+                <Link key={item.id} to={`/oa/forms/${item.id}`} className="rounded-xl border-2 bg-card px-4 py-3 shadow-lip press">
+                  <AutoApprovedSummary item={item} />
+                </Link>
+              ))}
+            </section>
+          )}
+        </>
       )}
     </>
   )
 }
 
-/** 簽核匣的一張單：種類標籤、一句摘要；優惠與合約多一塊模型的估計與理由 */
 function OaInboxCard({ item }: { item: OaFormItem }) {
   return (
     <Link to={`/oa/forms/${item.id}`} className="rounded-2xl border-2 bg-card p-4 shadow-lip press">
+      <OaInboxSummary item={item} />
+    </Link>
+  )
+}
+
+/** 簽核匣的一張單：種類標籤、一句摘要；優惠與合約多一塊模型的估計與理由 */
+function OaInboxSummary({ item }: { item: OaFormItem }) {
+  return (
+    <>
       <div className="flex items-start gap-2">
         <Badge variant={item.kind === "trip" ? "secondary" : "default"} className="mt-0.5">
           {item.kind_label}
@@ -595,7 +616,75 @@ function OaInboxCard({ item }: { item: OaFormItem }) {
       </p>
       <p className="mt-1 text-[0.6875rem] text-muted-foreground">{oaDateText(item)}</p>
       {item.model && <OaModelNote model={item.model} className="mt-2" />}
-    </Link>
+    </>
+  )
+}
+
+/** 系統已核准那一區的一列：一句摘要、模型的把握、文號與日期 */
+function AutoApprovedSummary({ item }: { item: OaFormItem }) {
+  return (
+    <>
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-sm">{item.summary}</p>
+        {item.model?.probability != null && (
+          <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{formatProbability(item.model.probability)}</span>
+        )}
+      </div>
+      <p className="mt-1 text-[0.6875rem] text-muted-foreground">
+        {item.form_no} · {item.applicant_name} · {item.customer_name} · {oaDateText(item)}
+      </p>
+    </>
+  )
+}
+
+/** 電腦版：左邊是等簽的單，下面接系統已核准的單；右邊打開選中的那張，在這裡直接簽 */
+function OaSplit({
+  items,
+  automatic,
+  requested,
+  onSelect,
+  onDecided,
+}: {
+  items: OaFormItem[]
+  automatic: OaFormItem[]
+  requested: number | null
+  onSelect: (id: number) => void
+  onDecided: (form: OaFormDetail) => void
+}) {
+  const selected = pickItem([...items, ...automatic], requested)
+  const row = (item: OaFormItem, summary: ReactNode) => (
+    <ListRow key={item.id} selected={item.id === selected?.id} onSelect={() => onSelect(item.id)}>
+      {summary}
+    </ListRow>
+  )
+  return (
+    <MasterDetail
+      list={
+        <>
+          {items.map((item) => row(item, <OaInboxSummary item={item} />))}
+          {automatic.length > 0 && <p className="mt-3 text-sm font-semibold">系統已核准</p>}
+          {automatic.map((item) => row(item, <AutoApprovedSummary item={item} />))}
+        </>
+      }
+      detail={
+        selected && (
+          <div className="flex flex-col overflow-hidden rounded-2xl border-2 bg-background shadow-lip">
+            <OaFormView
+              key={selected.id}
+              id={selected.id}
+              backTo="/manager?view=oa"
+              header={(form) => (
+                <div className="border-b px-4 py-3">
+                  <p className="text-xs text-muted-foreground">{form?.form_no ?? selected.form_no}</p>
+                  <h2 className="text-base font-semibold">{form?.kind_label ?? selected.kind_label}</h2>
+                </div>
+              )}
+              onDecided={onDecided}
+            />
+          </div>
+        )
+      }
+    />
   )
 }
 

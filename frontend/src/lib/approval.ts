@@ -1,5 +1,5 @@
 import type { Approval } from "@/api/customers"
-import type { OaFormItem } from "@/api/oa"
+import type { OaFormItem, OaStatus } from "@/api/oa"
 import { formatDate } from "@/lib/format"
 
 // 《報價權限與折扣審核》：業務自己 3%、區處主管 8%、業務處長 12%，再上去總經理；最多收到 20%，每 0.5% 一格。
@@ -11,6 +11,15 @@ export const DISCOUNT_MAX = 20
 export const DISCOUNT_STEP = 0.5
 // 申請理由最多幾個字（後端同一個上限）
 export const REASON_MAX_LENGTH = 500
+
+/** 申請單的狀態（OA 上的字） */
+export const OA_STATUS_LABEL: Record<OaStatus, string> = {
+  draft: "草稿",
+  pending: "審核中",
+  returned: "已退回",
+  rejected: "已駁回",
+  approved: "已批准",
+}
 
 export type DiscountSteps = {
   // 這個折扣送得出去嗎；不行的話 text 是原因
