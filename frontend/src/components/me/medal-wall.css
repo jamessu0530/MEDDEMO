@@ -1,0 +1,16 @@
+/* 新解鎖的獎牌外圈亮一圈（個人頁）；減少動態效果時不亮 */
+.medal-glow::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border-radius: 9999px;
+  border: 3px solid #ffc93c;
+  animation: medal-glow 1.2s ease-out forwards;
+}
+@keyframes medal-glow {
+  from { opacity: 1; transform: scale(0.8); }
+  to { opacity: 0; transform: scale(1.35); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .medal-glow::after { animation: none; opacity: 0; }
+}

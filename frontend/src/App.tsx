@@ -30,6 +30,7 @@ import { OaFormPage } from "@/pages/oa-form"
 import { OaFormsPage } from "@/pages/oa-forms"
 import { OAuthCallbackPage } from "@/pages/oauth-callback"
 import { LoginPage } from "@/pages/login"
+import { MePage } from "@/pages/me"
 import { PrivacyPage } from "@/pages/privacy"
 import { PromotionsPage } from "@/pages/promotions"
 import { RidesPage } from "@/pages/rides"
@@ -203,6 +204,7 @@ export default function App() {
             <Route path="/methods" element={<MethodsPage />} />
             {/* 座騎圖鑑：熊熊滾騎過的座騎；主管與 IT 打開會看到後端的說明 */}
             <Route path="/rides" element={<RidesPage />} />
+            <Route path="/me" element={<MePage />} />
             {/* 語音併進問答頁了，舊書籤與導覽說明還指得到這個網址 */}
             <Route path="/voice" element={<Navigate to="/ask" replace />} />
             <Route path="/customers/:customerId" element={<CustomerPage />} />

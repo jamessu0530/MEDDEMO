@@ -227,10 +227,10 @@ export function TodayPage() {
     >
       <header ref={headerRef} className="sticky top-0 z-10 bg-background/95 px-4 pt-2 pb-3 backdrop-blur lg:px-6">
         <div className="-mr-2 flex items-center justify-between gap-2 lg:hidden">
-          {/* 自己的頭像：點了換狀態（有空、忙碌、顯示為離線…）；點名字進帳號設定：改密碼、登出、使用說明 */}
+          {/* 自己的頭像：點了換狀態（有空、忙碌、顯示為離線…）；點名字進個人頁（右上角齒輪再進帳號設定） */}
           <div className="flex min-w-0 items-center gap-1.5">
             <MyStatusButton className="size-9" />
-            <Link to="/settings" className="flex h-11 min-w-0 items-center gap-1 text-xs text-muted-foreground">
+            <Link to="/me" className="flex h-11 min-w-0 items-center gap-1 text-xs text-muted-foreground">
               {/* 名字自己一行、區與示範說明另一行：右邊還有狀態列，放大字體時接在一起整句會被截到只剩一兩個字 */}
               <span className="flex min-w-0 flex-col leading-tight">
                 <span className="truncate">{user.name}</span>
