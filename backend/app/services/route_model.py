@@ -57,14 +57,16 @@ WITH order_days AS (
     SELECT customer_id, max((visited_at AT TIME ZONE 'Asia/Taipei')::date) AS last_visit_date
     FROM visit WHERE (visited_at AT TIME ZONE 'Asia/Taipei')::date < :as_of GROUP BY customer_id
 ), ar AS (
-    SELECT customer_id, max(:as_of - invoice_date) AS ar_age_days
+    SELECT customer_id, max(:as_of - invoice_date) AS ar_age_days,
+           max(:as_of - due_date) FILTER (WHERE due_date < :as_of) AS ar_overdue_days
     FROM receivable
     WHERE invoice_date <= :as_of AND (paid_date IS NULL OR paid_date > :as_of)
     GROUP BY customer_id
 )
 SELECT c.id, c.name, c.type, c.grade, c.chain_group, c.owner_user_id,
        c.contract_end_date, o.last_order_date, o.gap_now, o.gap_before,
-       v.last_visit_date, COALESCE(ar.ar_age_days, 0) AS ar_age_days
+       v.last_visit_date, COALESCE(ar.ar_age_days, 0) AS ar_age_days,
+       COALESCE(ar.ar_overdue_days, 0) AS ar_overdue_days
 FROM customer c
 LEFT JOIN orders o ON o.customer_id = c.id
 LEFT JOIN visits v ON v.customer_id = c.id
@@ -89,6 +91,8 @@ class Candidate:
     interval_now: float | None
     interval_before: float | None
     ar_age_days: int
+    # 過了到期日還沒收的帳款最久逾期幾天。不是模型的特徵：今日路線的說明與簽核的擋關用
+    ar_overdue_days: int
     contract_days_left: int | None
     features: dict[str, float]
 
@@ -118,7 +122,7 @@ def candidates(session: Session, as_of: date, owner_id: str | None = None) -> li
             chain_group=r["chain_group"], owner_user_id=r["owner_user_id"],
             last_visit_date=r["last_visit_date"], last_order_date=r["last_order_date"],
             interval_now=gap_now, interval_before=gap_before, ar_age_days=int(r["ar_age_days"]),
-            contract_days_left=contract_left, features=features,
+            ar_overdue_days=int(r["ar_overdue_days"]), contract_days_left=contract_left, features=features,
         ))
     return out
 

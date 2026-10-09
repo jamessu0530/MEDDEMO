@@ -197,7 +197,7 @@ def _fastest_growing_category(session: Session, customer_id: str, today: dt.date
 def _signal_and_reason(candidate: route_model.Candidate, today: dt.date) -> tuple[str, str]:
     """這家為什麼排進來，說一句話。
 
-    排順序是模型的事，這裡只負責解釋。門檻沿用客戶檔案那組（帳齡 60 天、間隔拉長兩成、
+    排順序是模型的事，這裡只負責解釋。門檻沿用客戶檔案那組（帳款過了到期日、間隔拉長兩成、
     合約前 3 個月），業務在兩個畫面上看到的標準才一樣。不用模型自己的特徵貢獻來寫理由，
     是因為貢獻值受標準化影響：權重接近 0 的特徵，只要那家客戶在該項特別極端，
     算出來的貢獻照樣最大，講出來的理由會跟排序的真正原因對不上（實測過）。
@@ -206,8 +206,8 @@ def _signal_and_reason(candidate: route_model.Candidate, today: dt.date) -> tupl
     days_since_order = (today - candidate.last_order_date).days if candidate.last_order_date else None
     typical_gap = candidate.interval_before or candidate.interval_now
 
-    if candidate.ar_age_days > customer_profile.AR_WATCH_DAYS:
-        return "ar", f"帳款最久拖了 {candidate.ar_age_days} 天"
+    if candidate.ar_overdue_days:
+        return "ar", f"帳款逾期 {candidate.ar_overdue_days} 天"
     if (candidate.interval_now and candidate.interval_before
             and candidate.interval_now >= candidate.interval_before * customer_profile.INTERVAL_ALERT_RATIO):
         return "interval", f"進貨間隔 {candidate.interval_before:.0f} → {candidate.interval_now:.0f} 天"

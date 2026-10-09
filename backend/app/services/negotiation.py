@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.models import METHOD_TAGS, AppUser, Customer, DocumentChunk, Product, SalesTransaction
 from app.pricing import SUPPLY_PRICE_FACTOR
-from app.services import approvals, festivals, method_cards
+from app.services import approvals, festivals, method_cards, payment_terms
 from app.services.customer_profile import TOP_SKU_DAYS, Profile
 from app.services.retrieval import SIMPLE, keyword_tokens
 
@@ -39,8 +39,6 @@ CAMPAIGN_FEE_CAP_RATE = 0.15
 MAX_DEALS = 5
 # 《連鎖通路合約條件》：獨立藥局不收上架費，通路獎勵統一為進貨金額的 2%；診所不適用上架費與通路獎勵
 CHANNEL_REWARD_RATE = {"independent": 0.02, "clinic": None}
-# 《付款條件與帳齡管理》：獨立藥局與診所的付款條件為 30 天
-PAYMENT_DAYS = {"independent": 30, "clinic": 30}
 # 《報價權限》：業務可在標準供貨價之外自行給予最多 3%（含）的折扣，超過要簽核。
 # 跟開報價的簽核規則是同一個數字，只留一份（services/approvals.py）
 FREE_DISCOUNT_PCT = approvals.DISCOUNT_FREE
@@ -151,8 +149,10 @@ class Deals:
 class Terms:
     supply_rate: float  # 供貨價是建議售價的幾成
     channel_reward_rate: float | None  # 診所不適用
-    payment_days: int
+    # 付款條件：「RCD2 隔月匯款，優惠 3%」（services/payment_terms.py）
+    payment_term: str
     ar_max_age_days: int | None
+    ar_overdue_days: int | None
     free_discount_pct: float
     amount_last_90d: float
     avg_order_amount: float | None
@@ -338,8 +338,9 @@ def _terms(customer: Customer, profile: Profile) -> Terms:
     return Terms(
         supply_rate=SUPPLY_PRICE_FACTOR[customer.type],
         channel_reward_rate=CHANNEL_REWARD_RATE[customer.type],
-        payment_days=PAYMENT_DAYS[customer.type],
+        payment_term=payment_terms.describe(customer.payment_term),
         ar_max_age_days=stats.ar_max_age_days,
+        ar_overdue_days=stats.ar_overdue_days,
         free_discount_pct=FREE_DISCOUNT_PCT,
         amount_last_90d=stats.amount_last_90d,
         avg_order_amount=stats.avg_order_amount_last_90d,

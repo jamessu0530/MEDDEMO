@@ -40,14 +40,14 @@
     "threshold": 0.85,
     "metrics": {
       "auc": 0.9208579881656804,
-      "eligible_rows": 147,
-      "eligible_auc": 0.782608695652174,
-      "baseline_precision": 0.9387755102040817,
+      "eligible_rows": 144,
+      "eligible_auc": 0.7818930041152263,
+      "baseline_precision": 0.9375,
       "deferred": 24,
       "deferred_approved": 21,
-      "precision_at_threshold": 0.9512195121951219,
-      "approved_at_threshold": 123,
-      "auto_share": 0.7784810126582279,
+      "precision_at_threshold": 0.95,
+      "approved_at_threshold": 120,
+      "auto_share": 0.759493670886076,
       "train_rows": 675,
       "test_rows": 225,
       "test_approval_rate": 0.7511111111111111,
@@ -55,23 +55,23 @@
       "thresholds": [
         {
           "threshold": 0.8,
-          "approved": 130,
-          "precision": 0.9461538461538461
+          "approved": 127,
+          "precision": 0.9448818897637795
         },
         {
           "threshold": 0.85,
-          "approved": 123,
-          "precision": 0.9512195121951219
+          "approved": 120,
+          "precision": 0.95
         },
         {
           "threshold": 0.9,
-          "approved": 111,
-          "precision": 0.963963963963964
+          "approved": 109,
+          "precision": 0.963302752293578
         },
         {
           "threshold": 0.95,
-          "approved": 83,
-          "precision": 0.9879518072289156
+          "approved": 81,
+          "precision": 0.9876543209876543
         }
       ],
       "train_period": [
@@ -125,14 +125,14 @@
     "threshold": 0.8,
     "metrics": {
       "auc": 0.9539473684210527,
-      "eligible_rows": 41,
-      "eligible_auc": 0.9871794871794872,
-      "baseline_precision": 0.9512195121951219,
-      "deferred": 0,
+      "eligible_rows": 43,
+      "eligible_auc": 0.9916666666666667,
+      "baseline_precision": 0.9302325581395349,
+      "deferred": 1,
       "deferred_approved": 0,
-      "precision_at_threshold": 0.9512195121951219,
-      "approved_at_threshold": 41,
-      "auto_share": 0.803921568627451,
+      "precision_at_threshold": 0.9523809523809523,
+      "approved_at_threshold": 42,
+      "auto_share": 0.8235294117647058,
       "train_rows": 225,
       "test_rows": 75,
       "test_approval_rate": 0.7466666666666667,
@@ -140,12 +140,12 @@
       "thresholds": [
         {
           "threshold": 0.8,
-          "approved": 41,
-          "precision": 0.9512195121951219
+          "approved": 42,
+          "precision": 0.9523809523809523
         },
         {
           "threshold": 0.85,
-          "approved": 37,
+          "approved": 38,
           "precision": 1.0
         },
         {

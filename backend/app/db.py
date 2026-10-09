@@ -17,6 +17,8 @@ SEMANTIC_LAYER = Path(__file__).parent / "sql" / "semantic_layer.sql"
 ORG = Path(__file__).parent / "services" / "org.py"
 # 向量的算法：換模型或改了文件與提問的寫法，段落向量就要重算
 EMBEDDINGS = Path(__file__).parent / "embeddings.py"
+# 應收帳款的到期日與金額照付款條件算，灌資料時也用它
+PAYMENT_TERMS = Path(__file__).parent / "services" / "payment_terms.py"
 # 假資料的產生程式；映像檔裡放在 /srv/data/seed，跟 /srv/backend 同一層（見 backend/Dockerfile）
 SEED_DIR = Path(__file__).resolve().parents[2] / "data" / "seed"
 
@@ -65,12 +67,14 @@ def schema_version() -> str:
     就是錯的，指紋要跟著動，不然部署不會重灌、每個人身上都留著過期的路徑。
     embeddings.py 也是：換模型或改了文件與提問的寫法，向量空間就變了，舊的段落向量跟新的提問比不起來，要重算。
     products.tsv 是真實型錄，品項表的一部分照它灌，改了一樣要重灌。
+    services/payment_terms.py 也是：應收帳款的到期日與金額照它算。
     部署流程在 runner 上用 sha256sum 算同一個值（這幾個檔案依序接起來取前 12 碼），
     檔案清單與順序兩邊要一模一樣（.github/workflows/ci-cd.yml，test_seed.py 會比對）。
     """
     digest = hashlib.sha256()
     for path in (
         MODELS, SEMANTIC_LAYER, ORG, EMBEDDINGS, SEED_DIR / "generate.py", SEED_DIR / "catalog.py", SEED_DIR / "products.tsv",
+        PAYMENT_TERMS,
     ):
         digest.update(path.read_bytes())
     return digest.hexdigest()[:12]

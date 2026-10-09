@@ -86,7 +86,8 @@ WITH orders AS (
 ), ar AS (
   SELECT customer_id,
          sum(amount) FILTER (WHERE paid_date IS NULL) AS ar_outstanding,
-         max(app_today() - invoice_date) FILTER (WHERE paid_date IS NULL) AS ar_max_age_days
+         max(app_today() - invoice_date) FILTER (WHERE paid_date IS NULL) AS ar_max_age_days,
+         max(app_today() - due_date) FILTER (WHERE paid_date IS NULL AND due_date < app_today()) AS ar_overdue_days
   FROM receivable
   GROUP BY customer_id
 ), visits AS (
@@ -103,6 +104,7 @@ SELECT c.id   AS customer_id,
        c.city,
        c.grade,
        c.contract_end_date,
+       c.payment_term,
        c.owner_user_id,
        u.name AS owner_name,
        o.last_order_date,
@@ -114,6 +116,7 @@ SELECT c.id   AS customer_id,
        round(o.interval_before, 1)        AS interval_before,
        COALESCE(a.ar_outstanding, 0)      AS ar_outstanding,
        a.ar_max_age_days,
+       a.ar_overdue_days,
        vi.last_visit_date,
        COALESCE(vi.visit_count, 0)        AS visit_count
 FROM customer c
@@ -131,6 +134,9 @@ COMMENT ON COLUMN v_customer_summary.avg_order_amount_before IS '90 天以前的
 COMMENT ON COLUMN v_customer_summary.interval_last_90d IS '近 90 天平均進貨間隔（天）';
 COMMENT ON COLUMN v_customer_summary.interval_before IS '90 天以前的平均進貨間隔（天）';
 COMMENT ON COLUMN v_customer_summary.ar_max_age_days IS '未收帳款中最舊一張的帳齡（天）';
+COMMENT ON COLUMN v_customer_summary.ar_overdue_days IS '過了到期日還沒收的帳款中，最久逾期幾天；沒有逾期是空值';
+COMMENT ON COLUMN v_customer_summary.payment_term IS '付款條件：RM06 六個月內收款（沒有優惠）、RCD1 隔月業務收款（優惠 2%）、RCD2 隔月匯款（優惠 3%）、RZ04 隔月貨運收款（優惠 3%）';
+COMMENT ON COLUMN v_customer_summary.ar_outstanding IS '未收帳款金額（已扣下單時的現金折扣）';
 
 -- 沒提到的欄位存成 JSON null，用 -> 取出來是 jsonb 'null' 而不是 SQL NULL，
 -- 展開陣列前要先 NULLIF，否則 jsonb_array_elements 會報錯

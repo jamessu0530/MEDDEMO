@@ -314,10 +314,15 @@ function TermsBlock({ terms }: { terms: Terms }) {
     },
     {
       label: "付款條件",
-      value: `月結 ${terms.payment_days} 天`,
-      note: terms.ar_max_age_days === null ? "目前沒有未收帳款" : `目前最久一筆帳款 ${terms.ar_max_age_days} 天`,
-      // 帳款拖過付款天數就標紅
-      alert: terms.ar_max_age_days !== null && terms.ar_max_age_days > terms.payment_days,
+      value: terms.payment_term,
+      note:
+        terms.ar_overdue_days !== null
+          ? `帳款逾期 ${terms.ar_overdue_days} 天`
+          : terms.ar_max_age_days === null
+            ? "目前沒有未收帳款"
+            : `目前最久一筆帳款 ${terms.ar_max_age_days} 天，還沒到期`,
+      // 帳款過了到期日就標紅
+      alert: terms.ar_overdue_days !== null,
     },
     { label: "可以直接給的折扣", value: `${terms.free_discount_pct}% 以內`, note: "超過要簽核" },
     {

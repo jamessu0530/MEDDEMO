@@ -37,9 +37,8 @@ type LoadState =
 export type CustomerLocationState = { flash?: string; backTo?: string }
 type Tone = "alert" | "warn" | undefined
 
-// 帳齡門檻照《付款條件與帳齡管理》：超過 60 天、90 天各有處理規定
-const AR_WARN_DAYS = 60
-const AR_ALERT_DAYS = 90
+// 《付款條件與帳齡管理》的收款提醒：過了到期日就去收，逾期超過 30 天還要通報主管（services/payment_terms.py）
+const AR_ESCALATE_DAYS = 30
 
 const wan = (amount: number) => (amount / 10000).toFixed(1)
 
@@ -195,11 +194,11 @@ export function CustomerPage() {
           note={stats.interval_before === null ? undefined : `之前 ${Math.round(stats.interval_before)} 天`}
         />
         <StatCard
-          label="帳齡"
-          value={stats.ar_max_age_days ?? "—"}
+          label="帳款逾期"
+          value={stats.ar_overdue_days ?? "—"}
           unit="天"
-          tone={arTone(stats.ar_max_age_days)}
-          note={`未收 ${wan(stats.ar_outstanding)} 萬`}
+          tone={arTone(stats.ar_overdue_days)}
+          note={`${stats.payment_term} · 未收 ${wan(stats.ar_outstanding)} 萬`}
         />
       </section>
 
@@ -329,10 +328,9 @@ function amountNote(stats: ProfileStats) {
   return `比前 3 月 ${change > 0 ? "+" : ""}${change}%`
 }
 
-function arTone(days: number | null): Tone {
-  if (days === null) return undefined
-  if (days > AR_ALERT_DAYS) return "alert"
-  return days > AR_WARN_DAYS ? "warn" : undefined
+function arTone(overdueDays: number | null): Tone {
+  if (overdueDays === null) return undefined
+  return overdueDays > AR_ESCALATE_DAYS ? "alert" : "warn"
 }
 
 function StatCard({ label, value, unit, note, tone }: { label: string; value: string | number; unit: string; note?: string; tone?: Tone }) {

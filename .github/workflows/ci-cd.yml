@@ -237,7 +237,7 @@ jobs:
           RESEED: ${{ inputs.reseed }}
         run: |
           # 與 backend/app/db.py 的 schema_version() 算法相同
-          expected=$(cat backend/app/models.py backend/app/sql/semantic_layer.sql backend/app/services/org.py backend/app/embeddings.py data/seed/generate.py data/seed/catalog.py data/seed/products.tsv | sha256sum | cut -c1-12)
+          expected=$(cat backend/app/models.py backend/app/sql/semantic_layer.sql backend/app/services/org.py backend/app/embeddings.py data/seed/generate.py data/seed/catalog.py data/seed/products.tsv backend/app/services/payment_terms.py | sha256sum | cut -c1-12)
           current=$($KC exec statefulset/db -- psql -U meddemo -d meddemo -tAc "SELECT value FROM app_setting WHERE key = 'schema_version'" 2>/dev/null || true)
           echo "資料表指紋：程式 $expected，資料庫 ${current:-（無）}"
           if [ "$expected" != "$current" ] || [ "$RESEED" = "true" ]; then

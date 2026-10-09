@@ -23,7 +23,7 @@ from typing import Any
 from fastapi import HTTPException
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from app.models import (
     PENDING_CONTRACT_INDEX,
@@ -36,7 +36,7 @@ from app.models import (
     SapQuotationDraft,
     Visit,
 )
-from app.services import customer_profile, logreg, oa, route_model
+from app.services import customer_profile, logreg, oa, payment_terms, route_model
 from app.timeutil import TAIPEI
 
 log = logging.getLogger(__name__)
@@ -135,6 +135,8 @@ def customer_state(session: Session, customer: Customer, as_of: dt.date) -> dict
         "ar_age_days": float(candidate.ar_age_days),
         "competitor_recent": 1.0 if any((fields or {}).get("competitor") for fields in visits) else 0.0,
         "grade_weight": route_model.GRADE_WEIGHT[customer.grade],
+        # 不是模型的特徵（不存在單上）：系統核准的擋關用
+        "ar_overdue_days": float(candidate.ar_overdue_days),
     }
 
 
@@ -337,12 +339,12 @@ def submit(session: Session, *, kind: str, applicant: AppUser, customer: Custome
     features = discount_features(state, payload) if kind == "discount" else contract_features(state, payload)
     probability, threshold = estimate(kind, features)
     # 四個條件都成立才由系統核准：規則上最高只到區處主管、這一種申請有訂出門檻、機率過門檻、
-    # 客戶沒有超過 60 天的帳款。最後一條不交給模型：帳款出問題的客戶再給優惠，應該有人看過
+    # 客戶沒有逾期的帳款。最後一條不交給模型：帳款出問題的客戶再給優惠，應該有人看過
     auto = (
         level == "manager"
         and threshold is not None
         and probability >= threshold
-        and state["ar_age_days"] <= customer_profile.AR_WATCH_DAYS
+        and not state["ar_overdue_days"]
     )
 
     now = dt.datetime.now(dt.UTC)
@@ -445,13 +447,14 @@ def _percent(value: float) -> str:
     return f"{value:g}%"
 
 
-def _ar_line(ar_age_days: float) -> dict[str, Any]:
-    watch = customer_profile.AR_WATCH_DAYS
-    if ar_age_days > watch:
-        return {"text": f"帳款最久 {ar_age_days:.0f} 天，超過 {watch} 天", "alert": True}
-    if ar_age_days > 0:
-        return {"text": f"帳款最久 {ar_age_days:.0f} 天", "alert": False}
-    return {"text": "沒有未收的帳款", "alert": False}
+def _ar_line(ar_age_days: float, payment_term: str, request_date: dt.date) -> dict[str, Any]:
+    """單上存的是帳齡（模型的特徵），申請當天逾期幾天照付款條件反推（payment_terms.overdue_days）。"""
+    if ar_age_days <= 0:
+        return {"text": "沒有未收的帳款", "alert": False}
+    overdue = payment_terms.overdue_days(payment_term, ar_age_days, request_date)
+    if overdue > 0:
+        return {"text": f"帳款逾期 {overdue} 天（最久一筆 {ar_age_days:.0f} 天）", "alert": True}
+    return {"text": f"帳款最久 {ar_age_days:.0f} 天，還沒到期", "alert": False}
 
 
 def reason_lines(form: OaExpenseForm) -> list[dict[str, Any]]:
@@ -486,7 +489,8 @@ def reason_lines(form: OaExpenseForm) -> list[dict[str, Any]]:
         if "net_margin" in features:
             lines.append({"text": f"近 90 天淨毛利率 {features['net_margin']:.0%}", "alert": False})
     if "ar_age_days" in features:
-        lines.append(_ar_line(features["ar_age_days"]))
+        customer = object_session(form).get(Customer, form.customer_id)
+        lines.append(_ar_line(features["ar_age_days"], customer.payment_term, form.request_date))
     if form.kind == "discount" and "competitor_recent" in features:
         lines.append({
             "text": f"近 {STATE_DAYS} 天的拜訪{'提到' if features['competitor_recent'] else '沒有提到'}競品", "alert": False,

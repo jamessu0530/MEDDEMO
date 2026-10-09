@@ -12,7 +12,7 @@ from sqlalchemy import column, func, select, table
 from sqlalchemy.orm import Session
 
 from app.models import Customer, Product, PromotionItem, SalesTransaction, SapQuotationDraft, Visit
-from app.services import last_order, promo_packs
+from app.services import last_order, payment_terms, promo_packs
 from app.timeutil import local_date
 
 # 原型的進貨間隔圖看近六個月
@@ -24,8 +24,6 @@ RECENT_DAYS = 90
 INTERVAL_ALERT_RATIO = 1.2
 # 單次進貨金額的變動一成以內算持平：目前 250 家九成的變動在 4% 以內，最多 8%
 FLAT_AMOUNT_CHANGE = 0.1
-# 帳齡門檻照《付款條件與帳齡管理》：超過 60 天就有處理規定
-AR_WATCH_DAYS = 60
 # 《連鎖通路合約條件》：合約到期前 3 個月要啟動續約協商
 CONTRACT_NOTICE_DAYS = 90
 # 摘要最多五句，進門前幾分鐘看得完（間隔、上次訂的、過期承諾、競品、客訴剛好五句，康泰忠孝店不能被擠掉客訴）
@@ -51,6 +49,8 @@ customer_summary = table(
     column("interval_before"),
     column("ar_outstanding"),
     column("ar_max_age_days"),
+    column("ar_overdue_days"),
+    column("payment_term"),
     column("last_order_date"),
 )
 
@@ -66,6 +66,9 @@ class Stats:
     interval_alert: bool
     ar_outstanding: float
     ar_max_age_days: int | None
+    # 過了到期日還沒收的帳款最久逾期幾天，沒有逾期是 None（《付款條件與帳齡管理》的收款提醒看這個）
+    ar_overdue_days: int | None
+    payment_term: str
     last_order_date: dt.date | None
     last_visit_date: dt.date | None
 
@@ -126,6 +129,13 @@ class Profile:
 
 def app_today(session: Session) -> dt.date:
     return session.scalar(select(func.app_today()))
+
+
+def overdue_sentence(days: int) -> str:
+    """《付款條件與帳齡管理》的收款提醒：過了到期日就去收，逾期超過 30 天還要通報主管。"""
+    if days > payment_terms.ESCALATE_OVERDUE_DAYS:
+        return f"帳款逾期 {days} 天，超過 {payment_terms.ESCALATE_OVERDUE_DAYS} 天要通報主管"
+    return f"帳款逾期 {days} 天，記得去收"
 
 
 def _float(value: Any) -> float | None:
@@ -243,6 +253,8 @@ def build_profile(session: Session, customer: Customer) -> Profile:
         interval_alert=interval_alert,
         ar_outstanding=float(summary.ar_outstanding),
         ar_max_age_days=summary.ar_max_age_days,
+        ar_overdue_days=summary.ar_overdue_days,
+        payment_term=summary.payment_term,
         last_order_date=summary.last_order_date,
         last_visit_date=local_date(visits[0].visited_at) if visits else None,
     )
@@ -270,9 +282,9 @@ def build_profile(session: Session, customer: Customer) -> Profile:
         highlights.append(f"{_md(local_date(recent_competitor.visited_at))} 拜訪提到競品{names}")
     if complaints:
         highlights.append(f"客訴：{complaints[0].text}（{_md(complaints[0].visit_date)}）")
-    if stats.ar_max_age_days and stats.ar_max_age_days > AR_WATCH_DAYS:
+    if stats.ar_overdue_days:
         signals.add("ar_overdue")
-        highlights.append(f"有帳款超過 {AR_WATCH_DAYS} 天沒收，最久 {stats.ar_max_age_days} 天")
+        highlights.append(overdue_sentence(stats.ar_overdue_days))
     if customer.contract_end_date and 0 <= (customer.contract_end_date - today).days <= CONTRACT_NOTICE_DAYS:
         signals.add("contract_ending")
         highlights.append(f"合約 {customer.contract_end_date:%Y/%m/%d} 到期，要開始談續約")

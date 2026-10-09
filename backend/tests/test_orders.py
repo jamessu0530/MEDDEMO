@@ -58,9 +58,10 @@ def test_placing_an_order_writes_the_sale_and_the_invoice(tx, api):
     assert [float(l.channel_reward) for l in lines] == [fee(8100, rates["channel_reward_rate"]), fee(5500, rates["channel_reward_rate"])]
 
     invoice = tx.get(Receivable, order_no)
-    # 連鎖的付款條件 60 天
+    # 忠孝店的付款條件是 RM06：六個月後到期，沒有現金折扣
+    assert tx.get(Customer, "C001").payment_term == "RM06"
     assert (invoice.customer_id, invoice.invoice_date, invoice.due_date, float(invoice.amount), invoice.paid_date) == (
-        "C001", TODAY, TODAY + dt.timedelta(days=60), 13600, None,
+        "C001", TODAY, dt.date(2027, 4, 28), 13600, None,
     )
     assert set(tx.scalars(select(SapQuotationDraft.status).where(SapQuotationDraft.quote_no == quote_no))) == {"ordered"}
     profile = api.get("/api/customers/C001/profile").json()
@@ -74,6 +75,19 @@ def test_placing_an_order_writes_the_sale_and_the_invoice(tx, api):
     # 再按一次不會寫兩次
     refused = api.post(f"/api/customers/C001/quotes/{quote_no}/order")
     assert refused.status_code == 409 and refused.json()["detail"] == "這張報價已經成交、被駁回，或還在等簽核"
+
+
+def test_the_cash_discount_of_the_payment_term_comes_off_the_invoice(tx, api):
+    # 隔月匯款（RCD2）：下單時就扣 3%，下個月月底到期；交易紀錄照原價
+    tx.get(Customer, "C001").payment_term = "RCD2"
+    tx.flush()
+    quote_no = open_quote(api, tx, [{"sku": "HS-FO30", "qty": 20}])
+    assert api.post(f"/api/customers/C001/quotes/{quote_no}/order").json()["amount"] == 8100
+    order_no = f"SO20261028-C001-{quote_no}"
+    invoice = tx.get(Receivable, order_no)
+    assert (invoice.due_date, float(invoice.amount)) == (dt.date(2026, 11, 30), 7857)
+    sale = tx.scalars(select(SalesTransaction).where(SalesTransaction.order_no == order_no)).one()
+    assert float(sale.amount) == 8100
 
 
 def test_an_order_is_refused_while_sap_is_down(tx, api):

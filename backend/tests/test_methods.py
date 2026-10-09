@@ -99,7 +99,7 @@ def test_the_list_filters_by_tag_customer_type_and_keyword(client, auth):
     # 關鍵字在標題、情況、做法裡找，英文不分大小寫
     assert titles(client, rep, q="比價表") == [GENERICS]
     assert titles(client, rep, q="壓庫存") == [SMALL_LOT]
-    assert titles(client, rep, q="財務部") == ["帳款超過 60 天：先打電話問付款日，再進門"]
+    assert titles(client, rep, q="個人帳戶") == ["帳款逾期：先打電話問付款日，再進門"]
     assert titles(client, rep, q=" amlodipine ") == [GENERICS]
     # % 是字面上的百分比，不是萬用字元
     assert titles(client, rep, q="3%") == [GENERICS, DISCOUNT]

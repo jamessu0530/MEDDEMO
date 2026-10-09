@@ -6,7 +6,7 @@ export const TAG_LABELS: Record<string, string> = {
   competitor: "客戶提到競品",
   interval_up: "進貨間隔拉長",
   contract_ending: "合約快到期",
-  ar_overdue: "帳款拖太久",
+  ar_overdue: "帳款逾期",
   festival: "節慶檔期",
   cost: "談進價與成本",
   newcomer: "新人必看",

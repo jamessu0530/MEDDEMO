@@ -71,6 +71,10 @@ export type ProfileStats = {
   interval_alert: boolean
   ar_outstanding: number
   ar_max_age_days: number | null
+  // 過了到期日還沒收的帳款最久逾期幾天，沒有逾期是 null（收款提醒看這個）
+  ar_overdue_days: number | null
+  // 付款條件代碼：RM06、RCD1、RCD2、RZ04
+  payment_term: string
   last_order_date: string | null
   last_visit_date: string | null
 }
@@ -153,8 +157,11 @@ export type NegotiationCard = {
   terms: {
     supply_rate: number
     channel_reward_rate: number | null
-    payment_days: number
+    // 付款條件：「RCD2 隔月匯款，優惠 3%」
+    payment_term: string
     ar_max_age_days: number | null
+    // 過了到期日還沒收的帳款最久逾期幾天，沒有逾期是 null
+    ar_overdue_days: number | null
     free_discount_pct: number
     amount_last_90d: number
     avg_order_amount: number | null

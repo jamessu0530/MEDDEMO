@@ -91,6 +91,7 @@ def test_schema_version_matches_the_deploy_workflow_algorithm():
         "data/seed/generate.py",
         "data/seed/catalog.py",
         "data/seed/products.tsv",
+        "backend/app/services/payment_terms.py",
     ]
     workflow = (ROOT / ".github" / "workflows" / "ci-cd.yml").read_text(encoding="utf-8")
     assert f"cat {' '.join(files)} | sha256sum" in workflow

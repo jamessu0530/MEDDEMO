@@ -7,7 +7,7 @@
     { "signal": "competitor", "reason": "近 90 天的拜訪提到競品", "keywords": ["陳列位被調降", "競品取代"] },
     { "signal": "interval_up", "reason": "進貨間隔拉長", "keywords": ["檔期活動", "申請期限"] },
     { "signal": "contract_ending", "reason": "合約 3 個月內到期", "keywords": ["續約", "費率"] },
-    { "signal": "ar_overdue", "reason": "有帳款超過 60 天沒收", "keywords": ["帳齡超過", "60 天"] },
+    { "signal": "ar_overdue", "reason": "有帳款過了到期日還沒收", "keywords": ["收款提醒", "過了到期日"] },
     { "signal": "chain", "reason": "連鎖通路的合約條件", "keywords": ["陳列位", "上架費"] }
   ]
 }

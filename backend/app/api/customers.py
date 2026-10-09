@@ -45,6 +45,8 @@ class ProfileStats(BaseModel):
     interval_alert: bool
     ar_outstanding: float
     ar_max_age_days: int | None
+    ar_overdue_days: int | None
+    payment_term: str
     last_order_date: date | None
     last_visit_date: date | None
 
@@ -172,8 +174,9 @@ class Deals(BaseModel):
 class Terms(BaseModel):
     supply_rate: float
     channel_reward_rate: float | None
-    payment_days: int
+    payment_term: str
     ar_max_age_days: int | None
+    ar_overdue_days: int | None
     free_discount_pct: float
     amount_last_90d: float
     avg_order_amount: float | None

@@ -1,6 +1,7 @@
 """報價成交（docs/superpowers/specs/2026-10-07-repeat-last-order-design.md）：客戶下單了，把報價寫成今天的進貨。
 
 交易紀錄與應收帳款都寫，報價改成已成交（ordered）。不能復原：之後的進貨間隔、帳齡、問答的數字都跟著變。
+應收帳款的到期日與現金折扣照這家客戶的付款條件（services/payment_terms.py）；交易紀錄照原價。
 """
 
 import datetime as dt
@@ -11,11 +12,8 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.models import Customer, Product, Receivable, SalesTransaction, SapQuotationDraft
-from app.services import approvals
+from app.services import approvals, payment_terms
 from app.services.customer_profile import app_today
-
-# 《付款條件與帳齡管理》：連鎖 60 天，獨立藥局與診所 30 天。跟假資料（data/seed/generate.py 的 PAYMENT_TERMS）同一組數字
-PAYMENT_DAYS = {"chain": 60, "independent": 30, "clinic": 30}
 
 
 @dataclass
@@ -63,7 +61,8 @@ def place(session: Session, customer: Customer, quote_no: str) -> Placed | None:
     total = sum((line.amount for line in lines), Decimal(0))
     session.add(Receivable(
         invoice_no=order_no, customer_id=customer.id, invoice_date=today,
-        due_date=today + dt.timedelta(days=PAYMENT_DAYS[customer.type]), amount=total, paid_date=None,
+        due_date=payment_terms.due_date(customer.payment_term, today),
+        amount=payment_terms.receivable_amount(customer.payment_term, total), paid_date=None,
     ))
     session.flush()
     return Placed(order_no, today, float(total))

@@ -13,7 +13,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.main import app
-from app.services import festivals, negotiation
+from app.services import festivals, negotiation, payment_terms
 from app.services.documents import index_documents
 
 CATEGORY = {product[0]: product[2] for product in catalog.PRODUCTS}
@@ -329,10 +329,11 @@ def test_no_running_promotion_means_no_deals(client, tx):
 def test_terms_depend_on_the_customer_type(client, customer_id, supply_rate, channel_reward_rate):
     terms = card_of(client, customer_id)["terms"]
     assert (terms["supply_rate"], terms["channel_reward_rate"]) == (supply_rate, channel_reward_rate)
-    # 《付款條件與帳齡管理》月結 30 天；《報價權限》業務可以直接給 3%
-    assert (terms["payment_days"], terms["free_discount_pct"]) == (30, 3)
     stats = client.get(f"/api/customers/{customer_id}/profile").json()["stats"]
+    # 付款條件寫代碼、誰收、優惠幾 %（《付款條件與帳齡管理》）；《報價權限》業務可以直接給 3%
+    assert terms["payment_term"] == payment_terms.describe(stats["payment_term"]) and terms["free_discount_pct"] == 3
     assert terms["ar_max_age_days"] == stats["ar_max_age_days"]
+    assert terms["ar_overdue_days"] == stats["ar_overdue_days"]
     assert terms["amount_last_90d"] == stats["amount_last_90d"] > 0
     assert terms["avg_order_amount"] == stats["avg_order_amount_last_90d"]
 
@@ -366,7 +367,7 @@ def test_a_cost_card_does_not_quote_the_chain_renewal_clause(client, company_doc
         ("competitor", ["陳列位被調降或被競品取代"]),
         ("interval_up", ["檔期活動的申請期限"]),
         ("contract_ending", ["連鎖合約的續約與費率調整"]),
-        ("ar_overdue", ["帳齡超過 60 天的處理"]),
+        ("ar_overdue", ["帳款逾期的收款提醒"]),
         ("chain", ["陳列位與上架費的連動"]),
     ],
 )

@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.main import app
 from app.models import AppUser, Customer, OaActivity, OaApprovalStep, OaExpenseForm, SapQuotationDraft
-from app.services import approvals, customer_profile, negotiation, oa
+from app.services import approvals, customer_profile, negotiation, oa, payment_terms
 from app.services import auth as auth_service
 
 TODAY = dt.date(2026, 10, 28)
@@ -342,9 +342,12 @@ def test_customer_state_agrees_with_the_customer_profile(tx):
         customer = tx.get(Customer, customer_id)
         state = approvals.customer_state(tx, customer, TODAY)
         profile = customer_profile.build_profile(tx, customer)
-        assert set(state) == {"sales_90d", "net_margin", "interval_change", "ar_age_days", "competitor_recent", "grade_weight"}
+        assert set(state) == {
+            "sales_90d", "net_margin", "interval_change", "ar_age_days", "competitor_recent", "grade_weight", "ar_overdue_days",
+        }
         assert state["sales_90d"] == profile.stats.amount_last_90d
         assert state["ar_age_days"] == (profile.stats.ar_max_age_days or 0)
+        assert state["ar_overdue_days"] == (profile.stats.ar_overdue_days or 0)
         assert bool(state["competitor_recent"]) == ("competitor" in profile.signals)
         # 淨毛利跟談判卡的毛利結構同一個算法（services/negotiation.py）
         margin = negotiation._margin(tx, customer, profile.today)
@@ -362,12 +365,12 @@ def test_reasons_list_the_facts_a_manager_checks(tx, api, auth, model):
     assert approvals.reasons(late) == [
         "折扣 6%，在區處主管的權限（8%）以內",
         "折後毛利率 29%",
-        "帳款最久 93 天，超過 60 天",
+        "帳款逾期 58 天（最久一筆 93 天）",
         "近 90 天的拜訪沒有提到競品",
     ]
     shown = api.get(f"/api/oa/forms/{late.id}", headers=auth("M01")).json()["model"]
     assert shown["probability"] == pytest.approx(0.62) and shown["auto_approved"] is False
-    # 帳款超過 60 天那一行標紅
+    # 帳款逾期那一行標紅
     assert [line["alert"] for line in shown["reasons"]] == [False, False, True, False]
     assert [line["text"] for line in shown["reasons"]] == approvals.reasons(late)
 
@@ -447,7 +450,10 @@ def test_the_seeded_system_approvals_agree_with_the_trained_model(tx):
     for form in forms:
         probability, threshold = approvals.estimate(form.kind, form.model_features)
         assert form.model_probability == pytest.approx(probability)
-        assert probability >= threshold and form.model_features["ar_age_days"] <= customer_profile.AR_WATCH_DAYS
+        assert probability >= threshold
+        # 系統核准的客戶在申請那天沒有逾期的帳款
+        term = tx.get(Customer, form.customer_id).payment_term
+        assert payment_terms.overdue_days(term, form.model_features["ar_age_days"], form.request_date) == 0
         activity = tx.scalars(select(OaActivity).where(OaActivity.form_id == form.id).order_by(OaActivity.id)).all()
         assert activity[-1].detail == approvals.auto_detail(probability, threshold)
     # 等人簽的那三張也記了機率，簽核頁給主管參考
@@ -590,7 +596,7 @@ def test_the_inbox_shows_the_estimate_and_the_facts_behind_it(tx, api, auth):
     assert late["kind_label"] == "優惠申請單" and late["summary"] == "折扣 6%，報價 NT$ 43,315"
     assert 0 < late["model"]["probability"] < 0.5 and late["model"]["auto_approved"] is False
     assert [line["text"] for line in late["model"]["reasons"]] == [
-        "折扣 6%，在區處主管的權限（8%）以內", "折後毛利率 30%", "帳款最久 92 天，超過 60 天", "近 90 天的拜訪沒有提到競品",
+        "折扣 6%，在區處主管的權限（8%）以內", "折後毛利率 30%", "帳款逾期 57 天（最久一筆 92 天）", "近 90 天的拜訪沒有提到競品",
     ]
     assert [line["alert"] for line in late["model"]["reasons"]] == [False, False, True, False]
 

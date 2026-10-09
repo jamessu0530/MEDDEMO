@@ -29,7 +29,7 @@ def risk_items(profile: customer_profile.Profile) -> list[str]:
     if profile.complaints:
         items.append("近 90 天有客訴")
     if "ar_overdue" in profile.signals:
-        items.append(f"有帳款超過 {customer_profile.AR_WATCH_DAYS} 天沒收")
+        items.append(f"帳款逾期 {profile.stats.ar_overdue_days} 天")
     return items
 
 

@@ -29,6 +29,8 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.types import UserDefinedType
 
 CUSTOMER_TYPES = ("chain", "independent", "clinic")
+# SAP 的付款條件代碼，各代表什麼見 services/payment_terms.py
+PAYMENT_TERM_CODES = ("RM06", "RCD1", "RCD2", "RZ04")
 # processing：錄音已上傳，背景正在轉文字或整理欄位
 # failed：轉文字失敗，等業務重錄或手動輸入逐字稿
 # draft：欄位整理好了，等業務確認；confirmed：已確認，回寫有失敗項；synced：三套系統都寫入了
@@ -222,6 +224,7 @@ class Customer(Base):
     __table_args__ = (
         one_of("type", CUSTOMER_TYPES, "type"),
         one_of("grade", ("A", "B", "C"), "grade"),
+        one_of("payment_term", PAYMENT_TERM_CODES, "payment_term"),
         CheckConstraint("(type = 'chain') = (chain_group IS NOT NULL)", name="chain_group"),
     )
 
@@ -241,6 +244,8 @@ class Customer(Base):
     area: Mapped[str]
     lat: Mapped[float]
     lng: Mapped[float]
+    # 付款條件：應收帳款的到期日與下單時扣的現金折扣照它算（services/payment_terms.py）
+    payment_term: Mapped[str]
 
 
 class Product(Base):
@@ -327,7 +332,10 @@ class SalesTransaction(Base):
 
 
 class Receivable(Base):
-    """應收帳款，一張發票對應一次進貨。paid_date 為空表示還沒收到。"""
+    """應收帳款，一張發票對應一次進貨。paid_date 為空表示還沒收到。
+
+    到期日與金額照客戶的付款條件：金額是進貨金額扣掉現金折扣（services/payment_terms.py）。
+    """
 
     __tablename__ = "receivable"
 

@@ -14,11 +14,14 @@ import hashlib
 import random
 from math import exp, log1p
 from datetime import date, datetime, time, timedelta, timezone
+from decimal import Decimal
 from pathlib import Path
 
 import catalog
 from app.config import settings
+from app.models import PAYMENT_TERM_CODES
 from app.pricing import SUPPLY_PRICE_FACTOR as PRICE_FACTOR  # 與 SAP 回寫共用同一份折數
+from app.services import payment_terms
 from app.services.auth import MIN_PASSWORD_LENGTH, hash_password
 
 SEED = 20260914
@@ -61,7 +64,9 @@ CHAIN_FEES = {
     "百齡藥妝": (0.06, 0.05),
 }
 OTHER_FEES = {"independent": (0.0, 0.02), "clinic": (0.0, 0.0)}
-PAYMENT_TERMS = {"chain": 60, "independent": 30, "clinic": 30}
+# 客戶實際在發票日後多久付款：準時的前後幾天，拖款的再晚 20～45 天。到期日另外照付款條件代碼算
+# （payment_terms.due_date），付款時間不跟著代碼動：帳齡、用它訓練的兩個模型與評測答案都不變
+PAY_AFTER_DAYS = {"chain": 60, "independent": 30, "clinic": 30}
 
 BASKET_MIX = {
     "chain": {"保健品": 9, "一般用藥": 5, "醫材": 1},
@@ -346,16 +351,32 @@ def build_receivables(rng, customer, lines, as_of, late):
     for line in lines:
         o = orders.setdefault(line["order_no"], {"date": line["date"], "amount": 0})
         o["amount"] += line["amount"]
-    terms = PAYMENT_TERMS[customer["type"]]
+    term = customer["payment_term"]
     rows = []
     for order_no, o in orders.items():
-        due = o["date"] + timedelta(days=terms)
-        paid = due + timedelta(days=rng.randint(20, 45) if late else rng.randint(-10, 3))
+        paid = o["date"] + timedelta(days=PAY_AFTER_DAYS[customer["type"]])
+        paid += timedelta(days=rng.randint(20, 45) if late else rng.randint(-10, 3))
         rows.append({
             "invoice_no": order_no, "customer_id": customer["id"], "invoice_date": o["date"],
-            "due_date": due, "amount": o["amount"], "paid_date": paid if paid < as_of else None,
+            "due_date": payment_terms.due_date(term, o["date"]),
+            "amount": int(payment_terms.receivable_amount(term, Decimal(o["amount"]))),
+            "paid_date": paid if paid < as_of else None,
         })
     return rows
+
+
+def payment_term_of(customer, late):
+    """付款條件不抽亂數、照客戶編號分，交易與帳款的亂數一筆都不變。
+
+    會拖款的分到隔月的三種，過了到期日還沒付，收款提醒才有對象。準時付款的連鎖實際約 60 天才付，
+    分到隔月的話月底開的發票會變成常態逾期，所以是 RM06；其他客戶四種平均分。
+    """
+    pick = int(hashlib.sha256(customer["id"].encode()).hexdigest(), 16)
+    if late:
+        return payment_terms.NEXT_MONTH[pick % len(payment_terms.NEXT_MONTH)]
+    if customer["type"] == "chain":
+        return "RM06"
+    return PAYMENT_TERM_CODES[pick % len(PAYMENT_TERM_CODES)]
 
 
 # 各等級大約幾天拜訪一次（排程排出來的結果，見 VISIT_WEIGHT 的註解）。判斷「這家是不是拖太久沒去」用的基準
@@ -634,6 +655,7 @@ def build_hsinchu(rng, as_of, first_id, products, visits):
         if c["name"] == HSINCHU_STALLED:
             lines = [line for line in lines if line["date"] < stalled_since]
         tables["sales_transaction"] += lines
+        c["payment_term"] = payment_term_of(c, late=False)
         tables["receivable"] += build_receivables(rng, c, lines, as_of, late=False)
 
     # 示範業務每天已經排了幾家、最後一家幾點。他每個平日都有出門，有記錄的日子就是平日
@@ -791,7 +813,7 @@ CONTRACT_REASONS = [
 # (種類, 客戶, 內容, 狀態, 是不是系統核准)。優惠的內容是 (折扣, [(品項, 數量)], 理由)；
 # 合約是 (月數, 上架費率調整幾個百分點, 通路獎勵調整幾個百分點, 理由)
 DEMO_REQUESTS = [
-    # 鶯歌店有帳款拖超過 60 天：規則上主管就能簽，但帳款這一條不交給模型，一定送人
+    # 鶯歌店有帳款逾期：規則上主管就能簽，但帳款這一條不交給模型，一定送人
     ("discount", "福安連鎖藥局 · 鶯歌店", (6.0, [("HS-FO30", 80), ("HS-CA60", 40)], "康普樂開買十送一，店長要求比照"), "pending", False),
     # 10% 超過區處主管的權限，主管簽完還要送業務處長
     ("discount", "福安連鎖藥局 · 板橋店", (10.0, [("HS-FO30", 120)], "御松田要搶櫃檯旁的陳列位，店長要求魚油比照競品條件"), "pending", False),
@@ -1132,6 +1154,7 @@ def generate(as_of: date, seed: int = SEED) -> dict[str, list[dict]]:
 
     def add_trade(stream, group, late, branch_scale=1.0):
         for c in group:
+            c["payment_term"] = payment_term_of(c, c["id"] in late)
             baskets[c["id"]] = build_basket(stream, c, products, branch_scale if c["type"] == "chain" else 1.0)
             lines = build_orders(stream, c, baskets[c["id"]], products, as_of)
             transactions.extend(lines)

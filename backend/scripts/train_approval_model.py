@@ -16,8 +16,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from sqlalchemy import select  # noqa: E402
 
 from app.db import session_factory  # noqa: E402
-from app.models import OaExpenseForm  # noqa: E402
-from app.services import approvals, customer_profile, logreg  # noqa: E402
+from app.models import Customer, OaExpenseForm  # noqa: E402
+from app.services import approvals, logreg, payment_terms  # noqa: E402
 
 # 最後四分之一的申請單當測試期，照時間切（跟今日路線的模型一樣）
 TEST_RATIO = 0.25
@@ -47,8 +47,10 @@ def load_rows(session, kind):
         # 特徵不齊的單（例如之後加了新特徵、舊單上沒有）不拿來訓練
         if any(name not in features for name in names):
             continue
-        # 系統核准只碰規則上最高到區處主管、客戶帳款沒有超過 60 天的單，門檻也只在這些單上挑
-        eligible = form.required_level == "manager" and features["ar_age_days"] <= customer_profile.AR_WATCH_DAYS
+        # 系統核准只碰規則上最高到區處主管、客戶沒有逾期帳款的單，門檻也只在這些單上挑
+        term = session.get(Customer, form.customer_id).payment_term
+        overdue = payment_terms.overdue_days(term, features["ar_age_days"], form.request_date)
+        eligible = form.required_level == "manager" and overdue == 0
         rows.append((form.request_date, features, 1 if form.status == "approved" else 0, eligible, form.required_level))
     return rows
 
@@ -82,7 +84,7 @@ def train(rows, kind):
     metrics = {
         # 全部測試單的 AUC。裡面有一大塊是規則本身就分得開的（深折扣、帳款拖很久），所以會比模型真正在用的那一群高
         "auc": logreg.auc([(p, label) for p, label, _, _ in scored]),
-        # 模型真正在作用的那一群：規則允許系統核准的（主管級、帳款沒超過 60 天）
+        # 模型真正在作用的那一群：規則允許系統核准的（主管級、沒有逾期帳款）
         "eligible_rows": len(eligible),
         "eligible_auc": logreg.auc(eligible),
         # 不用模型、規則允許的全部核准時，有過的比例：模型的命中率要跟這個比
@@ -110,7 +112,7 @@ def report(kind, model):
     print(f"【{KIND_LABEL[kind]}】訓練 {metrics['train_rows']} 張（{metrics['train_period'][0]}～{metrics['train_period'][1]}），"
           f"測試 {metrics['test_rows']} 張（{metrics['test_period'][0]}～{metrics['test_period'][1]}）")
     print(f"  測試期核准的比例 {metrics['test_approval_rate']:.1%}，AUC {metrics['auc']:.3f}（全部測試單）")
-    print(f"  測試期主管級的申請 {metrics['test_manager_rows']} 張，其中規則允許系統核准的（帳款沒有超過 60 天）"
+    print(f"  測試期主管級的申請 {metrics['test_manager_rows']} 張，其中規則允許系統核准的（沒有逾期帳款）"
           f" {metrics['eligible_rows']} 張：AUC {metrics['eligible_auc']:.3f}；不用模型、全部核准的話有過的比例 {metrics['baseline_precision']:.1%}")
     print("  各門檻上模型說會過的張數與真的有過的比例（只算規則允許系統核准的）：")
     for row in metrics["thresholds"]:
