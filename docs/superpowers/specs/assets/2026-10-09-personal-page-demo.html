@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>個人頁 demo</title>
+<style>
+body { margin: 0; padding: 24px 16px; background: #F6F5F9; color: #1A1626; font-family: system-ui, sans-serif; }
+.subtitle { color: #6E6A78; }
+@media (prefers-color-scheme: dark) { body { background: #15121D; color: #F1EEF6; } .subtitle { color: #A7A1B5; } }
+</style>
+</head>
+<body>
+<link href="https://fonts.googleapis.com/css2?family=Huninn&display=swap" rel="stylesheet">
+<style>
+  .pp { --bg:#F6F5F9; --card:#fff; --fg:#1A1626; --muted:#6E6A78; --border:#E6E2EE; --lip:#DDD7E8; --primary:#9B51E0; --primary-soft:#D9BDF5; --grid:#ECE9F2;
+        font-family:'Huninn','PingFang TC',sans-serif; color:var(--fg); }
+  @media (prefers-color-scheme: dark) { .pp { --bg:#15121D; --card:#1F1A2B; --fg:#F1EEF6; --muted:#A7A1B5; --border:#2E2840; --lip:#2A2438; --primary:#B47AF0; --primary-soft:#5B3D80; --grid:#2B2539; } }
+  .pp-wrap { display:flex; gap:32px; align-items:flex-start; justify-content:center; flex-wrap:wrap; }
+  .pp-phone { width:390px; height:780px; border-radius:40px; border:10px solid #1A1626; background:var(--bg); overflow:hidden; position:relative; flex-shrink:0; }
+  .pp-scroll { height:100%; overflow-y:auto; overflow-x:hidden; scrollbar-width:none; padding:0 16px 28px; box-sizing:border-box; }
+  .pp-top { position:sticky; top:0; z-index:3; background:var(--bg); display:flex; align-items:center; justify-content:space-between; height:52px; margin:0 -16px; padding:0 8px; }
+  .pp-top b { font-size:17px; font-weight:600; }
+  .pp-icon { width:44px; height:44px; display:flex; align-items:center; justify-content:center; color:var(--fg); }
+  .pp-icon svg { width:22px; height:22px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+  .pp-card { background:var(--card); border:2px solid var(--border); border-radius:24px; box-shadow:0 4px 0 var(--lip); padding:16px; margin-top:16px; }
+  .pp-me { display:flex; align-items:center; gap:14px; }
+  .pp-avatar { width:64px; height:64px; border-radius:50%; background:#EADBFD; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .pp-me .name { font-size:20px; font-weight:600; }
+  .pp-me .sub { font-size:13px; color:var(--muted); margin-top:2px; }
+  .pp-stats { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:16px; }
+  .pp-stat { background:var(--card); border:2px solid var(--border); border-radius:18px; box-shadow:0 4px 0 var(--lip); padding:10px 8px; text-align:center; }
+  .pp-stat .v { font-size:22px; font-weight:600; }
+  .pp-stat .l { font-size:12px; color:var(--muted); margin-top:2px; }
+  .pp-h { display:flex; justify-content:space-between; align-items:baseline; }
+  .pp-h h3 { font-size:16px; font-weight:600; margin:0; }
+  .pp-h span { font-size:13px; color:var(--muted); }
+  .pp-wall-card { position:relative; }
+  .pp-wall-card canvas { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:1; }
+  .pp-row-title { font-size:13px; color:var(--muted); margin:14px 0 6px; }
+  .pp-medals { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; }
+  .pp-medal { display:flex; flex-direction:column; align-items:center; gap:4px; }
+  .pp-slot { width:92px; height:92px; touch-action:none; cursor:grab; border-radius:50%; position:relative; }
+  .pp-slot:active { cursor:grabbing; }
+  .pp-slot .flat { width:100%; height:100%; display:none; }
+  .no-webgl .pp-slot .flat { display:block; }
+  .pp-slot.glow::after { content:""; position:absolute; inset:-6px; border-radius:50%; border:3px solid #FFC93C; animation:pp-glow 1.2s ease-out forwards; }
+  @keyframes pp-glow { from { opacity:1; transform:scale(.8); } to { opacity:0; transform:scale(1.35); } }
+  .pp-medal .t { font-size:13px; }
+  .pp-medal .s { font-size:11px; color:var(--muted); }
+  .pp-bar-row { margin-top:10px; }
+  .pp-bar-row .n { font-size:13px; }
+  .pp-bar-line { display:flex; align-items:center; gap:8px; margin-top:4px; }
+  .pp-bar { height:14px; background:var(--primary); border-radius:0 4px 4px 0; width:0; transition:width .9s cubic-bezier(.34,1.4,.64,1); }
+  .pp-bar-line .v { font-size:12px; color:var(--muted); white-space:nowrap; opacity:0; transition:opacity .3s; font-variant-numeric:tabular-nums; }
+  .pp-chart.in .pp-bar { width:var(--w); }
+  .pp-chart.in .pp-bar-line .v { opacity:1; }
+  .pp-col { transform-box:fill-box; transform-origin:50% 100%; transform:scaleY(0); transition:transform .9s cubic-bezier(.34,1.4,.64,1); }
+  .pp-cap { opacity:0; transition:opacity .3s; }
+  .pp-chart.in .pp-col { transform:scaleY(1); }
+  .pp-chart.in .pp-cap { opacity:1; }
+  @media (prefers-reduced-motion: reduce) { .pp-bar { width:var(--w); transition:none; } .pp-col { transform:none; transition:none; } .pp-bar-line .v, .pp-cap { opacity:1; transition:none; } }
+  .pp-note { font-size:11px; color:var(--muted); margin-top:8px; }
+  .pp-tip { position:absolute; z-index:5; pointer-events:none; background:var(--fg); color:var(--bg); font-size:12px; padding:6px 8px; border-radius:8px; white-space:nowrap; opacity:0; transition:opacity .12s; }
+  .pp-toast { position:absolute; left:16px; right:16px; bottom:20px; z-index:6; background:var(--fg); color:var(--bg); border-radius:16px; padding:12px 14px; font-size:14px; opacity:0; transform:translateY(10px); transition:all .25s; pointer-events:none; }
+  .pp-toast.on { opacity:1; transform:none; }
+  .pp-side { max-width:330px; font-size:14px; line-height:1.7; color:var(--fg); }
+  .pp-side h3 { font-size:16px; margin:0 0 6px; }
+  .pp-side ul { padding-left:18px; margin:6px 0 14px; }
+  .pp-side button { height:44px; padding:0 18px; border-radius:14px; border:2px solid var(--border); background:var(--card); color:var(--fg); font:inherit; box-shadow:0 4px 0 var(--lip); cursor:pointer; margin:4px 6px 4px 0; }
+  .pp-side .primary { background:var(--primary); color:#fff; border-color:var(--primary); box-shadow:0 4px 0 #7A35BF; }
+</style>
+
+<h2>個人頁 demo（圖表會長出來）</h2>
+<p class="subtitle">往下捲到圖表，長條會一根接一根長出來、稍微衝過頭再彈回，數字從 0 跳到實際的值。按右邊「重來」可以再看一次。</p>
+
+<div class="pp">
+<div class="pp-wrap">
+  <div class="pp-phone" id="pp-phone">
+    <div class="pp-scroll">
+      <div class="pp-top">
+        <span class="pp-icon"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></span>
+        <b>個人頁</b>
+        <span class="pp-icon" title="帳號設定"><svg viewBox="0 0 24 24"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg></span>
+      </div>
+
+      <div class="pp-me">
+        <div class="pp-avatar">
+          <svg viewBox="24 16 192 192" width="56" height="56" aria-hidden="true">
+            <circle cx="78" cy="62" r="22" fill="#9B51E0"/><circle cx="162" cy="62" r="22" fill="#9B51E0"/>
+            <circle cx="78" cy="62" r="10.5" fill="#EADBFD"/><circle cx="162" cy="62" r="10.5" fill="#EADBFD"/>
+            <circle cx="120" cy="120" r="78" fill="#9B51E0"/>
+            <ellipse cx="120" cy="146" rx="24" ry="17" fill="#EADBFD"/>
+            <path d="M111 137 Q120 133 129 137 Q130.5 142 120 147 Q109.5 142 111 137 Z" fill="#2B1B47"/>
+            <ellipse cx="94" cy="112" rx="7.6" ry="9.6" fill="#2B1B47"/><ellipse cx="146" cy="112" rx="7.6" ry="9.6" fill="#2B1B47"/>
+            <circle cx="96.5" cy="108.5" r="2.7" fill="#fff"/><circle cx="148.5" cy="108.5" r="2.7" fill="#fff"/>
+          </svg>
+        </div>
+        <div><div class="name">林昱辰</div><div class="sub">北區 · 業務 · 名下 53 家客戶</div></div>
+      </div>
+
+      <div class="pp-stats">
+        <div class="pp-stat"><div class="v">1,078</div><div class="l">近一年拜訪</div></div>
+        <div class="pp-stat"><div class="v">53</div><div class="l">名下客戶</div></div>
+        <div class="pp-stat"><div class="v">3,134 萬</div><div class="l">近一年業績</div></div>
+      </div>
+
+      <div class="pp-card pp-wall-card" id="pp-wall-card">
+        <div class="pp-h"><h3>獎牌</h3><span id="pp-count"></span></div>
+        <div id="pp-wall"></div>
+        <div class="pp-note">在首頁點路線上的站、熊熊滾騎過去就算跑過。</div>
+        <canvas id="pp-gl"></canvas>
+      </div>
+
+      <div class="pp-card pp-chart">
+        <div class="pp-h"><h3>賣最多的藥局</h3><span>累計進貨</span></div>
+        <div id="pp-top"></div>
+      </div>
+
+      <div class="pp-card pp-chart">
+        <div class="pp-h"><h3>每月業績</h3><span>近六個月</span></div>
+        <svg id="pp-month" viewBox="0 0 326 190" style="display:block;width:100%;height:auto;margin-top:10px;overflow:visible"></svg>
+        <div class="pp-note">10 月只算到 10/27，顏色淡一點。</div>
+      </div>
+    </div>
+    <div class="pp-tip" id="pp-tip"></div>
+    <div class="pp-toast" id="pp-toast"></div>
+  </div>
+
+  <div class="pp-side">
+    <h3>這一頁有什麼</h3>
+    <ul>
+      <li>上面：大頭照、名字、三個事蹟數字（近一年拜訪、名下客戶、近一年業績）。</li>
+      <li>獎牌：兩類各三級（銅、銀、金），只算在首頁點過的站。六面都是立體的，直接在牆上轉。</li>
+      <li>兩張圖：賣最多的藥局前五名、近六個月每月業績。</li>
+    </ul>
+    <h3>模擬</h3>
+    <p style="margin:0 0 6px;color:var(--muted)">現在跑過 3 家、2 個縣市（板橋、忠孝、林口）。</p>
+    <button type="button" class="primary" id="pp-sim">騎進新竹（第 4、5 站）</button>
+    <button type="button" id="pp-reset">重來</button>
+  </div>
+</div>
+</div>
+
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/" } }</script>
+<script type="module">
+import * as THREE from "three"
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js"
+
+const ICON = {
+  store: "M4 9a2 2 0 0 0-2 2v2a2 2 0 0 0 2 2h4a1 1 0 0 1 1 1v4a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-4a1 1 0 0 1 1-1h4a2 2 0 0 0 2-2v-2a2 2 0 0 0-2-2h-4a1 1 0 0 1-1-1V4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4a1 1 0 0 1-1 1z",
+  city: "M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0Z M15 10a3 3 0 1 0-6 0a3 3 0 1 0 6 0Z",
+}
+const TIER = [
+  { name: "銅牌", face: "#CD8A4B", inner: "#E7B07C", icon: "#6B3E17", metal: 0xB87333, rim: "#A0622D" },
+  { name: "銀牌", face: "#BCC2CC", inner: "#DDE1E7", icon: "#4B5260", metal: 0xC4CAD3, rim: "#8E95A3" },
+  { name: "金牌", face: "#FFC93C", inner: "#FFE08A", icon: "#8A5A00", metal: 0xE0A100, rim: "#E0A100" },
+]
+const LOCKED = { face: "#CFCBD8", inner: "#DEDBE5", icon: "#8E889C", rim: "#B9B4C4" }
+const START = () => [
+  { key: "store", title: "跑過的藥局", unit: "家", tiers: [1, 3, 5], have: 3 },
+  { key: "city", title: "跑過的縣市", unit: "個縣市", tiers: [1, 2, 3], have: 2 },
+]
+let rows = START()
+const isOpen = (row, i) => row.have >= row.tiers[i]
+
+// 跑不動 WebGL 時退回的平面獎牌
+function flatSVG(row, i) {
+  const c = isOpen(row, i) ? TIER[i] : LOCKED
+  const mark = isOpen(row, i)
+    ? `<g transform="translate(50 50) scale(1.55) translate(-12 -12)"><path d="${ICON[row.key]}" fill="${c.icon}" fill-rule="evenodd"/></g>`
+    : `<g transform="translate(50 50) scale(1.4) translate(-12 -12)"><rect x="3" y="11" width="18" height="11" rx="2" fill="${c.icon}"/><path d="M7 11V7a5 5 0 0 1 10 0v4" fill="none" stroke="${c.icon}" stroke-width="2.4" stroke-linecap="round"/></g>`
+  return `<svg class="flat" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="46" fill="${c.rim}"/><circle cx="50" cy="50" r="39" fill="${c.face}"/><circle cx="50" cy="50" r="31" fill="${c.inner}"/>${mark}</svg>`
+}
+
+function renderWall(glow = new Set()) {
+  let got = 0
+  document.getElementById("pp-wall").innerHTML = rows.map((row) => `
+    <div class="pp-row-title">${row.title} · ${row.have} ${row.unit}</div>
+    <div class="pp-medals">${row.tiers.map((need, i) => {
+      const open = isOpen(row, i)
+      if (open) got++
+      const sub = open ? "10/28 解鎖" : `還差 ${need - row.have} ${row.unit}`
+      return `<div class="pp-medal"><div class="pp-slot ${glow.has(row.key + i) ? "glow" : ""}" data-id="${row.key}${i}" role="img" aria-label="${TIER[i].name}：${row.title} ${need} ${row.unit}，${sub}">${flatSVG(row, i)}</div>
+        <span class="t">${need} ${row.unit}</span><span class="s">${sub}</span></div>`
+    }).join("")}</div>`).join("")
+  document.getElementById("pp-count").textContent = `${got} / 6`
+}
+
+const toastEl = document.getElementById("pp-toast")
+let toastTimer
+function toast(text) {
+  toastEl.textContent = text; toastEl.classList.add("on")
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => toastEl.classList.remove("on"), 2200)
+}
+
+// ── 一張 canvas 蓋在獎牌牆上，每一面獎牌畫在自己那一格（scissor），只開一個 WebGL ──
+const canvas = document.getElementById("pp-gl"), card = document.getElementById("pp-wall-card")
+let renderer = null
+try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true }) } catch { renderer = null }
+if (!renderer) document.querySelector(".pp").classList.add("no-webgl")
+
+const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(30, 1, 0.1, 50)
+camera.position.set(0, 0, 4.6)
+if (renderer) {
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
+  scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture
+  const key = new THREE.DirectionalLight(0xffffff, 1.1); key.position.set(3, 4, 5); scene.add(key)
+}
+
+function faceTexture(row, i, back) {
+  const open = isOpen(row, i), c = open ? TIER[i] : LOCKED
+  const cv = document.createElement("canvas"); cv.width = cv.height = 256
+  const g = cv.getContext("2d")
+  g.fillStyle = c.face; g.beginPath(); g.arc(128, 128, 128, 0, 7); g.fill()
+  g.fillStyle = c.inner; g.beginPath(); g.arc(128, 128, 103, 0, 7); g.fill()
+  g.fillStyle = c.icon; g.strokeStyle = c.icon; g.textAlign = "center"
+  if (back) {
+    const need = row.tiers[i]
+    g.font = "44px Huninn, sans-serif"; g.fillText(open ? `${need} ${row.unit === "家" ? "家" : "縣市"}` : `差 ${need - row.have}`, 128, 128)
+    g.font = "24px Huninn, sans-serif"; g.fillText(open ? "10/28" : "還沒解鎖", 128, 168)
+  } else if (open) {
+    g.save(); g.translate(128 - 72, 128 - 72); g.scale(6, 6); g.fill(new Path2D(ICON[row.key]), "evenodd"); g.restore()
+  } else {
+    g.save(); g.translate(128 - 60, 128 - 66); g.scale(5, 5)
+    g.beginPath(); g.roundRect(3, 11, 18, 11, 2); g.fill()
+    g.lineWidth = 2.4; g.lineCap = "round"; g.stroke(new Path2D("M7 11V7a5 5 0 0 1 10 0v4")); g.restore()
+  }
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4
+  return t
+}
+
+const ridgeGeo = new THREE.BoxGeometry(0.02, 0.05, 0.2), dummy = new THREE.Object3D()
+function buildMedal(row, i) {
+  const open = isOpen(row, i)
+  const metal = open
+    ? new THREE.MeshStandardMaterial({ color: TIER[i].metal, metalness: 0.92, roughness: 0.26 })
+    : new THREE.MeshStandardMaterial({ color: 0x9C97A8, metalness: 0.35, roughness: 0.6 })
+  const g = new THREE.Group()
+  const disc = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.14, 96), metal); disc.rotation.x = Math.PI / 2; g.add(disc)
+  g.add(new THREE.Mesh(new THREE.TorusGeometry(1, 0.075, 20, 96), metal))
+  const ridges = new THREE.InstancedMesh(ridgeGeo, metal, 96)
+  for (let k = 0; k < 96; k++) {
+    const a = (k / 96) * Math.PI * 2
+    dummy.position.set(Math.cos(a) * 1.07, Math.sin(a) * 1.07, 0); dummy.rotation.set(0, 0, a); dummy.updateMatrix()
+    ridges.setMatrixAt(k, dummy.matrix)
+  }
+  g.add(ridges)
+  for (const back of [false, true]) {
+    const f = new THREE.Mesh(new THREE.CircleGeometry(0.93, 96), new THREE.MeshStandardMaterial({ map: faceTexture(row, i, back), metalness: open ? 0.5 : 0.1, roughness: open ? 0.38 : 0.8 }))
+    f.position.z = back ? -0.071 : 0.071; if (back) f.rotation.y = Math.PI
+    g.add(f)
+  }
+  g.visible = false
+  scene.add(g)
+  return g
+}
+
+// 每一面獎牌的狀態：轉向、轉速、平常擺動的相位
+const medals = new Map()
+function syncMedals(spinIds = new Set()) {
+  if (!renderer) return
+  rows.forEach((row) => row.tiers.forEach((_, i) => {
+    const id = row.key + i, old = medals.get(id), open = isOpen(row, i)
+    if (old && old.open === open) return
+    if (old) scene.remove(old.obj)
+    const m = { obj: buildMedal(row, i), open, vel: new THREE.Vector2(), phase: medals.size * 0.9 + i * 1.3, dragging: false }
+    if (old) m.obj.quaternion.copy(old.obj.quaternion)
+    if (spinIds.has(id)) m.vel.set(16, 0)
+    medals.set(id, m)
+  }))
+}
+
+// 拖著轉；幾乎沒動就放開算「點一下」：解鎖的翻一圈，沒解鎖的抖一下、說還差多少
+const Y = new THREE.Vector3(0, 1, 0), X = new THREE.Vector3(1, 0, 0), Z = new THREE.Vector3(0, 0, 1)
+const turn = (m, axis, a) => m.obj.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(axis, a))
+const wall = document.getElementById("pp-wall")
+let drag = null
+wall.addEventListener("pointerdown", (e) => {
+  const slot = e.target.closest(".pp-slot"); if (!slot) return
+  e.stopPropagation()
+  slot.setPointerCapture(e.pointerId)
+  drag = { slot, id: slot.dataset.id, x: e.clientX, y: e.clientY, t: performance.now(), moved: 0 }
+  const m = medals.get(drag.id); if (m) { m.dragging = true; m.vel.set(0, 0) }
+})
+wall.addEventListener("pointermove", (e) => {
+  if (!drag) return
+  const m = medals.get(drag.id), now = performance.now()
+  const dx = (e.clientX - drag.x) * 0.02, dy = (e.clientY - drag.y) * 0.02
+  drag.moved += Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y)
+  if (m) { turn(m, Y, dx); turn(m, X, dy); const dt = Math.max((now - drag.t) / 1000, 0.008); m.vel.set(dx / dt, dy / dt) }
+  drag.x = e.clientX; drag.y = e.clientY; drag.t = now
+})
+function endDrag() {
+  if (!drag) return
+  const m = medals.get(drag.id), [key, i] = [drag.id.slice(0, -1), +drag.id.slice(-1)]
+  const row = rows.find((r) => r.key === key)
+  if (drag.moved < 6) {
+    if (isOpen(row, i)) { if (m) m.vel.set(14, 0) }
+    else { if (m) m.wiggle = 0.6; toast(`再跑 ${row.tiers[i] - row.have} ${row.unit === "家" ? "家藥局" : "個縣市"}就拿到${TIER[i].name}`) }
+  }
+  if (m) m.dragging = false
+  drag = null
+}
+wall.addEventListener("pointerup", endDrag); wall.addEventListener("pointercancel", endDrag)
+wall.addEventListener("click", (e) => e.stopPropagation())
+
+const up = new THREE.Vector3(), axis = new THREE.Vector3(), target = new THREE.Quaternion(), euler = new THREE.Euler()
+let prev = performance.now()
+function frame(t) {
+  const dt = Math.min((t - prev) / 1000, 0.05); prev = t
+  const w = card.clientWidth, h = card.clientHeight
+  if (canvas.width !== Math.round(w * renderer.getPixelRatio()) || canvas.height !== Math.round(h * renderer.getPixelRatio())) renderer.setSize(w, h, false)
+  renderer.setScissorTest(false); renderer.setClearColor(0x000000, 0); renderer.clear()
+  renderer.setScissorTest(true)
+  const box = canvas.getBoundingClientRect()
+  for (const slot of wall.querySelectorAll(".pp-slot")) {
+    const m = medals.get(slot.dataset.id); if (!m) continue
+    if (!m.dragging) {
+      // 甩出去的轉速慢慢減；慢下來之後跟著「平常輕輕左右擺」的姿勢走
+      const decay = Math.exp(-dt * 1.6)
+      m.vel.multiplyScalar(decay)
+      turn(m, Y, m.vel.x * dt); turn(m, X, m.vel.y * dt)
+      const calm = Math.max(0, 1 - m.vel.length() / 3)
+      if (calm > 0) {
+        target.setFromEuler(euler.set(0.08 * Math.sin(t / 1300 + m.phase), 0.45 * Math.sin(t / 1100 + m.phase), 0))
+        m.obj.quaternion.slerp(target, Math.min(dt * 2.4 * calm, 1))
+      }
+      if (m.wiggle > 0) { m.wiggle -= dt; turn(m, Z, Math.sin(m.wiggle * 40) * 0.05) }
+    }
+    const r = slot.getBoundingClientRect()
+    const left = r.left - box.left, bottom = box.bottom - r.bottom
+    if (r.bottom < box.top || r.top > box.bottom) continue
+    m.obj.visible = true
+    renderer.setViewport(left, bottom, r.width, r.height); renderer.setScissor(left, bottom, r.width, r.height)
+    renderer.render(scene, camera)
+    m.obj.visible = false
+  }
+}
+if (renderer) renderer.setAnimationLoop(frame)
+
+// ── 長條：賣最多的藥局 ──
+const TOP = [["康泰連鎖藥局 · 內湖店", 251.1], ["康泰連鎖藥局 · 忠孝店", 192.2], ["福安連鎖藥局 · 板橋店", 183.8], ["福安連鎖藥局 · 士林店", 172.6], ["康泰連鎖藥局 · 中和店", 148.5]]
+const tip = document.getElementById("pp-tip"), phone = document.getElementById("pp-phone")
+function showTip(el, text) {
+  const r = el.getBoundingClientRect(), p = phone.getBoundingClientRect()
+  tip.textContent = text; tip.style.opacity = 1
+  tip.style.left = Math.min(r.left - p.left, p.width - tip.offsetWidth - 16) + "px"; tip.style.top = (r.top - p.top - 34) + "px"
+}
+document.getElementById("pp-top").innerHTML = TOP.map(([n, v], i) => `
+  <div class="pp-bar-row"><div class="n">${n}</div>
+  <div class="pp-bar-line" data-tip="${n}：${v} 萬"><div class="pp-bar" style="--w:${(v / TOP[0][1]) * 220}px; transition-delay:${i * 110}ms"></div><span class="v" data-v="${v}" data-delay="${i * 110}" style="transition-delay:${i * 110}ms">${v} 萬</span></div></div>`).join("")
+
+// ── 直條：每月業績 ──
+const MONTHS = [["5 月", 292.1], ["6 月", 278.9], ["7 月", 255.9], ["8 月", 235.8], ["9 月", 263.9], ["10 月", 186.6]]
+{
+  const svg = document.getElementById("pp-month"), W = 326, left = 44, base = 160, top = 14, max = 300
+  const y = (v) => base - (v / max) * (base - top)
+  const css = getComputedStyle(document.querySelector(".pp")), v = (k) => css.getPropertyValue(k)
+  let s = ""
+  for (const t of [0, 100, 200, 300]) s += `<line x1="${left}" x2="${W}" y1="${y(t)}" y2="${y(t)}" stroke="${v("--grid")}" stroke-width="1"/><text x="${left - 8}" y="${y(t) + 4}" text-anchor="end" font-size="11" fill="${v("--muted")}">${t ? t + " 萬" : 0}</text>`
+  const band = (W - left) / MONTHS.length
+  MONTHS.forEach(([m, val], i) => {
+    const x = left + band * i + band / 2 - 11, last = i === MONTHS.length - 1
+    s += `<g data-tip="${m}：${val} 萬${last ? "（到 10/27）" : ""}"><rect x="${x - 8}" y="${top}" width="38" height="${base - top}" fill="transparent"/>
+      <path class="pp-col" style="transition-delay:${i * 100}ms" d="M${x} ${base} V${y(val) + 4} a4 4 0 0 1 4 -4 h14 a4 4 0 0 1 4 4 V${base} Z" fill="${last ? v("--primary-soft") : v("--primary")}"/></g>
+      <text x="${x + 11}" y="${base + 18}" text-anchor="middle" font-size="12" fill="${v("--muted")}">${m}</text>`
+    if (i === 0 || last) s += `<text class="pp-cap" style="transition-delay:${i * 100 + 600}ms" x="${x + 11}" y="${y(val) - 6}" text-anchor="middle" font-size="11" fill="${v("--fg")}">${val}</text>`
+  })
+  svg.innerHTML = s
+}
+for (const el of document.querySelectorAll(".pp [data-tip]")) {
+  el.addEventListener("pointerenter", () => showTip(el, el.dataset.tip))
+  el.addEventListener("pointerleave", () => (tip.style.opacity = 0))
+}
+
+document.getElementById("pp-sim").addEventListener("click", (e) => {
+  e.stopPropagation()
+  if (rows[1].have >= 3) return toast("已經騎進新竹了，按「重來」再看一次")
+  rows[0].have = 5; rows[1].have = 3
+  const fresh = new Set(["store2", "city2"])
+  renderWall(fresh); syncMedals(fresh)
+  toast("解鎖兩面金牌：跑過 5 家藥局、跑過 3 個縣市")
+})
+document.getElementById("pp-reset").addEventListener("click", (e) => { e.stopPropagation(); rows = START(); renderWall(); syncMedals(); replayCharts() })
+// ── 圖表捲進畫面才長出來，數字從 0 跳到實際的值；減少動態效果時直接顯示 ──
+const still = matchMedia("(prefers-reduced-motion: reduce)").matches
+function countUp(el) {
+  const to = +el.dataset.v, delay = +el.dataset.delay, dur = 900
+  if (still) return
+  el.textContent = "0.0 萬"
+  const start = performance.now() + delay
+  const step = (now) => {
+    const k = Math.min(Math.max((now - start) / dur, 0), 1), e = 1 - (1 - k) ** 3
+    el.textContent = `${(to * e).toFixed(1)} 萬`
+    if (k < 1) requestAnimationFrame(step)
+  }
+  requestAnimationFrame(step)
+}
+const seen = new IntersectionObserver((entries) => {
+  for (const entry of entries) {
+    if (!entry.isIntersecting) continue
+    entry.target.classList.add("in")
+    entry.target.querySelectorAll("[data-v]").forEach(countUp)
+    seen.unobserve(entry.target)
+  }
+}, { root: document.querySelector(".pp-scroll"), threshold: 0.35 })
+function replayCharts() {
+  for (const chart of document.querySelectorAll(".pp-chart")) {
+    chart.classList.remove("in"); seen.unobserve(chart)
+    void chart.offsetWidth
+    seen.observe(chart)
+  }
+}
+replayCharts()
+renderWall(); syncMedals()
+</script>
+</body>
+</html>
