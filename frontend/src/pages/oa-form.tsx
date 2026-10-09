@@ -19,6 +19,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { formatRate } from "@/lib/approval"
 import { canManage, useAuth } from "@/lib/auth"
 import { formatDate, formatDateTime, formatMoney } from "@/lib/format"
+import { pendingOa } from "@/lib/manager-counts"
 import { cn } from "@/lib/utils"
 
 const TABS = ["表單", "附件", "意見", "簽核流程", "活動日誌"] as const
@@ -117,6 +118,8 @@ export function OaFormPage() {
             onDecided={(next) => {
               setStale(null)
               setState({ status: "ready", form: next })
+              // 側邊欄與主管端分頁列上的待簽數馬上更新
+              void pendingOa.refresh()
             }}
             onStale={(message) => {
               setStale(message)
