@@ -3,7 +3,7 @@ import { HALF_NODE, labelSide, NODE_HEIGHT } from "@/lib/route-path"
 /**
  * 熊熊滾的座騎停在蛇行路線的下一站旁邊（components/rides/ride-on-route.tsx）。這裡只管排法與算數：
  * 停在哪一側、多寬、翻不翻、多高（docs/superpowers/plans/2026-10-07-rides-stage3-animation.md Task 4），
- * 以及從上一站騎過來那一段的路徑與時間軸（Task 5）；量畫面、播 Web Animations 在元件裡。
+ * 以及從熊原本停的那一站騎過來那一段的路徑與時間軸（Task 5）；量畫面、播 Web Animations 在元件裡。
  */
 
 // 量不到路線寬度時（伺服器 render、還沒排版）照 390 寬的手機排：左右各留 16px
@@ -115,10 +115,10 @@ type Box = { left: number; top: number; right: number; bottom: number }
 export type LegPoints = { from: Point; control: Point; to: Point; scale: number }
 
 /**
- * 從畫面上量到的位置算這一段怎麼走。end 是停著的座騎的著地點，node 是這一站的圓鈕，legRow 是兩站之間放膠囊的那一列，
- * prev 是上一站的圓鈕與它離中線多少（從辦公室出發是 null）。
- * 起點是上一站停的地方；控制點在兩顆圓鈕正中間、膠囊那一列的正中間（膠囊就在那裡），彎度跟蛇行的路一樣。
- * 從辦公室出發：從這一站正上方、膠囊那一列底下冒出來，控制點在停的那一側，先往旁邊再往下，不壓過圓鈕。
+ * 從畫面上量到的位置算這一段怎麼走。end 是停著的座騎的著地點，node 是這一站的圓鈕，
+ * prev 是熊原本停的那一站（或辦公室）的圓鈕與它離中線多少。起點是熊原本停的地方。
+ * 相鄰往下（legRow 是兩站之間放膠囊的那一列）照蛇行的彎度，控制點在膠囊那一列正中間；
+ * 往回或跳站（legRow 是 null）從起點直接彎到終點，控制點在兩顆圓鈕中心的正中間。
  */
 export function legPoints({
   end,
@@ -130,20 +130,20 @@ export function legPoints({
 }: {
   end: Point
   node: Box
-  legRow: Pick<Box, "top" | "bottom">
-  prev: { node: Box; offset: number } | null
+  legRow: Pick<Box, "top" | "bottom"> | null
+  prev: { node: Box; offset: number }
   offset: number
   containerWidth: number
 }): LegPoints {
   const at = (x: number, y: number): Point => ({ x: x - end.x, y: y - end.y })
   const nodeX = (node.left + node.right) / 2
-  if (!prev) {
-    return { from: at(nodeX, legRow.bottom), control: at(end.x, legRow.bottom), to: at(end.x, end.y), scale: 1 }
-  }
   const prevX = (prev.node.left + prev.node.right) / 2
+  const middleY = legRow
+    ? (legRow.top + legRow.bottom) / 2
+    : (prev.node.top + prev.node.bottom + node.top + node.bottom) / 4
   return {
     from: at(prevX + parkCenterX(prev.offset, containerWidth), prev.node.bottom),
-    control: at((prevX + nodeX) / 2, (legRow.top + legRow.bottom) / 2),
+    control: at((prevX + nodeX) / 2, middleY),
     to: at(end.x, end.y),
     scale: parkWidth(prev.offset, containerWidth) / parkWidth(offset, containerWidth),
   }

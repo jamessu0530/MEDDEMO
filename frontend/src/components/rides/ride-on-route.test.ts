@@ -96,7 +96,7 @@ describe("RideOnRoute", () => {
   it("不在七個縣市裡：熊熊滾自己走過去", () => {
     const html = render({ leg: leg({ toCity: "花蓮縣" }) })
     expect(html).toContain('data-city="other"')
-    expect(html).toContain('aria-label="熊熊滾正走去下一站，點一下重播這一段"')
+    expect(html).toContain('aria-label="熊熊滾走過去，點一下重播這一段"')
   })
 
   it("停在左邊不翻、停在右邊翻過來；寬度照停的那一側算", () => {
@@ -108,15 +108,9 @@ describe("RideOnRoute", () => {
     expect(right).toContain('width="106"')
   })
 
-  it("要自動騎這一段時，開始騎之前先藏起來（減少動態效果時不藏，直接停在這裡）", () => {
-    expect(render({ autoPlay: true })).toContain("motion-safe:opacity-0")
-    // 藏起來時不能聚焦、不被讀出來
-    const openTag = (html: string) => html.slice(0, html.indexOf(">"))
-    expect(openTag(render({ autoPlay: true }))).toContain('aria-hidden="true"')
-    expect(openTag(render({ autoPlay: true }))).toContain('tabindex="-1"')
-    expect(openTag(render())).not.toContain("aria-hidden")
-    expect(openTag(render())).not.toContain("tabindex")
-    expect(render()).not.toContain("opacity-0")
+  it("不能重播時（停在辦公室）沒有「點一下重播」", () => {
+    const html = renderToStaticMarkup(createElement(RideOnRoute, { leg: leg(), offset: 0, containerWidth: 358, canReplay: false }))
+    expect(html).not.toContain("重播")
   })
 
   it("停著的時候只有一台座騎，沒有煙也沒有縣市名", () => {
@@ -190,41 +184,24 @@ describe("timeline", () => {
 })
 
 describe("legPoints", () => {
-  // 圓鈕 58×54：給中心 x 與上緣
-  const node = (x: number, top: number) => ({ left: x - 29, right: x + 29, top, bottom: top + 54 })
-
-  it("起點是上一站停的地方，控制點在兩站之間膠囊那一列的正中間；都以終點（停著的著地點）為原點", () => {
-    // 上一站在中線（195），下一站偏右 40（235）
-    const end = { x: 235 + 92, y: 300 }
-    const points = legPoints({
-      end,
-      node: node(235, 246),
-      legRow: { top: 100, bottom: 144 },
-      prev: { node: node(195, 10), offset: 0 },
-      offset: 40,
-      containerWidth: 358,
-    })
+  it("相鄰往下：起點是上一站停的地方，控制點在膠囊那一列正中間；都以終點（停著的著地點）為原點", () => {
+    const node = { left: 151, right: 209, top: 200, bottom: 254 }
+    const prevNode = { left: 111, right: 169, top: 60, bottom: 114 }
+    const legRow = { top: 150, bottom: 194 }
+    const end = { x: 300, y: 250 }
+    const points = legPoints({ end, node, legRow, prev: { node: prevNode, offset: -40 }, offset: 0, containerWidth: 358 })
+    expect(points.control).toEqual({ x: (140 + 180) / 2 - 300, y: 172 - 250 })
+    expect(points.from.y).toBe(114 - 250)
     expect(points.to).toEqual({ x: 0, y: 0 })
-    expect(points.from).toEqual({ x: 195 - 99 - end.x, y: 64 - end.y })
-    expect(points.control).toEqual({ x: (195 + 235) / 2 - end.x, y: 122 - end.y })
-    // 上一站停的寬（120）比這一站（106）寬：從那個大小縮過來
-    expect(points.scale).toBeCloseTo(120 / 106)
   })
 
-  it("從辦公室出發：從這一站正上方、膠囊那一列底下冒出來，先往停的那一側再往下", () => {
-    const end = { x: 195 - 99, y: 162 }
-    const points = legPoints({
-      end,
-      node: node(195, 108),
-      legRow: { top: 8, bottom: 52 },
-      prev: null,
-      offset: 0,
-      containerWidth: 358,
-    })
-    expect(points.from).toEqual({ x: 99, y: 52 - 162 })
-    expect(points.control).toEqual({ x: 0, y: 52 - 162 })
-    expect(points.to).toEqual({ x: 0, y: 0 })
-    expect(points.scale).toBe(1)
+  it("往回或跳站（legRow 是 null）：控制點在兩顆圓鈕中心的正中間", () => {
+    const node = { left: 151, right: 209, top: 60, bottom: 114 }
+    const prevNode = { left: 111, right: 169, top: 400, bottom: 454 }
+    const end = { x: 120, y: 110 }
+    const points = legPoints({ end, node, legRow: null, prev: { node: prevNode, offset: -40 }, offset: 0, containerWidth: 358 })
+    expect(points.control).toEqual({ x: 160 - 120, y: (87 + 427) / 2 - 110 })
+    expect(points.from.y).toBe(454 - 110)
   })
 })
 

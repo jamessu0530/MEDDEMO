@@ -94,42 +94,42 @@ describe("RoutePath", () => {
     expect(html.match(/aria-expanded="false"/g)).toHaveLength(8)
   })
 
-  it("熊熊滾騎著到下一站那一段的座騎停在下一站旁邊，點了重播；不再連到問答", () => {
-    const stops = [
-      stop("a", "done", { city: "新北市" }),
-      stop("b", "done", { city: "新北市" }),
-      stop("c", "next", { city: "新竹市", travel_mode: "scooter" }),
-      stop("d", "todo", { city: "新竹市" }),
-    ]
-    const html = render(stops)
-    expect(html.match(/data-ride-park/g)).toHaveLength(1)
+  it("最上面有辦公室圓鈕；沒點過站時熊熊滾停在辦公室，騎的是辦公室到第一站那段，不能重播", () => {
+    const html = render([stop("A", "next", { city: "新北市" }), stop("B", "todo")])
+    expect(html).toContain('data-ride-anchor="office"')
+    const office = html.indexOf('data-ride-anchor="office"')
+    const park = html.indexOf("data-ride-park")
+    expect(park).toBeGreaterThan(office)
+    expect(park).toBeLessThan(html.indexOf('data-ride-anchor="A"'))
+    expect(html).toContain('data-city="新北市"')
+    expect(html).not.toContain("重播")
+  })
+
+  it("點過的站：熊熊滾停在最後點的那一站，點了重播上一段", () => {
+    const html = render([
+      stop("A", "done", { arrived_at: "2026-10-28T02:00:00Z" }),
+      stop("B", "done", { arrived_at: "2026-10-28T03:00:00Z", city: "新竹市", travel_mode: "scooter" }),
+      stop("C", "next"),
+    ])
+    const park = html.indexOf("data-ride-park")
+    expect(park).toBeGreaterThan(html.indexOf('data-ride-anchor="B"'))
+    expect(park).toBeLessThan(html.indexOf('data-ride-anchor="C"'))
     expect(html).toContain('data-city="新竹市"')
     expect(html).toContain('data-mode="scooter"')
-    expect(html).toMatch(/aria-label="熊熊滾騎著貢丸的機車，點一下重播這一段"/)
-    expect(html).not.toContain('href="/ask"')
-    expect(html).not.toContain("mascot-yay")
-    expect(html).toContain(">收工<")
+    expect(html).toContain("重播")
   })
 
-  it("座騎停在下一站那一列", () => {
-    const html = render(day)
-    // 座騎在下一站（c）的圓鈕之後、下一顆圓鈕（d）之前
-    const ride = html.indexOf("data-ride-park")
-    expect(ride).toBeGreaterThan(html.indexOf('aria-label="第 3 站 客戶c，下一站"'))
-    expect(ride).toBeLessThan(html.indexOf('aria-label="第 4 站 客戶d，待拜訪"'))
+  it("沒有辦公室起點：沒有辦公室圓鈕，熊熊滾停在第一站", () => {
+    const html = renderToStaticMarkup(
+      createElement(MemoryRouter, null, createElement(RoutePath, { stops: [stop("A", "next"), stop("B", "todo")], officeStart: false }))
+    )
+    expect(html).not.toContain('data-ride-anchor="office"')
+    expect(html.indexOf("data-ride-park")).toBeGreaterThan(html.indexOf('data-ride-anchor="A"'))
   })
 
-  it("改了到下一站那段的交通方式，停著的座騎跟著換", () => {
-    const html = render([stop("a", "done"), stop("b", "next", { travel_mode: "walk" })])
-    expect(html).toContain('data-mode="walk"')
-    expect(html).toContain("熊熊滾騎著小籠包的走路")
-  })
-
-  it("要自動騎到下一站時，停著的座騎先藏起來，等一下從上一站騎過來", () => {
-    const stops = [stop("a", "done"), stop("b", "next")]
-    const auto = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(RoutePath, { stops, autoRide: true })))
-    expect(auto).toContain("motion-safe:opacity-0")
-    expect(render(stops)).not.toContain("motion-safe:opacity-0")
+  it("到過的站標籤寫到過的時間（台北時間）", () => {
+    const html = render([stop("A", "done", { arrived_at: "2026-10-28T02:05:00Z" }), stop("B", "next")])
+    expect(html).toContain("10:05 到過")
   })
 
   it("沒有站就沒有座騎", () => {

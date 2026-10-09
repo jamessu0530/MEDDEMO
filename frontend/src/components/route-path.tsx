@@ -1,16 +1,17 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react"
-import { Check, Flag } from "lucide-react"
+import { Building2, Check, Flag } from "lucide-react"
 import { Link } from "react-router"
 
-import { getNextNotes, type Note } from "@/api/notes"
+import { getBrief, type Brief } from "@/api/notes"
 import { SIGNAL_LABEL, type RouteSignal, type LegMode, type RouteStop, type TravelMode } from "@/api/route"
 import { Mascot } from "@/components/mascot"
 import { NoteRow } from "@/components/note-row"
 import { RideOnRoute } from "@/components/rides/ride-on-route"
 import { LegChip, LegMenu } from "@/components/route/leg-chip"
 import { buttonVariants } from "@/components/ui/button"
+import { formatTaipeiTime } from "@/lib/format"
 import { ROUTE_WIDTH } from "@/lib/ride-on-route"
-import { parkedLeg, type Leg } from "@/lib/rides"
+import { hereOf, lastLeg, legBetween, type Leg } from "@/lib/rides"
 import { HALF_NODE, labelSide, pathOffset, signalTone, TONE_CLASS } from "@/lib/route-path"
 import { legFrom } from "@/lib/travel-mode"
 import { cn } from "@/lib/utils"
@@ -29,8 +30,9 @@ type Opened = { kind: "stop" | "leg"; id: string } | null
 /**
  * 今日路線畫成 Duolingo 那樣的路（docs/superpowers/specs/2026-10-01-duolingo-home-design.md）：
  * 一站一顆厚圓鈕左右蛇行往下，名字標在旁邊空的那一側，下一站上面跳著「出發」；
- * 點圓鈕在底下彈出一張小卡寫為什麼排這家。熊熊滾騎著「到下一站那一段」的座騎停在下一站旁邊：autoRide 時從上一站騎過來，
- * 點了重播那一段（騎乘動畫在 components/rides/ride-on-route.tsx，開始騎時叫 onRide）；
+ * 點圓鈕：熊熊滾從停的那一站（或最上面的辦公室）騎到點的那一站，同時在底下彈出小卡（為什麼排這家、進門前三分鐘、
+ * 下次去要記得），首頁送 arrive 記成到過（docs/superpowers/specs/2026-10-09-tap-to-ride-and-personal-page-design.md）。
+ * 點停著的座騎重播最後那一段（騎乘動畫在 components/rides/ride-on-route.tsx，開始騎時叫 onRide）；
  * 最後是終點「收工」，全部跑完時熊熊滾在旗子旁跳起來。
  * 每站上面一顆膠囊寫從上一站（第一站從辦公室）怎麼過來，點了換交通方式
  * （docs/superpowers/specs/2026-10-07-ride-vehicles-design.md）；沒給 onPickMode 時膠囊不能點。
@@ -41,7 +43,8 @@ export function RoutePath({
   officeStart = true,
   startCity = null,
   onPickMode,
-  autoRide = false,
+  onArrive,
+  unsaved,
   onRide,
   collected = null,
 }: {
@@ -51,9 +54,11 @@ export function RoutePath({
   /** 辦公室所在的縣市：第一段的出發縣市 */
   startCity?: string | null
   onPickMode?: (from: string | null, to: string, mode: LegMode) => void
-  /** 現在自動騎一次到下一站那一段（首頁決定：路線分頁、連得上、不在存檔中、今天還沒播過） */
-  autoRide?: boolean
-  /** 開始騎到下一站那一段（自動播或點了重播；不能動而直接停好也算）：記播過、送騎過的座騎 */
+  /** 點了一站（熊騎過去或已經停在那裡但還沒記到過）：首頁送 arrive */
+  onArrive?: (customerId: string) => void
+  /** 送 arrive 失敗的站：小卡寫「沒連上，這一站還沒記到」 */
+  unsaved?: ReadonlySet<string>
+  /** 開始騎一段（點站、點座騎重播；不能動而直接停好也算）：送騎過的座騎 */
   onRide?: (leg: Leg) => void
   /** 座騎圖鑑收集了幾台（首頁拿；拿不到是 null，入口就只寫名字） */
   collected?: { ridden: number; total: number } | null
@@ -61,8 +66,35 @@ export function RoutePath({
   // 同時只開一個：站的小卡或某一段的選單
   const [opened, setOpened] = useState<Opened>(null)
   const finished = stops.length > 0 && stops.every((stop) => stop.status === "done")
-  // 停著的座騎是到下一站那一段的；全部跑完或沒有站就沒有
-  const parked = parkedLeg(stops, startCity)
+  // 熊熊滾在哪：最後點的那一站。點了馬上換，不等後端；後端的「最後點的」變了（別人點的、重新載入、IT 重置）就跟著換、不騎
+  const serverHere = hereOf(stops)
+  const [here, setHere] = useState(serverHere)
+  const [seenHere, setSeenHere] = useState(serverHere)
+  // 正在騎的那一段（點站時給）；token 換了 RideOnRoute 就騎一次
+  const [ride, setRide] = useState<{ leg: Leg; token: number } | null>(null)
+  const [riding, setRiding] = useState(false)
+  // 這次點過的站（照點的順序）：連點兩站、前一站的 arrive 才回來時，後端的「最後點的」是比較早點的那一站，熊不退回去
+  const [taps, setTaps] = useState<string[]>([])
+  if (serverHere !== seenHere) {
+    setSeenHere(serverHere)
+    const tapOrder = (id: string | null) => (id === null ? -1 : taps.lastIndexOf(id))
+    const behind = tapOrder(serverHere) >= 0 && tapOrder(serverHere) < tapOrder(here)
+    if (!behind && serverHere !== here) {
+      // 不是點的那一站回來了（別人點的、重新載入、IT 重置）：熊直接換過去；正在騎的那一段會被拆掉、不會再叫 onEnd
+      setHere(serverHere)
+      setTaps([])
+      setRide(null)
+      setRiding(false)
+    }
+  }
+  const onRoute = (id: string | null) => id !== null && stops.some((stop) => stop.customer_id === id)
+  // 熊停的那一顆圓鈕：點過的站；沒點過是辦公室（null），沒有辦公室起點時是第 1 站
+  const anchor = onRoute(here) ? here : officeStart ? null : (stops[0]?.customer_id ?? null)
+  // 停著的座騎：剛騎的那一段、最後點的那一段，或沒點過時辦公室到第一站那段（不能重播）
+  const replay = ride?.leg.to === anchor ? ride.leg : here && anchor === here ? lastLeg(stops, startCity) : null
+  const parked = replay ?? (stops[0] ? legBetween(stops, null, stops[0].customer_id, startCity) : null)
+  // 全部到過：最後一段騎完，座騎淡出，熊熊滾在收工旗子旁跳
+  const showParked = parked !== null && (!finished || riding)
 
   // 路線的寬：座騎停多寬照它算。伺服器 render、還沒排版時照 390 寬的手機（ROUTE_WIDTH）
   const listRef = useRef<HTMLOListElement>(null)
@@ -104,8 +136,43 @@ export function RoutePath({
     setOpened((now) => (now?.kind === kind && now.id === id ? null : { kind, id }))
   }
 
+  function tapStop(stop: RouteStop) {
+    const isOpen = opened?.kind === "stop" && opened.id === stop.customer_id
+    setOpened(isOpen ? null : { kind: "stop", id: stop.customer_id })
+    if (isOpen) return
+    if (stop.customer_id !== anchor) {
+      setRide({ leg: legBetween(stops, anchor, stop.customer_id, startCity), token: Date.now() })
+      setRiding(true)
+      setHere(stop.customer_id)
+      setTaps((now) => [...now, stop.customer_id])
+    }
+    if (stop.customer_id !== anchor || !stop.arrived_at) onArrive?.(stop.customer_id)
+  }
+
+  const bear = (offset: number) =>
+    parked && (
+      <RideOnRoute
+        key={anchor ?? "office"}
+        leg={parked}
+        offset={offset}
+        containerWidth={width}
+        play={ride && ride.leg.to === anchor ? ride.token : null}
+        canReplay={replay !== null}
+        onRide={onRide}
+        onEnd={() => setRiding(false)}
+      />
+    )
+
   return (
     <ol ref={listRef} aria-label="今日路線" className="flex flex-col pt-2">
+      {officeStart && stops.length > 0 && (
+        <li>
+          <div className="relative h-[60px]">
+            <OfficeNode />
+            {showParked && anchor === null && bear(0)}
+          </div>
+        </li>
+      )}
       {stops.map((stop, index) => {
         const offset = pathOffset(index)
         const from = legFrom(stops, index)
@@ -141,20 +208,13 @@ export function RoutePath({
                 index={index}
                 offset={offset}
                 open={stopOpen}
-                onToggle={() => toggle("stop", stop.customer_id)}
+                onToggle={() => tapStop(stop)}
               />
               <StopLabel stop={stop} offset={offset} />
-              {parked?.to === stop.customer_id && (
-                <RideOnRoute
-                  leg={parked}
-                  offset={offset}
-                  fromOffset={index > 0 ? pathOffset(index - 1) : null}
-                  containerWidth={width}
-                  autoPlay={autoRide}
-                  onRide={onRide}
-                />
+              {showParked && anchor === stop.customer_id && bear(offset)}
+              {stopOpen && (
+                <StopPopover stop={stop} index={index} offset={offset} unsaved={unsaved?.has(stop.customer_id) ?? false} />
               )}
-              {stopOpen && <StopPopover stop={stop} index={index} offset={offset} />}
             </div>
           </li>
         )
@@ -177,7 +237,7 @@ export function RoutePath({
         {stops.some((stop) => stop.status !== "done" && !stop.travel_estimated && (stop.travel_km ?? 0) > 0) && (
           <p className="font-[Roboto,sans-serif] text-[0.6875rem] text-muted-foreground">Google Maps</p>
         )}
-        {finished && <FinishBear />}
+        {finished && !riding && <FinishBear />}
         <Link to="/rides" className="text-xs font-semibold text-primary">
           座騎圖鑑{collected && ` ${collected.ridden}/${collected.total}`}
         </Link>
@@ -228,6 +288,29 @@ function LegRow({
   )
 }
 
+/** 路線最上面的辦公室：熊熊滾今天還沒點過站時停在這裡，從這裡騎出去 */
+function OfficeNode() {
+  return (
+    <>
+      <span
+        data-ride-anchor="office"
+        data-offset={0}
+        aria-hidden
+        className="absolute top-0 flex h-[54px] w-[58px] items-center justify-center rounded-[50%] bg-primary text-primary-foreground shadow-lip-node"
+        style={{ left: `calc(50% - ${HALF_NODE}px)` }}
+      >
+        <Building2 className="size-6" />
+      </span>
+      <p
+        className="absolute top-3 text-[0.8125rem] font-semibold"
+        style={{ left: `calc(50% + ${HALF_NODE + LABEL_GAP}px)` }}
+      >
+        辦公室
+      </p>
+    </>
+  )
+}
+
 function StopNode({
   stop,
   index,
@@ -259,6 +342,8 @@ function StopNode({
       <button
         type="button"
         data-stop-node={stop.status}
+        data-ride-anchor={stop.customer_id}
+        data-offset={offset}
         aria-expanded={open}
         aria-controls={popoverId(stop)}
         aria-label={`第 ${index + 1} 站 ${stop.customer_name}，${STATUS_LABEL[stop.status]}`}
@@ -286,7 +371,11 @@ function StopLabel({ stop, offset }: { stop: RouteStop; offset: number }) {
       <p className={cn("line-clamp-2 text-[0.8125rem] font-semibold", done && "text-muted-foreground")}>{stop.customer_name}</p>
       <p className="mt-0.5 text-muted-foreground">
         {done ? (
-          `${stop.planned_time} 完成${stop.visit_id ? " · 已回寫" : ""}`
+          stop.visit_id || !stop.arrived_at ? (
+            `${stop.planned_time} 完成${stop.visit_id ? " · 已回寫" : ""}`
+          ) : (
+            `${formatTaipeiTime(stop.arrived_at)} 到過`
+          )
         ) : stop.window_kind && stop.late_minutes > 0 ? (
           // 有約的時間又趕不上：時間與理由讓位給這一句
           <span className="font-semibold text-destructive">會晚到 {stop.late_minutes} 分</span>
@@ -305,7 +394,7 @@ function SignalLabel({ signal }: { signal: RouteSignal }) {
 }
 
 /** 點圓鈕彈出的小卡：蓋在後面的路上，上面的尖角對準那顆圓鈕 */
-function StopPopover({ stop, index, offset }: { stop: RouteStop; index: number; offset: number }) {
+function StopPopover({ stop, index, offset, unsaved }: { stop: RouteStop; index: number; offset: number; unsaved: boolean }) {
   const done = stop.status === "done"
   return (
     // z 比固定在上面的頁首（z-10）低，捲到頁首底下時被頁首蓋住
@@ -323,14 +412,15 @@ function StopPopover({ stop, index, offset }: { stop: RouteStop; index: number; 
       />
       <p className="text-base leading-snug font-semibold">{stop.customer_name}</p>
       <p className="mt-0.5 text-xs text-muted-foreground">
-        {stop.planned_time} · 第 {index + 1} 站{done && ` · 已完成${stop.visit_id ? " · 已回寫" : ""}`}
+        {stop.planned_time} · 第 {index + 1} 站{done && (stop.arrived_at && !stop.visit_id ? " · 已到過" : ` · 已完成${stop.visit_id ? " · 已回寫" : ""}`)}
       </p>
       <p className="mt-2 text-sm leading-relaxed">
         <SignalLabel signal={stop.signal} /> · {stop.reason}
       </p>
-      <StopNotes customerId={stop.customer_id} />
+      <StopBrief customerId={stop.customer_id} />
+      {unsaved && <p className="mt-3 text-xs font-semibold text-destructive">沒連上，這一站還沒記到</p>}
       <Link to={`/customers/${stop.customer_id}`} className={cn(buttonVariants(), "mt-3 h-11 w-full text-sm")}>
-        {done ? "看客戶檔案" : "開啟拜訪準備"}
+        開啟拜訪準備
       </Link>
     </div>
   )
@@ -339,29 +429,60 @@ function StopPopover({ stop, index, offset }: { stop: RouteStop; index: number; 
 // 小卡上最多列幾則備忘；多的進客戶檔案看
 const STOP_NOTES_SHOWN = 3
 
-/** 小卡打開時才去拿這家的備忘（要帶的在前）；載不到或沒有就不顯示這一區，不影響小卡其他內容 */
-function StopNotes({ customerId }: { customerId: string }) {
-  const [notes, setNotes] = useState<Note[]>([])
+/**
+ * 小卡打開時才去拿這家的提醒：進門前三分鐘（最多五句）與下次去要記得（最多三則，要帶的在前；多的進客戶檔案看）。
+ * 回來之前是灰色佔位條；拿不到就不顯示這兩區，不影響小卡其他內容。
+ */
+function StopBrief({ customerId }: { customerId: string }) {
+  const [brief, setBrief] = useState<Brief | null>(null)
+  const [failed, setFailed] = useState(false)
   useEffect(() => {
     const controller = new AbortController()
-    getNextNotes(customerId, controller.signal)
-      .then(({ next }) => setNotes(next))
-      .catch(() => setNotes([]))
+    getBrief(customerId, controller.signal)
+      .then(setBrief)
+      .catch(() => {
+        if (!controller.signal.aborted) setFailed(true)
+      })
     return () => controller.abort()
   }, [customerId])
-  if (notes.length === 0) return null
-  const more = notes.length - STOP_NOTES_SHOWN
+  if (failed) return null
+  if (!brief)
+    return (
+      <div aria-hidden className="mt-3 flex flex-col gap-2 border-t pt-3">
+        <span className="h-3 w-4/5 rounded bg-muted" />
+        <span className="h-3 w-3/5 rounded bg-muted" />
+      </div>
+    )
+  if (brief.highlights.length === 0 && brief.notes.length === 0) return null
+  const more = brief.notes.length - STOP_NOTES_SHOWN
   return (
     <div className="mt-3 border-t pt-2">
-      <p className="text-xs font-semibold text-muted-foreground">下次去要記得</p>
-      <ul className="mt-1 flex flex-col gap-1.5">
-        {notes.slice(0, STOP_NOTES_SHOWN).map((note) => (
-          <li key={note.id}>
-            <NoteRow note={note} />
-          </li>
-        ))}
-      </ul>
-      {more > 0 && <p className="mt-1 text-xs text-muted-foreground">還有 {more} 則，在客戶檔案看</p>}
+      {brief.highlights.length > 0 && (
+        <>
+          <p className="text-xs font-semibold text-primary">進門前三分鐘</p>
+          <ul className="mt-1 flex flex-col gap-1 text-sm leading-snug">
+            {brief.highlights.map((line) => (
+              <li key={line} className="flex gap-1.5">
+                <span aria-hidden className="mt-[0.45em] size-1.5 shrink-0 rounded-full bg-primary" />
+                {line}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {brief.notes.length > 0 && (
+        <>
+          <p className={cn("text-xs font-semibold text-muted-foreground", brief.highlights.length > 0 && "mt-3")}>下次去要記得</p>
+          <ul className="mt-1 flex flex-col gap-1.5">
+            {brief.notes.slice(0, STOP_NOTES_SHOWN).map((note) => (
+              <li key={note.id}>
+                <NoteRow note={note} showDate={false} />
+              </li>
+            ))}
+          </ul>
+          {more > 0 && <p className="mt-1 text-xs text-muted-foreground">還有 {more} 則，在客戶檔案看</p>}
+        </>
+      )}
     </div>
   )
 }

@@ -1,10 +1,9 @@
 import "./ride-on-route.css"
 
-import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type CSSProperties } from "react"
+import { useEffectEvent, useLayoutEffect, useRef, useState, type CSSProperties } from "react"
 
 import { Ride } from "@/components/rides/ride"
 import { PROP } from "@/components/rides/vehicles/colors"
-import { ink } from "@/ink/ink"
 import {
   GROUND,
   legPoints,
@@ -20,12 +19,9 @@ import {
   type LegPoints,
 } from "@/lib/ride-on-route"
 import { HALF_NODE } from "@/lib/route-path"
-import { crossesCity, legKey, rideCity, SPECIALTY, type Leg } from "@/lib/rides"
+import { anchorId, crossesCity, rideCity, SPECIALTY, type Leg } from "@/lib/rides"
 import { TRAVEL_MODE_LABEL } from "@/lib/travel-mode"
 import { cn } from "@/lib/utils"
-
-// 下一站捲進畫面之後，等這麼久才開始騎（平滑捲動差不多停了）
-const SETTLE_MS = 400
 
 // 跨縣市的那團煙：幾個圓，中心離座騎框中心多遠、直徑多大（都是座騎寬的幾倍）；最濃時蓋住整台座騎，換車才看不出來
 const PUFFS = [
@@ -61,65 +57,65 @@ function reducedMotion() {
 }
 
 /**
- * 量這一段在畫面上怎麼走。靠 components/route-path.tsx 的結構：按鈕放在這一站那一列（relative）裡，
- * 那一列的前一個是放膠囊的那一列，上一站的圓鈕在前一個 <li>。量不到（ref 還沒掛上、還沒排版、被藏起來）回 null，不播。
+ * 量這一段在畫面上怎麼走。靠 components/route-path.tsx 的結構：按鈕放在熊停的那一列（relative）裡，那一列有一顆
+ * data-ride-anchor 的圓鈕；出發的那一站在同一條路線（<ol>）裡用 data-ride-anchor 找，離中線多少寫在它的 data-offset。
+ * 出發那一站就在上一個 <li> 裡（相鄰往下）時，經過這一列前面放膠囊的那一列。量不到（還沒排版、被藏起來）回 null，不騎。
  */
-function measure(button: HTMLElement, offset: number, fromOffset: number | null, containerWidth: number): LegPoints | null {
+function measure(button: HTMLElement, offset: number, leg: Leg, containerWidth: number): LegPoints | null {
   const row = button.parentElement
-  const legRow = row?.previousElementSibling
-  const node = row?.querySelector("[data-stop-node]")
-  if (!row || !legRow || !node) return null
-  let prev: { node: DOMRect; offset: number } | null = null
-  if (fromOffset !== null) {
-    const prevNode = row.parentElement?.previousElementSibling?.querySelector("[data-stop-node]")
-    if (!prevNode) return null
-    prev = { node: prevNode.getBoundingClientRect(), offset: fromOffset }
-  }
+  const node = row?.querySelector("[data-ride-anchor]")
+  const prevNode = button.closest("ol")?.querySelector(`[data-ride-anchor="${anchorId(leg.from)}"]`)
+  if (!row || !node || !(prevNode instanceof HTMLElement)) return null
+  const adjacent = row.closest("li")?.previousElementSibling?.contains(prevNode) ?? false
+  const legRow = adjacent ? row.previousElementSibling : null
   const box = button.getBoundingClientRect()
   const nodeBox = node.getBoundingClientRect()
-  const legBox = legRow.getBoundingClientRect()
-  if ([box, nodeBox, legBox, prev?.node].some((rect) => rect && (rect.width === 0 || rect.height === 0))) return null
+  const prevBox = prevNode.getBoundingClientRect()
+  const legBox = legRow?.getBoundingClientRect() ?? null
+  if ([box, nodeBox, prevBox, legBox].some((rect) => rect && (rect.width === 0 || rect.height === 0))) return null
   return legPoints({
     end: { x: box.left + box.width / 2, y: box.top + box.height * GROUND },
     node: nodeBox,
     legRow: legBox,
-    prev,
+    prev: { node: prevBox, offset: Number(prevNode.dataset.offset ?? 0) },
     offset,
     containerWidth,
   })
 }
 
 /**
- * 熊熊滾騎著「到下一站那一段」的座騎（目的地縣市 × 那一段的交通方式），停在下一站圓鈕沒有名字的那一側、
- * 面向圓鈕、離圓鈕 10px，地面線對齊圓鈕底邊，慢慢上下浮。放在下一站那一列（relative）裡，
- * offset 是那顆圓鈕離中線多少 px，fromOffset 是上一站的（從辦公室出發是 null），containerWidth 是整條路線的寬。
+ * 熊熊滾騎著座騎（目的地縣市 × 那一段的交通方式）停在熊現在那一站（或辦公室）的圓鈕旁邊：沒有名字的那一側、面向圓鈕、
+ * 離圓鈕 10px，地面線對齊圓鈕底邊，慢慢上下浮。放在那一列（relative）裡，offset 是那顆圓鈕離中線多少 px，
+ * containerWidth 是整條路線的寬。
  *
- * 騎乘動畫（docs/superpowers/specs/2026-10-07-ride-vehicles-design.md〈動畫〉）：autoPlay 時（首頁決定）等換頁的墨退掉、
- * 把這一列捲到畫面中間、等一下，再從上一站停的地方沿蛇行的彎度騎過來；點停著的座騎重播。同一時間只播一段，播的時候再點不理。
- * 動的就是停著的這顆按鈕本身（Web Animations API，transform-origin 是著地點），播完回到原位，不會有兩隻熊。
- * 左右翻做在包住座騎的那一層、跨縣市換車是兩台疊著換 opacity，都不碰座騎的 SVG（它的位置與翻面是 SVG 的 transform 屬性）。
- * 一開始騎就呼叫 onRide（記播過、送騎過的座騎）；減少動態效果、量不到位置時不動，直接停在這裡，onRide 照叫。
+ * 點站就騎（docs/superpowers/specs/2026-10-09-tap-to-ride-and-personal-page-design.md〈首頁〉）：首頁點了一站，熊換到那一列、
+ * play 換一個新的值，畫出來之前就從原本停的那一站（leg.from）騎過來；點停著的座騎重播這一段（canReplay 時）。
+ * 同一時間只播一段，播的時候再點不理。動的就是停著的這顆按鈕本身（Web Animations API，transform-origin 是著地點），
+ * 播完回到原位，不會有兩隻熊；騎到一半熊換到別站，這一顆拆掉、動畫取消，新的那一顆從這一站騎出去。
+ * 左右翻做在包住座騎的那一層、跨縣市換車是兩台疊著換 opacity，都不碰座騎的 SVG。
+ * 一開始騎就呼叫 onRide（送騎過的座騎），騎完（或減少動態效果、量不到位置而直接停好）呼叫 onEnd。
  */
 export function RideOnRoute({
   leg,
   offset,
-  fromOffset = null,
   containerWidth,
-  autoPlay = false,
+  play = null,
+  canReplay = true,
   onRide,
+  onEnd,
 }: {
   leg: Leg
   offset: number
-  fromOffset?: number | null
   containerWidth: number
-  /** 現在自動騎一次這一段（首頁決定：路線分頁、連得上、不在存檔中、今天還沒播過） */
-  autoPlay?: boolean
-  /** 開始騎這一段（自動播、點了重播；減少動態效果或量不到位置而直接停好也算） */
+  /** 換一個新的值就騎一次這一段（首頁點站時給；null 是停著） */
+  play?: number | null
+  /** 停在辦公室時沒有「上一段」可以重播 */
+  canReplay?: boolean
   onRide?: (leg: Leg) => void
+  onEnd?: () => void
 }) {
   const width = parkWidth(offset, containerWidth)
   const flipped = parkFlipped(offset)
-  const key = legKey(leg)
   const buttonRef = useRef<HTMLButtonElement>(null)
   const faceRef = useRef<HTMLSpanElement>(null)
   const toRef = useRef<HTMLSpanElement>(null)
@@ -129,61 +125,25 @@ export function RideOnRoute({
   // 正在播（含剛決定要播、還沒畫出來）：再觸發就不理
   const playing = useRef(false)
   const [riding, setRiding] = useState<Riding | null>(null)
-  // 這次掛上之後已經開始騎過（或直接停好）的那一段
-  const [started, setStarted] = useState<string | null>(null)
-  // 要自動騎、還沒開始：先藏起來，等一下從上一站冒出來（減少動態效果時不藏，直接停在這裡）
-  const waiting = autoPlay && started !== key && riding === null
 
   function begin() {
     if (playing.current) return
     onRide?.(leg)
-    setStarted(key)
     const button = buttonRef.current
-    if (!button || reducedMotion()) return
-    const points = measure(button, offset, fromOffset, containerWidth)
-    if (!points) return
+    if (!button || reducedMotion()) return onEnd?.()
+    const points = measure(button, offset, leg, containerWidth)
+    if (!points) return onEnd?.()
     playing.current = true
     setRiding({ ...points, turn: shouldFlip(points.from, points.to) !== flipped, cross: crossesCity(leg) })
   }
 
-  // 自動播：等墨退掉、把這一列捲到畫面中間、等捲動停了再騎。條件不成立（切到地圖、開始存檔）或換了一段就不等了；
-  // 頁面在背景（document.hidden）就等回到前景再開始，看不到的時候不記播過、不送記錄。
-  // 正在騎的時候不排（begin 會被鎖擋掉），等這一段播完（riding 回到 null）再看還要不要播：
-  // 播的途中 leg 換了（from 變、to 不變），播完才不會一直藏著
-  const autoBegin = useEffectEvent(() => begin())
-  useEffect(() => {
-    if (!autoPlay || started === key || riding) return
-    let timer: number | undefined
-    let unsubscribe = () => {}
-    let stopWaiting = () => {}
-    const go = () => {
-      const reduce = reducedMotion()
-      buttonRef.current?.parentElement?.scrollIntoView({ block: "center", behavior: reduce ? "auto" : "smooth" })
-      timer = window.setTimeout(() => {
-        if (!document.hidden) return autoBegin()
-        const onVisible = () => {
-          if (document.hidden) return
-          stopWaiting()
-          go()
-        }
-        document.addEventListener("visibilitychange", onVisible)
-        stopWaiting = () => document.removeEventListener("visibilitychange", onVisible)
-      }, reduce ? 0 : SETTLE_MS)
-    }
-    if (ink.phase() === "idle") go()
-    else
-      unsubscribe = ink.subscribe(() => {
-        if (ink.phase() !== "idle") return
-        unsubscribe()
-        go()
-      })
-    return () => {
-      unsubscribe()
-      stopWaiting()
-      window.clearTimeout(timer)
-    }
-  }, [autoPlay, key, started, riding])
+  // 首頁點了站：畫出來之前就開始騎（layout effect），不會先在終點閃一下
+  const playNow = useEffectEvent(() => begin())
+  useLayoutEffect(() => {
+    if (play !== null) playNow()
+  }, [play])
 
+  const ended = useEffectEvent(() => onEnd?.())
   // 開始騎：畫面換成騎的樣子之後、畫出來之前掛上動畫；播完回到停著的樣子。離開首頁、切到地圖（元件拆掉）就取消，不留殘影
   useLayoutEffect(() => {
     const button = buttonRef.current
@@ -217,6 +177,7 @@ export function RideOnRoute({
       () => {
         playing.current = false
         setRiding(null)
+        ended()
       },
       // 被取消（拆掉、離開首頁）：不用做什麼
       () => {}
@@ -239,21 +200,15 @@ export function RideOnRoute({
     ...(parkSide(offset) === "left" ? { right: `calc(50% + ${reach - offset}px)` } : { left: `calc(50% + ${offset + reach}px)` }),
   }
   const city = rideCity(leg.toCity)
-  const label = city ? `熊熊滾騎著${SPECIALTY[city]}的${TRAVEL_MODE_LABEL[leg.mode]}` : "熊熊滾正走去下一站"
+  const label = city ? `熊熊滾騎著${SPECIALTY[city]}的${TRAVEL_MODE_LABEL[leg.mode]}` : "熊熊滾走過去"
   return (
     <button
       ref={buttonRef}
       type="button"
       data-ride-park
-      aria-label={`${label}，點一下重播這一段`}
-      // 藏起來等著出場的時候不能聚焦、也不被讀出來
-      aria-hidden={waiting || undefined}
-      tabIndex={waiting ? -1 : undefined}
-      onClick={begin}
-      className={cn(
-        "absolute rounded-2xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
-        waiting && "motion-safe:pointer-events-none motion-safe:opacity-0"
-      )}
+      aria-label={canReplay ? `${label}，點一下重播這一段` : label}
+      onClick={canReplay ? begin : undefined}
+      className="absolute rounded-2xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
       style={style}
     >
       {/* 停著時慢慢上下浮；騎的時候不浮（外層在動） */}
