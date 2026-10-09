@@ -41,6 +41,17 @@ export function hereOf(stops: RouteStop[]): string | null {
   return byArrival(stops).at(-1)?.customer_id ?? null
 }
 
+/**
+ * 後端的「最後點的」（serverHere）變了，熊要不要跟著換過去。here 是熊現在停的（點了馬上換、不等後端），taps 是這次點過的站
+ * （照點的順序，含只送 arrive、沒騎的那一下）。連點兩站、前一站的 arrive 才回來時，後端的是這次比較早點的那一站：不換，熊不退回去。
+ * 別人點的、重新載入、IT 重置（不是這次點的、或是 null）：跟著換。
+ */
+export function followsServer(serverHere: string | null, here: string | null, taps: readonly string[]): boolean {
+  if (serverHere === here) return false
+  const order = (id: string | null) => (id === null ? -1 : taps.lastIndexOf(id))
+  return !(order(serverHere) >= 0 && order(serverHere) < order(here))
+}
+
 /** 從 from（null 是辦公室）騎到 to 那一站：往回、跳站都可以。交通方式照原本排好到那一站的 */
 export function legBetween(stops: RouteStop[], from: string | null, to: string, startCity: string | null): Leg {
   const target = stops.find((stop) => stop.customer_id === to)

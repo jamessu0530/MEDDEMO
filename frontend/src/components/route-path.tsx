@@ -11,13 +11,16 @@ import { LegChip, LegMenu } from "@/components/route/leg-chip"
 import { buttonVariants } from "@/components/ui/button"
 import { formatTaipeiTime } from "@/lib/format"
 import { ROUTE_WIDTH } from "@/lib/ride-on-route"
-import { hereOf, lastLeg, legBetween, type Leg } from "@/lib/rides"
+import { followsServer, hereOf, lastLeg, legBetween, type Leg } from "@/lib/rides"
 import { HALF_NODE, labelSide, pathOffset, signalTone, TONE_CLASS } from "@/lib/route-path"
 import { legFrom } from "@/lib/travel-mode"
 import { cn } from "@/lib/utils"
 
 // 名字離圓鈕 12px（圓鈕的大小在 lib/route-path.ts）
 const LABEL_GAP = 12
+
+// 全部到過時座騎淡出多久才拿掉（跟 rides/ride-on-route.css 的 .ride-park-leave 一樣）
+const LEAVE_MS = 300
 
 const STATUS_LABEL: Record<RouteStop["status"], string> = { done: "已完成", next: "下一站", todo: "待拜訪" }
 
@@ -70,16 +73,14 @@ export function RoutePath({
   const serverHere = hereOf(stops)
   const [here, setHere] = useState(serverHere)
   const [seenHere, setSeenHere] = useState(serverHere)
-  // 正在騎的那一段（點站時給）；token 換了 RideOnRoute 就騎一次
-  const [ride, setRide] = useState<{ leg: Leg; token: number } | null>(null)
+  // 這次最後騎的那一段（點站時給）；token 換了 RideOnRoute 就騎一次，騎完清成 null（座騎重新掛上時不會再騎、再送一筆）
+  const [ride, setRide] = useState<{ leg: Leg; token: number | null } | null>(null)
   const [riding, setRiding] = useState(false)
-  // 這次點過的站（照點的順序）：連點兩站、前一站的 arrive 才回來時，後端的「最後點的」是比較早點的那一站，熊不退回去
+  // 這次點過的站（照點的順序，含只送 arrive 沒騎的那一下）：連點兩站、前一站的 arrive 才回來時熊不退回去（lib/rides.ts followsServer）
   const [taps, setTaps] = useState<string[]>([])
   if (serverHere !== seenHere) {
     setSeenHere(serverHere)
-    const tapOrder = (id: string | null) => (id === null ? -1 : taps.lastIndexOf(id))
-    const behind = tapOrder(serverHere) >= 0 && tapOrder(serverHere) < tapOrder(here)
-    if (!behind && serverHere !== here) {
+    if (followsServer(serverHere, here, taps)) {
       // 不是點的那一站回來了（別人點的、重新載入、IT 重置）：熊直接換過去；正在騎的那一段會被拆掉、不會再叫 onEnd
       setHere(serverHere)
       setTaps([])
@@ -93,8 +94,23 @@ export function RoutePath({
   // 停著的座騎：剛騎的那一段、最後點的那一段，或沒點過時辦公室到第一站那段（不能重播）
   const replay = ride?.leg.to === anchor ? ride.leg : here && anchor === here ? lastLeg(stops, startCity) : null
   const parked = replay ?? (stops[0] ? legBetween(stops, null, stops[0].customer_id, startCity) : null)
-  // 全部到過：最後一段騎完，座騎淡出，熊熊滾在收工旗子旁跳
-  const showParked = parked !== null && (!finished || riding)
+  // 重播要畫面上量得到出發的那一顆：沒有辦公室起點時，從辦公室來的那一段（只點過一站）不能重播
+  const canReplay = replay !== null && (officeStart || replay.from !== null)
+  // 全部到過：最後一段騎完，座騎淡出（LEAVE_MS；減少動態效果時直接不見）再拿掉，熊熊滾在收工旗子旁跳。
+  // 只有這次騎過才淡出：一打開就全部到過的本來就沒有座騎；又點了一站（騎起來）就不淡出了
+  const parkedVisible = parked !== null && (!finished || riding)
+  const [wasVisible, setWasVisible] = useState(parkedVisible)
+  const [leaving, setLeaving] = useState(false)
+  if (parkedVisible !== wasVisible) {
+    setWasVisible(parkedVisible)
+    setLeaving(!parkedVisible && finished && ride !== null)
+  }
+  const showParked = parkedVisible || leaving
+  useEffect(() => {
+    if (!leaving) return
+    const timer = window.setTimeout(() => setLeaving(false), LEAVE_MS)
+    return () => window.clearTimeout(timer)
+  }, [leaving])
 
   // 路線的寬：座騎停多寬照它算。伺服器 render、還沒排版時照 390 寬的手機（ROUTE_WIDTH）
   const listRef = useRef<HTMLOListElement>(null)
@@ -140,13 +156,17 @@ export function RoutePath({
     const isOpen = opened?.kind === "stop" && opened.id === stop.customer_id
     setOpened(isOpen ? null : { kind: "stop", id: stop.customer_id })
     if (isOpen) return
-    if (stop.customer_id !== anchor) {
+    const rides = stop.customer_id !== anchor
+    // 熊已經停在這一站、也記過到過了：只開小卡
+    if (!rides && stop.arrived_at) return
+    if (rides) {
       setRide({ leg: legBetween(stops, anchor, stop.customer_id, startCity), token: Date.now() })
       setRiding(true)
-      setHere(stop.customer_id)
-      setTaps((now) => [...now, stop.customer_id])
     }
-    if (stop.customer_id !== anchor || !stop.arrived_at) onArrive?.(stop.customer_id)
+    // 只送 arrive、沒騎的那一下（沒有辦公室起點時點第 1 站、上次沒記到再點一次）也記進 taps，連點下一站時熊才不會被拉回來
+    setHere(stop.customer_id)
+    setTaps((now) => [...now, stop.customer_id])
+    onArrive?.(stop.customer_id)
   }
 
   const bear = (offset: number) =>
@@ -157,9 +177,13 @@ export function RoutePath({
         offset={offset}
         containerWidth={width}
         play={ride && ride.leg.to === anchor ? ride.token : null}
-        canReplay={replay !== null}
+        canReplay={canReplay}
+        leaving={leaving}
         onRide={onRide}
-        onEnd={() => setRiding(false)}
+        onEnd={() => {
+          setRiding(false)
+          setRide((now) => now && { ...now, token: null })
+        }}
       />
     )
 

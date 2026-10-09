@@ -4,6 +4,7 @@ import type { RouteStop } from "@/api/route"
 import {
   anchorId,
   crossesCity,
+  followsServer,
   hereOf,
   lastLeg,
   legBetween,
@@ -120,5 +121,26 @@ describe("ridesOf", () => {
   it("不認得的縣市不算", () => {
     expect(ridesOf(leg({ fromCity: "桃園市", toCity: "新竹市" }))).toEqual([{ city: "新竹市", mode: "drive" }])
     expect(ridesOf(leg({ fromCity: "新竹市", toCity: "桃園市" }))).toEqual([])
+  })
+})
+
+describe("followsServer", () => {
+  it("後端的「最後點的」是這次比較早點的那一站（連點、前一站的 arrive 才回來）：熊不退回去", () => {
+    // taps 也記只送 arrive、沒騎的那一下（沒有辦公室起點時點第 1 站），連點第 1、2 站時熊一樣不退回第 1 站
+    expect(followsServer("A", "B", ["A", "B"])).toBe(false)
+    // 點了 A、B、又點 A：B 回來時熊還是在 A
+    expect(followsServer("B", "A", ["A", "B", "A"])).toBe(false)
+  })
+
+  it("別人點的、重新載入、IT 重置：跟著後端換", () => {
+    expect(followsServer("C", "B", ["A", "B"])).toBe(true)
+    expect(followsServer(null, "B", ["A", "B"])).toBe(true)
+    expect(followsServer("A", null, [])).toBe(true)
+    // 比本地最後點的還晚（後端多了一站）：跟著換
+    expect(followsServer("B", "A", ["A", "B"])).toBe(true)
+  })
+
+  it("跟本地一樣就不用換", () => {
+    expect(followsServer("B", "B", ["A", "B"])).toBe(false)
   })
 })

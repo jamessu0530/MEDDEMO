@@ -94,6 +94,7 @@ function measure(button: HTMLElement, offset: number, leg: Leg, containerWidth: 
  * 播完回到原位，不會有兩隻熊；騎到一半熊換到別站，這一顆拆掉、動畫取消，新的那一顆從這一站騎出去。
  * 左右翻做在包住座騎的那一層、跨縣市換車是兩台疊著換 opacity，都不碰座騎的 SVG。
  * 一開始騎就呼叫 onRide（送騎過的座騎），騎完（或減少動態效果、量不到位置而直接停好）呼叫 onEnd。
+ * leaving：全部到過、最後一段騎完，淡出（首頁過一下就拿掉；減少動態效果時直接不見），這時不能點、不被讀出來。
  */
 export function RideOnRoute({
   leg,
@@ -101,6 +102,7 @@ export function RideOnRoute({
   containerWidth,
   play = null,
   canReplay = true,
+  leaving = false,
   onRide,
   onEnd,
 }: {
@@ -111,6 +113,8 @@ export function RideOnRoute({
   play?: number | null
   /** 停在辦公室時沒有「上一段」可以重播 */
   canReplay?: boolean
+  /** 全部到過、最後一段騎完：淡出 */
+  leaving?: boolean
   onRide?: (leg: Leg) => void
   onEnd?: () => void
 }) {
@@ -206,9 +210,14 @@ export function RideOnRoute({
       ref={buttonRef}
       type="button"
       data-ride-park
-      aria-label={canReplay ? `${label}，點一下重播這一段` : label}
-      onClick={canReplay ? begin : undefined}
-      className="absolute rounded-2xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+      aria-label={canReplay && !leaving ? `${label}，點一下重播這一段` : label}
+      aria-hidden={leaving || undefined}
+      tabIndex={leaving ? -1 : undefined}
+      onClick={canReplay && !leaving ? begin : undefined}
+      className={cn(
+        "absolute rounded-2xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+        leaving && "ride-park-leave pointer-events-none"
+      )}
       style={style}
     >
       {/* 停著時慢慢上下浮；騎的時候不浮（外層在動） */}

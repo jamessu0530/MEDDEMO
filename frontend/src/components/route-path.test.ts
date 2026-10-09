@@ -119,6 +119,21 @@ describe("RoutePath", () => {
     expect(html).toContain("重播")
   })
 
+  it("沒有辦公室起點、只點過一站：上一段是從辦公室來的，畫面上沒有辦公室，不能重播", () => {
+    const html = renderToStaticMarkup(
+      createElement(
+        MemoryRouter,
+        null,
+        createElement(RoutePath, {
+          stops: [stop("A", "done", { arrived_at: "2026-10-28T02:00:00Z" }), stop("B", "next")],
+          officeStart: false,
+        })
+      )
+    )
+    expect(html.indexOf("data-ride-park")).toBeGreaterThan(html.indexOf('data-ride-anchor="A"'))
+    expect(html).not.toContain("重播")
+  })
+
   it("沒有辦公室起點：沒有辦公室圓鈕，熊熊滾停在第一站", () => {
     const html = renderToStaticMarkup(
       createElement(MemoryRouter, null, createElement(RoutePath, { stops: [stop("A", "next"), stop("B", "todo")], officeStart: false }))

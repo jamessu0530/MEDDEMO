@@ -113,6 +113,15 @@ describe("RideOnRoute", () => {
     expect(html).not.toContain("重播")
   })
 
+  it("全部到過、最後一段騎完：淡出（不能點、不被讀出來）", () => {
+    const html = render({ leaving: true })
+    expect(html).toContain("ride-park-leave")
+    expect(html).toContain('aria-hidden="true"')
+    expect(html).toContain('tabindex="-1"')
+    expect(html).not.toContain("重播")
+    expect(render()).not.toContain("ride-park-leave")
+  })
+
   it("停著的時候只有一台座騎，沒有煙也沒有縣市名", () => {
     const html = render()
     expect(html.match(/<svg/g)).toHaveLength(1)

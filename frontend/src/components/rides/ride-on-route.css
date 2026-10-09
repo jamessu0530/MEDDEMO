@@ -9,6 +9,14 @@
   to { transform: translateY(-4px); }
 }
 
+/* 全部到過、最後一段騎完：整台淡出（外層按鈕的 opacity；騎乘動畫已經播完，不會互相蓋掉）。0.3 秒，跟 route-path.tsx 的 LEAVE_MS 一樣 */
+.ride-park-leave { animation: ride-park-leave 0.3s ease-out forwards; }
+@keyframes ride-park-leave {
+  to { opacity: 0; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .ride-park-float { animation: none; }
+  /* 不淡出，直接不見 */
+  .ride-park-leave { animation: none; opacity: 0; }
 }
