@@ -16,13 +16,24 @@ export function channelDetail(channel: Channel): string[] {
 
 /** 頻道列表、客戶討論串清單的一列：名稱（有未讀就粗體）、最近一則的時間、除了自己幾人在線、未讀數。
  * backTo 是進到頻道後返回鍵要回哪裡，沒給就回頻道列表 */
-export function ChannelRow({ channel, indent = false, backTo }: { channel: Channel; indent?: boolean; backTo?: string }) {
+export function ChannelRow({
+  channel,
+  indent = false,
+  backTo,
+  selected = false,
+}: {
+  channel: Channel
+  indent?: boolean
+  backTo?: string
+  selected?: boolean
+}) {
   const detail = channelDetail(channel)
   return (
     <Link
       to={`/channels/${channel.id}`}
       state={backTo ? { backTo } : undefined}
-      className={cn("flex min-h-12 items-center gap-3 border-t py-2 pr-4 first:border-t-0", indent ? "pl-10" : "pl-4")}
+      aria-current={selected ? "page" : undefined}
+      className={cn("flex min-h-12 items-center gap-3 border-t py-2 pr-4 first:border-t-0", indent ? "pl-10" : "pl-4", selected && "bg-muted")}
     >
       <div className="min-w-0 flex-1">
         <p className={cn("truncate text-sm", channel.unread > 0 && "font-semibold")}>{channel.name}</p>

@@ -23,12 +23,17 @@ export function ChannelPanel({
   selfId,
   refreshKey,
   onChanged,
+  // 電腦版四欄：對話欄打開的是哪一個（那一列墊底色）；compact 時不放記憶看板入口（看板在對話欄裡）與成員（對話欄標頭有）
+  openId = null,
+  compact = false,
 }: {
   channel: Channel
   channels: Channel[]
   selfId: string
   refreshKey: number
   onChanged: () => void
+  openId?: number | null
+  compact?: boolean
 }) {
   const back = railPath(channel)
   const [creating, setCreating] = useState(false)
@@ -43,25 +48,28 @@ export function ChannelPanel({
             {channel.online > 0 && `・${channel.online} 人在線`}
           </p>
         </div>
-        {!channel.archived && <ChannelMembers channelId={channel.id} selfId={selfId} />}
+        {!channel.archived && !compact && <ChannelMembers channelId={channel.id} selfId={selfId} />}
       </header>
       <div className="flex flex-col gap-5 px-4 pt-4 pb-24">
         {channel.archived && <Notice text="這個頻道已封存，只能看。" />}
         <div className="overflow-hidden rounded-2xl border-2 bg-card shadow-lip">
-          <PanelLink to={`/channels/${channel.id}`} state={{ backTo: back }} icon={MessagesSquare} label="對話" unread={channel.unread} />
-          <PanelLink to={`/channels/${channel.id}`} state={{ backTo: back, tab: "board" }} icon={NotebookText} label="記憶看板" />
+          <PanelLink to={`/channels/${channel.id}`} state={{ backTo: back }} icon={MessagesSquare} label="對話" unread={channel.unread} selected={openId === channel.id} />
+          {!compact && (
+            <PanelLink to={`/channels/${channel.id}`} state={{ backTo: back, tab: "board" }} icon={NotebookText} label="記憶看板" />
+          )}
           <PanelLink to={`/channels/search?channel=${channel.id}`} state={{ backTo: back }} icon={Images} label="照片與檔案" />
         </div>
         {(channel.kind === "national" || channel.kind === "region") && (
           <TopicSection
             topics={topicsOf(channels, channel.id)}
             back={back}
+            openId={openId}
             canCreate={channel.can_manage}
             onCreate={() => setCreating(true)}
             onManage={setManaging}
           />
         )}
-        {channel.kind === "place" && <ThreadSection place={channel} back={back} refreshKey={refreshKey} />}
+        {channel.kind === "place" && <ThreadSection place={channel} back={back} refreshKey={refreshKey} openId={openId} />}
       </div>
       {creating && <CreateTopicDialog parent={channel} onClose={() => setCreating(false)} />}
       {managing && <ManageTopicDialog topic={managing} onClose={() => setManaging(null)} onDone={onChanged} />}
@@ -75,15 +83,22 @@ function PanelLink({
   icon: Icon,
   label,
   unread = 0,
+  selected = false,
 }: {
   to: string
   state?: ChannelLocationState
   icon: LucideIcon
   label: string
   unread?: number
+  selected?: boolean
 }) {
   return (
-    <Link to={to} state={state} className="flex min-h-12 items-center gap-3 border-t px-4 py-2 first:border-t-0">
+    <Link
+      to={to}
+      state={state}
+      aria-current={selected ? "page" : undefined}
+      className={cn("flex min-h-12 items-center gap-3 border-t px-4 py-2 first:border-t-0", selected && "bg-muted")}
+    >
       <Icon className="size-5 shrink-0 text-muted-foreground" />
       <span className={cn("flex-1 text-sm", unread > 0 && "font-semibold")}>{label}</span>
       {unread > 0 && <UnreadDot count={unread} />}
@@ -95,12 +110,14 @@ function PanelLink({
 function TopicSection({
   topics,
   back,
+  openId,
   canCreate,
   onCreate,
   onManage,
 }: {
   topics: Channel[]
   back: string
+  openId: number | null
   canCreate: boolean
   onCreate: () => void
   onManage: (topic: Channel) => void
@@ -126,7 +143,7 @@ function TopicSection({
       ) : (
         <div className="overflow-hidden rounded-2xl border-2 bg-card shadow-lip">
           {active.map((topic) => (
-            <TopicRow key={topic.id} topic={topic} back={back} onManage={onManage} />
+            <TopicRow key={topic.id} topic={topic} back={back} selected={topic.id === openId} onManage={onManage} />
           ))}
           {archived.length > 0 && (
             <button
@@ -139,18 +156,20 @@ function TopicSection({
               已封存（{archived.length}）
             </button>
           )}
-          {showArchived && archived.map((topic) => <TopicRow key={topic.id} topic={topic} back={back} onManage={onManage} />)}
+          {showArchived && archived.map((topic) => (
+            <TopicRow key={topic.id} topic={topic} back={back} selected={topic.id === openId} onManage={onManage} />
+          ))}
         </div>
       )}
     </section>
   )
 }
 
-function TopicRow({ topic, back, onManage }: { topic: Channel; back: string; onManage: (topic: Channel) => void }) {
+function TopicRow({ topic, back, selected, onManage }: { topic: Channel; back: string; selected: boolean; onManage: (topic: Channel) => void }) {
   const detail = channelDetail(topic)
   return (
-    <div className="flex min-h-12 items-center border-t first:border-t-0">
-      <Link to={`/channels/${topic.id}`} state={{ backTo: back }} className="flex min-w-0 flex-1 items-center gap-3 py-2 pr-2 pl-4">
+    <div className={cn("flex min-h-12 items-center border-t first:border-t-0", selected && "bg-muted")}>
+      <Link to={`/channels/${topic.id}`} state={{ backTo: back }} aria-current={selected ? "page" : undefined} className="flex min-w-0 flex-1 items-center gap-3 py-2 pr-2 pl-4">
         <Hash className="size-4 shrink-0 text-muted-foreground" />
         <div className="min-w-0 flex-1">
           <p className={cn("flex items-center gap-2 text-sm", topic.unread > 0 && !topic.archived && "font-semibold", topic.archived && "text-muted-foreground")}>
@@ -178,7 +197,7 @@ function TopicRow({ topic, back, onManage }: { topic: Channel; back: string; onM
 type ThreadState = { status: "loading" } | { status: "error" } | { status: "ready"; threads: Channel[] }
 
 /** 地點底下有人發過言的客戶討論串。沒發過言的從客戶檔案的「討論串」按鈕開 */
-function ThreadSection({ place, back, refreshKey }: { place: Channel; back: string; refreshKey: number }) {
+function ThreadSection({ place, back, refreshKey, openId }: { place: Channel; back: string; refreshKey: number; openId: number | null }) {
   const [state, setState] = useState<ThreadState>({ status: "loading" })
 
   useEffect(() => {
@@ -203,7 +222,7 @@ function ThreadSection({ place, back, refreshKey }: { place: Channel; back: stri
       {state.status === "ready" && state.threads.length > 0 && (
         <div className="overflow-hidden rounded-2xl border-2 bg-card shadow-lip">
           {state.threads.map((thread) => (
-            <ChannelRow key={thread.id} channel={thread} backTo={back} />
+            <ChannelRow key={thread.id} channel={thread} backTo={back} selected={thread.id === openId} />
           ))}
         </div>
       )}

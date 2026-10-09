@@ -5,8 +5,9 @@ import { inkColors, pickEffect, type InkEffect } from "@/ink/effects"
 import { ink } from "@/ink/ink"
 import { createInkRenderer } from "@/ink/renderer"
 import { useAuth } from "@/lib/auth"
-import { pageWidth } from "@/lib/desktop-layout"
+import { desktopSamePage, pageWidth } from "@/lib/desktop-layout"
 import { readSkin } from "@/lib/skin"
+import { useIsDesktop } from "@/lib/use-media-query"
 import { cn } from "@/lib/utils"
 
 // 按下去之後這麼久以內發生的換頁才算是這一下按出來的，墨從按的位置出來；
@@ -91,6 +92,7 @@ export function InkOverlay() {
 export function InkRoutes({ children }: { children: ReactNode }) {
   const location = useLocation()
   const type = useNavigationType()
+  const desktop = useIsDesktop()
   const [seen, setSeen] = useState(location)
   // 墨還沒蓋滿時留著繼續顯示的舊頁面，和這次播哪一種
   const [held, setHeld] = useState<{ location: Location; effect: InkEffect } | null>(null)
@@ -100,7 +102,9 @@ export function InkRoutes({ children }: { children: ReactNode }) {
   if (location !== seen) {
     setSeen(location)
     // 已經留著舊頁面時又換頁（蓋到一半又按了別的）：不用再做什麼，蓋滿時會直接換到最新的那一頁
-    const effect = held || type === "REPLACE" ? null : pickEffect(seen.pathname, location.pathname)
+    // 電腦版頻道四欄裡換對話（/channels ↔ /channels/:id）只是換一欄，不播
+    const sameDesktopPage = desktop && desktopSamePage(seen.pathname, location.pathname)
+    const effect = held || type === "REPLACE" || sameDesktopPage ? null : pickEffect(seen.pathname, location.pathname)
     if (effect && ink.ready()) setHeld({ location: seen, effect })
   }
 

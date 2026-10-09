@@ -30,6 +30,7 @@ import { railPath } from "@/lib/channel-rail"
 import { awaitingMascot, KIND_LABEL, MESSAGE_PAGE, mergeMessages, withMascotMention } from "@/lib/channels"
 import { formatDateTime } from "@/lib/format"
 import { realtime, useRealtimeConnected } from "@/lib/realtime"
+import { useIsWide } from "@/lib/use-media-query"
 import { cn } from "@/lib/utils"
 
 // 新訊息靠 WebSocket 通知（lib/realtime.ts），收到才去拿；連著的時候另外每 30 秒保險問一次，
@@ -63,10 +64,20 @@ export function ChannelPage() {
       </div>
     )
   }
-  return <ChannelView key={id} id={id} />
+  return <ChannelConversation key={id} id={id} />
 }
 
-function ChannelView({ id }: { id: number }) {
+/** 一個頻道的對話。layout 是 page：手機的對話頁（頁首、返回、對話與記憶看板切換）；
+ * pane：電腦版頻道四欄的對話欄（自己一列標頭，≥1280px 時記憶看板放在右邊另一欄）。onLoaded 告訴四欄載入的是哪個頻道 */
+export function ChannelConversation({
+  id,
+  layout = "page",
+  onLoaded,
+}: {
+  id: number
+  layout?: "page" | "pane"
+  onLoaded?: (channel: Channel) => void
+}) {
   const { backTo: backState, jumpTo: jumpTarget, tab: initialTab } = (useLocation().state as ChannelLocationState | null) ?? {}
   const selfId = useAuth()?.user.id ?? ""
   const connected = useRealtimeConnected()
@@ -87,6 +98,9 @@ function ChannelView({ id }: { id: number }) {
   const [progress, setProgress] = useState<number | null>(null)
   const [sendError, setSendError] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<ChannelMessage | null>(null)
+  // 電腦版夠寬時記憶看板另外一欄，不用切換
+  const wide = useIsWide()
+  const boardAside = layout === "pane" && wide
   const isIt = useAuth()?.user.role === "it"
   const bottom = useRef<HTMLDivElement>(null)
   // 輪詢「這則之後的新訊息」從哪裡接：只跟著拿到的那一頁前進，不跟著自己剛送出的那則。
@@ -143,6 +157,11 @@ function ChannelView({ id }: { id: number }) {
       })
     return () => controller.abort()
   }, [id, jumpTarget])
+
+  // 電腦版四欄：客戶討論串不在頻道清單裡，載入之後才知道頻道列要選哪一個地點
+  useEffect(() => {
+    if (state.status === "ready") onLoaded?.(state.channel)
+  }, [state, onLoaded])
 
   // 拿新訊息：收到這個頻道的通知、重連或切回前景時補漏掉的，加上輪詢。
   // 一次只問一個；問的時候又來了通知，問完再問一次，不會漏也不會同時打好幾個
@@ -215,11 +234,11 @@ function ChannelView({ id }: { id: number }) {
 
   // 從看板跳回原訊息：載入那一則前後各 20 則，捲過去標亮兩秒
   useEffect(() => {
-    if (highlight === null || tab !== "chat") return
+    if (highlight === null || (tab !== "chat" && !boardAside)) return
     document.getElementById(`message-${highlight}`)?.scrollIntoView({ block: "center" })
     const timer = setTimeout(() => setHighlight(null), 2_000)
     return () => clearTimeout(timer)
-  }, [highlight, tab, messages])
+  }, [highlight, tab, messages, boardAside])
 
   async function jumpTo(messageId: number) {
     setTab("chat")
@@ -300,61 +319,91 @@ function ChannelView({ id }: { id: number }) {
   const backTo = backState ?? (state.status === "ready" ? railPath(state.channel) : "/channels")
 
   if (state.status !== "ready") {
+    const body = (
+      <main className="flex-1 p-4">
+        {state.status === "loading" && <p className="py-10 text-center text-sm text-muted-foreground">載入中…</p>}
+        {state.status === "error" && (
+          <Notice text={state.missing ? "找不到這個頻道，或是你看不到它。" : "連不上伺服器，頻道沒有載入。"} />
+        )}
+      </main>
+    )
+    if (layout === "pane") return <div className="flex min-w-0 flex-1 flex-col">{body}</div>
     return (
       <div className="flex min-h-svh flex-col">
         <PageHeader title="頻道" backTo={backTo} />
-        <main className="flex-1 p-4">
-          {state.status === "loading" && <p className="py-10 text-center text-sm text-muted-foreground">載入中…</p>}
-          {state.status === "error" && (
-            <Notice text={state.missing ? "找不到這個頻道，或是你看不到它。" : "連不上伺服器，頻道沒有載入。"} />
-          )}
-        </main>
+        {body}
       </div>
     )
   }
 
   const { channel } = state
   const byId = new Map(messages.map((m) => [m.id, m]))
-  return (
-    <div className="flex h-svh flex-col">
-      <PageHeader
-        title={channel.name}
-        subtitle={KIND_LABEL[channel.kind]}
-        backTo={backTo}
-        trailing={
-          <>
-            <Link
-              to={`/channels/search?channel=${channel.id}`}
-              aria-label="在這個頻道找照片與檔案"
-              className="flex size-11 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
+  const searchLink = (
+    <Link
+      to={`/channels/search?channel=${channel.id}`}
+      aria-label="在這個頻道找照片與檔案"
+      className="flex size-11 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
+    >
+      <Search className="size-5" />
+    </Link>
+  )
+  const members = !channel.archived && <ChannelMembers channelId={channel.id} selfId={selfId} />
+  const head =
+    layout === "page" ? (
+      <>
+        <PageHeader
+          title={channel.name}
+          subtitle={KIND_LABEL[channel.kind]}
+          backTo={backTo}
+          trailing={
+            <>
+              {searchLink}
+              {members}
+            </>
+          }
+        />
+        {channel.kind === "place" && (
+          <Link to={`/channels/${channel.id}/threads`} className="flex min-h-11 items-center gap-2 border-b px-4 text-sm text-primary">
+            <Store className="size-4" />
+            這裡的客戶討論串
+          </Link>
+        )}
+      </>
+    ) : (
+      // 電腦版：地點的客戶討論串已經列在旁邊的頻道內容欄，不用另外連
+      <header className="flex items-center gap-1 border-b py-1.5 pr-1 pl-4">
+        <div className="min-w-0 flex-1">
+          <h2 className="truncate text-base font-semibold">{channel.name}</h2>
+          <p className="truncate text-xs text-muted-foreground">
+            {KIND_LABEL[channel.kind]}
+            {channel.online > 0 && `・${channel.online} 人在線`}
+          </p>
+        </div>
+        {searchLink}
+        {members}
+      </header>
+    )
+  const showChat = boardAside || tab === "chat"
+  const column = (
+    <>
+      {head}
+      {!boardAside && (
+        <div className="grid grid-cols-2 gap-1 border-b bg-background px-4 py-2" role="tablist">
+          {(["chat", "board"] as const).map((key) => (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={tab === key}
+              onClick={() => setTab(key)}
+              className={cn("h-9 rounded-md text-sm font-medium", tab === key ? "bg-muted text-foreground" : "text-muted-foreground")}
             >
-              <Search className="size-5" />
-            </Link>
-            {!channel.archived && <ChannelMembers channelId={channel.id} selfId={selfId} />}
-          </>
-        }
-      />
-      {channel.kind === "place" && (
-        <Link to={`/channels/${channel.id}/threads`} className="flex min-h-11 items-center gap-2 border-b px-4 text-sm text-primary">
-          <Store className="size-4" />
-          這裡的客戶討論串
-        </Link>
+              {key === "chat" ? "對話" : "記憶看板"}
+            </button>
+          ))}
+        </div>
       )}
-      <div className="grid grid-cols-2 gap-1 border-b bg-background px-4 py-2" role="tablist">
-        {(["chat", "board"] as const).map((key) => (
-          <button
-            key={key}
-            type="button"
-            role="tab"
-            aria-selected={tab === key}
-            onClick={() => setTab(key)}
-            className={cn("h-9 rounded-md text-sm font-medium", tab === key ? "bg-muted text-foreground" : "text-muted-foreground")}
-          >
-            {key === "chat" ? "對話" : "記憶看板"}
-          </button>
-        ))}
-      </div>
-      {tab === "board" && (
+      {!boardAside && tab === "board" && (
         <main className="flex-1 overflow-y-auto px-4 py-4">
           <ChannelBoard channel={channel} onJump={(messageId) => void jumpTo(messageId)} />
         </main>
@@ -362,7 +411,7 @@ function ChannelView({ id }: { id: number }) {
       <main
         ref={main}
         onScroll={handleScroll}
-        className={cn("flex flex-1 flex-col gap-3 overflow-y-auto px-4 py-4", tab !== "chat" && "hidden")}
+        className={cn("flex flex-1 flex-col gap-3 overflow-y-auto px-4 py-4", !showChat && "hidden")}
       >
         {hasOlder && (
           <div className="flex flex-col items-center gap-1">
@@ -390,7 +439,7 @@ function ChannelView({ id }: { id: number }) {
         )}
         <div ref={bottom} />
       </main>
-      <footer className={cn("border-t bg-card px-4 pt-2 pb-[max(env(safe-area-inset-bottom),0.75rem)]", tab !== "chat" && "hidden")}>
+      <footer className={cn("border-t bg-card px-4 pt-2 pb-[max(env(safe-area-inset-bottom),0.75rem)]", !showChat && "hidden")}>
         {channel.archived ? (
           <p className="py-2 text-center text-sm text-muted-foreground">這個頻道已封存，不能再發言。</p>
         ) : (
@@ -434,6 +483,18 @@ function ChannelView({ id }: { id: number }) {
         )}
       </footer>
       {deleting && <DeleteDialog message={deleting} onConfirm={confirmDelete} onClose={() => setDeleting(null)} />}
+    </>
+  )
+  if (layout === "page") return <div className="flex h-svh flex-col">{column}</div>
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1">
+      <div className="flex min-w-0 flex-1 flex-col">{column}</div>
+      {boardAside && (
+        <aside aria-label="記憶看板" className="flex w-72 shrink-0 flex-col gap-3 overflow-y-auto border-l px-4 py-4">
+          <h3 className="text-sm font-semibold">記憶看板</h3>
+          <ChannelBoard channel={channel} onJump={(messageId) => void jumpTo(messageId)} />
+        </aside>
+      )}
     </div>
   )
 }

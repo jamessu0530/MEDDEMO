@@ -1,5 +1,5 @@
 import { useEffect, type ReactNode } from "react"
-import { BrowserRouter, Navigate, Outlet, Route, useLocation, useNavigate } from "react-router"
+import { BrowserRouter, Navigate, Outlet, Route, useLocation, useNavigate, useParams } from "react-router"
 
 import { fetchMe } from "@/api/auth"
 import { AppShell } from "@/components/app-shell"
@@ -12,6 +12,7 @@ import { uploadQueue } from "@/lib/offline-queue"
 import { clearAvatars, loadAvatars } from "@/lib/avatars"
 import { clearMyPresence, loadMyPresence } from "@/lib/presence"
 import { realtime } from "@/lib/realtime"
+import { useIsDesktop } from "@/lib/use-media-query"
 import { AdminPage } from "@/pages/admin"
 import { AskPage } from "@/pages/ask"
 import { CalendarPage } from "@/pages/calendar"
@@ -44,6 +45,14 @@ import { RouteHabitsPage } from "@/pages/route-habits"
 import { SettingsPage } from "@/pages/settings"
 import { TodayPage } from "@/pages/today"
 import { VisitPage } from "@/pages/visit"
+
+/** 頻道：手機上 /channels 是兩欄、/channels/:id 是對話頁；電腦版兩個網址都是四欄那一頁。
+ * 兩條路由用同一個元件，在電腦版從清單換到某個對話時四欄不會整個重新掛載 */
+function ChannelsEntry() {
+  const { channelId } = useParams()
+  const desktop = useIsDesktop()
+  return channelId === undefined || desktop ? <ChannelsPage /> : <ChannelPage />
+}
 
 /** 沒登入的頁：電腦版也照手機的寬度置中 */
 function PhoneColumn() {
@@ -185,9 +194,9 @@ export default function App() {
             <Route path="/ask" element={<AskPage />} />
             <Route path="/calendar" element={<CalendarPage />} />
             {/* 頻道：業務、主管、IT 都進得去，看得到哪些頻道由後端依組織樹決定 */}
-            <Route path="/channels" element={<ChannelsPage />} />
+            <Route path="/channels" element={<ChannelsEntry />} />
             <Route path="/channels/search" element={<ChannelSearchPage />} />
-            <Route path="/channels/:channelId" element={<ChannelPage />} />
+            <Route path="/channels/:channelId" element={<ChannelsEntry />} />
             <Route path="/channels/:channelId/threads" element={<ChannelThreadsPage />} />
             <Route path="/promotions" element={<PromotionsPage />} />
             {/* 方法卡：主管寫的做法，登入的人都看得到 */}
