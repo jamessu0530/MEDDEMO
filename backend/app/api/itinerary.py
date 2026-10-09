@@ -14,11 +14,13 @@ from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.orm import Session
 
 from app.api.auth import CurrentUser
+from app.api.me import MedalOut, medal_out
 from app.api.route_habits import HabitInput
 from app.config import NotConfigured
 from app.db import get_session
 from app.llm import LLMOutputError
 from app.models import AppUser
+from app.services import achievements
 from app.services import itinerary as service
 from app.services import itinerary_ai
 from app.services import team_itineraries as team
@@ -118,6 +120,12 @@ class TodayItinerary(BaseModel):
     violations: list[str]
     precedences: list[PrecedenceOut]
     skipped_habits: list[SkippedHabit]
+
+
+class ArriveResult(BaseModel):
+    itinerary: TodayItinerary
+    # 這次點了才解鎖的獎牌（通常是空的）：首頁跳一行「解鎖銀牌：跑過 3 家藥局」
+    unlocked: list[MedalOut]
 
 
 class TravelModeOut(BaseModel):
@@ -502,6 +510,25 @@ def set_leg(session: SessionDep, body: LegInput, user: CurrentUser):
     # 先提交、放掉列鎖再算畫面：算車程可能要等 Google
     session.commit()
     return _out(service.view(session, itinerary))
+
+
+@router.post("/today/stops/{customer_id}/arrive", response_model=ArriveResult)
+def arrive(session: SessionDep, customer_id: str, user: CurrentUser):
+    """首頁點了一站：記成到過，回新的行程與這次解鎖的獎牌。不比版本，點了一定成功。"""
+    rep_id = _rep_id(user)
+    before = achievements.medals(session, rep_id)
+    try:
+        itinerary = service.arrive(session, rep_id, customer_id)
+    except service.VersionConflict:
+        raise HTTPException(409, STALE) from None
+    except service.NotOnItinerary:
+        raise HTTPException(404, "這家不在今天的路線上") from None
+    except LookupError:
+        raise HTTPException(403, NO_ROUTE) from None
+    unlocked = achievements.newly_unlocked(before, achievements.medals(session, rep_id))
+    # 先提交、放掉列鎖再算畫面：算車程可能要等 Google
+    session.commit()
+    return ArriveResult(itinerary=_out(service.view(session, itinerary)), unlocked=[medal_out(m) for m in unlocked])
 
 
 @router.post("/today/ask", response_model=ProposalOut)

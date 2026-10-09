@@ -13,6 +13,7 @@ from app.api import maps  # 行程第 4 階段：主管頁的地圖金鑰
 from app.api import location  # 行程第 6 階段：即時位置
 from app.api import route_habits as route_habits_api
 from app.api import notes  # 拜訪備忘與日曆
+from app.api import me  # 個人頁
 from app.config import settings
 from app.db import get_session
 
@@ -50,6 +51,7 @@ app.include_router(maps.router)
 app.include_router(location.router)
 app.include_router(notes.router)
 app.include_router(vehicles.router)
+app.include_router(me.router)
 
 
 @app.get("/health")
