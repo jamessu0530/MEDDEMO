@@ -87,3 +87,26 @@ def test_a_month_of_notes_and_visits_for_one_rep(tx):
     assert all(first <= v.visited_at.astimezone(TAIPEI).date() <= last for v, _ in visits)
     # 別人的客戶不列
     assert customer_notes.month_notes(tx, "U02", first, last) == []
+
+
+def test_competitors_from_a_visit_become_notes(tx):
+    v = visit(tx, notes=[{"kind": "bring", "text": "骨營 DM", "date": None}])
+    v.fields_final = {**v.fields_final, "competitor": [
+        {"name": "御松田", "detail": "這個月加碼上架費"},
+        {"name": "康和", "detail": None},
+        {"name": "長名", "detail": "很長" * 150},
+    ]}
+    made = customer_notes.notes_from_visit(tx, v)
+    competitors = [(n.text, n.on_date) for n in made if n.kind == "competitor"]
+    # 講過的一樣放拜訪日；沒有細節寫「提到」；超過 200 字截掉
+    assert competitors[0] == ("御松田：這個月加碼上架費", dt.date(2026, 10, 20))
+    assert competitors[1][0] == "提到康和"
+    assert len(competitors[2][0]) == 200
+    assert [n.kind for n in made][0] == "bring"
+
+
+def test_the_calendar_leaves_out_competitor_notes(tx):
+    hand_written(tx, "御松田降價", kind="competitor", on_date=dt.date(2026, 10, 21))
+    hand_written(tx, "小口買 22 送 1", kind="told", on_date=dt.date(2026, 10, 21))
+    found = customer_notes.month_notes(tx, "U01", dt.date(2026, 10, 21), dt.date(2026, 10, 21))
+    assert [n.text for n, _ in found] == ["小口買 22 送 1"]

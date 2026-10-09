@@ -21,7 +21,8 @@ def test_profile_shows_the_lengthening_interval_and_open_items(client):
     assert stats["interval_alert"] is True
     assert profile["highlights"][0] == "進貨間隔從 21 天拉長到 34 天，單次金額持平"
     assert "答應客戶的「回報檔期」已過期限（10/24）" in profile["highlights"]
-    assert "10/19 拜訪提到競品御松田" in profile["highlights"]
+    # 競品不寫成一句，改記成備忘
+    assert not any("競品" in h for h in profile["highlights"])
     assert len(profile["intervals"]) == 6 and profile["intervals"][-1]["month"] == "2026-10"
     assert [c["text"] for c in profile["commitments"] if c["overdue"]] == ["回報檔期"]
     assert [c["text"] for c in profile["complaints"]] == ["補貨延遲三天"]
@@ -29,11 +30,11 @@ def test_profile_shows_the_lengthening_interval_and_open_items(client):
     assert len(profile["open_quotes"]) == 1
 
 
-def test_the_complaint_still_makes_the_brief_when_there_are_five_sentences(client):
-    # 康泰忠孝店有 5 句：間隔、上次訂的、過期承諾、競品、客訴；上限 5 句才不會把客訴擠掉
+def test_the_complaint_makes_the_brief(client):
+    # 康泰忠孝店：間隔、上次訂的、過期承諾、客訴
     highlights = client.get("/api/customers/C001/profile").json()["highlights"]
     assert "客訴：補貨延遲三天（10/19）" in highlights
-    assert len(highlights) == 5
+    assert len(highlights) <= 5
 
 
 def test_a_steady_customer_gets_no_interval_alert(client):

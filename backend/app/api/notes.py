@@ -24,6 +24,8 @@ from app.timeutil import local_date
 router = APIRouter(tags=["notes"])
 SessionDep = Annotated[Session, Depends(get_session)]
 Kind = Literal["bring", "told"]
+# 讀出來的多一種：確認拜訪時寫的競品（手寫只能寫要帶的、講過的）
+NoteKind = Literal["bring", "told", "competitor"]
 # 一句話：要帶什麼、講了什麼條件。資料表也擋在 200 字
 TEXT_MAX = 200
 MONTH = re.compile(r"\d{4}-\d{2}")
@@ -39,7 +41,7 @@ class NoteOut(BaseModel):
     id: int
     customer_id: str
     customer_name: str
-    kind: Kind
+    kind: NoteKind
     text: str
     on_date: dt.date | None
     visit_id: str | None
@@ -48,6 +50,13 @@ class NoteOut(BaseModel):
 
 class NextNotes(BaseModel):
     next: list[NoteOut]
+
+
+class Brief(BaseModel):
+    """首頁點站彈出的小卡：進門前三分鐘（最多五句）與下次去要記得，一次拿齊。"""
+
+    highlights: list[str]
+    notes: list[NoteOut]
 
 
 class NoteInput(BaseModel):
@@ -110,6 +119,15 @@ def next_notes(session: SessionDep, customer_id: str, user: CurrentUser):
     """下次去這家要記得的：最近一次有備忘的拜訪記下的，加上那之後手寫的。"""
     customer, _ = _load(session, customer_id, user, SHARING_LEVEL["quote"])
     return NextNotes(next=[_out(n, customer.name) for n in customer_notes.next_notes(session, customer.id)])
+
+
+@router.get("/api/customers/{customer_id}/brief", response_model=Brief)
+def brief(session: SessionDep, customer_id: str, user: CurrentUser):
+    """首頁小卡要的提醒。權限跟客戶檔案一樣（負責人與他的主管），看不到跟不存在一樣回 404。"""
+    customer, _ = _load(session, customer_id, user, SHARING_LEVEL["customer_profile"])
+    profile = customer_profile.build_profile(session, customer)
+    notes = [_out(n, customer.name) for n in customer_notes.next_notes(session, customer.id)]
+    return Brief(highlights=profile.highlights, notes=notes)
 
 
 @router.post("/api/customers/{customer_id}/notes", status_code=201, response_model=NoteOut)

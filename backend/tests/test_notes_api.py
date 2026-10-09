@@ -15,8 +15,8 @@ def api():
 
 def test_next_visit_notes_and_writing_one(tx, api, auth):
     before = api.get("/api/customers/C001/notes", headers=auth("U01")).json()["next"]
-    # 示範資料：忠孝店一則要帶的、一則講過的，要帶的在前
-    assert [n["kind"] for n in before] == ["bring", "told"]
+    # 示範資料：忠孝店一則要帶的、一則講過的、一則競品，要帶的在前
+    assert [n["kind"] for n in before] == ["bring", "told", "competitor"]
     created = api.post(
         "/api/customers/C001/notes", json={"kind": "told", "text": " 跟店長說了大口送葡萄籽 "}, headers=auth("U01"),
     )
@@ -76,3 +76,19 @@ def test_the_calendar_month(tx, api, auth):
     # 別的業務看不到林昱辰的備忘
     other = api.get("/api/calendar?month=2026-10", headers=auth("U02")).json()
     assert all(n["customer_id"] not in {"C001", "C025", "C027", "C061"} for d in other["days"] for n in d["notes"])
+
+
+def test_the_stop_card_brief_has_highlights_and_notes(tx, api, auth):
+    found = api.get("/api/customers/C001/brief", headers=auth("U01"))
+    assert found.status_code == 200, found.text
+    data = found.json()
+    assert data["highlights"][0] == "進貨間隔從 21 天拉長到 34 天，單次金額持平"
+    assert not any("競品" in h for h in data["highlights"])
+    # 示範備忘：C001 有一則競品（catalog.NOTES）
+    assert "competitor" in {n["kind"] for n in data["notes"]}
+
+
+def test_the_brief_is_only_for_the_owner_and_managers(tx, api, auth):
+    # C030 是北區另一位業務的客戶（test_customer_profile.py 開頭的註解）
+    assert api.get("/api/customers/C030/brief", headers=auth("U01")).status_code == 404
+    assert api.get("/api/customers/C030/brief", headers=auth("M01")).status_code == 200

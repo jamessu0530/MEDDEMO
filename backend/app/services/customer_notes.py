@@ -15,6 +15,10 @@ from app.timeutil import TAIPEI, local_date
 
 # 確認過的拜訪：回寫成功與否都算，日曆上那天就是有去
 CONFIRMED = ("confirmed", "synced")
+# 日曆只放要帶的與講過的；競品備忘只在「下次去要記得」與首頁小卡
+CALENDAR_KINDS = ("bring", "told")
+# 資料表擋在 200 字（customer_note 的 text_length 約束）
+TEXT_MAX = 200
 
 
 def ordered(notes: Iterable[CustomerNote]) -> list[CustomerNote]:
@@ -23,7 +27,7 @@ def ordered(notes: Iterable[CustomerNote]) -> list[CustomerNote]:
 
 
 def notes_from_visit(session: Session, visit: Visit) -> list[CustomerNote]:
-    """確認拜訪時把 notes 欄位寫進備忘表。要帶的沒講日期就放追蹤日；講過的放拜訪日。"""
+    """確認拜訪時把 notes 與 competitor 欄位寫進備忘表。要帶的沒講日期就放追蹤日；講過的與競品放拜訪日。"""
     fields = visit.fields_final or {}
     follow_up = fields.get("follow_up_date")
     made = []
@@ -36,6 +40,16 @@ def notes_from_visit(session: Session, visit: Visit) -> list[CustomerNote]:
         note = CustomerNote(
             customer_id=visit.customer_id, user_id=visit.user_id, kind=item["kind"], text=item["text"],
             on_date=on_date, visit_id=visit.id,
+        )
+        session.add(note)
+        made.append(note)
+    # 業務講到的競品記成備忘（進門前三分鐘不再自動寫「提到競品 X」）：有細節寫「名稱：細節」，沒有就「提到名稱」
+    for item in fields.get("competitor") or []:
+        detail = (item.get("detail") or "").strip()
+        text = f"{item['name']}：{detail}" if detail else f"提到{item['name']}"
+        note = CustomerNote(
+            customer_id=visit.customer_id, user_id=visit.user_id, kind="competitor", text=text[:TEXT_MAX],
+            on_date=local_date(visit.visited_at), visit_id=visit.id,
         )
         session.add(note)
         made.append(note)
@@ -63,11 +77,14 @@ def next_notes(session: Session, customer_id: str) -> list[CustomerNote]:
 
 
 def month_notes(session: Session, owner_id: str, first: dt.date, last: dt.date) -> list[tuple[CustomerNote, str]]:
-    """這位業務負責的客戶，日期落在這段期間的備忘（附客戶名稱），照日期排，同一天要帶的在前。"""
+    """這位業務負責的客戶，日期落在這段期間的備忘（競品不放；附客戶名稱），照日期排，同一天要帶的在前。"""
     rows = session.execute(
         select(CustomerNote, Customer.name)
         .join(Customer, Customer.id == CustomerNote.customer_id)
-        .where(Customer.owner_user_id == owner_id, CustomerNote.on_date.between(first, last))
+        .where(
+            Customer.owner_user_id == owner_id, CustomerNote.on_date.between(first, last),
+            CustomerNote.kind.in_(CALENDAR_KINDS),
+        )
     ).all()
     return sorted(((note, name) for note, name in rows), key=lambda r: (r[0].on_date, r[0].kind != "bring", r[0].id))
 

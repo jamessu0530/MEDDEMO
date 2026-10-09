@@ -26,7 +26,7 @@ INTERVAL_ALERT_RATIO = 1.2
 FLAT_AMOUNT_CHANGE = 0.1
 # 《連鎖通路合約條件》：合約到期前 3 個月要啟動續約協商
 CONTRACT_NOTICE_DAYS = 90
-# 摘要最多五句，進門前幾分鐘看得完（間隔、上次訂的、過期承諾、競品、客訴剛好五句，康泰忠孝店不能被擠掉客訴）
+# 摘要最多五句，進門前幾分鐘看得完。競品不寫成一句（業務講到的競品記成備忘，放在下次去要記得）
 MAX_HIGHLIGHTS = 5
 # 「上次訂的促銷變了」那句最多列幾項，多的寫「等」；那句的開頭，首頁需立即處理那張卡靠它跳過（today_route._urgent）
 LAST_ORDER_SHORTS = 3
@@ -275,11 +275,9 @@ def build_profile(session: Session, customer: Customer) -> Profile:
     overdue = [c for c in commitments if c.overdue and c.by == "us"]
     if overdue:
         highlights.append(f"答應客戶的「{overdue[0].text}」已過期限（{_md(overdue[0].due)}）")
-    recent_competitor = next((v for v in visits if local_date(v.visited_at) >= recent_since and (v.fields_final or {}).get("competitor")), None)
-    if recent_competitor:
+    # 近 90 天提到競品：談判卡照樣用它找切入點，但不寫成一句（docs/superpowers/specs/2026-10-09-tap-to-ride-and-personal-page-design.md）
+    if any(local_date(v.visited_at) >= recent_since and (v.fields_final or {}).get("competitor") for v in visits):
         signals.add("competitor")
-        names = "、".join(item["name"] for item in recent_competitor.fields_final["competitor"])
-        highlights.append(f"{_md(local_date(recent_competitor.visited_at))} 拜訪提到競品{names}")
     if complaints:
         highlights.append(f"客訴：{complaints[0].text}（{_md(complaints[0].visit_date)}）")
     if stats.ar_overdue_days:

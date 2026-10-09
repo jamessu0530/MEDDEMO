@@ -743,6 +743,6 @@ def test_demo_notes_belong_to_the_demo_rep(db):
         SELECT n.kind, n.on_date, c.owner_user_id FROM customer_note n JOIN customer c ON c.id = n.customer_id
     """)
     assert notes and all(owner == "U01" for _, _, owner in notes)
-    assert {kind for kind, _, _ in notes} == {"bring", "told"}
+    assert {kind for kind, _, _ in notes} == {"bring", "told", "competitor"}
     # 有日期與沒日期的要帶的都有，日曆與「下次去」才都有東西看
     assert any(k == "bring" and d is None for k, d, _ in notes) and any(k == "bring" and d for k, d, _ in notes)

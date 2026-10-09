@@ -408,7 +408,9 @@ class FollowUpReminder(Base):
     created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
 
 
-NOTE_KINDS = ("bring", "told")
+# 備忘的種類：bring 下次要帶的、told 跟客戶講過的促銷、competitor 業務講到的競品
+# （docs/superpowers/specs/2026-10-09-tap-to-ride-and-personal-page-design.md：進門前三分鐘不再寫競品那句）
+NOTE_KINDS = ("bring", "told", "competitor")
 
 
 class CustomerNote(Base):
@@ -418,7 +420,7 @@ class CustomerNote(Base):
     __tablename__ = "customer_note"
     __table_args__ = (
         one_of("kind", NOTE_KINDS, "kind"),
-        # 講過的一定是某一天講的；要帶的沒講日期就不放上日曆
+        # 講過的、競品一定是某一天講的；要帶的沒講日期就不放上日曆
         CheckConstraint("kind = 'bring' OR on_date IS NOT NULL", name="told_has_date"),
         CheckConstraint("char_length(text) BETWEEN 1 AND 200", name="text_length"),
         Index("ix_customer_note_customer_id", "customer_id", "id"),
