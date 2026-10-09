@@ -36,10 +36,16 @@ describe("channelPanes", () => {
     expect(panes({ routeId: 300, opened: { id: 301, kind: "customer", parent_id: 2 } })).toEqual({ railId: null, openId: 300 })
   })
 
-  it("/channels 沒帶 id：照 ?c=、記住的、預設的，對話開頻道列選中的那個", () => {
+  it("/channels 沒帶 id：照 ?c=、記住的、預設的挑頻道列；?c= 是看得到的頻道就打開它本身（文字頻道也是）", () => {
+    // ?c= 直接指定頻道，打開它本身（即使是文字頻道）
     expect(panes({ requested: 2 })).toEqual({ railId: 2, openId: 2 })
-    expect(panes({ requested: 21 })).toEqual({ railId: 2, openId: 2 })
+    expect(panes({ requested: 21 })).toEqual({ railId: 2, openId: 21 })
+    // ?c= 是看不到的頻道就忽略，用預設的
+    expect(panes({ requested: 99 })).toEqual({ railId: 5, openId: 5 })
+    // 記住的頻道：頻道列選它，但若它是文字頻道則不打開（只用 pickSelected 的結果）
     expect(panes({ remembered: 9 })).toEqual({ railId: 9, openId: 9 })
+    expect(panes({ remembered: 21 })).toEqual({ railId: 2, openId: 2 })
+    // 沒有 ?c= 也沒記住的：用預設的
     expect(panes({})).toEqual({ railId: 5, openId: 5 })
     expect(panes({ role: "it" })).toEqual({ railId: 1, openId: 1 })
   })
