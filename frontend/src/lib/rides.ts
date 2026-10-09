@@ -1,5 +1,4 @@
 import type { LegMode, RouteStop } from "@/api/route"
-import { legFrom } from "@/lib/travel-mode"
 
 /**
  * 熊熊滾的座騎（docs/superpowers/specs/2026-10-07-ride-vehicles-design.md〈座騎〉）：七個縣市各一種特產，
@@ -25,18 +24,42 @@ export function rideCity(city: string | null | undefined): RideCity | null {
   return (RIDE_CITIES as readonly string[]).includes(city ?? "") ? (city as RideCity) : null
 }
 
-/** 一段路：from 是 null 代表從辦公室出發；fromCity 是出發那一站（或辦公室）的縣市 */
+/** 一段路：from 是 null 代表從辦公室出發；fromCity 是出發那一站（或辦公室）的縣市；mode 照到的那一站排好的交通方式 */
 export type Leg = { from: string | null; to: string; fromCity: string | null; toCity: string; mode: LegMode }
 
-/** 到第 index 站的那一段：從上一站出發，第一站從辦公室（縣市用 startCity） */
-export function legInto(stops: RouteStop[], index: number, startCity: string | null): Leg {
+/** 路線上可以停熊的點：每一站的圓鈕是客戶編號，辦公室是 office（components/route-path.tsx 的 data-ride-anchor） */
+export function anchorId(from: string | null): string {
+  return from ?? "office"
+}
+
+// 點過的站照點的先後排（arrived_at 由早到晚）
+const byArrival = (stops: RouteStop[]) =>
+  stops.filter((stop) => stop.arrived_at).sort((a, b) => (a.arrived_at! < b.arrived_at! ? -1 : 1))
+
+/** 熊熊滾停在哪：最後點的那一站；沒點過是 null（辦公室，沒有辦公室起點時第 1 站） */
+export function hereOf(stops: RouteStop[]): string | null {
+  return byArrival(stops).at(-1)?.customer_id ?? null
+}
+
+/** 從 from（null 是辦公室）騎到 to 那一站：往回、跳站都可以。交通方式照原本排好到那一站的 */
+export function legBetween(stops: RouteStop[], from: string | null, to: string, startCity: string | null): Leg {
+  const target = stops.find((stop) => stop.customer_id === to)
+  const origin = from === null ? null : stops.find((stop) => stop.customer_id === from)
   return {
-    from: legFrom(stops, index),
-    to: stops[index].customer_id,
-    fromCity: index === 0 ? startCity : stops[index - 1].city,
-    toCity: stops[index].city,
-    mode: stops[index].travel_mode,
+    from,
+    to,
+    fromCity: from === null ? startCity : (origin?.city ?? null),
+    toCity: target?.city ?? "",
+    mode: target?.travel_mode ?? "drive",
   }
+}
+
+/** 停著的座騎是哪一段（點座騎重播）：倒數第二個點的（沒有就辦公室）→ 最後點的；沒點過是 null */
+export function lastLeg(stops: RouteStop[], startCity: string | null): Leg | null {
+  const order = byArrival(stops)
+  const last = order.at(-1)
+  if (!last) return null
+  return legBetween(stops, order.at(-2)?.customer_id ?? null, last.customer_id, startCity)
 }
 
 /** 兩端都是七個縣市之一而且不一樣才算跨縣市；有一端不認得就不算 */
@@ -44,31 +67,6 @@ export function crossesCity(leg: Leg): boolean {
   const from = rideCity(leg.fromCity)
   const to = rideCity(leg.toCity)
   return from !== null && to !== null && from !== to
-}
-
-/** 播過哪幾段的記號 */
-export function legKey(leg: Leg): string {
-  return `${leg.from ?? "office"}>${leg.to}`
-}
-
-// 第一個還沒跑的站（跑完的站排在前面）；全部跑完是 -1
-const firstOpen = (stops: RouteStop[]) => stops.findIndex((stop) => stop.status !== "done")
-
-/** 停著的那台是哪一段：到「下一站」的那一段；全部跑完是 null */
-export function parkedLeg(stops: RouteStop[], startCity: string | null): Leg | null {
-  const index = firstOpen(stops)
-  return index < 0 ? null : legInto(stops, index, startCity)
-}
-
-/** 現在該播哪一段：剛完成一站是「最後完成的站 → 下一站」，今天第一次打開是「辦公室 → 第 1 站」；播過了或沒得播是 null */
-export function legToPlay(
-  stops: RouteStop[],
-  { played, officeStart, startCity }: { played: Set<string>; officeStart: boolean; startCity: string | null }
-): Leg | null {
-  const index = firstOpen(stops)
-  if (index < 0 || (index === 0 && !officeStart)) return null
-  const leg = legInto(stops, index, startCity)
-  return played.has(legKey(leg)) ? null : leg
 }
 
 /** 這一段算騎過哪幾台：目的地縣市那一台，跨縣市再加出發縣市那一台；不在七個縣市裡的不算 */

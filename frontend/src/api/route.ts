@@ -1,4 +1,5 @@
 import { ApiError, jsonBody, request } from "@/api/client"
+import type { Medal } from "@/api/me"
 import type { LatLng, TeamLeg } from "@/api/team-routes"
 
 // 每一站為什麼被排進來。後端 today_route.SIGNAL_LABEL 有同一組，改了要一起改
@@ -57,6 +58,8 @@ export type RouteStop = {
   travel_estimated: boolean
   // 客戶所在縣市
   city: string
+  // 首頁點過這一站：這份行程裡最後一次點的時間（熊熊滾停在最後點的那一站）；沒點過是 null
+  arrived_at: string | null
   // 套用在這一站的習慣，調整清單的卡片上標綠色「習慣」
   habit_ids: number[]
 }
@@ -254,6 +257,7 @@ export function normalizeRoute(route: TodayRoute): TodayRoute {
       travel_mode: stop.travel_mode ?? dayMode,
       travel_estimated: stop.travel_estimated ?? true,
       city: stop.city ?? "",
+      arrived_at: stop.arrived_at ?? null,
     })),
   }
 }
@@ -361,6 +365,17 @@ export async function setLegMode(userId: string, version: number, from: string |
   )
   writeCache(routeKey(userId), route)
   return route
+}
+
+/** 首頁點了一站：記成到過（不比版本，點了一定成功），回新的行程與這次解鎖的獎牌 */
+export async function arriveAt(userId: string, customerId: string) {
+  const result = await request<{ itinerary: TodayRoute; unlocked: Medal[] }>(
+    `/api/itinerary/today/stops/${encodeURIComponent(customerId)}/arrive`,
+    { method: "POST" }
+  )
+  const route = normalizeRoute(result.itinerary)
+  writeCache(routeKey(userId), route)
+  return { route, unlocked: result.unlocked }
 }
 
 /** 套用提案：後端照存下來的操作在最新的行程上再做一次；行程在問完之後改過了回 409 */

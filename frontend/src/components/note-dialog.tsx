@@ -1,6 +1,6 @@
 import { useState } from "react"
 
-import { createNote, deleteNote, updateNote, type Note, type NoteKind } from "@/api/notes"
+import { createNote, deleteNote, updateNote, type Note, type WritableNoteKind } from "@/api/notes"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -10,7 +10,7 @@ import { NOTE_KIND_LABEL } from "@/lib/calendar"
 
 // 跟後端同一個上限（api/notes.py 的 TEXT_MAX）
 const TEXT_MAX = 200
-const KINDS: NoteKind[] = ["bring", "told"]
+const KINDS: WritableNoteKind[] = ["bring", "told"]
 
 type NoteDialogProps = {
   open: boolean
@@ -45,13 +45,13 @@ export function NoteDialog(props: NoteDialogProps) {
 }
 
 function NoteForm({ customerId, today, note, defaultDate, onSaved, onClose }: NoteDialogProps) {
-  const [kind, setKind] = useState<NoteKind>(note?.kind ?? "bring")
+  const [kind, setKind] = useState<WritableNoteKind>(note?.kind === "told" ? "told" : "bring")
   const [text, setText] = useState(note?.text ?? "")
   const [date, setDate] = useState(note?.on_date ?? defaultDate ?? "")
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  function chooseKind(next: NoteKind) {
+  function chooseKind(next: WritableNoteKind) {
     setKind(next)
     // 講過的一定是某一天講的：沒選日期就是今天
     if (next === "told" && !date) setDate(today)

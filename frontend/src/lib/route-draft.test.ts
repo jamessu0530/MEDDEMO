@@ -8,7 +8,7 @@ function stop(id: string): RouteStop {
     customer_id: id, customer_name: id, type: "independent", grade: "A", planned_time: "10:00", status: "todo",
     signal: "ar", reason: "", visit_id: null, source: "model", duration_minutes: 40, late_minutes: 0,
     travel_minutes: 10, travel_km: 3, window_kind: null, window_time: null, note: null, locked: false, habit_ids: [],
-    travel_mode: "drive", travel_estimated: false, city: "台北市",
+    travel_mode: "drive", travel_estimated: false, city: "台北市", arrived_at: null,
   }
 }
 

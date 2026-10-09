@@ -1,6 +1,6 @@
 // 日曆與拜訪備忘的純計算（pages/calendar.tsx）：日期一律用 YYYY-MM-DD 字串，用 UTC 算星期，不經過時區
 
-export const NOTE_KIND_LABEL = { bring: "要帶的", told: "講過的" } as const
+export const NOTE_KIND_LABEL = { bring: "要帶的", told: "講過的", competitor: "競品" } as const
 
 const WEEKDAYS = "日一二三四五六"
 const pad = (n: number) => String(n).padStart(2, "0")

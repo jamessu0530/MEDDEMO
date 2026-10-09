@@ -1,7 +1,18 @@
 import { describe, expect, it } from "vitest"
 
 import type { RouteStop } from "@/api/route"
-import { crossesCity, legInto, legKey, legToPlay, parkedLeg, RIDE_CITIES, ridesOf, rideCity, SPECIALTY, type Leg } from "@/lib/rides"
+import {
+  anchorId,
+  crossesCity,
+  hereOf,
+  lastLeg,
+  legBetween,
+  RIDE_CITIES,
+  ridesOf,
+  rideCity,
+  SPECIALTY,
+  type Leg,
+} from "@/lib/rides"
 
 function stop(id: string, status: RouteStop["status"], extra: Partial<RouteStop> = {}): RouteStop {
   return {
@@ -27,6 +38,7 @@ function stop(id: string, status: RouteStop["status"], extra: Partial<RouteStop>
     travel_mode: "drive",
     travel_estimated: false,
     city: "台北市",
+    arrived_at: null,
     ...extra,
   }
 }
@@ -47,18 +59,6 @@ describe("rides", () => {
   })
 })
 
-describe("legInto", () => {
-  const stops = [stop("a", "done", { city: "新北市" }), stop("b", "next", { city: "新竹市", travel_mode: "transit" })]
-
-  it("第一站從辦公室出發，縣市用 startCity", () => {
-    expect(legInto(stops, 0, "台北市")).toEqual({ from: null, to: "a", fromCity: "台北市", toCity: "新北市", mode: "drive" })
-  })
-
-  it("其他站從上一站出發，帶上一站的縣市與這一段的交通方式", () => {
-    expect(legInto(stops, 1, "台北市")).toEqual({ from: "a", to: "b", fromCity: "新北市", toCity: "新竹市", mode: "transit" })
-  })
-})
-
 describe("crossesCity", () => {
   it("新北到新竹跨縣市", () => expect(crossesCity(leg({ fromCity: "新北市", toCity: "新竹市" }))).toBe(true))
   it("台北到台北不跨", () => expect(crossesCity(leg())).toBe(false))
@@ -68,49 +68,40 @@ describe("crossesCity", () => {
   })
 })
 
-describe("legToPlay", () => {
-  const opts = { played: new Set<string>(), officeStart: true, startCity: "台北市" }
+describe("熊熊滾停在哪、騎哪一段", () => {
+  const stops = [
+    stop("A", "done", { city: "新北市", arrived_at: "2026-10-28T02:00:00Z" }),
+    stop("B", "done", { city: "台北市", arrived_at: "2026-10-28T03:00:00Z" }),
+    stop("C", "next", { city: "新竹市", travel_mode: "scooter" }),
+  ]
 
-  it("剛完成一站：最後完成的站到下一站", () => {
-    const stops = [stop("a", "done"), stop("b", "done"), stop("c", "next"), stop("d", "todo")]
-    expect(legToPlay(stops, opts)).toMatchObject({ from: "b", to: "c" })
+  it("anchorId：辦公室是 office", () => {
+    expect(anchorId(null)).toBe("office")
+    expect(anchorId("B")).toBe("B")
   })
 
-  it("今天第一次打開：辦公室到第 1 站", () => {
-    const stops = [stop("a", "next"), stop("b", "todo")]
-    expect(legToPlay(stops, opts)).toMatchObject({ from: null, to: "a", fromCity: "台北市" })
+  it("hereOf：最後點的那一站；沒點過是 null", () => {
+    expect(hereOf(stops)).toBe("B")
+    expect(hereOf([stop("A", "next")])).toBeNull()
   })
 
-  it("沒有辦公室起點而且還沒完成任何站：沒有可播的", () => {
-    expect(legToPlay([stop("a", "next")], { ...opts, officeStart: false })).toBeNull()
+  it("legBetween：出發縣市是起點那一站（辦公室用 startCity），交通方式照到的那一站", () => {
+    expect(legBetween(stops, "B", "C", "台北市")).toEqual({
+      from: "B",
+      to: "C",
+      fromCity: "台北市",
+      toCity: "新竹市",
+      mode: "scooter",
+    })
+    expect(legBetween(stops, null, "A", "台北市").fromCity).toBe("台北市")
+    // 往回騎也可以
+    expect(legBetween(stops, "C", "A", null)).toMatchObject({ from: "C", to: "A", fromCity: "新竹市", toCity: "新北市" })
   })
 
-  it("沒有辦公室起點但已有完成的站，照樣播下一段", () => {
-    expect(legToPlay([stop("a", "done"), stop("b", "next")], { ...opts, officeStart: false })).toMatchObject({ from: "a", to: "b" })
-  })
-
-  it("播過了就不再播", () => {
-    const stops = [stop("a", "done"), stop("b", "next")]
-    expect(legToPlay(stops, { ...opts, played: new Set(["a>b"]) })).toBeNull()
-    expect(legToPlay([stop("a", "next")], { ...opts, played: new Set(["office>a"]) })).toBeNull()
-  })
-
-  it("全部跑完是 null", () => {
-    expect(legToPlay([stop("a", "done"), stop("b", "done")], opts)).toBeNull()
-    expect(legToPlay([], opts)).toBeNull()
-  })
-})
-
-describe("legKey 與 parkedLeg", () => {
-  it("legKey 從辦公室出發寫 office", () => {
-    expect(legKey(leg({ from: null, to: "a" }))).toBe("office>a")
-    expect(legKey(leg())).toBe("a>b")
-  })
-
-  it("停著的那台是到下一站的那一段，全部跑完是 null", () => {
-    expect(parkedLeg([stop("a", "done"), stop("b", "next")], "台北市")).toMatchObject({ from: "a", to: "b" })
-    expect(parkedLeg([stop("a", "next")], "台北市")).toMatchObject({ from: null, to: "a" })
-    expect(parkedLeg([stop("a", "done")], "台北市")).toBeNull()
+  it("lastLeg：倒數第二個點的（沒有就辦公室）→ 最後點的；沒點過是 null", () => {
+    expect(lastLeg(stops, "台北市")).toMatchObject({ from: "A", to: "B" })
+    expect(lastLeg([stops[0]], "台北市")).toMatchObject({ from: null, to: "A", fromCity: "台北市" })
+    expect(lastLeg([stop("A", "next")], "台北市")).toBeNull()
   })
 })
 

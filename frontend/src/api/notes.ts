@@ -1,7 +1,9 @@
 import { jsonBody, request } from "@/api/client"
 
-// 拜訪備忘：bring 是下次要帶的東西，told 是跟客戶講過的促銷（docs/superpowers/specs/2026-10-07-calendar-notes-design.md）
-export type NoteKind = "bring" | "told"
+// 拜訪備忘：bring 是下次要帶的東西，told 是跟客戶講過的促銷（docs/superpowers/specs/2026-10-07-calendar-notes-design.md），
+// competitor 是確認拜訪時業務講到的競品（docs/superpowers/specs/2026-10-09-tap-to-ride-and-personal-page-design.md），不能手寫
+export type NoteKind = "bring" | "told" | "competitor"
+export type WritableNoteKind = Exclude<NoteKind, "competitor">
 
 export type Note = {
   id: number
@@ -36,11 +38,11 @@ export function getNextNotes(customerId: string, signal?: AbortSignal) {
 }
 
 /** 手寫一則；講過的沒給日期，後端用今天（系統日） */
-export function createNote(customerId: string, note: { kind: NoteKind; text: string; on_date: string | null }) {
+export function createNote(customerId: string, note: { kind: WritableNoteKind; text: string; on_date: string | null }) {
   return request<Note>(`/api/customers/${encodeURIComponent(customerId)}/notes`, jsonBody("POST", note))
 }
 
-export function updateNote(id: number, patch: Partial<Pick<Note, "kind" | "text" | "on_date">>) {
+export function updateNote(id: number, patch: Partial<Pick<Note, "text" | "on_date"> & { kind: WritableNoteKind }>) {
   return request<Note>(`/api/notes/${id}`, jsonBody("PATCH", patch))
 }
 
@@ -51,4 +53,11 @@ export function deleteNote(id: number) {
 /** month 沒給就是系統日那個月 */
 export function getCalendar(month: string | null, signal?: AbortSignal) {
   return request<CalendarMonth>(`/api/calendar${month ? `?month=${month}` : ""}`, { signal })
+}
+
+// 首頁點站彈出的小卡：進門前三分鐘與下次去要記得，一次拿齊
+export type Brief = { highlights: string[]; notes: Note[] }
+
+export function getBrief(customerId: string, signal?: AbortSignal) {
+  return request<Brief>(`/api/customers/${encodeURIComponent(customerId)}/brief`, { signal })
 }

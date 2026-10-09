@@ -30,6 +30,7 @@ function stop(id: string, status: RouteStop["status"], extra: Partial<RouteStop>
     travel_mode: "drive",
     travel_estimated: false,
     city: "台北市",
+    arrived_at: null,
     ...extra,
   }
 }

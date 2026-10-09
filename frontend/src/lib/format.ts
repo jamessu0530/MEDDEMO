@@ -56,3 +56,21 @@ export function formatTaipeiDateTime(iso: string) {
 export function formatUnitPrice(amount: number) {
   return `NT$${amount.toLocaleString("zh-TW", { maximumFractionDigits: 2 })}`
 }
+
+/** 2026-10-28T06:05:00Z → 14:05，固定用台北時間；同 formatTaipeiDateTime，自己接時與分，不靠 ICU 的空白 */
+export function formatTaipeiTime(iso: string) {
+  const parts = new Intl.DateTimeFormat("zh-TW", {
+    timeZone: "Asia/Taipei",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date(iso))
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? ""
+  return `${part("hour")}:${part("minute")}`
+}
+
+/** 2511468 → 251.1 萬；digits 是小數幾位，個人頁「近一年業績」那格用 0（3,134 萬） */
+export function formatWan(amount: number, digits = 1) {
+  const wan = (amount / 10000).toLocaleString("zh-TW", { minimumFractionDigits: digits, maximumFractionDigits: digits })
+  return `${wan} 萬`
+}

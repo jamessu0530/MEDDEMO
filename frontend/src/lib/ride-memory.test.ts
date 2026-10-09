@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-import { markPlayed, playedScope, queueRides, readPlayed, takeQueuedRides } from "@/lib/ride-memory"
+import { queueRides, takeQueuedRides } from "@/lib/ride-memory"
 
 function fakeStorage() {
   const data = new Map<string, string>()
@@ -25,49 +25,12 @@ beforeEach(() => {
 
 afterEach(() => vi.unstubAllGlobals())
 
-describe("播過的段", () => {
-  it("沒記過是空的", () => expect(readPlayed("2026-10-08").size).toBe(0))
-
-  it("記下來照日期分開，重複記只有一筆", () => {
-    markPlayed("2026-10-08", "office>a")
-    markPlayed("2026-10-08", "office>a")
-    markPlayed("2026-10-08", "a>b")
-    expect([...readPlayed("2026-10-08")]).toEqual(["office>a", "a>b"])
-    expect(readPlayed("2026-10-09").size).toBe(0)
-    expect(storage.data.has("meddemo:rides-played:2026-10-08")).toBe(true)
-  })
-
-  it("播放記錄跟著行程編號：重置示範行程換了編號就不算播過", () => {
-    markPlayed(playedScope("2026-10-28", 1), "office>a")
-    expect(readPlayed(playedScope("2026-10-28", 1)).size).toBe(1)
-    expect(readPlayed(playedScope("2026-10-28", 2)).size).toBe(0)
-  })
-
-  it("寫新的時只留最近幾份舊的", () => {
-    for (let id = 1; id <= 5; id++) markPlayed(playedScope("2026-10-28", id), "a>b")
-    const keys = [...storage.data.keys()].filter((key) => key.startsWith("meddemo:rides-played:")).sort()
-    expect(keys).toEqual([3, 4, 5].map((id) => `meddemo:rides-played:2026-10-28:${id}`))
-  })
-
-  it("壞掉的 JSON 當作空的，之後還能寫", () => {
-    storage.data.set("meddemo:rides-played:2026-10-08", "{oops")
-    expect(readPlayed("2026-10-08").size).toBe(0)
-    markPlayed("2026-10-08", "a>b")
-    expect([...readPlayed("2026-10-08")]).toEqual(["a>b"])
-  })
-
-  it("存的不是陣列也當作空的", () => {
-    storage.data.set("meddemo:rides-played:2026-10-08", '{"a":1}')
-    expect(readPlayed("2026-10-08").size).toBe(0)
-  })
-
-  it("localStorage 丟例外時不會壞", () => {
+describe("localStorage 不能用", () => {
+  it("丟例外時不會壞", () => {
     const boom = () => {
       throw new Error("denied")
     }
     vi.stubGlobal("localStorage", { getItem: boom, setItem: boom, removeItem: boom })
-    expect(readPlayed("2026-10-08").size).toBe(0)
-    expect(() => markPlayed("2026-10-08", "a>b")).not.toThrow()
     expect(() => queueRides([{ city: "台北市", mode: "drive" }])).not.toThrow()
     expect(takeQueuedRides()).toEqual([])
   })
