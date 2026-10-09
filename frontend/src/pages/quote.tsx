@@ -271,7 +271,7 @@ export function QuotePage() {
       </main>
 
       {hasLines && (
-        <div className="fixed inset-x-0 bottom-0 z-10 mx-auto flex max-w-md flex-col gap-2 border-t bg-card px-4 pt-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] lg:sticky lg:inset-x-auto lg:top-[4.5rem] lg:bottom-auto lg:mt-4 lg:max-w-none lg:rounded-2xl lg:border-2 lg:p-4 lg:shadow-lip">
+        <div className="fixed inset-x-0 bottom-0 z-10 mx-auto flex max-w-md flex-col gap-2 border-t bg-card px-4 pt-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] lg:mx-0 lg:w-full lg:sticky lg:inset-x-auto lg:top-[4.5rem] lg:bottom-auto lg:mt-4 lg:max-w-none lg:rounded-2xl lg:border-2 lg:p-4 lg:shadow-lip">
           {/* 折扣跟合計、送出鈕放在一起：清單有十幾項，放在清單後面要捲到底才看得到 */}
           <div className="flex items-center gap-2">
             <label htmlFor="quote-discount" className="shrink-0 text-sm font-medium">
