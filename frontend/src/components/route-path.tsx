@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react"
+import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react"
 import { Building2, Check, Flag } from "lucide-react"
 import { Link } from "react-router"
 
@@ -49,6 +49,7 @@ export function RoutePath({
   onArrive,
   unsaved,
   onRide,
+  onRidingChange,
   collected = null,
 }: {
   stops: RouteStop[]
@@ -63,6 +64,8 @@ export function RoutePath({
   unsaved?: ReadonlySet<string>
   /** 開始騎一段（點站、點座騎重播；不能動而直接停好也算）：送騎過的座騎 */
   onRide?: (leg: Leg) => void
+  /** 熊開始騎（true）、騎完（false；減少動態效果或量不到位置而直接停好也算、路線拆掉時也算）：首頁等熊到了才收急件卡 */
+  onRidingChange?: (riding: boolean) => void
   /** 座騎圖鑑收集了幾台（首頁拿；拿不到是 null，入口就只寫名字） */
   collected?: { ridden: number; total: number } | null
 }) {
@@ -119,6 +122,14 @@ export function RoutePath({
     const timer = window.setTimeout(() => setLeaving(false), LEAVE_MS)
     return () => window.clearTimeout(timer)
   }, [leaving])
+
+  // 騎的時候告訴首頁；騎完、或騎到一半路線被拆掉（切到地圖）都由 cleanup 說騎完了，首頁不會一直以為還在騎
+  const ridingChange = useEffectEvent((now: boolean) => onRidingChange?.(now))
+  useEffect(() => {
+    if (!riding) return
+    ridingChange(true)
+    return () => ridingChange(false)
+  }, [riding])
 
   // 路線的寬：座騎停多寬照它算。伺服器 render、還沒排版時照 390 寬的手機（ROUTE_WIDTH）
   const listRef = useRef<HTMLOListElement>(null)

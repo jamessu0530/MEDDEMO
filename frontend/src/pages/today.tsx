@@ -23,6 +23,7 @@ import {
   setLegMode,
   type LegMode,
   type RouteAction,
+  type RouteUrgent,
   type TodayRoute,
 } from "@/api/route"
 import { getVehicles, sendRides } from "@/api/vehicles"
@@ -45,9 +46,13 @@ import { useUnseenReplies } from "@/lib/manager-replies"
 import { ridesOf, type Leg } from "@/lib/rides"
 import { applyProgress } from "@/lib/route-progress"
 import { TRAVEL_MODE_LABEL } from "@/lib/travel-mode"
+import { urgentCard } from "@/lib/urgent-card"
 import { useIsDesktop } from "@/lib/use-media-query"
 import { cn } from "@/lib/utils"
 import { FirstWeekEntry } from "@/pages/first-week"
+
+// 急件卡收起來要多久（跟卡片外層的 duration-300 一樣）
+const URGENT_CLOSE_MS = 300
 
 type LoadState =
   | { status: "loading" }
@@ -86,11 +91,24 @@ export function TodayPage() {
   // 座騎圖鑑收集了幾台（路線最底下的入口）：拿不到就是 null，入口只寫名字
   const [collected, setCollected] = useState<{ ridden: number; total: number } | null>(null)
   const [collectedTick, setCollectedTick] = useState(0)
+  // 熊在騎嗎（RoutePath 的 onRidingChange）；剛點了急件那一站、arrive 回來把它拿掉時留下的那一張（lib/urgent-card.ts）
+  const [riding, setRiding] = useState(false)
+  const [heldUrgent, setHeldUrgent] = useState<RouteUrgent | null>(null)
   // 點站回來時要套到的那一份：arrive 是非同步的，閉包裡的 state 可能已經舊了
   const latest = useRef(state)
   useEffect(() => {
     latest.current = state
   }, [state])
+
+  // 留下的急件卡：熊到了就收（約 300ms 收完再拿掉；減少動態效果時直接拿掉）
+  const closingUrgent =
+    state.status === "ready" && (urgentCard(state.route.urgent, heldUrgent, riding)?.closing ?? false)
+  useEffect(() => {
+    if (!closingUrgent) return
+    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    const timer = window.setTimeout(() => setHeldUrgent(null), still ? 0 : URGENT_CLOSE_MS)
+    return () => window.clearTimeout(timer)
+  }, [closingUrgent])
 
   useEffect(() => {
     if (!userId) return
@@ -155,6 +173,9 @@ export function TodayPage() {
 
   const route = state.status === "ready" ? state.route : null
   const urgent = route?.urgent ?? null
+  // 行程上又有急件（重新載入、別人改過）：留著的那一張就不要了，之後按三顆鈕拿掉新的那一張時才不會又冒出來
+  if (urgent && heldUrgent) setHeldUrgent(null)
+  const card = route ? urgentCard(urgent, heldUrgent, riding) : null
 
   // 開始騎一段（點站、點座騎重播；減少動態效果或量不到位置而直接停好也算）：送出騎過的座騎（每騎一次送一次）
   function recordRide(leg: Leg) {
@@ -175,6 +196,8 @@ export function TodayPage() {
         const current = latest.current
         const next = current.status === "ready" ? applyProgress(current.route, progress) : null
         if (next && current.status === "ready") {
+          // 點的是急件那一站：卡片先留著，熊到了才收（lib/urgent-card.ts），路線不會在騎到一半往上跳
+          if (current.route.urgent && !next.urgent) setHeldUrgent(current.route.urgent)
           setState({ status: "ready", route: next, cached: current.cached })
           cacheRoute(user.id, next)
           // 畫面上是連不上時的舊行程：時間與車程也可能是舊的，背景再讀一次整份
@@ -390,32 +413,46 @@ export function TodayPage() {
           />
         )}
 
-        {route && urgent && (
-          <article className="mb-2 flex flex-col gap-2 rounded-2xl border-2 border-destructive/30 bg-destructive/10 p-4 shadow-lip-destructive-soft">
-            <span className="flex items-center gap-1 self-start rounded-md bg-destructive px-2 py-1 text-[0.6875rem] font-semibold text-white">
-              <TriangleAlert className="size-3" />
-              需立即處理 · {urgent.headline}
-            </span>
-            <Link
-              to={`/customers/${urgent.customer_id}`}
-              className="flex min-h-11 items-center text-base leading-snug font-semibold"
-            >
-              {urgent.customer_name}
-            </Link>
-            <p className="text-xs leading-relaxed">{urgent.detail}</p>
-            {urgent.note && <p className="text-xs leading-relaxed text-muted-foreground">{urgent.note}</p>}
-            <div className="mt-1 flex gap-2">
-              <Button variant="danger" className="h-11 flex-1" disabled={busy} onClick={pin}>
-                插入下一站
-              </Button>
-              <Button variant="outline" className="h-11 w-16 shrink-0" disabled={busy} onClick={snooze}>
-                暫緩
-              </Button>
-              <Button variant="outline" className="h-11 w-16 shrink-0" disabled={busy} onClick={misjudge}>
-                誤判
-              </Button>
+        {card && (
+          // 收起來：高度與透明度一起收（grid 的 1fr → 0fr），底下的路線跟著平順往上；外距放在裡面才收得掉
+          <div
+            data-urgent-card={card.closing ? "closing" : card.stale ? "stale" : "live"}
+            aria-hidden={card.closing || undefined}
+            className={cn(
+              "grid transition-[grid-template-rows,opacity] duration-300 ease-out motion-reduce:transition-none",
+              card.closing ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr]"
+            )}
+          >
+            <div className="min-h-0 overflow-hidden pb-2">
+              <article className="flex flex-col gap-2 rounded-2xl border-2 border-destructive/30 bg-destructive/10 p-4 shadow-lip-destructive-soft">
+                <span className="flex items-center gap-1 self-start rounded-md bg-destructive px-2 py-1 text-[0.6875rem] font-semibold text-white">
+                  <TriangleAlert className="size-3" />
+                  需立即處理 · {card.urgent.headline}
+                </span>
+                <Link
+                  to={`/customers/${card.urgent.customer_id}`}
+                  tabIndex={card.closing ? -1 : undefined}
+                  className="flex min-h-11 items-center text-base leading-snug font-semibold"
+                >
+                  {card.urgent.customer_name}
+                </Link>
+                <p className="text-xs leading-relaxed">{card.urgent.detail}</p>
+                {card.urgent.note && <p className="text-xs leading-relaxed text-muted-foreground">{card.urgent.note}</p>}
+                {/* 留著的那一張（這一站已經到過）鈕不能按 */}
+                <div className="mt-1 flex gap-2">
+                  <Button variant="danger" className="h-11 flex-1" disabled={busy || card.stale} onClick={pin}>
+                    插入下一站
+                  </Button>
+                  <Button variant="outline" className="h-11 w-16 shrink-0" disabled={busy || card.stale} onClick={snooze}>
+                    暫緩
+                  </Button>
+                  <Button variant="outline" className="h-11 w-16 shrink-0" disabled={busy || card.stale} onClick={misjudge}>
+                    誤判
+                  </Button>
+                </div>
+              </article>
             </div>
-          </article>
+          </div>
         )}
 
         {mappable && !desktop && <ViewSwitch ref={switchRef} onMap={onMap} onChange={showView} />}
@@ -453,6 +490,7 @@ export function TodayPage() {
                   onArrive={arrive}
                   unsaved={unsaved}
                   onRide={recordRide}
+                  onRidingChange={setRiding}
                   collected={collected}
                 />
               )}
