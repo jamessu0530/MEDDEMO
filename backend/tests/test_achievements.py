@@ -81,7 +81,7 @@ def test_arrive_through_the_api(client, auth):
     assert sent.status_code == 200, sent.text
     data = sent.json()
     assert data["itinerary"]["stops"][0]["status"] == "done" and data["itinerary"]["stops"][0]["arrived_at"]
-    assert data["itinerary"]["version"] == route["version"] + 1
+    assert data["itinerary"]["version"] == route["version"]
     assert [(m["kind"], m["tier"], m["unlocked_on"]) for m in data["unlocked"]] == [
         ("stores", 1, "2026-10-28"), ("cities", 1, "2026-10-28"),
     ]

@@ -66,7 +66,7 @@ def itinerary_changed(user_id: str) -> None:
     publish({"type": "itinerary", "user_id": user_id})
 
 
-# 行程變了就通知主管頁（{"type": "itinerary"}）。行程的每一種改動都會改 Itinerary（加版本），所以看這張表就夠，
+# 行程變了就通知主管頁（{"type": "itinerary"}）。行程的每一種改動都會改 Itinerary（加版本；首頁點站只改 updated_at），所以看這張表就夠，
 # 加上確認拜訪（跑完一站）；不必每一支 API 各自記得發。事件在 commit 之後才發：沒 commit 的改動別人讀不到，
 # 先通知只會讓主管頁拿到舊的那份。整批 DELETE（IT 重置示範業務的行程）看不到，由那支 API 自己發
 _PENDING = "realtime:itinerary_changed"

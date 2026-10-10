@@ -79,6 +79,21 @@ def test_applying_bears_proposal_is_announced(tx, events):
     assert changed(events) == ["U02"]
 
 
+def test_tapping_a_stop_is_announced_without_changing_the_version(tx, events):
+    # 首頁點站不加版本（別人手上的行程不會因此 409），只改 updated_at：Itinerary 還是算改過，主管頁照樣收到事件
+    itinerary = itineraries.get_or_create(tx, "U02")
+    first = itineraries.view(tx, itinerary).stops[0].customer_id
+    tx.commit()
+    events.clear()
+    version = itinerary.version
+    itineraries.arrive(tx, "U02", first)
+    tx.flush()
+    assert changed(events) == []
+    tx.commit()
+    assert changed(events) == ["U02"]
+    assert itinerary.version == version
+
+
 def test_confirming_a_visit_is_announced_but_editing_it_later_is_not(tx, events):
     at = dt.datetime(2026, 10, 28, 9, 40, tzinfo=TAIPEI)
     visit = Visit(id="VEVENT1", customer_id="C001", user_id="U01", visited_at=at, transcript="測試", status="draft")

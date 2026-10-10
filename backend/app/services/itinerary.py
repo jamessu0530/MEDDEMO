@@ -588,7 +588,8 @@ def arrive(session: Session, user_id: str, customer_id: str) -> Itinerary:
     """首頁點了路線上的一站：記成到過（docs/superpowers/specs/2026-10-09-tap-to-ride-and-personal-page-design.md）。
 
     第一次點建一列，再點只改最後一次的時間。不比版本、不管順序，點了一定成功；不在今天的行程上丟 NotOnItinerary。
-    行程的版本加一：主管頁收到 itinerary 事件跟著更新（app/realtime.py），手上舊版本的人改行程時會被擋下來重新載入。
+    版本不加：示範業務的行程是評審共用的，點站加版本的話，別的評審手上的三顆按鈕、換交通方式、套用提案、
+    調整清單的「完成」全部會 409。只改 updated_at：Itinerary 還是算改過，主管頁照樣收到 itinerary 事件（app/realtime.py）。
     """
     itinerary = get_or_create(session, user_id)
     _lock(session, itinerary)
@@ -602,7 +603,8 @@ def arrive(session: Session, user_id: str, customer_id: str) -> Itinerary:
         .values(itinerary_id=itinerary.id, customer_id=customer_id)
         .on_conflict_do_update(index_elements=["itinerary_id", "customer_id"], set_={"last_at": func.clock_timestamp()})
     )
-    _touch(itinerary)
+    # 用 Python 的時間、不用 func.now()：SQL 運算式在 flush 時就被清掉，after_flush 的 is_modified 看不到改過，主管頁就收不到事件
+    itinerary.updated_at = dt.datetime.now(dt.UTC)
     session.flush()
     return itinerary
 

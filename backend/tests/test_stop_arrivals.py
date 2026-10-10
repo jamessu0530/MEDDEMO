@@ -23,8 +23,8 @@ def test_an_arrived_stop_is_done_but_stays_in_place(tx):
     assert [s.status for s in after.stops] == ["next", "todo", "done", "todo", "todo"]
     assert after.stops[2].arrived_at is not None and after.stops[0].arrived_at is None
     assert after.done == 1
-    # 版本加一：主管頁靠 Itinerary 改了才收到 itinerary 事件（app/realtime.py）
-    assert after.version == before.version + 1
+    # 版本不變：手上拿著這一版的人（別的評審、調整清單）照樣可以改；主管頁靠 updated_at 改了收到事件（app/realtime.py）
+    assert after.version == before.version
 
 
 def test_next_skips_arrived_stops(tx):
