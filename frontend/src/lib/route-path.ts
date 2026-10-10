@@ -1,4 +1,4 @@
-import type { RouteSignal } from "@/api/route"
+import type { RouteSignal, RouteStop } from "@/api/route"
 
 /**
  * 今日路線像 Duolingo 的路一樣左右蛇行（components/route-path.tsx）。這裡只管排法：
@@ -30,3 +30,16 @@ export function signalTone(signal: RouteSignal): "good" | "alert" | "plain" {
 
 /** 理由類別的字色：商機綠、警示紅、例行灰 */
 export const TONE_CLASS = { good: "text-success", alert: "text-destructive", plain: "text-muted-foreground" } as const
+
+/**
+ * 哪一列上面多留「出發」泡泡的空間（mt-14）。平常是下一站；熊在騎的時候照開始騎時那一列（held），
+ * 點的就是下一站時，回應把它標成到過、下一站換人，路線在熊上方也不會騎到一半往上移 56px，騎完再平順搬過去。
+ */
+export function departureRow(
+  stops: readonly Pick<RouteStop, "customer_id" | "status">[],
+  held: string | null,
+  riding: boolean
+): string | null {
+  if (riding) return held
+  return stops.find((stop) => stop.status === "next")?.customer_id ?? null
+}

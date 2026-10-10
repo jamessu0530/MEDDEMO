@@ -12,7 +12,7 @@ import { buttonVariants } from "@/components/ui/button"
 import { formatTaipeiTime } from "@/lib/format"
 import { ROUTE_WIDTH } from "@/lib/ride-on-route"
 import { finishesRoute, followsServer, hereOf, lastLeg, legBetween, officeLeg, type Leg } from "@/lib/rides"
-import { HALF_NODE, labelSide, pathOffset, signalTone, TONE_CLASS } from "@/lib/route-path"
+import { departureRow, HALF_NODE, labelSide, pathOffset, signalTone, TONE_CLASS } from "@/lib/route-path"
 import { legFrom } from "@/lib/travel-mode"
 import { cn } from "@/lib/utils"
 
@@ -80,6 +80,9 @@ export function RoutePath({
   // 這次最後騎的那一段（點站時給）；token 換了 RideOnRoute 就騎一次，騎完清成 null（座騎重新掛上時不會再騎、再送一筆）
   const [ride, setRide] = useState<{ leg: Leg; token: number | null } | null>(null)
   const [riding, setRiding] = useState(false)
+  // 開始騎時多留「出發」空間的那一列：騎的時候不搬，熊上方的路線才不會騎到一半往上移（lib/route-path.ts departureRow）
+  const [heldDeparture, setHeldDeparture] = useState<string | null>(null)
+  const departure = departureRow(stops, heldDeparture, riding)
   // 這次點過的站（照點的順序，含只送 arrive 沒騎的那一下）：有點過，後端回來的行程就不搬熊（lib/rides.ts followsServer）
   const [taps, setTaps] = useState<string[]>([])
   // 剛點的是最後一站還沒到過的：等後端記好（全部到過）、這一段也騎完，就收起小卡、把收工旗子捲到畫面中間，
@@ -195,6 +198,7 @@ export function RoutePath({
     if (rides) {
       setRide({ leg: legBetween(stops, anchor, stop.customer_id, startCity), token: Date.now() })
       setRiding(true)
+      setHeldDeparture(departure)
     }
     const tap = ++tapSeq.current
     const finishes = finishesRoute(stops, stop.customer_id, taps)
@@ -266,12 +270,19 @@ export function RoutePath({
                 />
               )}
             />
-            {/* 下面這一列跟以前一樣；下一站上面多留一點高度給「出發」泡泡 */}
-            <div className={cn("relative h-[92px]", stop.status === "next" && "mt-14")}>
+            {/* 下面這一列跟以前一樣；下一站上面多留一點高度給「出發」泡泡。熊在騎的時候照開始騎時那一列，
+                騎完再平順搬過去（減少動態效果時直接換） */}
+            <div
+              className={cn(
+                "relative h-[92px] transition-[margin] duration-300 ease-out motion-reduce:transition-none",
+                departure === stop.customer_id && "mt-14"
+              )}
+            >
               <StopNode
                 stop={stop}
                 index={index}
                 offset={offset}
+                bubble={departure === stop.customer_id}
                 open={stopOpen}
                 onToggle={() => tapStop(stop)}
               />
@@ -381,12 +392,15 @@ function StopNode({
   stop,
   index,
   offset,
+  bubble,
   open,
   onToggle,
 }: {
   stop: RouteStop
   index: number
   offset: number
+  /** 這一列上面有留空間：沒留（熊還在騎、空間還沒搬過來）時不放泡泡，不然會蓋到上面的膠囊 */
+  bubble: boolean
   open: boolean
   onToggle: () => void
 }) {
@@ -397,12 +411,17 @@ function StopNode({
       {next && (
         <>
           <span aria-hidden className="pointer-events-none absolute -inset-[9px] rounded-[50%] border-[5px] border-primary/25" />
-          <Link to={`/customers/${stop.customer_id}`} className="absolute bottom-[calc(100%+16px)] left-1/2 -translate-x-1/2">
-            {/* 跳的是裡面這一層：外層的 -translate-x-1/2 負責置中，跳動的 transform 寫在同一個元素上會把置中蓋掉 */}
-            <span className="relative block animate-bob rounded-xl border-2 bg-card px-3 py-1 text-sm font-semibold whitespace-nowrap text-primary motion-reduce:animate-none after:absolute after:top-full after:left-1/2 after:size-2.5 after:-translate-x-1/2 after:-translate-y-1/2 after:rotate-45 after:border-r-2 after:border-b-2 after:bg-card after:content-['']">
-              出發
-            </span>
-          </Link>
+          {bubble && (
+            <Link
+              to={`/customers/${stop.customer_id}`}
+              className="absolute bottom-[calc(100%+16px)] left-1/2 -translate-x-1/2 animate-in duration-300 fade-in motion-reduce:animate-none"
+            >
+              {/* 跳的是裡面這一層：外層的 -translate-x-1/2 負責置中，跳動的 transform 寫在同一個元素上會把置中蓋掉 */}
+              <span className="relative block animate-bob rounded-xl border-2 bg-card px-3 py-1 text-sm font-semibold whitespace-nowrap text-primary motion-reduce:animate-none after:absolute after:top-full after:left-1/2 after:size-2.5 after:-translate-x-1/2 after:-translate-y-1/2 after:rotate-45 after:border-r-2 after:border-b-2 after:bg-card after:content-['']">
+                出發
+              </span>
+            </Link>
+          )}
         </>
       )}
       <button

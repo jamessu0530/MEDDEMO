@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { labelSide, pathOffset, signalTone } from "@/lib/route-path"
+import { departureRow, labelSide, pathOffset, signalTone } from "@/lib/route-path"
 
 describe("pathOffset", () => {
   it("8 站一個來回，之後重複", () => {
@@ -24,5 +24,30 @@ describe("signalTone", () => {
     expect(signalTone("routine")).toBe("plain")
     expect(signalTone("ar")).toBe("alert")
     expect(signalTone("commitment")).toBe("alert")
+  })
+})
+
+describe("departureRow", () => {
+  const stops = [
+    { customer_id: "a", status: "done" as const },
+    { customer_id: "b", status: "next" as const },
+    { customer_id: "c", status: "todo" as const },
+  ]
+
+  it("沒在騎：留「出發」空間的是下一站", () => {
+    expect(departureRow(stops, null, false)).toBe("b")
+    expect(departureRow(stops, "a", false)).toBe("b")
+  })
+
+  it("騎的時候：照開始騎時那一列，點的就是下一站、回應已經把它標成到過也不搬", () => {
+    expect(departureRow(stops, "a", true)).toBe("a")
+  })
+
+  it("開始騎時沒有下一站（全部到過）：騎的時候哪一列都不留", () => {
+    expect(departureRow(stops, null, true)).toBeNull()
+  })
+
+  it("沒有下一站：哪一列都不留", () => {
+    expect(departureRow([{ customer_id: "a", status: "done" as const }], null, false)).toBeNull()
   })
 })
