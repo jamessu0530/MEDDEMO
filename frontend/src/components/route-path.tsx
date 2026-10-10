@@ -58,8 +58,8 @@ export function RoutePath({
   /** 辦公室所在的縣市：第一段的出發縣市 */
   startCity?: string | null
   onPickMode?: (from: string | null, to: string, mode: LegMode) => void
-  /** 點了一站（熊騎過去或已經停在那裡但還沒記到過）：首頁送 arrive */
-  onArrive?: (customerId: string) => void
+  /** 點了一站（熊騎過去或已經停在那裡但還沒記到過）：首頁送 arrive，回來時說有沒有記到 */
+  onArrive?: (customerId: string) => Promise<boolean> | void
   /** 送 arrive 失敗的站：小卡寫「沒連上，這一站還沒記到」 */
   unsaved?: ReadonlySet<string>
   /** 開始騎一段（點站、點座騎重播；不能動而直接停好也算）：送騎過的座騎 */
@@ -83,8 +83,10 @@ export function RoutePath({
   // 這次點過的站（照點的順序，含只送 arrive 沒騎的那一下）：有點過，後端回來的行程就不搬熊（lib/rides.ts followsServer）
   const [taps, setTaps] = useState<string[]>([])
   // 剛點的是最後一站還沒到過的：等後端記好（全部到過）、這一段也騎完，就收起小卡、把收工旗子捲到畫面中間，
-  // 評審才看得到熊熊滾在旗子旁跳。一打開就全部到過、或全部到過之後再點一站看小卡，都不收
-  const [finishing, setFinishing] = useState(false)
+  // 評審才看得到熊熊滾在旗子旁跳。一打開就全部到過、或全部到過之後再點一站看小卡，都不收。
+  // 記的是那一下的號碼：那一下沒記到就不等了，不然很久以後別的原因全部到過時小卡會突然收起來、畫面自己捲走
+  const [finishing, setFinishing] = useState<number | null>(null)
+  const tapSeq = useRef(0)
   const flagRef = useRef<HTMLSpanElement>(null)
   if (serverHere !== seenHere) {
     setSeenHere(serverHere)
@@ -165,8 +167,8 @@ export function RoutePath({
   }, [opened])
 
   const [flagCall, setFlagCall] = useState(0)
-  if (finishing && finished && !riding) {
-    setFinishing(false)
+  if (finishing !== null && finished && !riding) {
+    setFinishing(null)
     setOpened(null)
     setFlagCall((n) => n + 1)
   }
@@ -194,11 +196,18 @@ export function RoutePath({
       setRide({ leg: legBetween(stops, anchor, stop.customer_id, startCity), token: Date.now() })
       setRiding(true)
     }
-    setFinishing(finishesRoute(stops, stop.customer_id, taps))
+    const tap = ++tapSeq.current
+    const finishes = finishesRoute(stops, stop.customer_id, taps)
+    setFinishing(finishes ? tap : null)
     // 只送 arrive、沒騎的那一下（沒有辦公室起點時點第 1 站、上次沒記到再點一次）也記進 taps，連點下一站時熊才不會被拉回來
     setHere(stop.customer_id)
     setTaps((now) => [...now, stop.customer_id])
-    onArrive?.(stop.customer_id)
+    const sent = onArrive?.(stop.customer_id)
+    // 這一下沒記到（小卡寫「沒連上」、或路線剛被改過要重新讀）：不再等全部到過；之後又點了別站就是那一下的事了
+    if (finishes && sent)
+      void sent.then((ok) => {
+        if (!ok) setFinishing((now) => (now === tap ? null : now))
+      })
   }
 
   const bear = (offset: number) =>

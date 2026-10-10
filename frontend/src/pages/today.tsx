@@ -183,9 +183,9 @@ export function TodayPage() {
     void sendRides(ridesOf(leg)).then(() => setCollectedTick((n) => n + 1))
   }
 
-  // 點了一站：後端記成到過，回每站的進度與這次解鎖的獎牌。熊已經在騎了，不等它
-  async function arrive(customerId: string) {
-    if (!user) return
+  // 點了一站：後端記成到過，回每站的進度與這次解鎖的獎牌。熊已經在騎了，不等它。回有沒有記到（RoutePath 的收工要看）
+  async function arrive(customerId: string): Promise<boolean> {
+    if (!user) return false
     const seq = arrivals.next()
     try {
       const { progress, unlocked: fresh } = await arriveAt(customerId)
@@ -206,13 +206,15 @@ export function TodayPage() {
       }
       setUnsaved((now) => new Set([...now].filter((id) => id !== customerId)))
       if (fresh.length > 0) setUnlocked(fresh)
+      return true
     } catch (error) {
       // 這家剛被別人從路線拿掉（404）、行程剛被重置（409）：重新載入最新的
       if (error instanceof ApiError && (error.status === 404 || error.status === 409)) {
         reload()
-        return
+        return false
       }
       setUnsaved((now) => new Set([...now, customerId]))
+      return false
     }
   }
 
