@@ -60,6 +60,11 @@ export function sidebarItems(role: Role): SidebarGroups {
   return { main: role === "it" ? [ADMIN, ...MANAGER] : MANAGER, more: [CHANNELS] }
 }
 
+/** 側邊欄最上面的名字連到哪裡：跟首頁頁首的名字同一個地方。業務是個人頁，主管與 IT 沒有個人頁，是帳號設定 */
+export function profilePath(role: Role) {
+  return role === "sales" ? "/me" : "/settings"
+}
+
 function managerView(query: string) {
   const view = new URLSearchParams(query).get("view") ?? ""
   return MANAGER_VIEWS.includes(view) ? view : "routes"

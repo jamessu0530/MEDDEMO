@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import type { Role } from "@/lib/auth"
-import { isActiveItem, sidebarItems, type SidebarItem } from "@/lib/sidebar"
+import { isActiveItem, profilePath, sidebarItems, type SidebarItem } from "@/lib/sidebar"
 
 const labels = (role: Role) => {
   const { main, more } = sidebarItems(role)
@@ -66,5 +66,13 @@ describe("isActiveItem", () => {
     expect(isActiveItem(item("manager", "簽核"), "/manager", "?view=oa&item=4")).toBe(true)
     expect(isActiveItem(item("manager", "簽核"), "/manager", "?view=notices")).toBe(false)
     expect(isActiveItem(item("manager", "簽核"), "/oa/forms/4", "")).toBe(false)
+  })
+})
+
+describe("profilePath", () => {
+  it("業務的名字進個人頁，主管與 IT 進帳號設定", () => {
+    expect(profilePath("sales")).toBe("/me")
+    expect(profilePath("manager")).toBe("/settings")
+    expect(profilePath("it")).toBe("/settings")
   })
 })

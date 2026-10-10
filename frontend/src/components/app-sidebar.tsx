@@ -9,7 +9,7 @@ import { useChannelUnread } from "@/lib/channel-unread"
 import { usePendingOa, useUnseenNotices } from "@/lib/manager-counts"
 import { useUnseenReplies } from "@/lib/manager-replies"
 import { useUploadQueue } from "@/lib/offline-queue"
-import { SIDEBAR_ITEM, sidebarItems, type SidebarBadge } from "@/lib/sidebar"
+import { profilePath, SIDEBAR_ITEM, sidebarItems, type SidebarBadge } from "@/lib/sidebar"
 import { useSkin } from "@/lib/skin"
 import { cn } from "@/lib/utils"
 
@@ -47,8 +47,8 @@ function Sidebar({ user, counts }: { user: AuthUser; counts: Counts }) {
     <aside className="fixed inset-y-0 left-0 z-30 hidden w-56 flex-col gap-1 overflow-y-auto border-r bg-card px-3 pt-3 pb-4 lg:flex">
       <div className="mb-2 flex items-center gap-2 border-b px-1 pb-3">
         <MyStatusButton className="size-10" />
-        {/* 跟首頁頁首的名字連到同一個地方 */}
-        <Link to="/settings" className="flex min-h-11 min-w-0 flex-1 flex-col justify-center rounded-lg px-1 leading-tight hover:bg-muted">
+        {/* 跟首頁頁首的名字連到同一個地方：業務是個人頁，主管與 IT 是帳號設定 */}
+        <Link to={profilePath(user.role)} className="flex min-h-11 min-w-0 flex-1 flex-col justify-center rounded-lg px-1 leading-tight hover:bg-muted">
           <span className="truncate text-sm font-semibold">{user.name}</span>
           <span className="truncate text-xs text-muted-foreground">
             {user.region}

@@ -14,7 +14,7 @@ import { formatWan } from "@/lib/format"
 type LoadState = { status: "loading" } | { status: "error" } | { status: "ready"; me: Me }
 
 /**
- * 個人頁（docs/superpowers/specs/2026-10-09-tap-to-ride-and-personal-page-design.md〈個人頁〉）：從首頁左上角的名字進來。
+ * 個人頁（docs/superpowers/specs/2026-10-09-tap-to-ride-and-personal-page-design.md〈個人頁〉）：從首頁左上角的名字進來（電腦版是側邊欄最上面的名字）。
  * 三格事蹟數字、可以在牆上轉的獎牌、賣最多的藥局與每月業績。只有業務有；代理示範業務的帳號看示範業務的。
  */
 export function MePage() {
