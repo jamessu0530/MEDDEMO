@@ -121,8 +121,21 @@ class TodayItinerary(BaseModel):
     skipped_habits: list[SkippedHabit]
 
 
+class StopProgress(BaseModel):
+    customer_id: str
+    status: str
+    arrived_at: datetime | None
+
+
 class ArriveResult(BaseModel):
-    itinerary: TodayItinerary
+    """點站的回應只有進度：順序、時間、版本都沒變，前端把畫面上那份行程的狀態換掉就好，不再算一次車程。
+    站對不上（別的評審剛改過、IT 重置了）時前端自己重新讀一次。"""
+
+    itinerary_id: int
+    stops: list[StopProgress]
+    done: int
+    total: int
+    urgent: Urgent | None
     # 這次點了才解鎖的獎牌（通常是空的）：首頁跳一行「解鎖銀牌：跑過 3 家藥局」
     unlocked: list[MedalOut]
 
@@ -513,7 +526,7 @@ def set_leg(session: SessionDep, body: LegInput, user: CurrentUser):
 
 @router.post("/today/stops/{customer_id}/arrive", response_model=ArriveResult)
 def arrive(session: SessionDep, customer_id: str, user: CurrentUser):
-    """首頁點了一站：記成到過，回新的行程與這次解鎖的獎牌。不比版本，點了一定成功。"""
+    """首頁點了一站：記成到過，回每站的進度與這次解鎖的獎牌。不比版本，點了一定成功。"""
     try:
         itinerary, unlocked = service.arrive(session, _rep_id(user), customer_id)
     except service.VersionConflict:
@@ -522,9 +535,14 @@ def arrive(session: SessionDep, customer_id: str, user: CurrentUser):
         raise HTTPException(404, "這家不在今天的路線上") from None
     except LookupError:
         raise HTTPException(403, NO_ROUTE) from None
-    # 先提交、放掉列鎖再算畫面：算車程可能要等 Google
+    # 先提交、放掉列鎖再讀進度；進度不算車程，不會等 Google
     session.commit()
-    return ArriveResult(itinerary=_out(service.view(session, itinerary)), unlocked=[medal_out(m) for m in unlocked])
+    found = service.progress(session, itinerary)
+    return ArriveResult(
+        itinerary_id=found.itinerary_id, stops=[StopProgress(**dataclasses.asdict(s)) for s in found.stops],
+        done=found.done, total=found.total, urgent=Urgent(**found.urgent) if found.urgent else None,
+        unlocked=[medal_out(m) for m in unlocked],
+    )
 
 
 @router.post("/today/ask", response_model=ProposalOut)

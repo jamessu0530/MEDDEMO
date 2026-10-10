@@ -141,6 +141,24 @@ class ItineraryView:
 
 
 @dataclass
+class StopProgress:
+    customer_id: str
+    status: str  # done / next / todo，跟 StopView.status 同一套規則
+    arrived_at: dt.datetime | None
+
+
+@dataclass
+class Progress:
+    """點站之後首頁要的：每站跑完沒有、跑了幾站、需立即處理那張卡還在不在。不算時間與車程、不問 Google。"""
+
+    itinerary_id: int
+    stops: list[StopProgress]
+    done: int
+    total: int
+    urgent: dict | None
+
+
+@dataclass
 class Skipped:
     customer_id: str
     customer_name: str
@@ -291,6 +309,22 @@ def stop_order(session: Session, itinerary: Itinerary) -> list[tuple[Customer, b
     return [(c, True) for _, c in day.done] + [
         (o.customer, o.customer.id in day.arrivals) for o in _saved_open(session, day)
     ]
+
+
+def progress(session: Session, itinerary: Itinerary) -> Progress:
+    """點站的回應（docs/superpowers/specs/2026-10-09-tap-to-ride-and-personal-page-design.md〈API〉）：
+    站的順序與狀態跟 view() 一樣，但不算時間與車程。點站不動順序、時間與版本，畫面上原本那份行程照用，
+    只要換掉每站的狀態；正式環境每算一次車程都要問 Google（又照條款不能存），評審一直點就一直等。"""
+    day = _day(session, itinerary)
+    open_ = _saved_open(session, day)
+    stops = [StopProgress(c.id, "done", day.arrived_at(c.id)) for _, c in day.done] + [
+        StopProgress(o.customer.id, status, day.arrived_at(o.customer.id))
+        for o, status in zip(open_, _open_statuses(day, open_), strict=True)
+    ]
+    return Progress(
+        itinerary_id=itinerary.id, stops=stops, done=sum(1 for s in stops if s.status == "done"), total=len(stops),
+        urgent=_pending_urgent(day, open_),
+    )
 
 
 def path_modes(session: Session, itinerary: Itinerary) -> list[str]:
@@ -1075,14 +1109,12 @@ def _compose(
             travel_mode=modes[k], city=customer.city, arrived_at=day.arrived_at(customer.id),
         ))
     total_km = 0.0
-    # 到過的站標成跑完、留在原位；「下一站」是第一個既沒跑完也沒到過的
-    upcoming = next((n for n, o in enumerate(open_) if o.customer.id not in day.arrivals), None)
-    for n, (o, slot) in enumerate(zip(open_, planned.slots, strict=True)):
+    for n, (o, slot, status) in enumerate(zip(open_, planned.slots, _open_statuses(day, open_), strict=True)):
         km = matrix.km[n][n + 1]
         total_km += km
         stops.append(StopView(
             customer_id=o.customer.id, customer_name=o.customer.name, type=o.customer.type, grade=o.customer.grade,
-            planned_time=slot.arrive.strftime("%H:%M"), status="done" if o.customer.id in day.arrivals else "next" if n == upcoming else "todo",
+            planned_time=slot.arrive.strftime("%H:%M"), status=status,
             signal=o.signal, reason=o.reason, visit_id=None, source=o.source,
             duration_minutes=o.duration_minutes, late_minutes=slot.late_minutes,
             travel_minutes=slot.travel_minutes, travel_km=km,
@@ -1092,12 +1124,10 @@ def _compose(
             arrived_at=day.arrived_at(o.customer.id),
         ))
     open_ids = set(order)
-    # 到過的那家不再是需立即處理
-    pending_ids = open_ids - set(day.arrivals)
-    urgent = itinerary.urgent if itinerary.urgent and itinerary.urgent["customer_id"] in pending_ids else None
     return ItineraryView(
         id=itinerary.id, date=itinerary.date, rep=rep, version=itinerary.version,
-        done=len(day.done) + sum(1 for o in open_ if o.customer.id in day.arrivals), total=len(stops), urgent=urgent,
+        done=len(day.done) + sum(1 for o in open_ if o.customer.id in day.arrivals), total=len(stops),
+        urgent=_pending_urgent(day, open_),
         stops=stops, travel_minutes=planned.travel_minutes, travel_km=round(total_km, 1),
         finish_time=planned.slots[-1].leave.strftime("%H:%M") if planned.slots else None,
         estimated=matrix.estimated, travel_mode=rep.travel_mode,
@@ -1110,6 +1140,22 @@ def _compose(
             for h in day.habits if h.id in skipped
         ],
     )
+
+
+def _open_statuses(day: _Day, open_: list[_Open]) -> list[str]:
+    """還沒跑的站各是什麼狀態（view 與 progress 共用）：到過的站標成跑完、留在原位；
+    「下一站」是第一個既沒跑完也沒到過的。"""
+    upcoming = next((n for n, o in enumerate(open_) if o.customer.id not in day.arrivals), None)
+    return [
+        "done" if o.customer.id in day.arrivals else "next" if n == upcoming else "todo" for n, o in enumerate(open_)
+    ]
+
+
+def _pending_urgent(day: _Day, open_: list[_Open]) -> dict | None:
+    """需立即處理那張卡：那家還沒跑、也還沒到過才給（view 與 progress 共用）。"""
+    urgent = day.itinerary.urgent
+    pending_ids = {o.customer.id for o in open_} - set(day.arrivals)
+    return urgent if urgent and urgent["customer_id"] in pending_ids else None
 
 
 def _habit_ids(habits: list[RouteHabit], stop: _Open, rule_customers: dict[int, set[str]]) -> list[int]:

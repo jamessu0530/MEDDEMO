@@ -103,8 +103,14 @@ def test_arrive_through_the_api(client, auth):
     sent = client.post(f"/api/itinerary/today/stops/{first}/arrive", headers=auth())
     assert sent.status_code == 200, sent.text
     data = sent.json()
-    assert data["itinerary"]["stops"][0]["status"] == "done" and data["itinerary"]["stops"][0]["arrived_at"]
-    assert data["itinerary"]["version"] == route["version"]
+    # 點站只回進度，不回整份行程：順序、時間、版本都沒變，不必再問一次 Google
+    assert set(data) == {"itinerary_id", "stops", "done", "total", "urgent", "unlocked"}
+    assert data["itinerary_id"] == route["id"]
+    assert [s["customer_id"] for s in data["stops"]] == [s["customer_id"] for s in route["stops"]]
+    assert set(data["stops"][0]) == {"customer_id", "status", "arrived_at"}
+    assert data["stops"][0]["status"] == "done" and data["stops"][0]["arrived_at"]
+    assert [s["status"] for s in data["stops"]][:2] == ["done", "next"]
+    assert (data["done"], data["total"]) == (1, route["total"])
     assert [(m["kind"], m["tier"], m["unlocked_on"]) for m in data["unlocked"]] == [
         ("stores", 1, "2026-10-28"), ("cities", 1, "2026-10-28"),
     ]

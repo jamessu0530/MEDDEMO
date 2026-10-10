@@ -43,6 +43,7 @@ import { formatDate, formatDayLabel } from "@/lib/format"
 import { inOrder } from "@/lib/in-order"
 import { useUnseenReplies } from "@/lib/manager-replies"
 import { ridesOf, type Leg } from "@/lib/rides"
+import { applyProgress } from "@/lib/route-progress"
 import { TRAVEL_MODE_LABEL } from "@/lib/travel-mode"
 import { useIsDesktop } from "@/lib/use-media-query"
 import { cn } from "@/lib/utils"
@@ -85,6 +86,11 @@ export function TodayPage() {
   // 座騎圖鑑收集了幾台（路線最底下的入口）：拿不到就是 null，入口只寫名字
   const [collected, setCollected] = useState<{ ridden: number; total: number } | null>(null)
   const [collectedTick, setCollectedTick] = useState(0)
+  // 點站回來時要套到的那一份：arrive 是非同步的，閉包裡的 state 可能已經舊了
+  const latest = useRef(state)
+  useEffect(() => {
+    latest.current = state
+  }, [state])
 
   useEffect(() => {
     if (!userId) return
@@ -156,16 +162,24 @@ export function TodayPage() {
     void sendRides(ridesOf(leg)).then(() => setCollectedTick((n) => n + 1))
   }
 
-  // 點了一站：後端記成到過，回新的行程與這次解鎖的獎牌。熊已經在騎了，不等它
+  // 點了一站：後端記成到過，回每站的進度與這次解鎖的獎牌。熊已經在騎了，不等它
   async function arrive(customerId: string) {
     if (!user) return
     const seq = arrivals.next()
     try {
-      const { route: next, unlocked: fresh } = await arriveAt(customerId)
-      // 連點 A、B，A 的比較晚回來：A 的行程裡還沒有 B，套用的話 B 的打勾與進度會退回去，所以行程與快取只收較新的
+      const { progress, unlocked: fresh } = await arriveAt(customerId)
+      // 連點 A、B，A 的比較晚回來：A 的進度裡還沒有 B，套用的話 B 的打勾與進度會退回去，所以畫面與快取只收較新的
       if (arrivals.take(seq)) {
-        setState({ status: "ready", route: next, cached: false })
-        cacheRoute(user.id, next)
+        // 進度套到現在畫面上那一份（回來之前可能已經重新載入過）；站對不上（別的評審剛改過、IT 重置）就背景重新讀一次，
+        // 讀回來之前畫面照舊
+        const current = latest.current
+        const next = current.status === "ready" ? applyProgress(current.route, progress) : null
+        if (next && current.status === "ready") {
+          setState({ status: "ready", route: next, cached: current.cached })
+          cacheRoute(user.id, next)
+          // 畫面上是連不上時的舊行程：時間與車程也可能是舊的，背景再讀一次整份
+          if (current.cached) reload()
+        } else reload()
       }
       setUnsaved((now) => new Set([...now].filter((id) => id !== customerId)))
       if (fresh.length > 0) setUnlocked(fresh)

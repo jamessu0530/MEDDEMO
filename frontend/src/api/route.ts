@@ -368,18 +368,31 @@ export async function setLegMode(userId: string, version: number, from: string |
 }
 
 /**
- * 首頁點了一站：記成到過（不比版本，點了一定成功），回新的行程與這次解鎖的獎牌。
- * 不寫快取：連點兩站時回來的順序不一定，由呼叫端確定是最新的才 cacheRoute，舊的晚到不會蓋掉快取
+ * 點站之後的進度（後端 api/itinerary.py 的 ArriveResult）：每站跑完沒有、跑了幾站、需立即處理那張卡還在不在。
+ * 點站不動順序、時間與版本，後端就不再算一次車程（正式環境每算一次都要問 Google）；
+ * 首頁把手上那份行程的狀態換掉就好（lib/route-progress.ts），站對不上才重新讀一次
+ */
+export type RouteProgress = {
+  itinerary_id: number
+  stops: { customer_id: string; status: RouteStop["status"]; arrived_at: string | null }[]
+  done: number
+  total: number
+  urgent: RouteUrgent | null
+}
+
+/**
+ * 首頁點了一站：記成到過（不比版本，點了一定成功），回每站的進度與這次解鎖的獎牌。
+ * 不寫快取：連點兩站時回來的順序不一定，由呼叫端確定是最新的、套到行程上之後才 cacheRoute，舊的晚到不會蓋掉快取
  */
 export async function arriveAt(customerId: string) {
-  const result = await request<{ itinerary: TodayRoute; unlocked: Medal[] }>(
+  const { unlocked, ...progress } = await request<RouteProgress & { unlocked: Medal[] }>(
     `/api/itinerary/today/stops/${encodeURIComponent(customerId)}/arrive`,
     { method: "POST" }
   )
-  return { route: normalizeRoute(result.itinerary), unlocked: result.unlocked }
+  return { progress, unlocked }
 }
 
-/** 把拿到的行程記成這位業務今天的快取（arriveAt 回來、確定是最新的那一份時用） */
+/** 把拿到的行程記成這位業務今天的快取（arriveAt 的進度套好、確定是最新的那一份時用） */
 export function cacheRoute(userId: string, route: TodayRoute) {
   writeCache(routeKey(userId), route)
 }
