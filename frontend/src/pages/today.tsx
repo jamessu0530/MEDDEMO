@@ -33,6 +33,7 @@ import { useUnseenReplies } from "@/lib/manager-replies"
 import { markPlayed, playedScope, readPlayed } from "@/lib/ride-memory"
 import { legKey, legToPlay, ridesOf, type Leg } from "@/lib/rides"
 import { TRAVEL_MODE_LABEL } from "@/lib/travel-mode"
+import { useIsDesktop } from "@/lib/use-media-query"
 import { cn } from "@/lib/utils"
 import { FirstWeekEntry } from "@/pages/first-week"
 
@@ -55,6 +56,7 @@ export function TodayPage() {
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
   const user = useAuth()?.user
+  const desktop = useIsDesktop()
   const userId = user?.id ?? null
   const [state, setState] = useState<LoadState>({ status: "loading" })
   const [attempt, setAttempt] = useState(0)
@@ -104,7 +106,8 @@ export function TodayPage() {
 
   // 路線／地圖：沒有站、或用的是手機上的舊行程（連不上，地圖也載不到）就只有路線
   const mappable = state.status === "ready" && !state.cached && state.route.stops.length > 0
-  const onMap = mappable && params.get("view") === "map"
+  // 電腦版兩個並排，不用切換：路線一律在左欄，地圖另外畫在右欄
+  const onMap = !desktop && mappable && params.get("view") === "map"
   const headerRef = useRef<HTMLElement>(null)
   const switchRef = useRef<HTMLDivElement>(null)
   // 固定的頁首有多高（有沒有位置分享列、字放多大都不一樣）：地圖照它算高度（home-map-panel.tsx 的 --home-header）
@@ -223,7 +226,7 @@ export function TodayPage() {
       style={headerHeight ? ({ "--home-header": `${headerHeight}px` } as CSSProperties) : undefined}
     >
       <header ref={headerRef} className="sticky top-0 z-10 bg-background/95 px-4 pt-2 pb-3 backdrop-blur">
-        <div className="-mr-2 flex items-center justify-between gap-2">
+        <div className="-mr-2 flex items-center justify-between gap-2 lg:hidden">
           {/* 自己的頭像：點了換狀態（有空、忙碌、顯示為離線…）；點名字進帳號設定：改密碼、登出、使用說明 */}
           <div className="flex min-w-0 items-center gap-1.5">
             <MyStatusButton className="size-9" />
@@ -270,7 +273,7 @@ export function TodayPage() {
           </div>
         </div>
         {/* 像 Duolingo 的單元橫幅；右邊的「指南」換成方法卡：主管教的做法，出門前或進門前翻一下 */}
-        <div className="mt-1 flex items-stretch overflow-hidden rounded-2xl bg-primary text-primary-foreground shadow-lip-primary">
+        <div className="mt-1 flex items-stretch overflow-hidden rounded-2xl bg-primary text-primary-foreground lg:mt-0 shadow-lip-primary">
           <div className="min-w-0 flex-1 px-4 py-2.5">
             {route && (
               <p className="text-xs font-semibold opacity-85">
@@ -290,6 +293,14 @@ export function TodayPage() {
             )}
             <h1 className="text-lg leading-snug font-semibold">今日路線</h1>
           </div>
+          {/* 電腦版頁首第一列收起來了，今日進度放在橫幅右邊 */}
+          {route && route.total > 0 && (
+            <span className="hidden items-center gap-1 px-4 text-sm font-semibold tabular-nums lg:flex">
+              <Flag className="size-5 fill-current" />
+              <span className="sr-only">今日進度</span>
+              {route.done}/{route.total}
+            </span>
+          )}
           {state.status === "ready" && !state.cached && <EditRouteLink />}
           <Link
             to="/methods"
@@ -305,7 +316,8 @@ export function TodayPage() {
 
       {/* 底部分頁列約 64px，上面再疊一條跟熊熊滾說的輸入列，最後的終點要露出來 */}
       {/* overflow-x-clip：路線與地圖互相滑進來時，不要短暫多出左右捲軸 */}
-      <main className="flex-1 overflow-x-clip px-4 pt-3 pb-48">
+      <main className="flex-1 overflow-x-clip px-4 pt-3 pb-48 lg:flex lg:items-start lg:gap-6 lg:px-6 lg:pb-24">
+        <div className="lg:w-[27.5rem] lg:shrink-0">
         {/* 新人才有的入口卡；自己問自己的資料，載不到就不顯示，跟下面的路線互不影響 */}
         <FirstWeekEntry userId={user.id} />
         {state.status === "ready" && state.cached && (
@@ -375,7 +387,7 @@ export function TodayPage() {
           </article>
         )}
 
-        {mappable && <ViewSwitch ref={switchRef} onMap={onMap} onChange={showView} />}
+        {mappable && !desktop && <ViewSwitch ref={switchRef} onMap={onMap} onChange={showView} />}
         {route &&
           (route.stops.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-8 text-center">
@@ -414,6 +426,17 @@ export function TodayPage() {
               )}
             </div>
           ))}
+        </div>
+        {/* 電腦版：地圖在右欄，固定在頁首下面；沒有站或用的是舊行程就不畫 */}
+        {desktop && mappable && route && (
+          <div className="sticky top-[calc(var(--home-header,8rem)+0.75rem)] min-w-0 flex-1">
+            <HomeMapPanel
+              route={route}
+              userId={user.id}
+              onRoute={(next) => setState({ status: "ready", route: next, cached: false })}
+            />
+          </div>
+        )}
       </main>
       {/* 跟熊熊滾說要怎麼排：連不上、用的是手機上的舊行程時不給問 */}
       {state.status === "ready" && !state.cached && (

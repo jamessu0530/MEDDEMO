@@ -21,7 +21,7 @@ export function HabitPrompt({ text, weekday, onDone }: { text: string; weekday: 
     <div
       role="dialog"
       aria-label="以後也這樣排嗎？"
-      className="fixed inset-x-0 bottom-0 z-30 mx-auto max-w-md animate-in px-2.5 pb-[calc(0.5rem+env(safe-area-inset-bottom))] duration-200 slide-in-from-bottom-4 motion-reduce:animate-none"
+      className="fixed inset-x-0 bottom-0 z-30 mx-auto max-w-md animate-in px-2.5 pb-[calc(0.5rem+env(safe-area-inset-bottom))] duration-200 slide-in-from-bottom-4 motion-reduce:animate-none lg:left-56 lg:max-w-2xl"
     >
       <div className="rounded-2xl border-2 bg-card p-4 shadow-lip">
         <p className="text-xs font-semibold text-muted-foreground">以後也這樣排嗎？</p>

@@ -23,7 +23,7 @@ function proposal(extra: Partial<RouteProposal> = {}): RouteProposal {
 }
 
 const noop = () => {}
-const render = (p: RouteProposal, extra: { applying?: boolean; stale?: boolean; error?: string | null } = {}) =>
+const render = (p: RouteProposal, extra: { applying?: boolean; stale?: boolean; error?: string | null; placement?: "column" | "home" } = {}) =>
   renderToStaticMarkup(
     createElement(ProposalSheet, {
       proposal: p, applying: false, stale: false, error: null, onApply: noop, onClose: noop, onPick: noop,
@@ -97,5 +97,12 @@ describe("ProposalSheet", () => {
 
   it("Google 算的車程標 Google Maps", () => {
     expect(render(proposal({ estimated: false }))).toContain("Google Maps")
+  })
+
+  it("電腦版位置：首頁貼著左欄，沒給就對齊中間一欄", () => {
+    expect(render(proposal(), { placement: "home" })).toContain("lg:left-[15.5rem]")
+    const column = render(proposal())
+    expect(column).toContain("lg:left-56")
+    expect(column).not.toContain("lg:left-[15.5rem]")
   })
 })

@@ -5,6 +5,7 @@ import { DriveSource } from "@/components/route/drive-source"
 import { Mascot } from "@/components/mascot"
 import { Button } from "@/components/ui/button"
 import { formatMinutes, proposalMarks, whichQuestion } from "@/lib/itinerary"
+import { HOME_LEFT_FIXED } from "@/lib/desktop-layout"
 import { cn } from "@/lib/utils"
 
 type ProposalSheetProps = {
@@ -19,6 +20,8 @@ type ProposalSheetProps = {
   onPick: (customerId: string) => void
   // 「用現在的行程重算」
   onRetry: () => void
+  // 電腦版放哪裡：首頁貼著左欄底部（home），調整行程頁對齊中間一欄（column，預設）
+  placement?: "column" | "home"
 }
 
 /**
@@ -26,7 +29,7 @@ type ProposalSheetProps = {
  * 提案（「現在 → 改成」對照、規則的代價、會晚到、新增或停用的習慣、做不到的部分，按「套用」才寫進行程）、
  * 排不出來（擋住的規則，沒有套用）、要選一個（每家一顆鈕）、只回答（一段話）。
  */
-export function ProposalSheet({ proposal, applying, stale, error, onApply, onClose, onPick, onRetry }: ProposalSheetProps) {
+export function ProposalSheet({ proposal, applying, stale, error, onApply, onClose, onPick, onRetry, placement = "column" }: ProposalSheetProps) {
   const canApply = proposal.kind === "proposal" && proposal.changed && !stale
   return (
     <>
@@ -40,7 +43,10 @@ export function ProposalSheet({ proposal, applying, stale, error, onApply, onClo
       <div
         role="dialog"
         aria-label="熊熊滾的提案"
-        className="fixed inset-x-0 bottom-0 z-30 mx-auto max-w-md animate-in px-2.5 pb-[calc(0.5rem+env(safe-area-inset-bottom))] duration-200 slide-in-from-bottom-4 motion-reduce:animate-none"
+        className={cn(
+          "fixed inset-x-0 bottom-0 z-30 mx-auto max-w-md animate-in px-2.5 pb-[calc(0.5rem+env(safe-area-inset-bottom))] duration-200 slide-in-from-bottom-4 motion-reduce:animate-none",
+          placement === "home" ? cn(HOME_LEFT_FIXED, "lg:bottom-4 lg:pb-0") : "lg:left-56 lg:max-w-2xl"
+        )}
       >
         <div className="max-h-[80svh] overflow-y-auto rounded-2xl border-2 bg-card p-4 shadow-lip">
           {stale ? (
