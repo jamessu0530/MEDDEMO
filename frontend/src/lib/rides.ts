@@ -53,6 +53,16 @@ export function followsServer(serverHere: string | null, here: string | null, ta
   return false
 }
 
+/**
+ * 點了這一站就全部到過了：它還沒到過、其他站都到過（或這次剛點、arrive 還沒回來的 taps）。
+ * 最後一段騎完時收起小卡、把收工旗子捲到畫面中間
+ */
+export function finishesRoute(stops: RouteStop[], customerId: string, taps: readonly string[] = []): boolean {
+  return stops.every((stop) =>
+    stop.customer_id === customerId ? stop.status !== "done" : stop.status === "done" || taps.includes(stop.customer_id)
+  )
+}
+
 /** 從 from（null 是辦公室）騎到 to 那一站：往回、跳站都可以。交通方式照原本排好到那一站的 */
 export function legBetween(stops: RouteStop[], from: string | null, to: string, startCity: string | null): Leg {
   const target = stops.find((stop) => stop.customer_id === to)

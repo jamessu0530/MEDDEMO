@@ -11,7 +11,7 @@ import { LegChip, LegMenu } from "@/components/route/leg-chip"
 import { buttonVariants } from "@/components/ui/button"
 import { formatTaipeiTime } from "@/lib/format"
 import { ROUTE_WIDTH } from "@/lib/ride-on-route"
-import { followsServer, hereOf, lastLeg, legBetween, officeLeg, type Leg } from "@/lib/rides"
+import { finishesRoute, followsServer, hereOf, lastLeg, legBetween, officeLeg, type Leg } from "@/lib/rides"
 import { HALF_NODE, labelSide, pathOffset, signalTone, TONE_CLASS } from "@/lib/route-path"
 import { legFrom } from "@/lib/travel-mode"
 import { cn } from "@/lib/utils"
@@ -79,6 +79,10 @@ export function RoutePath({
   const [riding, setRiding] = useState(false)
   // 這次點過的站（照點的順序，含只送 arrive 沒騎的那一下）：有點過，後端回來的行程就不搬熊（lib/rides.ts followsServer）
   const [taps, setTaps] = useState<string[]>([])
+  // 剛點的是最後一站還沒到過的：等後端記好（全部到過）、這一段也騎完，就收起小卡、把收工旗子捲到畫面中間，
+  // 評審才看得到熊熊滾在旗子旁跳。一打開就全部到過、或全部到過之後再點一站看小卡，都不收
+  const [finishing, setFinishing] = useState(false)
+  const flagRef = useRef<HTMLSpanElement>(null)
   if (serverHere !== seenHere) {
     setSeenHere(serverHere)
     if (followsServer(serverHere, here, taps)) {
@@ -149,6 +153,18 @@ export function RoutePath({
     }
   }, [opened])
 
+  const [flagCall, setFlagCall] = useState(0)
+  if (finishing && finished && !riding) {
+    setFinishing(false)
+    setOpened(null)
+    setFlagCall((n) => n + 1)
+  }
+  useEffect(() => {
+    if (!flagCall) return
+    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    flagRef.current?.scrollIntoView({ block: "center", behavior: still ? "auto" : "smooth" })
+  }, [flagCall])
+
   // 選單開著時 onPickMode 不見了（忙著處理急件鈕、或重新載入退回快取的路線）：選了也沒人接，乾脆收起來
   if (!onPickMode && opened?.kind === "leg") setOpened(null)
 
@@ -167,6 +183,7 @@ export function RoutePath({
       setRide({ leg: legBetween(stops, anchor, stop.customer_id, startCity), token: Date.now() })
       setRiding(true)
     }
+    setFinishing(finishesRoute(stops, stop.customer_id, taps))
     // 只送 arrive、沒騎的那一下（沒有辦公室起點時點第 1 站、上次沒記到再點一次）也記進 taps，連點下一站時熊才不會被拉回來
     setHere(stop.customer_id)
     setTaps((now) => [...now, stop.customer_id])
@@ -249,6 +266,7 @@ export function RoutePath({
       })}
       <li className="relative flex flex-col items-center gap-2 pt-1 pb-2">
         <span
+          ref={flagRef}
           aria-hidden
           className={cn(
             "flex h-[54px] w-[58px] items-center justify-center rounded-[50%]",

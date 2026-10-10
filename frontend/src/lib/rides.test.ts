@@ -4,6 +4,7 @@ import type { RouteStop } from "@/api/route"
 import {
   anchorId,
   crossesCity,
+  finishesRoute,
   followsServer,
   hereOf,
   lastLeg,
@@ -167,5 +168,20 @@ describe("followsServer", () => {
   it("跟本地一樣就不用換", () => {
     expect(followsServer("B", "B", ["A", "B"])).toBe(false)
     expect(followsServer(null, null, [])).toBe(false)
+  })
+})
+
+describe("finishesRoute", () => {
+  it("點的是最後一站還沒到過的：點了就全部到過", () => {
+    expect(finishesRoute([stop("A", "done"), stop("B", "next")], "B")).toBe(true)
+    expect(finishesRoute([stop("A", "next")], "A")).toBe(true)
+    // 連點：A 剛點、arrive 還沒回來（還不是 done），接著點 B
+    expect(finishesRoute([stop("A", "next"), stop("B", "todo")], "B", ["A"])).toBe(true)
+  })
+
+  it("還有別站沒到過、或點的是到過的站：不算", () => {
+    expect(finishesRoute([stop("A", "next"), stop("B", "todo")], "B")).toBe(false)
+    // 全部到過之後再點一站看小卡：不收小卡
+    expect(finishesRoute([stop("A", "done"), stop("B", "done")], "B")).toBe(false)
   })
 })
