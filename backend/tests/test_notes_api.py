@@ -50,6 +50,20 @@ def test_bad_notes_are_rejected(tx, api, auth):
     assert api.patch(f"/api/notes/{told['id']}", json={"text": " "}, headers=auth("U01")).status_code == 422
 
 
+def test_competitor_notes_cannot_be_changed_or_deleted(tx, api, auth):
+    # 競品備忘是確認拜訪時記的（示範資料：忠孝店一則），不能從這裡改成要帶的或刪掉
+    before = api.get("/api/customers/C001/notes", headers=auth("U01")).json()["next"]
+    note = next(n for n in before if n["kind"] == "competitor")
+    for sent in (
+        api.patch(f"/api/notes/{note['id']}", json={"kind": "bring"}, headers=auth("U01")),
+        api.patch(f"/api/notes/{note['id']}", json={"text": "改掉"}, headers=auth("U01")),
+        api.delete(f"/api/notes/{note['id']}", headers=auth("U01")),
+    ):
+        assert sent.status_code == 422 and sent.json()["detail"] == "競品備忘是確認拜訪時記的，不能在這裡改"
+    after = api.get("/api/customers/C001/notes", headers=auth("U01")).json()["next"]
+    assert next(n for n in after if n["id"] == note["id"]) == note
+
+
 def test_who_can_see_the_notes(tx, api, auth):
     note = api.post("/api/customers/C001/notes", json={"kind": "bring", "text": "DM"}, headers=auth("U01")).json()
     assert api.get("/api/customers/C001/notes", headers=auth("M01")).status_code == 200  # 主管

@@ -26,6 +26,7 @@ SessionDep = Annotated[Session, Depends(get_session)]
 Kind = Literal["bring", "told"]
 # 讀出來的多一種：確認拜訪時寫的競品（手寫只能寫要帶的、講過的）
 NoteKind = Literal["bring", "told", "competitor"]
+COMPETITOR_FIXED = "競品備忘是確認拜訪時記的，不能在這裡改"
 # 一句話：要帶什麼、講了什麼條件。資料表也擋在 200 字
 TEXT_MAX = 200
 MONTH = re.compile(r"\d{4}-\d{2}")
@@ -114,6 +115,14 @@ def _load_note(session: Session, note_id: int, user: AppUser) -> tuple[CustomerN
     return note, customer
 
 
+def _editable_note(session: Session, note_id: int, user: AppUser) -> tuple[CustomerNote, Customer]:
+    """手寫的才能改、刪。競品備忘是確認拜訪時從那次拜訪記下的，畫面上也不能點來改；不擋的話 PATCH 還能把它改成要帶的。"""
+    note, customer = _load_note(session, note_id, user)
+    if note.kind == "competitor":
+        raise HTTPException(422, COMPETITOR_FIXED)
+    return note, customer
+
+
 @router.get("/api/customers/{customer_id}/notes", response_model=NextNotes)
 def next_notes(session: SessionDep, customer_id: str, user: CurrentUser):
     """下次去這家要記得的：最近一次有備忘的拜訪記下的，加上那之後手寫的。"""
@@ -144,7 +153,7 @@ def create_note(session: SessionDep, customer_id: str, body: NoteInput, user: Cu
 
 @router.patch("/api/notes/{note_id}", response_model=NoteOut)
 def update_note(session: SessionDep, note_id: int, body: NotePatch, user: CurrentUser):
-    note, customer = _load_note(session, note_id, user)
+    note, customer = _editable_note(session, note_id, user)
     changes = body.model_dump(exclude_unset=True)
     kind = changes.get("kind") or note.kind
     on_date = changes["on_date"] if "on_date" in changes else note.on_date
@@ -159,7 +168,7 @@ def update_note(session: SessionDep, note_id: int, body: NotePatch, user: Curren
 
 @router.delete("/api/notes/{note_id}", status_code=204)
 def delete_note(session: SessionDep, note_id: int, user: CurrentUser):
-    note, _ = _load_note(session, note_id, user)
+    note, _ = _editable_note(session, note_id, user)
     session.delete(note)
     session.commit()
     return Response(status_code=204)
