@@ -416,7 +416,8 @@ export function TodayPage() {
         )}
 
         {card && (
-          // 收起來：高度與透明度一起收（grid 的 1fr → 0fr），底下的路線跟著平順往上；外距放在裡面才收得掉
+          // 收起來：高度與透明度一起收（grid 的 1fr → 0fr），底下的路線跟著平順往上。
+          // 外距放在卡片上、不放在外層的 padding：padding 收不掉，最後會再跳 8px
           <div
             data-urgent-card={card.closing ? "closing" : card.stale ? "stale" : "live"}
             aria-hidden={card.closing || undefined}
@@ -425,8 +426,8 @@ export function TodayPage() {
               card.closing ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr]"
             )}
           >
-            <div className="min-h-0 overflow-hidden pb-2">
-              <article className="flex flex-col gap-2 rounded-2xl border-2 border-destructive/30 bg-destructive/10 p-4 shadow-lip-destructive-soft">
+            <div className="min-h-0 overflow-hidden">
+              <article className="mb-2 flex flex-col gap-2 rounded-2xl border-2 border-destructive/30 bg-destructive/10 p-4 shadow-lip-destructive-soft">
                 <span className="flex items-center gap-1 self-start rounded-md bg-destructive px-2 py-1 text-[0.6875rem] font-semibold text-white">
                   <TriangleAlert className="size-3" />
                   需立即處理 · {card.urgent.headline}
