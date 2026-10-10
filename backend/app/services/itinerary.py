@@ -27,7 +27,7 @@ from app.models import (
     LEG_MODES, TRAVEL_MODES, AppUser, Customer, Itinerary, ItineraryLeg, ItineraryPrecedence, ItineraryStop, OrgUnit,
     RouteHabit, RouteSignalWeight, RouteSnooze, StopArrival, VehicleRide, Visit,
 )
-from app.services import customer_profile, route_habits, route_planner, today_route, travel
+from app.services import achievements, customer_profile, route_habits, route_planner, today_route, travel
 from app.services.google_routes import TravelMode
 from app.timeutil import TAIPEI
 
@@ -584,15 +584,17 @@ def broken_rules(session: Session, itinerary: Itinerary, draft: Draft) -> list[s
     return [rule.id for rule in route_planner.violations([o.customer.id for o in open_], rules)]
 
 
-def arrive(session: Session, user_id: str, customer_id: str) -> Itinerary:
+def arrive(session: Session, user_id: str, customer_id: str) -> tuple[Itinerary, list[achievements.Medal]]:
     """首頁點了路線上的一站：記成到過（docs/superpowers/specs/2026-10-09-tap-to-ride-and-personal-page-design.md）。
 
     第一次點建一列，再點只改最後一次的時間。不比版本、不管順序，點了一定成功；不在今天的行程上丟 NotOnItinerary。
     版本不加：示範業務的行程是評審共用的，點站加版本的話，別的評審手上的三顆按鈕、換交通方式、套用提案、
     調整清單的「完成」全部會 409。只改 updated_at：Itinerary 還是算改過，主管頁照樣收到 itinerary 事件（app/realtime.py）。
+    一起回這一下解鎖的獎牌：前後兩次都在列鎖裡算，同時點的兩下排隊，不會兩支手機都跳「解鎖了」同一面。
     """
     itinerary = get_or_create(session, user_id)
     _lock(session, itinerary)
+    before = achievements.medals(session, user_id)
     on_route = session.scalar(
         select(ItineraryStop.id).where(ItineraryStop.itinerary_id == itinerary.id, ItineraryStop.customer_id == customer_id)
     )
@@ -606,7 +608,7 @@ def arrive(session: Session, user_id: str, customer_id: str) -> Itinerary:
     # 用 Python 的時間、不用 func.now()：SQL 運算式在 flush 時就被清掉，after_flush 的 is_modified 看不到改過，主管頁就收不到事件
     itinerary.updated_at = dt.datetime.now(dt.UTC)
     session.flush()
-    return itinerary
+    return itinerary, achievements.newly_unlocked(before, achievements.medals(session, user_id))
 
 
 def set_leg_mode(session: Session, user_id: str, from_id: str | None, to_id: str, mode: str, version: int) -> Itinerary:

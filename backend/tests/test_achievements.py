@@ -74,6 +74,16 @@ def test_newly_unlocked_lists_only_what_this_tap_unlocked(tx):
     assert achievements.newly_unlocked(after, after) == []
 
 
+def test_arrive_returns_what_this_tap_unlocked(tx):
+    # 前後兩次算獎牌都在行程的列鎖裡（service.arrive）：同時點的兩下排隊，不會兩邊都說解鎖了同一面
+    itinerary = service.get_or_create(tx, "U01")
+    first = service.view(tx, itinerary).stops[0].customer_id
+    found, unlocked = service.arrive(tx, "U01", first)
+    assert found.id == itinerary.id
+    assert [(m.kind, m.tier) for m in unlocked] == [("stores", 1), ("cities", 1)]
+    assert service.arrive(tx, "U01", first)[1] == []
+
+
 def test_arrive_through_the_api(client, auth):
     route = client.get("/api/itinerary/today", headers=auth()).json()
     first = route["stops"][0]["customer_id"]
