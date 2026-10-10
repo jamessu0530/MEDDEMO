@@ -15,7 +15,16 @@ import { Link, useNavigate, useSearchParams } from "react-router"
 
 import { ApiError } from "@/api/client"
 import type { Medal } from "@/api/me"
-import { arriveAt, getTodayRoute, sendRouteFeedback, setLegMode, type LegMode, type RouteAction, type TodayRoute } from "@/api/route"
+import {
+  arriveAt,
+  cacheRoute,
+  getTodayRoute,
+  sendRouteFeedback,
+  setLegMode,
+  type LegMode,
+  type RouteAction,
+  type TodayRoute,
+} from "@/api/route"
 import { getVehicles, sendRides } from "@/api/vehicles"
 import { BottomNav } from "@/components/bottom-nav"
 import { Mascot } from "@/components/mascot"
@@ -31,6 +40,7 @@ import { SkinToggle } from "@/components/skin-toggle"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { useAuth } from "@/lib/auth"
 import { formatDate, formatDayLabel } from "@/lib/format"
+import { inOrder } from "@/lib/in-order"
 import { useUnseenReplies } from "@/lib/manager-replies"
 import { ridesOf, type Leg } from "@/lib/rides"
 import { TRAVEL_MODE_LABEL } from "@/lib/travel-mode"
@@ -69,6 +79,8 @@ export function TodayPage() {
   const [unlocked, setUnlocked] = useState<Medal[]>([])
   // 打開首頁補送上次送不出去的騎乘記錄：每次開頁面只送一次（StrictMode 重跑、輪詢重載都不再送）
   const flushedRides = useRef(false)
+  // 點站的 arrive 回來的順序不一定：只套用比上次套用過的還新的（lib/in-order.ts）
+  const [arrivals] = useState(inOrder)
   const unseen = useUnseenReplies()
   // 座騎圖鑑收集了幾台（路線最底下的入口）：拿不到就是 null，入口只寫名字
   const [collected, setCollected] = useState<{ ridden: number; total: number } | null>(null)
@@ -147,9 +159,14 @@ export function TodayPage() {
   // 點了一站：後端記成到過，回新的行程與這次解鎖的獎牌。熊已經在騎了，不等它
   async function arrive(customerId: string) {
     if (!user) return
+    const seq = arrivals.next()
     try {
-      const { route: next, unlocked: fresh } = await arriveAt(user.id, customerId)
-      setState({ status: "ready", route: next, cached: false })
+      const { route: next, unlocked: fresh } = await arriveAt(customerId)
+      // 連點 A、B，A 的比較晚回來：A 的行程裡還沒有 B，套用的話 B 的打勾與進度會退回去，所以行程與快取只收較新的
+      if (arrivals.take(seq)) {
+        setState({ status: "ready", route: next, cached: false })
+        cacheRoute(user.id, next)
+      }
       setUnsaved((now) => new Set([...now].filter((id) => id !== customerId)))
       if (fresh.length > 0) setUnlocked(fresh)
     } catch (error) {

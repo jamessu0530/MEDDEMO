@@ -367,15 +367,21 @@ export async function setLegMode(userId: string, version: number, from: string |
   return route
 }
 
-/** 首頁點了一站：記成到過（不比版本，點了一定成功），回新的行程與這次解鎖的獎牌 */
-export async function arriveAt(userId: string, customerId: string) {
+/**
+ * 首頁點了一站：記成到過（不比版本，點了一定成功），回新的行程與這次解鎖的獎牌。
+ * 不寫快取：連點兩站時回來的順序不一定，由呼叫端確定是最新的才 cacheRoute，舊的晚到不會蓋掉快取
+ */
+export async function arriveAt(customerId: string) {
   const result = await request<{ itinerary: TodayRoute; unlocked: Medal[] }>(
     `/api/itinerary/today/stops/${encodeURIComponent(customerId)}/arrive`,
     { method: "POST" }
   )
-  const route = normalizeRoute(result.itinerary)
+  return { route: normalizeRoute(result.itinerary), unlocked: result.unlocked }
+}
+
+/** 把拿到的行程記成這位業務今天的快取（arriveAt 回來、確定是最新的那一份時用） */
+export function cacheRoute(userId: string, route: TodayRoute) {
   writeCache(routeKey(userId), route)
-  return { route, unlocked: result.unlocked }
 }
 
 /** 套用提案：後端照存下來的操作在最新的行程上再做一次；行程在問完之後改過了回 409 */
