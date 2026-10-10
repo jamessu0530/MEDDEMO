@@ -30,6 +30,9 @@ class Medal:
     need: int
     have: int
     unlocked_on: dt.date | None
+    # 解鎖的那一刻（第 N 家第一次點到的真實時間）：系統日固定，IT 重置前後 unlocked_on 一樣，
+    # 前端靠這個判斷「這面看過了沒」，重置之後再解鎖會再演一次
+    unlocked_at: dt.datetime | None
 
 
 @dataclass
@@ -72,20 +75,21 @@ def medals(session: Session, rep_id: str) -> list[Medal]:
         .where(Itinerary.user_id == rep_id)
         .order_by(StopArrival.first_at, StopArrival.customer_id)
     ).all()
-    store_days: list[dt.date] = []
-    city_days: list[dt.date] = []
+    # 每多一家（一個縣市）記一筆：（那份行程的日期，第一次點到的時間）
+    store_firsts: list[tuple[dt.date, dt.datetime]] = []
+    city_firsts: list[tuple[dt.date, dt.datetime]] = []
     stores: set[str] = set()
     cities: set[str] = set()
-    for customer_id, city, _, day in rows:
+    for customer_id, city, first_at, day in rows:
         if customer_id not in stores:
             stores.add(customer_id)
-            store_days.append(day)
+            store_firsts.append((day, first_at))
         if city and city not in cities:
             cities.add(city)
-            city_days.append(day)
+            city_firsts.append((day, first_at))
     return [
-        Medal(kind, tier, need, len(days), days[need - 1] if len(days) >= need else None)
-        for kind, days in (("stores", store_days), ("cities", city_days))
+        Medal(kind, tier, need, len(firsts), *(firsts[need - 1] if len(firsts) >= need else (None, None)))
+        for kind, firsts in (("stores", store_firsts), ("cities", city_firsts))
         for tier, need in enumerate(MEDAL_TIERS[kind], start=1)
     ]
 

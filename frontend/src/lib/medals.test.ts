@@ -4,7 +4,7 @@ import type { Medal } from "@/api/me"
 import { freshIds, lockedHint, markSeen, medalBack, medalId, medalStatus, niceTicks, readSeen, unlockedText } from "@/lib/medals"
 
 const medal = (kind: Medal["kind"], tier: Medal["tier"], need: number, have: number, unlocked_on: string | null = null): Medal => ({
-  kind, tier, need, have, unlocked_on,
+  kind, tier, need, have, unlocked_on, unlocked_at: unlocked_on && `${unlocked_on}T09:18:04.123456+08:00`,
 })
 
 describe("獎牌的字", () => {
@@ -52,14 +52,14 @@ describe("新解鎖、這支手機還沒看過的", () => {
     return data
   }
 
-  it("看過的記在 localStorage，鍵含解鎖日期", () => {
+  it("看過的記在 localStorage，鍵含解鎖的那一刻", () => {
     fakeStorage()
     const open = medal("stores", 1, 1, 1, "2026-10-28")
     expect(freshIds([open, medal("stores", 2, 3, 1)], readSeen("U01"))).toEqual([medalId(open)])
     markSeen("U01", [open])
     expect(freshIds([open], readSeen("U01"))).toEqual([])
-    // IT 重置後再解鎖（日期一樣也會換一次記錄：鍵含日期，這裡模擬不同日期）
-    expect(freshIds([{ ...open, unlocked_on: "2026-10-29" }], readSeen("U01"))).toHaveLength(1)
+    // IT 重置後再解鎖：系統日固定，解鎖日一樣是 10/28，但解鎖的時間換了，要再演一次
+    expect(freshIds([{ ...open, unlocked_at: "2026-10-28T11:02:40.5+08:00" }], readSeen("U01"))).toHaveLength(1)
   })
 
   it("壞掉的 JSON 或 localStorage 丟例外都當成沒看過，不會壞", () => {

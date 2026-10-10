@@ -5,7 +5,15 @@ import { request } from "@/api/client"
 // stores：跑過的藥局；cities：跑過的縣市。各三級：1 銅、2 銀、3 金
 export type MedalKind = "stores" | "cities"
 
-export type Medal = { kind: MedalKind; tier: 1 | 2 | 3; need: number; have: number; unlocked_on: string | null }
+// unlocked_on 是那份行程的日期（系統日）；unlocked_at 是第 N 家第一次點到的真實時間，判斷「看過了沒」用
+export type Medal = {
+  kind: MedalKind
+  tier: 1 | 2 | 3
+  need: number
+  have: number
+  unlocked_on: string | null
+  unlocked_at: string | null
+}
 
 export type Me = {
   name: string

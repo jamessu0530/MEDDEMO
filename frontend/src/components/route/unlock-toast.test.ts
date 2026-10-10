@@ -12,7 +12,9 @@ describe("UnlockToast", () => {
         MemoryRouter,
         null,
         createElement(UnlockToast, {
-          medals: [{ kind: "stores", tier: 2, need: 3, have: 3, unlocked_on: "2026-10-28" }],
+          medals: [
+            { kind: "stores", tier: 2, need: 3, have: 3, unlocked_on: "2026-10-28", unlocked_at: "2026-10-28T09:18:00+08:00" },
+          ],
           onDone: () => {},
         })
       )

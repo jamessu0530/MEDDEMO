@@ -5,10 +5,10 @@ import datetime as dt
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import delete, text
+from sqlalchemy import delete, select, text
 
 from app.main import app
-from app.models import AppUser, ItineraryStop
+from app.models import AppUser, ItineraryStop, StopArrival
 from app.services import achievements
 from app.services import itinerary as service
 
@@ -38,7 +38,7 @@ def test_six_medals_and_nothing_unlocked_before_any_tap(tx):
     assert [(m.kind, m.tier, m.need) for m in found] == [
         ("stores", 1, 1), ("stores", 2, 3), ("stores", 3, 5), ("cities", 1, 1), ("cities", 2, 2), ("cities", 3, 3),
     ]
-    assert all(m.have == 0 and m.unlocked_on is None for m in found)
+    assert all(m.have == 0 and m.unlocked_on is None and m.unlocked_at is None for m in found)
 
 
 def test_three_stores_unlock_silver_on_the_route_day(tx):
@@ -51,6 +51,19 @@ def test_three_stores_unlock_silver_on_the_route_day(tx):
         medal = found[("cities", tier)]
         assert medal.have == len(cities)
         assert medal.unlocked_on == (DAY if need <= len(cities) else None)
+
+
+def test_unlocked_at_is_when_the_nth_store_was_first_tapped(tx):
+    # 系統日固定在決賽日，IT 重置前後解鎖日一樣；解鎖的那一刻（真實時間）不一樣，首頁與個人頁用它判斷「這面看過了沒」
+    itinerary, stops = tap(tx, 0, 1, 0, 2)
+    first = {
+        r.customer_id: r.first_at
+        for r in tx.scalars(select(StopArrival).where(StopArrival.itinerary_id == itinerary.id))
+    }
+    found = by_key(achievements.medals(tx, "U01"))
+    assert found[("stores", 1)].unlocked_at == first[stops[0].customer_id]
+    assert found[("stores", 2)].unlocked_at == first[stops[2].customer_id]
+    assert found[("stores", 3)].unlocked_at is None
 
 
 def test_tapping_the_same_stop_twice_counts_once(tx):
@@ -95,6 +108,7 @@ def test_arrive_through_the_api(client, auth):
     assert [(m["kind"], m["tier"], m["unlocked_on"]) for m in data["unlocked"]] == [
         ("stores", 1, "2026-10-28"), ("cities", 1, "2026-10-28"),
     ]
+    assert all(m["unlocked_at"] for m in data["unlocked"])
     again = client.post(f"/api/itinerary/today/stops/{first}/arrive", headers=auth()).json()
     assert again["unlocked"] == []
 

@@ -40,8 +40,8 @@ export function unlockedText(medals: Medal[]): string {
 }
 
 const seenKey = (userId: string) => `meddemo:medals-seen:${userId}`
-// 看過的記錄鍵含解鎖日期：IT 重置後再解鎖會再演一次
-const seenTag = (m: Medal) => `${medalId(m)}@${m.unlocked_on}`
+// 看過的記錄鍵含解鎖的那一刻：系統日固定在決賽日，IT 重置前後解鎖日一樣，靠時間分辨，重置後再解鎖會再演一次
+const seenTag = (m: Medal) => `${medalId(m)}@${m.unlocked_at}`
 
 /** 這支手機看過哪幾面解鎖的；壞掉或不讓讀都當成沒看過 */
 export function readSeen(userId: string): Set<string> {

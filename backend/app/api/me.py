@@ -4,7 +4,7 @@
 """
 
 import dataclasses
-from datetime import date
+from datetime import date, datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -27,6 +27,7 @@ class MedalOut(BaseModel):
     need: int
     have: int
     unlocked_on: date | None
+    unlocked_at: datetime | None
 
 
 class StatsOut(BaseModel):

@@ -81,8 +81,9 @@
 - 跟其他路線的 API 一樣，業務由 token 決定（`acts_as_user_id or id`）；主管與 IT 打 `arrive` 與 `me` 回 403。
 - `GET /api/me` 的內容：
   - `stats`：近一年確認過的拜訪次數、名下客戶數、名下客戶近一年的進貨金額。「近一年」＝系統日往前 365 天。
-  - `medals`：每面一筆 `{kind: "stores" | "cities", tier: 1–3, need, have, unlocked_on}`。`have` 是這位業務所有行程裡
+  - `medals`：每面一筆 `{kind: "stores" | "cities", tier: 1–3, need, have, unlocked_on, unlocked_at}`。`have` 是這位業務所有行程裡
     點過的不同客戶數（或不同縣市數），`unlocked_on` 是點到第 `need` 家（第 `need` 個縣市）那一天（照 `first_at`），沒解鎖是 null。
+    `unlocked_at` 是那一家的 `first_at` 本身（真實時間），前端用來判斷這面看過了沒。
     門檻寫成常數 `MEDAL_TIERS`。
   - `top_customers`：名下客戶近一年進貨金額的前五名（名稱、金額）。
   - `monthly`：近六個月（含這個月）每月的進貨金額；這個月多回 `through`（系統日），畫面上畫淡色並寫「算到 10/28」。
@@ -138,7 +139,7 @@
   - 平常輕輕左右擺（每面相位不同）；拖著轉（左右繞直立的軸、上下繞水平的軸），放手保留轉速慢慢減，慢下來後回到擺動；
     幾乎沒動就放開算點一下：解鎖的翻一圈，沒解鎖的抖一下並跳出「再跑 2 家藥局就拿到金牌」。
   - 新解鎖、這支手機還沒看過的：外圈亮一圈、快轉幾圈。看過的記在 localStorage（`meddemo:medals-seen:<業務>`，
-    鍵含解鎖日期，IT 重置後會再演一次），讀寫包 try/catch。
+    鍵含解鎖的那一刻 `unlocked_at`：系統日固定、重置前後解鎖日一樣，靠時間分辨，IT 重置後會再演一次），讀寫包 try/catch。
   - `three` 只在個人頁用：`/me` 用 `React.lazy` 載入，首頁不多載。環境光用 `RoomEnvironment`。
   - 跑不動 WebGL（建立 renderer 失敗）或 three.js 載不下來：每一格改放平塗的 SVG 獎牌（同樣的顏色與圖示），點了照樣說還差多少。
   - 減少動態效果：不擺、解鎖不快轉；拖著轉照常。
