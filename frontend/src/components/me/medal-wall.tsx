@@ -56,6 +56,8 @@ export function MedalWall({ medals, userId }: { medals: Medal[]; userId: string 
               const medal = medalsRef.current.find((m) => medalId(m) === id)
               if (medal) setHint(lockedHint(medal))
             },
+            // WebGL 被收回：畫布空了，平塗的獎牌重新露出來（不然整面牆一片空白）
+            onContextLost: () => setReady(false),
           })
           setReady(true)
         } catch {

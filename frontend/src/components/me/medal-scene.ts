@@ -123,14 +123,22 @@ export function createMedalScene({
   wall,
   still,
   onLockedTap,
+  onContextLost,
 }: {
   canvas: HTMLCanvasElement
   card: HTMLElement
   wall: HTMLElement
   still: boolean
   onLockedTap: (id: string) => void
+  /** WebGL 被瀏覽器收回（GPU 重置、分頁太多）：畫布一片空白，呼叫端換回平塗的獎牌 */
+  onContextLost: () => void
 }): MedalScene {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true })
+  const lost = () => {
+    renderer.setAnimationLoop(null)
+    onContextLost()
+  }
+  canvas.addEventListener("webglcontextlost", lost)
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
   const scene = new THREE.Scene()
   const pmrem = new THREE.PMREMGenerator(renderer)
@@ -256,6 +264,7 @@ export function createMedalScene({
       })
     },
     destroy() {
+      canvas.removeEventListener("webglcontextlost", lost)
       renderer.setAnimationLoop(null)
       wall.removeEventListener("pointerdown", onDown)
       wall.removeEventListener("pointermove", onMove)
@@ -264,6 +273,8 @@ export function createMedalScene({
       for (const state of states.values()) dispose(state.obj)
       pmrem.dispose()
       renderer.dispose()
+      // 馬上把 WebGL 還給瀏覽器：來回進出個人頁時不會一直佔著，等到上限才被收回最舊的
+      renderer.forceContextLoss()
     },
   }
 }
