@@ -72,6 +72,7 @@ function faceTexture(m: SlotMedal, back: boolean): THREE.CanvasTexture {
 }
 
 const ridgeGeometry = new THREE.BoxGeometry(0.02, 0.05, 0.2)
+const BACK_SHINE = { metalness: 0.15, roughness: 0.7 }
 
 function buildMedal(m: SlotMedal): THREE.Group {
   const metal = m.open
@@ -93,9 +94,11 @@ function buildMedal(m: SlotMedal): THREE.Group {
   }
   group.add(ridges)
   for (const back of [false, true]) {
+    // 解鎖的背面是字：跟正面一樣亮的話，環境的高光轉到某些角度會整片蓋過去（銅牌的字幾乎看不到），背面霧一點；正面照舊
+    const shine = !m.open ? { metalness: 0.1, roughness: 0.8 } : back ? BACK_SHINE : { metalness: 0.5, roughness: 0.38 }
     const face = new THREE.Mesh(
       new THREE.CircleGeometry(0.93, 96),
-      new THREE.MeshStandardMaterial({ map: faceTexture(m, back), metalness: m.open ? 0.5 : 0.1, roughness: m.open ? 0.38 : 0.8 })
+      new THREE.MeshStandardMaterial({ map: faceTexture(m, back), ...shine })
     )
     face.position.z = back ? -0.071 : 0.071
     if (back) face.rotation.y = Math.PI
