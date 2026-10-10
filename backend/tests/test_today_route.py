@@ -132,3 +132,22 @@ def test_the_urgent_card_does_not_borrow_the_last_order_sentence(engine):
         candidate = next(c for c in route_model.candidates(session, TODAY, owner_id="U01") if c.customer_id == "C001")
         urgent = today_route._urgent(session, candidate, "interval", "進貨間隔拉長")
     assert urgent.note and not urgent.note.startswith(customer_profile.LAST_ORDER_PREFIX)
+
+
+def test_done_visits_are_only_the_ones_confirmed_today_in_taipei(tx):
+    # 在 SQL 裡照台灣時間的這一天篩：前一晚 23:50、隔天 00:10 都不算，當天頭尾都算
+    from app.models import Visit
+    from app.timeutil import TAIPEI
+
+    def visit(vid, at, confirmed=True):
+        tx.add(Visit(id=vid, customer_id="C001", user_id="U01", visited_at=at, transcript="測試", status="synced",
+                     confirmed_at=at if confirmed else None))
+
+    visit("VDAY-1", dt.datetime(2026, 10, 27, 23, 50, tzinfo=TAIPEI))
+    visit("VDAY-2", dt.datetime(2026, 10, 28, 0, 10, tzinfo=TAIPEI))
+    visit("VDAY-3", dt.datetime(2026, 10, 28, 23, 50, tzinfo=TAIPEI))
+    visit("VDAY-4", dt.datetime(2026, 10, 29, 0, 10, tzinfo=TAIPEI))
+    visit("VDAY-5", dt.datetime(2026, 10, 28, 12, 0, tzinfo=TAIPEI), confirmed=False)
+    tx.flush()
+    found = [v.id for v, _ in today_route.done_visits(tx, "U01", TODAY) if v.id.startswith("VDAY-")]
+    assert found == ["VDAY-2", "VDAY-3"]

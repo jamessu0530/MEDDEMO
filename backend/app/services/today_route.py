@@ -81,13 +81,21 @@ class Pick:
 
 def done_visits(session: Session, user_id: str, today: dt.date) -> list[tuple[Visit, Customer]]:
     """今天已經確認送出的拜訪，照時間排。"""
+    # 在 SQL 裡只拿今天（台灣時間）的：示範業務一年有上千筆拜訪，全拿回來再篩，每次看行程要多 60 毫秒，
+    # 展示時評審一直點站（每點一下都回整份行程）就卡在這裡（backend/scripts/stress_arrivals.py）
+    start = dt.datetime.combine(today, dt.time.min, TAIPEI)
     rows = session.execute(
         select(Visit, Customer)
         .join(Customer, Customer.id == Visit.customer_id)
-        .where(Visit.user_id == user_id, Visit.confirmed_at.is_not(None))
+        .where(
+            Visit.user_id == user_id,
+            Visit.confirmed_at.is_not(None),
+            Visit.visited_at >= start,
+            Visit.visited_at < start + dt.timedelta(days=1),
+        )
         .order_by(Visit.visited_at)
     ).all()
-    return [(v, c) for v, c in rows if local_date(v.visited_at) == today]
+    return [(v, c) for v, c in rows]
 
 
 def _overdue_commitments(session: Session, user_id: str, today: dt.date) -> dict[str, dt.date]:
