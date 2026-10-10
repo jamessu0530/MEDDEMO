@@ -69,19 +69,20 @@ export function RoutePath({
   // 同時只開一個：站的小卡或某一段的選單
   const [opened, setOpened] = useState<Opened>(null)
   const finished = stops.length > 0 && stops.every((stop) => stop.status === "done")
-  // 熊熊滾在哪：最後點的那一站。點了馬上換，不等後端；後端的「最後點的」變了（別人點的、重新載入、IT 重置）就跟著換、不騎
+  // 熊熊滾在哪：最後點的那一站。點了馬上換，不等後端；這支手機還沒點過時後端的「最後點的」變了就跟著換、不騎，
+  // 點過之後只有 IT 重置才跟著換（別的評審點的站照樣打勾，熊不被拉走；lib/rides.ts followsServer）
   const serverHere = hereOf(stops)
   const [here, setHere] = useState(serverHere)
   const [seenHere, setSeenHere] = useState(serverHere)
   // 這次最後騎的那一段（點站時給）；token 換了 RideOnRoute 就騎一次，騎完清成 null（座騎重新掛上時不會再騎、再送一筆）
   const [ride, setRide] = useState<{ leg: Leg; token: number | null } | null>(null)
   const [riding, setRiding] = useState(false)
-  // 這次點過的站（照點的順序，含只送 arrive 沒騎的那一下）：連點兩站、前一站的 arrive 才回來時熊不退回去（lib/rides.ts followsServer）
+  // 這次點過的站（照點的順序，含只送 arrive 沒騎的那一下）：有點過，後端回來的行程就不搬熊（lib/rides.ts followsServer）
   const [taps, setTaps] = useState<string[]>([])
   if (serverHere !== seenHere) {
     setSeenHere(serverHere)
     if (followsServer(serverHere, here, taps)) {
-      // 不是點的那一站回來了（別人點的、重新載入、IT 重置）：熊直接換過去；正在騎的那一段會被拆掉、不會再叫 onEnd
+      // 還沒點過時換了一站（別人點的、重新載入）或 IT 重置：熊直接換過去；正在騎的那一段會被拆掉、不會再叫 onEnd
       setHere(serverHere)
       setTaps([])
       setRide(null)

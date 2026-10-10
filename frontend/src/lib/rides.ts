@@ -43,13 +43,14 @@ export function hereOf(stops: RouteStop[]): string | null {
 
 /**
  * 後端的「最後點的」（serverHere）變了，熊要不要跟著換過去。here 是熊現在停的（點了馬上換、不等後端），taps 是這次點過的站
- * （照點的順序，含只送 arrive、沒騎的那一下）。連點兩站、前一站的 arrive 才回來時，後端的是這次比較早點的那一站：不換，熊不退回去。
- * 別人點的、重新載入、IT 重置（不是這次點的、或是 null）：跟著換。
+ * （照點的順序，含只送 arrive、沒騎的那一下）。
+ * 這支手機點過站之後，熊只聽自己的：連點兩站、前一站的 arrive 才回來時後端的是比較早點的那一站；
+ * arrive 存好之後另開交易讀行程，別的評審剛點的站也會在裡面、而且是最晚的。兩種都不換，熊不退回去、不瞬間移走，
+ * 別人點的站照樣打勾。只有 IT 重置（null）才跟著回辦公室。還沒點過（剛打開、重新載入）就照後端的停。
  */
 export function followsServer(serverHere: string | null, here: string | null, taps: readonly string[]): boolean {
-  if (serverHere === here) return false
-  const order = (id: string | null) => (id === null ? -1 : taps.lastIndexOf(id))
-  return !(order(serverHere) >= 0 && order(serverHere) < order(here))
+  if (serverHere === null || taps.length === 0) return serverHere !== here
+  return false
 }
 
 /** 從 from（null 是辦公室）騎到 to 那一站：往回、跳站都可以。交通方式照原本排好到那一站的 */

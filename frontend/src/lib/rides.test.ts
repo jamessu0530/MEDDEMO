@@ -132,15 +132,20 @@ describe("followsServer", () => {
     expect(followsServer("B", "A", ["A", "B", "A"])).toBe(false)
   })
 
-  it("別人點的、重新載入、IT 重置：跟著後端換", () => {
-    expect(followsServer("C", "B", ["A", "B"])).toBe(true)
-    expect(followsServer(null, "B", ["A", "B"])).toBe(true)
+  it("回來的行程裡最後點的是別的評審點的站：這支手機點過站，熊留在原地", () => {
+    // arrive 存好之後另開交易讀行程，別人剛點的那一站也在裡面、而且比較晚
+    expect(followsServer("C", "B", ["A", "B"])).toBe(false)
+    expect(followsServer("C", "B", ["B"])).toBe(false)
+  })
+
+  it("這支手機還沒點過（重新載入、別人點的）、IT 重置（null）：跟著後端換", () => {
+    expect(followsServer("C", "B", [])).toBe(true)
     expect(followsServer("A", null, [])).toBe(true)
-    // 比本地最後點的還晚（後端多了一站）：跟著換
-    expect(followsServer("B", "A", ["A", "B"])).toBe(true)
+    expect(followsServer(null, "B", ["A", "B"])).toBe(true)
   })
 
   it("跟本地一樣就不用換", () => {
     expect(followsServer("B", "B", ["A", "B"])).toBe(false)
+    expect(followsServer(null, null, [])).toBe(false)
   })
 })
