@@ -86,6 +86,15 @@ describe("熊熊滾停在哪、騎哪一段", () => {
     expect(hereOf([stop("A", "next")])).toBeNull()
   })
 
+  it("點的先後照時間比，不照字串：小數秒寫法、時區不一樣也排得對", () => {
+    // 字串比的話 "…:00.5Z" 排在 "…:00Z" 前面（"." < "Z"），+08:00 的也會亂掉
+    const at = (id: string, arrived_at: string) => stop(id, "done", { arrived_at })
+    expect(hereOf([at("A", "2026-10-28T02:00:00.5Z"), at("B", "2026-10-28T02:00:00Z")])).toBe("A")
+    const zones = [at("A", "2026-10-28T10:30:00+08:00"), at("B", "2026-10-28T02:00:00Z")]
+    expect(hereOf(zones)).toBe("A")
+    expect(lastLeg(zones, "台北市")).toMatchObject({ from: "B", to: "A" })
+  })
+
   it("legBetween：出發縣市是起點那一站（辦公室用 startCity），交通方式照到的那一站", () => {
     expect(legBetween(stops, "B", "C", "台北市")).toEqual({
       from: "B",

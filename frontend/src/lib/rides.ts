@@ -32,9 +32,9 @@ export function anchorId(from: string | null): string {
   return from ?? "office"
 }
 
-// 點過的站照點的先後排（arrived_at 由早到晚）
+// 點過的站照點的先後排（arrived_at 由早到晚）。照時間比、不照字串：小數秒的位數、時區寫法不一樣時字串順序會錯
 const byArrival = (stops: RouteStop[]) =>
-  stops.filter((stop) => stop.arrived_at).sort((a, b) => (a.arrived_at! < b.arrived_at! ? -1 : 1))
+  stops.filter((stop) => stop.arrived_at).sort((a, b) => Date.parse(a.arrived_at!) - Date.parse(b.arrived_at!))
 
 /** 熊熊滾停在哪：最後點的那一站；沒點過是 null（辦公室，沒有辦公室起點時第 1 站） */
 export function hereOf(stops: RouteStop[]): string | null {
