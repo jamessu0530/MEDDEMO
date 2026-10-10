@@ -66,6 +66,17 @@ export function legBetween(stops: RouteStop[], from: string | null, to: string, 
   }
 }
 
+/**
+ * 還沒點過站、熊停在辦公室時的座騎：辦公室縣市（沒有就第 1 站的）× 辦公室到第 1 站的交通方式。
+ * 點第 1 站出發時騎的就是這一台（跨縣市半路才冒煙換），不會一起步就先換一台；沒有站是 null。不能重播。
+ */
+export function officeLeg(stops: RouteStop[], startCity: string | null): Leg | null {
+  const first = stops[0]
+  if (!first) return null
+  const city = startCity ?? first.city ?? ""
+  return { from: null, to: first.customer_id, fromCity: city, toCity: city, mode: first.travel_mode ?? "drive" }
+}
+
 /** 停著的座騎是哪一段（點座騎重播）：倒數第二個點的（沒有就辦公室）→ 最後點的；沒點過是 null */
 export function lastLeg(stops: RouteStop[], startCity: string | null): Leg | null {
   const order = byArrival(stops)

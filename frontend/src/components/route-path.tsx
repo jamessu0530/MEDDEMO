@@ -11,7 +11,7 @@ import { LegChip, LegMenu } from "@/components/route/leg-chip"
 import { buttonVariants } from "@/components/ui/button"
 import { formatTaipeiTime } from "@/lib/format"
 import { ROUTE_WIDTH } from "@/lib/ride-on-route"
-import { followsServer, hereOf, lastLeg, legBetween, type Leg } from "@/lib/rides"
+import { followsServer, hereOf, lastLeg, legBetween, officeLeg, type Leg } from "@/lib/rides"
 import { HALF_NODE, labelSide, pathOffset, signalTone, TONE_CLASS } from "@/lib/route-path"
 import { legFrom } from "@/lib/travel-mode"
 import { cn } from "@/lib/utils"
@@ -92,9 +92,12 @@ export function RoutePath({
   const onRoute = (id: string | null) => id !== null && stops.some((stop) => stop.customer_id === id)
   // 熊停的那一顆圓鈕：點過的站；沒點過是辦公室（null），沒有辦公室起點時是第 1 站
   const anchor = onRoute(here) ? here : officeStart ? null : (stops[0]?.customer_id ?? null)
-  // 停著的座騎：剛騎的那一段、最後點的那一段，或沒點過時辦公室到第一站那段（不能重播）
+  // 停著的座騎：剛騎的那一段、最後點的那一段；沒點過時停在辦公室是辦公室縣市那一台（點第 1 站出發時不換車），
+  // 沒有辦公室起點時停在第 1 站是辦公室到第一站那段。這兩種都不能重播
   const replay = ride?.leg.to === anchor ? ride.leg : here && anchor === here ? lastLeg(stops, startCity) : null
-  const parked = replay ?? (stops[0] ? legBetween(stops, null, stops[0].customer_id, startCity) : null)
+  const parked =
+    replay ??
+    (anchor === null ? officeLeg(stops, startCity) : stops[0] ? legBetween(stops, null, stops[0].customer_id, startCity) : null)
   // 重播要畫面上量得到出發的那一顆：沒有辦公室起點時，從辦公室來的那一段（只點過一站）不能重播
   const canReplay = replay !== null && (officeStart || replay.from !== null)
   // 全部到過：最後一段騎完，座騎淡出（LEAVE_MS；減少動態效果時直接不見）再拿掉，熊熊滾在收工旗子旁跳。

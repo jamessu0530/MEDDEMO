@@ -94,7 +94,7 @@ describe("RoutePath", () => {
     expect(html.match(/aria-expanded="false"/g)).toHaveLength(8)
   })
 
-  it("最上面有辦公室圓鈕；沒點過站時熊熊滾停在辦公室，騎的是辦公室到第一站那段，不能重播", () => {
+  it("最上面有辦公室圓鈕；沒點過站時熊熊滾停在辦公室，騎辦公室縣市的座騎（沒給就是第一站的），不能重播", () => {
     const html = render([stop("A", "next", { city: "新北市" }), stop("B", "todo")])
     expect(html).toContain('data-ride-anchor="office"')
     const office = html.indexOf('data-ride-anchor="office"')
@@ -160,11 +160,14 @@ describe("RoutePath", () => {
     expect(html).not.toContain(">出發<")
   })
 
-  it("收 startCity（第一段的出發縣市）", () => {
+  it("停在辦公室時座騎是辦公室縣市（startCity）× 第一段的交通方式：點第 1 站出發時不會先換一台", () => {
+    const first = stop("a", "next", { city: "新北市", travel_mode: "scooter" })
     const html = renderToStaticMarkup(
-      createElement(MemoryRouter, null, createElement(RoutePath, { stops: [stop("a", "next", { city: "新北市" })], startCity: "台北市" }))
+      createElement(MemoryRouter, null, createElement(RoutePath, { stops: [first], startCity: "台北市" }))
     )
-    expect(html).toContain('data-city="新北市"')
+    expect(html).toContain('data-city="台北市"')
+    expect(html).toContain('data-mode="scooter"')
+    expect(html).not.toContain('data-city="新北市"')
   })
 
   it("有約的時間又趕不上，標籤第二行改成紅字會晚到幾分", () => {

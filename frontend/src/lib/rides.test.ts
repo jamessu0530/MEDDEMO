@@ -8,6 +8,7 @@ import {
   hereOf,
   lastLeg,
   legBetween,
+  officeLeg,
   RIDE_CITIES,
   ridesOf,
   rideCity,
@@ -106,6 +107,16 @@ describe("熊熊滾停在哪、騎哪一段", () => {
     expect(legBetween(stops, null, "A", "台北市").fromCity).toBe("台北市")
     // 往回騎也可以
     expect(legBetween(stops, "C", "A", null)).toMatchObject({ from: "C", to: "A", fromCity: "新竹市", toCity: "新北市" })
+  })
+
+  it("officeLeg：停在辦公室的座騎是辦公室縣市、辦公室到第 1 站的交通方式（點第 1 站出發時是同一台）", () => {
+    expect(officeLeg(stops, "台北市")).toEqual({ from: null, to: "A", fromCity: "台北市", toCity: "台北市", mode: "drive" })
+    // 沒有辦公室縣市：用第 1 站的
+    expect(officeLeg([stop("C", "next", { city: "新竹市", travel_mode: "scooter" })], null)).toMatchObject({
+      toCity: "新竹市",
+      mode: "scooter",
+    })
+    expect(officeLeg([], "台北市")).toBeNull()
   })
 
   it("lastLeg：倒數第二個點的（沒有就辦公室）→ 最後點的；沒點過是 null", () => {
