@@ -15,11 +15,12 @@ export function UnlockToast({ medals, onDone }: { medals: Medal[]; onDone: () =>
     const timer = window.setTimeout(() => done(), SHOW_MS)
     return () => window.clearTimeout(timer)
   }, [medals])
+  // 疊在「跟熊熊滾說要怎麼排…」上面（那一條底在 4.25rem、高 3rem），不蓋住輸入框，也不蓋住底部分頁
   return (
     <Link
       to="/me"
       role="status"
-      className="fixed inset-x-4 bottom-[calc(env(safe-area-inset-bottom)+5.5rem)] z-20 flex min-h-12 items-center gap-3 rounded-2xl border-2 bg-card px-4 py-3 shadow-lip press animate-in fade-in slide-in-from-bottom-2 motion-reduce:animate-none"
+      className="fixed inset-x-4 bottom-[calc(env(safe-area-inset-bottom)+8rem)] z-20 flex min-h-12 items-center gap-3 rounded-2xl border-2 bg-card px-4 py-3 shadow-lip press animate-in fade-in slide-in-from-bottom-2 motion-reduce:animate-none"
     >
       <MedalIcon aria-hidden className="size-6 shrink-0 text-amber-500" />
       <span className="flex-1 text-sm font-semibold">{unlockedText(medals)}</span>
