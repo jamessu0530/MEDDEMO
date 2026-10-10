@@ -225,7 +225,7 @@ export function TodayPage() {
       className="flex min-h-svh flex-col"
       style={headerHeight ? ({ "--home-header": `${headerHeight}px` } as CSSProperties) : undefined}
     >
-      <header ref={headerRef} className="sticky top-0 z-10 bg-background/95 px-4 pt-2 pb-3 backdrop-blur">
+      <header ref={headerRef} className="sticky top-0 z-10 bg-background/95 px-4 pt-2 pb-3 backdrop-blur lg:px-6">
         <div className="-mr-2 flex items-center justify-between gap-2 lg:hidden">
           {/* 自己的頭像：點了換狀態（有空、忙碌、顯示為離線…）；點名字進帳號設定：改密碼、登出、使用說明 */}
           <div className="flex min-w-0 items-center gap-1.5">
