@@ -41,4 +41,23 @@ describe("MonthlySales", () => {
     expect(html).toContain("10 月只算到 10/28")
     expect(html).toContain("data-partial")
   })
+
+  it("很小的月份（不到最高的 3%）、零的月份：長條不畫到底線下面", () => {
+    const tiny = renderToStaticMarkup(
+      createElement(MonthlySales, {
+        months: [
+          { month: "2026-09", amount: 2920623, through: null },
+          { month: "2026-10", amount: 30000, through: "2026-10-28" },
+          { month: "2026-11", amount: 0, through: null },
+        ],
+      })
+    )
+    // 長條的路徑裡每個 V（往下或往上畫到哪）都不超過底線 160，圓角不會翻到底線下面
+    const paths = [...tiny.matchAll(/<path[^>]* d="([^"]+)"/g)].map((match) => match[1])
+    expect(paths).toHaveLength(3)
+    for (const d of paths) {
+      for (const [, v] of d.matchAll(/V(-?[\d.]+)/g)) expect(Number(v)).toBeLessThanOrEqual(160)
+      expect(d).not.toContain("NaN")
+    }
+  })
 })

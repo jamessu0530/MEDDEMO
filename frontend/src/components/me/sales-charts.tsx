@@ -111,12 +111,14 @@ export function MonthlySales({ months }: { months: Me["monthly"] }) {
           const x = LEFT + band * i + band / 2 - BAR / 2
           const label = `${Number(m.month.slice(5))} 月`
           const top = y(m.amount)
+          // 頂端圓角的半徑：很小的月份（長條不到 4px 高）縮成長條的高度，圓角才不會畫到底線下面
+          const r = Math.min(4, BASE - top)
           return (
             <g key={m.month}>
               <title>{`${label}：${formatWan(m.amount)}${m.through ? `（到 ${formatDate(m.through)}）` : ""}`}</title>
               <path
                 data-partial={m.through ? "" : undefined}
-                d={`M${x} ${BASE} V${top + 4} a4 4 0 0 1 4 -4 h${BAR - 8} a4 4 0 0 1 4 4 V${BASE} Z`}
+                d={`M${x} ${BASE} V${top + r} a${r} ${r} 0 0 1 ${r} ${-r} h${BAR - 2 * r} a${r} ${r} 0 0 1 ${r} ${r} V${BASE} Z`}
                 className={m.through ? "fill-primary/40" : "fill-primary"}
                 style={{
                   transformBox: "fill-box",
