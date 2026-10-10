@@ -746,3 +746,14 @@ def test_demo_notes_belong_to_the_demo_rep(db):
     assert {kind for kind, _, _ in notes} == {"bring", "told", "competitor"}
     # 有日期與沒日期的要帶的都有，日曆與「下次去」才都有東西看
     assert any(k == "bring" and d is None for k, d, _ in notes) and any(k == "bring" and d for k, d, _ in notes)
+
+
+def test_competitor_notes_only_where_the_visits_mention_the_competitor(db):
+    # 客戶檔案同一頁下面的「競品紀錄」是從拜訪來的：備忘說提到御松田，拜訪紀錄也要提過，不然一頁裡前後矛盾
+    found = rows(db, """
+        SELECT n.customer_id, bool_or(v.competitor_names LIKE '%御松田%')
+        FROM customer_note n JOIN customer c ON c.id = n.customer_id
+        LEFT JOIN v_visit_signal v ON v.customer_name = c.name
+        WHERE n.kind = 'competitor' GROUP BY n.customer_id
+    """)
+    assert found == [("C001", True)]

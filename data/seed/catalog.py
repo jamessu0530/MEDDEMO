@@ -739,7 +739,7 @@ METHOD_CARDS = [
 
 # 拜訪備忘的示範資料（docs/superpowers/specs/2026-10-07-calendar-notes-design.md）：林昱辰的幾家客戶。
 # (客戶, 種類, 內容, 日期離展示日幾天；None 是沒有日期)。都是手寫的（沒有 visit_id），不動亂數
-# 競品那幾則照 docs/superpowers/specs/2026-10-09-tap-to-ride-and-personal-page-design.md，也要維持沒有 visit_id（有的話 next_notes 會把較舊的手寫備忘藏起來）
+# 競品那一則照 docs/superpowers/specs/2026-10-09-tap-to-ride-and-personal-page-design.md，也要維持沒有 visit_id（有的話 next_notes 會把較舊的手寫備忘藏起來）
 NOTES = [
     ("C001", "told", "跟店長說 Premium 眼藥水小口買 22 送 1，大口加送葡萄籽 4 瓶", -8),
     ("C001", "bring", "Premium 眼藥水的貨架卡與試用包", 2),
@@ -748,7 +748,7 @@ NOTES = [
     ("C027", "bring", "學名藥比價表", 7),
     ("C061", "told", "黃金奇異果益生菌直走 5 組 $4,650，附試吃包", -3),
     ("C061", "bring", "衛教單張（益生菌）", None),
-    # 競品：示範業務今天路線上的忠孝店、林口店。忠孝店 10/19 的拜訪提到御松田（catalog 的情境）
+    # 競品：示範業務今天路線上的忠孝店。它 10/19 的拜訪真的提到御松田（catalog 的情境），跟客戶檔案的「競品紀錄」對得上；
+    # 其他家的拜訪紀錄沒提過競品，加了備忘同一頁就會一邊說提到、一邊說沒有
     ("C001", "competitor", "御松田：店長說對方這個月加碼上架費，想換到結帳櫃台旁的陳列位", -9),
-    ("C089", "competitor", "提到御松田", -12),
 ]
