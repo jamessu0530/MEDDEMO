@@ -43,6 +43,7 @@ import { Button, buttonVariants } from "@/components/ui/button"
 import { useAuth } from "@/lib/auth"
 import { formatDate, formatDayLabel } from "@/lib/format"
 import { inOrder } from "@/lib/in-order"
+import { useHomeSplitLayout } from "@/lib/home-layout"
 import { useUnseenReplies } from "@/lib/manager-replies"
 import { ridesOf, type Leg } from "@/lib/rides"
 import { applyProgress } from "@/lib/route-progress"
@@ -75,6 +76,8 @@ export function TodayPage() {
   const [params, setParams] = useSearchParams()
   const user = useAuth()?.user
   const desktop = useIsDesktop()
+  const { ref: layoutRef, fitsSplit } = useHomeSplitLayout()
+  const split = desktop && fitsSplit
   const userId = user?.id ?? null
   const [state, setState] = useState<LoadState>({ status: "loading" })
   const [attempt, setAttempt] = useState(0)
@@ -144,8 +147,8 @@ export function TodayPage() {
 
   // 路線／地圖：沒有站、或用的是手機上的舊行程（連不上，地圖也載不到）就只有路線
   const mappable = state.status === "ready" && !state.cached && state.route.stops.length > 0
-  // 電腦版兩個並排，不用切換：路線一律在左欄，地圖另外畫在右欄
-  const onMap = !desktop && mappable && params.get("view") === "map"
+  // 內容放得下才並排；窄桌機與大字設定也保留路線／地圖切換。
+  const onMap = !split && mappable && params.get("view") === "map"
   const headerRef = useRef<HTMLElement>(null)
   const switchRef = useRef<HTMLDivElement>(null)
   // 固定的頁首有多高（字放多大不一樣）：地圖照它算高度（home-map-panel.tsx 的 --home-header）
@@ -280,7 +283,10 @@ export function TodayPage() {
   return (
     <div
       className="flex min-h-svh flex-col"
-      style={headerHeight ? ({ "--home-header": `${headerHeight}px` } as CSSProperties) : undefined}
+      style={{
+        "--home-header": headerHeight ? `${headerHeight}px` : undefined,
+        "--home-route-width": split ? "27.5rem" : "calc(100% - 17rem)",
+      } as CSSProperties}
     >
       <header ref={headerRef} className="sticky top-0 z-10 bg-background/95 px-4 pt-2 pb-3 backdrop-blur lg:px-6">
         <div className="-mr-2 flex items-center justify-between gap-2 lg:hidden">
@@ -371,8 +377,8 @@ export function TodayPage() {
 
       {/* 底部分頁列約 64px，上面再疊一條跟熊熊滾說的輸入列，最後的終點要露出來 */}
       {/* overflow-x-clip：路線與地圖互相滑進來時，不要短暫多出左右捲軸 */}
-      <main className="flex-1 overflow-x-clip px-4 pt-3 pb-48 lg:flex lg:items-start lg:gap-6 lg:px-6 lg:pb-24">
-        <div className="lg:w-[27.5rem] lg:shrink-0">
+      <main ref={layoutRef} className={cn("flex-1 overflow-x-clip px-4 pt-3 pb-48 lg:px-6 lg:pb-24", split && "lg:flex lg:items-start lg:gap-6")}>
+        <div className={cn("min-w-0", split && "lg:w-[27.5rem] lg:shrink-0")}>
         <Link to="/reports" className="mb-3 flex min-h-14 items-center gap-3 rounded-2xl border-2 bg-card px-4 py-3 shadow-lip lg:hidden">
           <ChartNoAxesCombined className="size-5 shrink-0 text-primary" />
           <span className="min-w-0 flex-1 text-sm font-semibold">我的報表<span className="ml-2 text-xs font-normal text-muted-foreground">自選指標 · AI 調整</span></span>
@@ -462,7 +468,7 @@ export function TodayPage() {
           </div>
         )}
 
-        {mappable && !desktop && <ViewSwitch ref={switchRef} onMap={onMap} onChange={showView} />}
+        {mappable && !split && <ViewSwitch ref={switchRef} onMap={onMap} onChange={showView} />}
         {route &&
           (route.stops.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-8 text-center">
@@ -505,9 +511,10 @@ export function TodayPage() {
           ))}
         </div>
         {/* 電腦版：地圖在右欄，固定在頁首下面；沒有站或用的是舊行程就不畫 */}
-        {desktop && mappable && route && (
+        {split && mappable && route && (
           <div className="sticky top-[calc(var(--home-header,8rem)+0.75rem)] min-w-0 flex-1">
             <HomeMapPanel
+              sideBySide
               route={route}
               userId={user.id}
               onRoute={(next) => setState({ status: "ready", route: next, cached: false })}

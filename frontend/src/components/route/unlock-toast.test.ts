@@ -22,8 +22,8 @@ describe("UnlockToast", () => {
     expect(html).toContain("解鎖銀牌：跑過 3 家藥局")
     expect(html).toContain('href="/me"')
     expect(html).toContain('role="status"')
-    // 電腦版貼著左欄，不橫跨側邊欄與地圖
+    // 電腦版對齊路線欄，寬度跟著首頁的並排／單欄切換
     expect(html).toContain("lg:left-[15.5rem]")
-    expect(html).toContain("lg:w-[27.5rem]")
+    expect(html).toContain("lg:w-[var(--home-route-width,27.5rem)]")
   })
 })

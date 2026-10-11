@@ -115,7 +115,7 @@ export default function HomeMap({ config, map, stops, estimated, mode, switching
           ))}
           {position && <HereDot position={position} />}
         </Map>
-        <ModePicker mode={mode} switching={switching} onMode={onMode} />
+        <ModePicker mode={mode} switching={switching} onMode={onMode} hasLocation={Boolean(position)} />
         {position && <LocateButton position={position} />}
         {/* 卡片離底 2rem：左下角 Google 的標誌與地圖資料的版權列要露出來（Google 的使用條款） */}
         {shown && (
@@ -174,13 +174,15 @@ function ModePicker({
   mode,
   switching,
   onMode,
+  hasLocation,
 }: {
   mode: TravelMode
   switching: TravelMode | null
   onMode: (mode: TravelMode) => void
+  hasLocation: boolean
 }) {
   return (
-    <div role="radiogroup" aria-label="交通方式" className="absolute top-2.5 left-2.5 flex gap-0.5 rounded-xl border-2 bg-card p-0.5 shadow-lip">
+    <div role="radiogroup" aria-label="交通方式" className={cn("absolute top-2.5 left-2.5 flex gap-0.5 overflow-x-auto overscroll-x-contain rounded-xl border-2 bg-card p-0.5 shadow-lip", hasLocation ? "max-w-[calc(100%-4.75rem)]" : "max-w-[calc(100%-1.25rem)]")}>
       {TRAVEL_MODES.map((option) => {
         const active = (switching ?? mode) === option
         return (
@@ -192,7 +194,7 @@ function ModePicker({
             disabled={switching !== null}
             onClick={() => onMode(option)}
             className={cn(
-              "flex h-10 items-center gap-1 rounded-[0.6rem] px-2 text-xs font-semibold transition-colors",
+              "flex h-10 shrink-0 items-center gap-1 rounded-[0.6rem] px-2 text-xs font-semibold whitespace-nowrap transition-colors",
               active ? "bg-primary text-primary-foreground" : "text-muted-foreground"
             )}
           >

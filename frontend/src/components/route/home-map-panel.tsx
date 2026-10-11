@@ -6,8 +6,9 @@ import { HomeMapSlot, MapFallback, MapPlaceholder } from "@/components/map-slot"
 
 // 地圖填滿固定的頁首與底部輸入列中間（切換捲到頁首正下面時）：一打開就看到整條路線和底下的卡。
 // 頁首的高度由首頁量好放在 --home-header（字放多大不一樣）；12rem 是切換本身加上底部的輸入列與分頁列
-// 電腦版地圖在右欄、固定在頁首下面：高度是視窗扣掉頁首，上下各留 0.75rem
-const HEIGHT = "h-[calc(100svh-var(--home-header,12rem)-12rem)] min-h-72 lg:h-[calc(100svh-var(--home-header,8rem)-1.5rem)]"
+// 窄桌機切換地圖時要保留切換與輸入列；寬桌機的右欄只扣掉頁首，上下各留 0.75rem。
+const HEIGHT = "h-[calc(100svh-var(--home-header,12rem)-12rem)] min-h-72 lg:h-[calc(100svh-var(--home-header,8rem)-8rem)]"
+const SIDE_HEIGHT = "h-[calc(100svh-var(--home-header,8rem)-1.5rem)] min-h-72"
 
 /**
  * 首頁的「地圖」：切過來才問後端各站的位置與沿路的線（GET /api/itinerary/today/map），
@@ -19,10 +20,12 @@ export function HomeMapPanel({
   route,
   userId,
   onRoute,
+  sideBySide = false,
 }: {
   route: TodayRoute
   userId: string
   onRoute: (route: TodayRoute) => void
+  sideBySide?: boolean
 }) {
   const [map, setMap] = useState<TodayMap | null>(null)
   const [failed, setFailed] = useState(false)
@@ -55,7 +58,8 @@ export function HomeMapPanel({
     }
   }
 
-  if (!map) return failed ? <MapFallback /> : <MapPlaceholder className={HEIGHT} />
+  const height = sideBySide ? SIDE_HEIGHT : HEIGHT
+  if (!map) return failed ? <MapFallback /> : <MapPlaceholder className={height} />
   return (
     <>
       {error && <p className="mb-2 rounded-xl bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>}
@@ -66,7 +70,7 @@ export function HomeMapPanel({
         mode={route.travel_mode}
         switching={switching}
         onMode={(mode) => void changeMode(mode)}
-        className={HEIGHT}
+        className={height}
       />
     </>
   )

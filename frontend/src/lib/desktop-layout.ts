@@ -18,9 +18,10 @@ const CHANNEL_PANES = /^\/channels(\/\d+)?$/
 /** 對齊中間一欄的固定元件（底部的輸入列、按鈕列）：手機照舊是置中的手機寬度 */
 export const FIXED_COLUMN = "fixed inset-x-0 mx-auto max-w-md lg:left-56 lg:max-w-2xl"
 
-/** 首頁電腦版左欄底部的固定元件（問熊熊滾的輸入列、提案卡）：對齊左欄（側邊欄 14rem ＋ main 的 1.5rem，寬 27.5rem）。
+/** 首頁電腦版底部的固定元件（問熊熊滾的輸入列、提案卡）：對齊路線欄（側邊欄 14rem ＋ main 的 1.5rem）。
+ * 並排時寬 27.5rem，空間不足時由首頁設定成整個內容欄。
  * 跟手機的 class 寫在一起用：只蓋掉電腦版的位置與寬度 */
-export const HOME_LEFT_FIXED = "lg:right-auto lg:left-[15.5rem] lg:mx-0 lg:w-[27.5rem] lg:max-w-none lg:px-0"
+export const HOME_LEFT_FIXED = "lg:right-auto lg:left-[15.5rem] lg:mx-0 lg:w-[var(--home-route-width,27.5rem)] lg:max-w-none lg:px-0"
 
 export function trimPath(pathname: string) {
   return pathname.length > 1 && pathname.endsWith("/") ? pathname.slice(0, -1) : pathname
