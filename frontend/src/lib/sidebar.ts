@@ -1,5 +1,4 @@
 import {
-  BadgePercent,
   Bell,
   BookOpenText,
   Calendar,
@@ -34,8 +33,7 @@ const SALES: SidebarGroups = {
     { to: "/customers", label: "客戶", icon: Users, badge: "uploads" },
     { to: "/channels", label: "頻道", icon: MessagesSquare, badge: "channels" },
     { to: "/ask", label: "問答", icon: MessageCircleQuestion },
-    { to: "/products", label: "商品", icon: Pill },
-    { to: "/promotions", label: "促銷", icon: BadgePercent },
+    { to: "/products", label: "商品與促銷", icon: Pill },
   ],
   more: [
     { to: "/calendar", label: "日曆", icon: Calendar },
@@ -54,13 +52,13 @@ const MANAGER: SidebarItem[] = [
   { to: "/manager?view=methods", label: "方法卡", icon: BookOpenText },
 ]
 const CHANNELS: SidebarItem = { to: "/channels", label: "頻道", icon: MessagesSquare, badge: "channels" }
-const CATALOG: SidebarItem[] = [{ to: "/products", label: "商品", icon: Pill }, { to: "/promotions", label: "促銷", icon: BadgePercent }]
+const CATALOG: SidebarItem = { to: "/products", label: "商品與促銷", icon: Pill }
 const ADMIN: SidebarItem = { to: "/admin", label: "組織管理", icon: Network }
 const MANAGER_VIEWS = ["asks", "notices", "oa", "methods"]
 
 export function sidebarItems(role: Role): SidebarGroups {
   if (role === "sales") return SALES
-  return { main: role === "it" ? [ADMIN, ...MANAGER] : MANAGER, more: [CHANNELS, ...CATALOG] }
+  return { main: role === "it" ? [ADMIN, ...MANAGER] : MANAGER, more: [CHANNELS, CATALOG] }
 }
 
 /** 側邊欄最上面的名字連到哪裡：跟首頁頁首的名字同一個地方。業務是個人頁，主管與 IT 沒有個人頁，是帳號設定 */

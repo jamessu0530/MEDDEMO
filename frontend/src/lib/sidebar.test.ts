@@ -15,19 +15,19 @@ const item = (role: Role, label: string): SidebarItem => {
 }
 
 describe("sidebarItems", () => {
-  it("業務：底部分頁包含商品與促銷，加上日曆、方法卡、申請單、主管回覆", () => {
+  it("業務：商品與促銷共用一個入口，加上日曆、方法卡、申請單、主管回覆", () => {
     expect(labels("sales")).toEqual({
-      main: ["今日", "客戶", "頻道", "問答", "商品", "促銷"],
+      main: ["今日", "客戶", "頻道", "問答", "商品與促銷"],
       more: ["日曆", "方法卡", "我的申請單", "主管回覆"],
     })
   })
 
   it("主管：主管端的五個分頁，加上頻道", () => {
-    expect(labels("manager")).toEqual({ main: ["團隊行程", "提問", "風險通報", "簽核", "方法卡"], more: ["頻道", "商品", "促銷"] })
+    expect(labels("manager")).toEqual({ main: ["團隊行程", "提問", "風險通報", "簽核", "方法卡"], more: ["頻道", "商品與促銷"] })
   })
 
   it("IT：組織管理在最前面，接著是主管端", () => {
-    expect(labels("it")).toEqual({ main: ["組織管理", "團隊行程", "提問", "風險通報", "簽核", "方法卡"], more: ["頻道", "商品", "促銷"] })
+    expect(labels("it")).toEqual({ main: ["組織管理", "團隊行程", "提問", "風險通報", "簽核", "方法卡"], more: ["頻道", "商品與促銷"] })
   })
 
   it("數字掛在對的項目上", () => {
@@ -56,7 +56,7 @@ describe("isActiveItem", () => {
     expect(isActiveItem(item("sales", "客戶"), "/customers/C0123/quote", "")).toBe(true)
     expect(isActiveItem(item("sales", "頻道"), "/channels/search", "")).toBe(true)
     expect(isActiveItem(item("sales", "我的申請單"), "/oa/forms/3/", "")).toBe(true)
-    expect(isActiveItem(item("sales", "促銷"), "/promotions-old", "")).toBe(false)
+    expect(isActiveItem(item("sales", "商品與促銷"), "/products-old", "")).toBe(false)
   })
 
   it("主管端照 view 判斷，沒帶或不認得的 view 是團隊行程", () => {

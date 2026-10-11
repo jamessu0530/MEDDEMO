@@ -249,7 +249,7 @@ function ProductLines({ data }: { data: FirstWeek }) {
       ))}
       {/* 沒有進行中的促銷就不顯示這一列 */}
       {data.promotion && (
-        <Link to="/promotions" className="flex min-h-14 items-center justify-between gap-3 rounded-2xl border-2 bg-card px-4 shadow-lip press">
+        <Link to="/products?view=promotions" className="flex min-h-14 items-center justify-between gap-3 rounded-2xl border-2 bg-card px-4 shadow-lip press">
           <span className="text-sm font-medium">這個月的促銷：{data.promotion.item_count} 個品項</span>
           <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
         </Link>

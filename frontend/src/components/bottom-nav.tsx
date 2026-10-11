@@ -1,6 +1,5 @@
 import { useLayoutEffect, useRef } from "react"
 import {
-  BadgePercent,
   CalendarDays,
   MessageCircleQuestion,
   MessagesSquare,
@@ -20,7 +19,6 @@ const TABS = [
   { to: "/channels", label: "頻道", icon: MessagesSquare },
   { to: "/ask", label: "問答", icon: MessageCircleQuestion },
   { to: "/products", label: "商品", icon: Pill },
-  { to: "/promotions", label: "促銷", icon: BadgePercent },
 ]
 
 // 膠囊滑動的速度與曲線，跟 CARE 的底部列一樣；字的顏色跟著同一條曲線變

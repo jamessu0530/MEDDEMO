@@ -33,8 +33,7 @@ import { OAuthCallbackPage } from "@/pages/oauth-callback"
 import { LoginPage } from "@/pages/login"
 import { MePage } from "@/pages/me"
 import { PrivacyPage } from "@/pages/privacy"
-import { PromotionsPage } from "@/pages/promotions"
-import { ProductsPage } from "@/pages/products"
+import { CatalogPage } from "@/pages/catalog"
 import { RidesPage } from "@/pages/rides"
 import { RegisterPage } from "@/pages/register"
 import { ManagerPage } from "@/pages/manager"
@@ -204,8 +203,8 @@ export default function App() {
             <Route path="/channels/search" element={<ChannelSearchPage />} />
             <Route path="/channels/:channelId" element={<ChannelsEntry />} />
             <Route path="/channels/:channelId/threads" element={<ChannelThreadsPage />} />
-            <Route path="/promotions" element={<PromotionsPage />} />
-            <Route path="/products" element={<ProductsPage />} />
+            <Route path="/products" element={<CatalogPage />} />
+            <Route path="/promotions" element={<Navigate to="/products?view=promotions" replace />} />
             {/* 方法卡：主管寫的做法，登入的人都看得到 */}
             <Route path="/methods" element={<MethodsPage />} />
             {/* 座騎圖鑑：熊熊滾騎過的座騎；主管與 IT 打開會看到後端的說明 */}

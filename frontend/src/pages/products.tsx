@@ -1,9 +1,7 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { ChevronLeft, ChevronRight, Search } from "lucide-react"
 
 import { listProducts, type Product } from "@/api/products"
-import { BottomNav } from "@/components/bottom-nav"
-import { CatalogNav } from "@/components/catalog-nav"
 import { Notice } from "@/components/notice"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -17,8 +15,8 @@ type LoadState =
   | { status: "ready"; products: Product[] }
 const PAGE_SIZE = 30
 
-/** 完整商品型錄：和促銷頁一樣直接翻查，品項與 AI 查詢讀同一份資料。 */
-export function ProductsPage() {
+/** 頁內的完整商品型錄：品項與 AI 查詢讀同一份資料。 */
+export function ProductsPanel({ navigation }: { navigation: ReactNode }) {
   const [state, setState] = useState<LoadState>({ status: "loading" })
   const [attempt, setAttempt] = useState(0)
   const [query, setQuery] = useState("")
@@ -77,8 +75,8 @@ export function ProductsPage() {
         <p className="text-xs text-muted-foreground">
           完整商品型錄，依品名、料號或類別查詢
         </p>
-        <h1 className="mt-0.5 text-lg font-semibold">商品</h1>
-        <CatalogNav />
+        <h1 className="mt-0.5 text-lg font-semibold">商品與促銷</h1>
+        {navigation}
         {state.status === "ready" && (
           <>
             <div className="relative mt-3">
@@ -226,7 +224,6 @@ export function ProductsPage() {
           </>
         )}
       </main>
-      <BottomNav />
     </div>
   )
 }

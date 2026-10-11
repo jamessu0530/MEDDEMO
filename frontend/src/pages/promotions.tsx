@@ -1,9 +1,7 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { ChevronDown, Search } from "lucide-react"
 
 import { listPromotions, type Promotion, type PromotionItem } from "@/api/promotions"
-import { BottomNav } from "@/components/bottom-nav"
-import { CatalogNav } from "@/components/catalog-nav"
 import { Notice } from "@/components/notice"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -16,7 +14,7 @@ type LoadState = { status: "loading" } | { status: "error" } | { status: "ready"
 const STATUS_VARIANT = { 進行中: "default", 未開始: "outline", 已結束: "secondary" } as const
 
 /** 促銷方案：每一期的整張訂單活動（PM 提醒）與各品項的搭贈。不必問 AI，業務在店裡被問到時直接翻 */
-export function PromotionsPage() {
+export function PromotionsPanel({ navigation }: { navigation: ReactNode }) {
   const [state, setState] = useState<LoadState>({ status: "loading" })
   const [attempt, setAttempt] = useState(0)
   const [selected, setSelected] = useState<string | null>(null)
@@ -57,8 +55,8 @@ export function PromotionsPage() {
     <div className="flex min-h-svh flex-col">
       <header className="sticky top-0 z-10 border-b bg-background/95 px-4 pt-4 pb-3 backdrop-blur">
         <p className="text-xs text-muted-foreground">每月一期，品項的搭贈與整張訂單的活動</p>
-        <h1 className="mt-0.5 text-lg font-semibold">促銷</h1>
-        <CatalogNav />
+        <h1 className="mt-0.5 text-lg font-semibold">商品與促銷</h1>
+        {navigation}
         {promotions.length > 1 && (
           <div className="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 pb-1.5">
             {promotions.map((p) => (
@@ -161,7 +159,6 @@ export function PromotionsPage() {
           </>
         )}
       </main>
-      <BottomNav />
     </div>
   )
 }
