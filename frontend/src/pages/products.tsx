@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, Search } from "lucide-react"
 
 import { listProducts, type Product } from "@/api/products"
 import { Notice } from "@/components/notice"
+import { ProductPhoto } from "@/components/product-photo"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -158,38 +159,45 @@ export function ProductsPanel({ navigation }: { navigation: ReactNode }) {
                   key={product.sku}
                   className="rounded-xl border-2 bg-card px-4 py-3 shadow-lip"
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <p className="min-w-0 leading-snug font-medium">
-                      {product.name}
-                    </p>
-                    <Badge variant="secondary" className="shrink-0">
-                      {product.category}
-                    </Badge>
+                  <div className="flex items-start gap-3 sm:gap-4">
+                    <ProductPhoto product={product} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <p className="min-w-0 leading-snug font-medium">
+                          {product.name}
+                        </p>
+                        <Badge variant="secondary" className="shrink-0">
+                          {product.category}
+                        </Badge>
+                      </div>
+                      <dl className="mt-3 grid grid-cols-2 gap-2 border-t pt-2 text-xs">
+                        <div>
+                          <dt className="text-muted-foreground">料號</dt>
+                          <dd className="mt-0.5 font-medium break-all">
+                            {product.sku}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-muted-foreground">單位</dt>
+                          <dd className="mt-0.5 font-medium">{product.unit}</dd>
+                        </div>
+                        {product.spec && (
+                          <div className="col-span-2">
+                            <dt className="text-muted-foreground">規格</dt>
+                            <dd className="mt-0.5">{product.spec}</dd>
+                          </div>
+                        )}
+                        {product.aliases.length > 0 && (
+                          <div className="col-span-2">
+                            <dt className="text-muted-foreground">常用叫法</dt>
+                            <dd className="mt-0.5">
+                              {product.aliases.join("、")}
+                            </dd>
+                          </div>
+                        )}
+                      </dl>
+                    </div>
                   </div>
-                  <dl className="mt-3 grid grid-cols-2 gap-2 border-t pt-2 text-xs">
-                    <div>
-                      <dt className="text-muted-foreground">料號</dt>
-                      <dd className="mt-0.5 font-medium break-all">
-                        {product.sku}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-muted-foreground">單位</dt>
-                      <dd className="mt-0.5 font-medium">{product.unit}</dd>
-                    </div>
-                    {product.spec && (
-                      <div className="col-span-2">
-                        <dt className="text-muted-foreground">規格</dt>
-                        <dd className="mt-0.5">{product.spec}</dd>
-                      </div>
-                    )}
-                    {product.aliases.length > 0 && (
-                      <div className="col-span-2">
-                        <dt className="text-muted-foreground">常用叫法</dt>
-                        <dd className="mt-0.5">{product.aliases.join("、")}</dd>
-                      </div>
-                    )}
-                  </dl>
                 </li>
               ))}
             </ul>

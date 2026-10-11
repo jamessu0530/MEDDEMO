@@ -14,7 +14,7 @@ from app.services.extraction import (
     drop_unknown_packs, empty_fields, get_extractor, product_hints, validate_fields, validate_repeat,
 )
 from app.services.promo_packs import current_packs
-from app.services.transcription import get_transcriber, visit_hotwords
+from app.services.transcription import get_auto_transcriber, get_taiwanese_transcriber, get_transcriber, visit_hotwords
 from app.tasks import set_progress
 from app.timeutil import local_date
 
@@ -30,7 +30,15 @@ def process_audio(visit_id: str) -> None:
         set_progress(visit_id, "transcribing")
         try:
             hotwords = visit_hotwords(session, visit.customer_id)
-            transcript = get_transcriber().transcribe(audio.content, audio.mime_type, hotwords)
+            if audio.language == "auto":
+                transcriber = get_auto_transcriber()
+            elif audio.language == "nan-TW":
+                transcriber = get_taiwanese_transcriber()
+            elif audio.language == "zh-TW":
+                transcriber = get_transcriber()
+            else:
+                transcriber = get_transcriber(audio.language)
+            transcript = transcriber.transcribe(audio.content, audio.mime_type, hotwords)
         except Exception as exc:
             log.warning("轉文字失敗 visit=%s：%s", visit_id, exc)
             visit.status = "failed"
@@ -40,7 +48,7 @@ def process_audio(visit_id: str) -> None:
             return
         visit.transcript = transcript.text
         session.commit()
-        _extract(session, visit)
+        _extract(session, visit, transcript.review_note)
 
 
 def extract_transcript(visit_id: str) -> None:
@@ -51,7 +59,7 @@ def extract_transcript(visit_id: str) -> None:
             _extract(session, visit)
 
 
-def _extract(session: Session, visit: Visit) -> None:
+def _extract(session: Session, visit: Visit, transcription_note: str | None = None) -> None:
     set_progress(visit.id, "extracting")
     note = None
     snapshot = None
@@ -81,6 +89,18 @@ def _extract(session: Session, visit: Visit) -> None:
         log.warning("整理欄位失敗 visit=%s：%s", visit.id, exc)
         fields, sources, snapshot = empty_fields(), {}, None
         note = f"欄位沒有自動整理出來，請手動填寫（{exc}）"
+    audio = session.get(VisitAudio, visit.id)
+    if audio is not None and audio.language == "auto":
+        review_note = "華語／台語已自動辨識；請對照原文，核對品名、數量、單位與日期後再送出。"
+        note = f"{note}；{review_note}" if note else review_note
+    elif audio is not None and audio.language == "nan-TW":
+        review_note = "台語辨識可能聽錯品名、數量、單位或日期；請逐欄核對並修正後再送出。"
+        note = f"{note}；{review_note}" if note else review_note
+    elif audio is not None and audio.language != "zh-TW":
+        review_note = "請對照原語言逐字稿，核對中文紀錄的品名、數量、單位與日期後再送出。"
+        note = f"{note}；{review_note}" if note else review_note
+    if transcription_note:
+        note = f"{note}；{transcription_note}" if note else transcription_note
     visit.fields_raw = fields
     visit.fields_final = fields
     visit.field_sources = sources

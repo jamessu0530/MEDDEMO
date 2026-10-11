@@ -7,7 +7,7 @@
 import { useSyncExternalStore } from "react"
 
 import { ApiError } from "@/api/client"
-import { uploadAudio, type Visit } from "@/api/visits"
+import { uploadAudio, type RecordingLanguage, type Visit } from "@/api/visits"
 
 const DB_NAME = "meddemo"
 const STORE = "recordings"
@@ -20,6 +20,8 @@ export type QueuedRecording = {
   customerId: string
   customerName: string
   filename: string
+  // 舊版存在手機的錄音沒有這個欄位，上傳時沿用華語預設。
+  language?: RecordingLanguage
   blob: Blob | null // 送出之後就清掉，只留紀錄給畫面提示
   recordedAt: number
   durationSeconds: number
@@ -109,7 +111,7 @@ class UploadQueue {
   sendNow = async (item: QueuedRecording): Promise<Visit> => {
     this.inFlight.add(item.clientRef)
     try {
-      const visit = await uploadAudio(item.customerId, item.blob!, item.filename, item.clientRef)
+      const visit = await uploadAudio(item.customerId, item.blob!, item.filename, item.clientRef, item.language)
       await this.remove(item.clientRef)
       return visit
     } finally {
@@ -134,7 +136,7 @@ class UploadQueue {
     try {
       for (const item of pending) {
         try {
-          const visit = await uploadAudio(item.customerId, item.blob!, item.filename, item.clientRef)
+          const visit = await uploadAudio(item.customerId, item.blob!, item.filename, item.clientRef, item.language)
           await run("readwrite", (store) => store.put({ ...item, blob: null, state: "sent", visitId: visit.id, error: null }))
         } catch (error) {
           if (isTemporary(error)) break // 還是送不出去，等下一輪

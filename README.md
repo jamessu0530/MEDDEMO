@@ -33,6 +33,7 @@ cd frontend && npm install && npm run dev                                       
 | 功能 | 要填的設定 | 模型留空時用 |
 | --- | --- | --- |
 | 語音辨識 | `ASR_PROVIDER=gemini`、`ASR_API_KEY`；或 `local`（CARE 的服務，另填 `ASR_URL`），見下方「語音辨識」 | `gemini-3.8-flash` |
+| 台語拜訪錄音 | `TAIGI_API_KEY`，另可設定 `TAIGI_BASE_URL`；華語／台語自動比對，欄位整理仍使用 AI 模型 | Taigi 台語專用 STT（`stt_best_billing`） |
 | AI 模型（抽欄位、問答） | `LLM_PROVIDER=gemini`、`LLM_API_KEY` | `gemini-3.8-flash` |
 | 語意檢索 | `EMBEDDING_PROVIDER=gemini`、`EMBEDDING_API_KEY` | `gemini-embedding-2`（文字、照片、PDF 同一個向量空間） |
 | 語音問答 | `VOICE_API_KEY`（沒填就沿用 `LLM_API_KEY`） | `gemini-2.5-flash-native-audio-preview-12-2025` |
@@ -80,11 +81,29 @@ curl -X PUT localhost:8000/api/mock-systems/oa -H 'Content-Type: application/jso
 
 ## 語音辨識：Gemini 與 CARE 的服務
 
+### 華語／台語自動辨識
+
+口述拜訪頁直接按「開始錄音」，不必選語言。新錄音使用 `language=auto`，華語與台語 AI 同時聽寫，再沿用 CARE 的逐字稿比較方式選出結果：兩份很接近時採華語，差異大時採台語；台語用字只調整比較門檻。長錄音的比較不忽略重複字詞，避免常見中文字被當成雜訊。
+
+- 逐字稿保留選出的原文供核對，六個拜訪欄位整理成台灣繁體中文，`sources` 逐字引用原文。辨識不等於品名、數量與日期一定正確，確認頁會提醒核對，不靠諧音猜品名或日期。
+- 每段最多三分鐘，到時自動結束、保存並上傳。WebM／M4A 用 PyAV 轉成 16 kHz 單聲道 PCM WAV；台語來源再在停頓處切成不超過 25 秒的片段。
+- 華語使用下方的 Gemini／CARE 主要來源與備援；台語使用 Taigi AI Labs 的 `stt_best_billing`。設定 `TAIGI_API_KEY` 才能完成雙語比對，本機填 `backend/.env`，正式環境填同名 GitHub Secret；金鑰不送到瀏覽器。
+- 其中一個來源失敗時，只使用尚可辨識的結果，確認頁會標明未完成雙語比對；只有台語來源但內容沒有可確認的台語用字時，不把可能的亂字送去整理，讓使用者重試或手動輸入。
+- 台語各段依序送出，呼叫至少相隔六秒（含重試），5xx 只重試一次，429 不立即重試；台語整份辨識預算 90 秒。與 CARE 共用金鑰也共用廠商額度。
+- 自動模式跟著錄音存進手機與 `visit_audio.language`，離線重送與重新辨識仍用自動模式；舊版手機保存的明確語言也能繼續處理，沒記語言的舊錄音預設華語。
+- 口述拜訪錄音在說完後辨識，不顯示只適用華語的即時字幕；「問熊熊滾」及行程的語音輸入維持既有流程。
+
+2026-10-11 已用虛構華語與台語合成錄音實際驗證自動辨識、原文保留與中文欄位整理的完整流程。華語測試正確保留「20 盒，不要 10 盒」的修正與星期五期限；台語測試仍有品名、單位與星期辨識錯誤，不確定的商品與日期留空（例如「拜鼓」保留原話、期限留空）。這是連線與草稿流程驗證，不能視為辨識正確率驗收，尚未驗證真人口音與現場噪音。
+
+現有開發資料庫可先執行 `ALTER TABLE visit_audio ADD COLUMN IF NOT EXISTS language text NOT NULL DEFAULT 'zh-TW';` 保留錄音並補上欄位。自動模式沿用同一欄位，沒有新增資料庫欄位。部署仍依既有的 schema 指紋判斷是否重灌假資料；推 main 前須留意這項既有行為。
+
+### 華語主要來源與備援
+
 錄音轉文字有兩個來源，`ASR_PROVIDER` 選主要的那個，另一個有設定就當備援；主要來源連不上、逾時或回錯誤時改用備援。
 
-- **Gemini**（`gemini-3.8-flash`）：提示裡附熱詞（這家客戶的名稱、常用品項與口語別名、競品、通路術語），照熱詞寫專有名詞。
+- **Gemini**（`gemini-3.8-flash`）：華語提示附熱詞（這家客戶的名稱、常用品項與口語別名、競品、通路術語），照熱詞寫專有名詞。
 - **CARE 的語音辨識服務**：跟 CARE 共用 care-vm 上的 `local-asr`（faster-whisper small），不花錢；兩個專案的請求會排隊，CARE 部署時會重啟。網址是 `values.yaml` 的 `config.ASR_URL`，本機連不到。
-  - 服務沒有熱詞參數，輸出是簡體，專有名詞常錯成同音字。所以先轉台灣正體，再用拼音比對熱詞修同音字，規則寫在 `backend/app/services/asr_cleanup.py`。
+  - 服務沒有熱詞參數。華語輸出是簡體，專有名詞常錯成同音字，所以先轉台灣正體，再用拼音比對熱詞修同音字，規則寫在 `backend/app/services/asr_cleanup.py`。
 - 正式環境現在是 Gemini 為主、CARE 備援；`config.ASR_PROVIDER` 改成 `local` 就反過來。
 - 9/15 用 macOS 的台灣華語合成語音念術語句子，送 CARE 的服務實測（真人口音與環境噪音會更差）：
 
@@ -312,6 +331,16 @@ IT 登入後的首頁是 `/admin`：全國 → 區 → 主管 → 業務，點�
   ```
 
   10/10 第一次跑 p95 1.6 秒沒過：每點一下都回整份行程，算行程時把示範業務一千多筆拜訪全拿回來再挑今天的。改成在 SQL 裡只拿今天的之後，連跑三次 p95 0.5～0.66 秒。
+
+## 自訂行動報表
+
+`/reports` 提供接近 Power BI 操作方式的報表工作區：檢視／編輯模式、選取圖表後的視覺效果／資料欄位／格式面板、拖曳與鍵盤排序、半寬／全寬和高度、複製、刪除，以及最多五個分頁（每頁 12 張、總共 24 張）。16 種呈現方式包括數字卡、橫／直條、堆疊橫／直條、百分比堆疊橫／直條、折線、面積、圓餅、環圈、矩形樹狀、折線與直條、散佈、表格、矩陣。桌機使用右側面板，手機使用底部面板與原生選單，底部 AI 膠囊跟著鍵盤移動。入口在手機首頁、個人頁、主管頁、帳號設定與電腦側邊欄。[介面分析與 12 組功能](docs/superpowers/specs/2026-10-11-report-studio-design.md)。
+
+- 期間包含本月、上月、本季、含本月的近六個月與近十二個月；業務與客戶類型可再篩選。逾期帳款和客戶數是目前快照，不受期間影響，卡片會註明。排行總計包含完整範圍，前幾名僅限制明細筆數。淨毛利扣除成本、上架費與通路獎勵。
+- 堆疊圖與矩陣使用真實多分組聚合，組合／散佈圖使用業績與淨毛利兩項交易指標。閱讀模式點資料可聯動篩選；報表與單圖條件取交集，無法關聯的來源會註記未套用條件。圖表可放大查看精確值並匯出目前篩選的 CSV。占比圖遇到負值會顯示原因而不產生誤導比例。
+- 報表使用客戶檔案的 `SELF` 權限：業務自己的客戶、主管的團隊、IT 全公司。拜訪另外檢查實際拜訪人員。切換版型或 AI 調整都不能擴大可見範圍。
+- 底部 AI 接沿用的 Gemini 設定，把自然語言轉成固定的報表設定，先顯示提案，套用後可復原。AI 不產生 SQL，也不會直接儲存。未設定 AI 時仍可手動自訂。
+- 按「儲存」寫入 `user_report_config`，跟著登入帳號，代理示範業務的帳號也各自保留自己的版面；部署重灌時保留設定，刪除帳號時連同設定刪除。API：`GET /api/reports`、`PUT /api/reports/config`、`POST /api/reports/data`、`POST /api/reports/adjust`；AI 調整每帳號每小時 30 次、全系統每天 200 次。
 
 ## 優惠與合約簽核
 
@@ -559,7 +588,9 @@ uv run --project backend python data/seed/sync_products.py
   - 採用次數＝有幫上的筆數。同一個帳號在同一家客戶對同一張卡只有一筆，再按一次是改答案，次數不會重複算。這是資料庫的唯一限制（沒有客戶的那一筆也算同一筆，Postgres 的 `NULLS NOT DISTINCT`），所以回饋不另設用量上限。
   - 自建與第三方登入的帳號看的是林昱辰的客戶，回饋卻記在自己名下：十位評審各按一次是十筆，不會擠成林昱辰的一筆。刪除帳號時回饋一起刪。
   - 清單照採用次數排，同數看最近修改。存檔時內容沒有真的變（表單打開沒改就按儲存）不算修改，先後不會跟著跳。業務那邊只顯示採用次數；沒幫上的次數只有主管端看得到。
-- **內容是人寫的**：AI 不生成、不改寫、不摘要，畫面上就是主管打的原文。
+- **經理頻道發言也能當來源**：在任何可查看的頻道（含客戶討論串、文字頻道）找到經理真人文字後按「存成方法卡」，或在新增／修改方法卡時跨頻道搜尋。原話可帶入做法，經理補上標題、使用情境與標籤後再上架。保留來源經理與發言時間，原文與跳轉連結依原頻道權限開放；AI、通報、已刪除和純附件訊息不列為來源。整理上架者與原發言經理分開標示。
+  - 既有資料庫可執行 `uv run --project backend python backend/scripts/ensure_method_card_sources.py` 補上來源表，保留原有資料。API 為 `GET /api/methods/sources` 分頁搜尋；新增／修改卡片以 `source_message_id` 指定來源，由伺服器查驗原訊息與權限。
+- **內容是人寫的**：AI 不生成、不改寫、不摘要，畫面顯示經理撰寫或從發言整理的內容。
 - **「情況」標籤**七個：客戶提到競品、進貨間隔拉長、合約快到期、帳款逾期、節慶檔期、談進價與成本、新人必看。前四個跟談判卡判斷客戶狀況的訊號同一組，談判卡與新人第一週頁靠標籤帶出相關的卡。每張卡另外標適用的客戶類型（連鎖、獨立藥局、診所，或都適用）。
   - 標籤、客戶類型、關鍵字三種篩選在手機上做（卡片只有幾十張，打字時不必等網路）；`GET /api/methods` 也收同樣的三個參數。
   - 標題 2～40 字、情況 200 字、做法 2,000 字、標籤至少一個。不合規定回 422，訊息寫出是哪一欄。
@@ -784,6 +815,7 @@ MEDDEMO 跟 CARE 共用 GCP 上的 care-vm：K3s、Helm、Traefik、HTTPS 憑證
 | `FACEBOOK_APP_ID`、`FACEBOOK_APP_SECRET` | secret | 選填：Facebook 登入。Meta for Developers 建 App 並加上「Facebook 登入」，有效 OAuth 重新導向 URI 與 App 網域填網站網址。App 在開發模式時只有 App 的管理員與測試人員能登入。 |
 | `SITE_URL` | variable | `https://你的網址`，部署完會打它的 `/health` 確認網站正常 |
 | `ASR_API_KEY` | secret | 選填：語音辨識用的 Gemini 金鑰，沒填就沿用 `LLM_API_KEY` |
+| `TAIGI_API_KEY` | secret | 選填：Taigi AI Labs 台語 STT 正式金鑰；沒填時無法完成華語／台語雙語比對，確認頁會提示 |
 | `LLM_API_KEY` | secret | 選填：Gemini 的金鑰，到 Google AI Studio 申請 |
 | `EMBEDDING_API_KEY` | secret | 選填：embedding 用的 Gemini 金鑰，沒填就沿用 `LLM_API_KEY` |
 | `VOICE_API_KEY` | secret | 選填：語音問答用的 Gemini 金鑰，沒填就沿用 `LLM_API_KEY` |
@@ -838,6 +870,8 @@ backend/app/resources/approval_model.json  簽核模型的權重、門檻與成�
 backend/app/services/customer_profile.py  客戶檔案：進門前三分鐘、交易概況、待處理事項、競品紀錄
 backend/app/services/achievements.py 個人頁：三格數字、獎牌（只算點過的站）、前五名藥局、每月業績
 backend/app/api/me.py              個人頁 API（`GET /api/me`，只有業務）
+backend/app/services/reports.py    自訂報表：設定驗證、權限、固定 SQL 聚合與 AI 提案
+backend/app/api/reports.py         報表版面、資料預覽與 AI 調整 API
 backend/app/services/negotiation.py  談判卡：檔期、架上與缺口（連鎖），當期促銷的進價與這家的條件（獨立藥局、診所），內部文件的切入點
 backend/app/services/festivals.py   節慶行事曆：讀設定檔、挑下一個節慶、算檔期的申請期限
 backend/app/resources/festivals.json  節慶行事曆（日期、主推品類、人寫的兩句話）
@@ -865,6 +899,8 @@ backend/scripts/stress_arrivals.py  點站的壓力測試：20 位評審同時�
 backend/tests                       測試
 frontend/                           React + Vite + Tailwind + shadcn/ui
 frontend/src/pages/me.tsx           個人頁
+frontend/src/pages/reports.tsx      自訂行動報表與 AI 膠囊
+frontend/src/components/reports/   手機報表編輯面板與圖表
 frontend/src/components/me/        個人頁的獎牌牆（three.js 與平塗退路）與兩張圖
 frontend/src/voice                  語音問答：收音與播放、Gemini Live 連線
 frontend/src/ask                    對話 store（打字與語音共用）、查詢輪詢

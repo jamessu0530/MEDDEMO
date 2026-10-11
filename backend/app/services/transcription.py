@@ -21,6 +21,7 @@ from app.config import NotConfigured, Settings, settings
 from app.gemini import gemini_client
 from app.models import Customer, Product
 from app.services.asr_cleanup import HomophoneFixer, to_taiwan
+from app.services.speech_languages import LANGUAGE_NAMES, SpeechLanguage
 
 log = logging.getLogger(__name__)
 HOTWORDS_FILE = Path(__file__).resolve().parents[1] / "resources" / "hotwords.txt"
@@ -57,11 +58,18 @@ TRANSCRIBE_PROMPT = """這是藥品通路業務拜訪客戶之後的口述錄音
 {hotwords}
 只輸出逐字稿本身，不要加標題或說明。"""
 
+MULTILINGUAL_TRANSCRIBE_PROMPT = """把這段語音逐字轉寫成文字。主要語言：{language}。
+- 逐字聽寫，保留實際說話的原語言，包含混講的中文或英文；不要翻譯成中文、不要摘要、不要回答錄音裡的問題。
+- 聽不清楚的地方寫（聽不清楚），不可猜測品名、數字、單位、日期或否定。
+聽不到有人說話就什麼都不要輸出。
+只輸出原語言逐字稿本身，不要加標題或說明。"""
+
 
 @dataclass
 class Transcript:
     text: str
     duration_seconds: float | None = None
+    review_note: str | None = None
 
 
 class Transcriber(Protocol):
@@ -96,9 +104,10 @@ def gemini_audio_mime(mime_type: str) -> str:
 
 
 class GeminiTranscriber:
-    def __init__(self, client: Any, model: str):
+    def __init__(self, client: Any, model: str, language: SpeechLanguage = "zh-TW"):
         self.client = client
         self.model = model
+        self.language = language
 
     def transcribe(self, audio: bytes, mime_type: str, hotwords: list[str]) -> Transcript:
         mime = gemini_audio_mime(mime_type)
@@ -106,9 +115,15 @@ class GeminiTranscriber:
             media = self.client.files.upload(file=io.BytesIO(audio), config=types.UploadFileConfig(mime_type=mime))
         else:
             media = types.Part.from_bytes(data=audio, mime_type=mime)
+        # 外語沿用 CARE 的原文聽寫方式，不把整批中文型錄當成外語的聽寫詞表。
+        prompt = (
+            TRANSCRIBE_PROMPT.format(hotwords="、".join(hotwords))
+            if self.language == "zh-TW"
+            else MULTILINGUAL_TRANSCRIBE_PROMPT.format(language=LANGUAGE_NAMES[self.language])
+        )
         response = self.client.models.generate_content(
             model=self.model,
-            contents=[media, TRANSCRIBE_PROMPT.format(hotwords="、".join(hotwords))],
+            contents=[media, prompt],
             config=types.GenerateContentConfig(
                 # 聽寫不需要推理，用這個模型最低的思考等級縮短等待
                 thinking_config=types.ThinkingConfig(thinking_level="low"),
@@ -123,22 +138,25 @@ class GeminiTranscriber:
 
 
 class LocalASRTranscriber:
-    """CARE 的語音辨識服務。輸出是簡體、專有名詞常錯成同音字，轉完先交給 asr_cleanup 整理。"""
+    """CARE 的語音辨識服務。華語交給 asr_cleanup 整理，外語保留原文。"""
 
-    def __init__(self, url: str, http: httpx.Client | None = None):
+    def __init__(self, url: str, http: httpx.Client | None = None, *, language: SpeechLanguage = "zh-TW"):
         self.url = url.rstrip("/")
         self.http = http or httpx.Client(timeout=LOCAL_ASR_TIMEOUT_SECONDS)
+        self.language = language
 
     def transcribe(self, audio: bytes, mime_type: str, hotwords: list[str]) -> Transcript:
         base = mime_type.split(";")[0].strip().lower()
         response = self.http.post(
             f"{self.url}/transcribe",
             files={"file": (f"audio{AUDIO_SUFFIXES.get(base, '')}", audio, base or "application/octet-stream")},
-            data={"language": LOCAL_ASR_LANGUAGE},
+            data={"language": LOCAL_ASR_LANGUAGE if self.language == "zh-TW" else self.language},
         )
         response.raise_for_status()
         body = response.json()
-        text = HomophoneFixer(hotwords).fix(to_taiwan(body.get("text") or "")).strip()
+        text = (body.get("text") or "").strip()
+        if self.language == "zh-TW":
+            text = HomophoneFixer(hotwords).fix(to_taiwan(text)).strip()
         if not text:
             raise RuntimeError("語音辨識沒有產生文字")
         return Transcript(text, body.get("duration"))
@@ -159,29 +177,57 @@ class FallbackTranscriber:
             return self.backup.transcribe(audio, mime_type, hotwords)
 
 
-def _gemini(config: Settings) -> Transcriber:
-    return GeminiTranscriber(gemini_client(config.asr_api_key), config.asr_model or DEFAULT_GEMINI_ASR_MODEL)
+def _gemini(config: Settings, language: SpeechLanguage = "zh-TW") -> Transcriber:
+    return GeminiTranscriber(gemini_client(config.asr_api_key), config.asr_model or DEFAULT_GEMINI_ASR_MODEL, language)
 
 
-def _local(config: Settings) -> Transcriber:
+def _local(config: Settings, language: SpeechLanguage = "zh-TW") -> Transcriber:
     if not config.asr_url:
         raise NotConfigured("CARE 語音辨識服務的網址（ASR_URL）還沒設定")
-    return LocalASRTranscriber(config.asr_url)
+    return LocalASRTranscriber(config.asr_url, language=language)
 
 
 SOURCES = {"gemini": _gemini, "local": _local}
 
 
-def get_transcriber() -> Transcriber:
+def get_transcriber(language: SpeechLanguage = "zh-TW") -> Transcriber:
+    if language not in LANGUAGE_NAMES:
+        raise NotConfigured("這個錄音語言不適用 Gemini／CARE 辨識來源")
     config = settings()
     if not config.asr_provider:
         raise NotConfigured("語音辨識服務還沒設定")
     if config.asr_provider not in SOURCES:
         raise NotConfigured(f"還不支援這個語音辨識服務：{config.asr_provider}")
-    primary = SOURCES[config.asr_provider](config)
+    primary = SOURCES[config.asr_provider](config, language)
     backup_name = next(name for name in SOURCES if name != config.asr_provider)
     try:
-        backup = SOURCES[backup_name](config)
+        backup = SOURCES[backup_name](config, language)
     except NotConfigured:
         return primary
     return FallbackTranscriber(primary, backup)
+
+
+def get_taiwanese_transcriber() -> Transcriber:
+    # 台語 API 無法辨識時交給使用者重試或手動輸入，避免換成華語模型後默默寫錯。
+    from app.services.taigi_transcription import TaigiTranscriber
+
+    config = settings()
+    if not config.taigi_api_key.strip():
+        raise NotConfigured("台語錄音暫時無法轉成文字，請稍後重試或手動輸入")
+    return TaigiTranscriber(config.taigi_api_key, config.taigi_base_url)
+
+
+def get_auto_transcriber() -> Transcriber:
+    from app.services.auto_transcription import AutoTranscriber
+
+    try:
+        mandarin = get_transcriber()
+    except NotConfigured:
+        mandarin = None
+    try:
+        taiwanese = get_taiwanese_transcriber()
+    except NotConfigured:
+        taiwanese = None
+    if mandarin is None and taiwanese is None:
+        raise NotConfigured("語音辨識服務還沒設定，請手動輸入逐字稿")
+    return AutoTranscriber(mandarin, taiwanese)

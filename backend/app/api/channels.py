@@ -61,6 +61,7 @@ class MessageItem(BaseModel):
     kind: str
     author_id: str | None
     author_name: str | None
+    author_role: str | None = None
     body: str
     created_at: dt.datetime
     # 是不是登入者自己發的（自建帳號看的是示範業務的頻道，但發言記在自己名下）
@@ -142,10 +143,12 @@ def _items(session: Session, user: AppUser, infos: list[ChannelInfo]) -> list[Ch
 
 
 def _message(
-    message: ChannelMessage, author_name: str | None, user: AppUser, files: list[Attachment] | None = None
+    message: ChannelMessage, author_name: str | None, user: AppUser, files: list[Attachment] | None = None,
+    *, author_role: str | None = None,
 ) -> MessageItem:
     return MessageItem(
         id=message.id, kind=message.kind, author_id=message.author_id, author_name=author_name,
+        author_role=author_role if message.kind == "user" else None,
         body=message.body, created_at=message.created_at, mine=message.author_id == user.id,
         attachments=[attachment_item(a, user) for a in files or []], deleted=message.deleted_at is not None,
         mentions_ai=message.mentions_ai, reply_to_id=message.reply_to_id, visit_id=message.visit_id,
@@ -154,7 +157,9 @@ def _message(
 
 def _messages(session: Session, user: AppUser, rows: list) -> list[MessageItem]:
     files = attachments.for_messages(session, [message.id for message, _ in rows])
-    return [_message(message, author_name, user, files.get(message.id)) for message, author_name in rows]
+    author_ids = {message.author_id for message, _ in rows if message.kind == "user" and message.author_id}
+    roles = dict(session.execute(select(AppUser.id, AppUser.role).where(AppUser.id.in_(author_ids))).all())
+    return [_message(message, author_name, user, files.get(message.id), author_role=roles.get(message.author_id)) for message, author_name in rows]
 
 
 def _visible(session: Session, user: AppUser, channel_id: int) -> ChannelInfo:
@@ -277,7 +282,7 @@ def post_message(
     channel_memory.schedule(info.id)
     if message.mentions_ai:
         _call_mascot(session, message)
-    return _message(message, user.name, user, files)
+    return _message(message, user.name, user, files, author_role=user.role)
 
 
 def _call_mascot(session: Session, message: ChannelMessage) -> None:

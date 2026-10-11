@@ -22,6 +22,27 @@ export type MethodCard = {
   // 我在這個情境（帶了客戶就是那家客戶，沒帶就是方法卡清單）按過什麼；沒按過是 null
   my_feedback: boolean | null
   updated_at: string
+  // 原始發言的可見範圍仍由頻道權限決定，整理後的卡片依上架規則公開。
+  source?: MethodCardSource | null
+}
+
+export type MethodSourceMessage = {
+  message_id: number
+  channel_id: number
+  channel_name: string
+  author_name: string
+  body: string
+  created_at: string
+}
+
+export type MethodCardSource = {
+  message_id: number | null
+  channel_id: number | null
+  channel_name: string | null
+  author_name: string
+  created_at: string
+  body: string | null
+  can_view: boolean
 }
 
 /** 卡片上寫適用哪一種客戶；null 是每種都適用 */
@@ -29,7 +50,44 @@ export function customerTypeLabel(type: MethodCard["customer_type"]) {
   return type ? CUSTOMER_TYPE_LABEL[type] : "都適用"
 }
 
-export type MethodCardInput = Pick<MethodCard, "title" | "situation" | "approach" | "customer_type" | "tags">
+export type MethodCardInput = Pick<
+  MethodCard,
+  "title" | "situation" | "approach" | "customer_type" | "tags"
+> & {
+  // 省略表示來源不變；null 才移除來源。
+  source_message_id?: number | null
+}
+
+export type MethodSourcesPage = {
+  items: MethodSourceMessage[]
+  next_before: number | null
+}
+
+/** 只列出目前使用者可見頻道內，經理真人寫下的發言。 */
+export function listMethodSources(
+  filters: {
+    q?: string
+    channel_id?: number
+    before?: number
+    limit?: number
+  } = {},
+  signal?: AbortSignal
+) {
+  const query = new URLSearchParams()
+  if (filters.q?.trim()) query.set("q", filters.q.trim())
+  if (filters.channel_id !== undefined)
+    query.set("channel_id", String(filters.channel_id))
+  if (filters.before !== undefined) query.set("before", String(filters.before))
+  if (filters.limit !== undefined) query.set("limit", String(filters.limit))
+  const suffix = query.size ? `?${query}` : ""
+  return request<MethodSourcesPage>(`/api/methods/sources${suffix}`, { signal })
+}
+
+export function getMethodSource(messageId: number, signal?: AbortSignal) {
+  return request<MethodSourceMessage>(`/api/methods/sources/${messageId}`, {
+    signal,
+  })
+}
 
 /** 上架的卡，後端已經照採用次數排好。一次全拿回來，標籤與關鍵字在手機上篩（lib/methods.ts） */
 export function listMethods(signal?: AbortSignal) {
@@ -47,14 +105,24 @@ export function createMethod(input: MethodCardInput) {
 }
 
 /** 只送要改的欄位；下架、重新上架是改 status */
-export function updateMethod(id: number, changes: Partial<MethodCardInput & Pick<MethodCard, "status">>) {
+export function updateMethod(
+  id: number,
+  changes: Partial<MethodCardInput & Pick<MethodCard, "status">>
+) {
   return request<MethodCard>(`/api/methods/${id}`, jsonBody("PATCH", changes))
 }
 
 /** 有幫上／沒幫上。再按一次是改答案；回傳按完之後的這張卡。customerId 是在哪一家客戶的談判卡上按的 */
-export function sendMethodFeedback(id: number, helped: boolean, customerId?: string) {
+export function sendMethodFeedback(
+  id: number,
+  helped: boolean,
+  customerId?: string
+) {
   return request<MethodCard>(
     `/api/methods/${id}/feedback`,
-    jsonBody("POST", customerId ? { helped, customer_id: customerId } : { helped })
+    jsonBody(
+      "POST",
+      customerId ? { helped, customer_id: customerId } : { helped }
+    )
   )
 }

@@ -15,6 +15,7 @@ from app.config import NotConfigured
 from app.db import get_session
 from app.models import Customer
 from app.services import live_transcription
+from app.services.speech_languages import SpeechLanguage
 from app.services.scope import SHARING_LEVEL, Scope, owner_path
 
 log = logging.getLogger(__name__)
@@ -24,6 +25,7 @@ SessionDep = Annotated[Session, Depends(get_session)]
 
 class TranscriptionSessionIn(BaseModel):
     customer_id: str | None = None
+    language: SpeechLanguage = "zh-TW"
 
 
 class TranscriptionSessionOut(BaseModel):
@@ -45,7 +47,7 @@ def start_session(session: SessionDep, body: TranscriptionSessionIn, user: Curre
     if customer_id and not Scope.for_user(user).can_see(own_customer, owner_path(session, session.get(Customer, customer_id))):
         customer_id = None
     try:
-        live = live_transcription.create_session(live_transcription.vocabulary(session, customer_id))
+        live = live_transcription.create_session(live_transcription.vocabulary(session, customer_id), body.language)
     except NotConfigured as exc:
         raise HTTPException(503, f"即時轉錄還不能用：{exc}") from exc
     except errors.APIError as exc:

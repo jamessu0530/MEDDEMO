@@ -391,6 +391,8 @@ class VisitAudio(Base):
     visit_id: Mapped[str] = mapped_column(ForeignKey("visit.id", ondelete="CASCADE"), primary_key=True)
     content: Mapped[bytes] = mapped_column(LargeBinary)
     mime_type: Mapped[str]
+    # 跟原檔一起保存，離線重送與重新辨識時都用錄音當下選的語言。
+    language: Mapped[str] = mapped_column(server_default="zh-TW")
     created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
 
 
@@ -1011,6 +1013,16 @@ class UserPreference(Base):
     updated_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
 
 
+class UserReportConfig(Base):
+    """行動報表版面跟著登入帳號；代理示範業務時也不共用他的設定。"""
+
+    __tablename__ = "user_report_config"
+
+    user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), primary_key=True)
+    config: Mapped[dict[str, Any]]
+    updated_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+
+
 class SapEmployee(Base):
     """模擬 SAP 的人員主檔：一個公司帳號一列，存到職日與負責的產品線（新人第一週頁的「你賣什麼」）。
 
@@ -1062,6 +1074,21 @@ class MethodCard(Base):
     status: Mapped[str] = mapped_column(server_default="published")
     created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+
+
+class MethodCardSource(Base):
+    """主管對話的原始出處。卡片整理者與來源作者分開；訊息消失仍保留作者與時間。
+
+    快照原文只有原頻道仍可見、來源訊息仍存在且未刪除時才會輸出。
+    """
+
+    __tablename__ = "method_card_source"
+
+    card_id: Mapped[int] = mapped_column(ForeignKey("method_card.id", ondelete="CASCADE"), primary_key=True)
+    message_id: Mapped[int | None] = mapped_column(ForeignKey("channel_message.id", ondelete="SET NULL"), index=True)
+    author_name: Mapped[str]
+    created_at: Mapped[dt.datetime]
+    body: Mapped[str] = mapped_column(Text)
 
 
 class MethodCardFeedback(Base):

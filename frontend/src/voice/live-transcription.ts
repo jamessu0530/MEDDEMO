@@ -7,6 +7,7 @@
 import { GoogleGenAI, type LiveConnectConfig, type Session } from "@google/genai"
 
 import { startTranscriptionSession } from "@/api/transcription"
+import type { RecordingLanguage } from "@/api/visits"
 import { INPUT_MIME_TYPE, startCapture, toBase64 } from "@/voice/audio"
 import { tidyTranscript } from "@/ask/transcript"
 
@@ -20,14 +21,16 @@ export async function startLiveTranscription(
   context: AudioContext,
   stream: MediaStream,
   customerId: string | null,
-  onText: (confirmed: string, interim: string) => void
+  onText: (confirmed: string, interim: string) => void,
+  language: RecordingLanguage = "zh-TW"
 ): Promise<LiveTranscription | null> {
+  if (language === "auto" || language === "nan-TW") return null
   let session: Session | null = null
   let stopCapture: (() => void) | null = null
   let closed = false
   let confirmed = ""
   try {
-    const live = await startTranscriptionSession(customerId)
+    const live = await startTranscriptionSession(customerId, language)
     const ai = new GoogleGenAI({ apiKey: live.token, httpOptions: { apiVersion: live.api_version } })
     session = await ai.live.connect({
       model: live.model,
@@ -36,10 +39,12 @@ export async function startLiveTranscription(
         onmessage: (message) => {
           const content = message.serverContent
           if (content?.inputTranscription?.text) {
-            confirmed = tidyTranscript(confirmed + content.inputTranscription.text)
+            const text = confirmed + content.inputTranscription.text
+            confirmed = language === "zh-TW" ? tidyTranscript(text) : text
             onText(confirmed, "")
           } else if (content?.interimInputTranscription?.text) {
-            onText(confirmed, tidyTranscript(content.interimInputTranscription.text))
+            const text = content.interimInputTranscription.text
+            onText(confirmed, language === "zh-TW" ? tidyTranscript(text) : text)
           }
         },
         onclose: () => {

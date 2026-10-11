@@ -24,6 +24,7 @@ dependencies = [
     "uvicorn[standard]>=0.52.4",
     "pillow>=12.3.0",
     "pypdf>=6.19.0",
+    "av==18.1.0",
 ]
 
 [build-system]

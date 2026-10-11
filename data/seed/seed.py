@@ -4,7 +4,7 @@
 
 會清掉整個 public schema，依 SQLAlchemy models 重建資料表與語意層 View，再重新產生資料。
 會留下來的只有帳號本身的東西：自己開的帳號（含第三方登入自動開的）、第三方登入的綁定，
-以及每個帳號的大頭貼、配色與字體大小、自己選的在線狀態。
+以及每個帳號的大頭貼、配色與字體大小、自己選的在線狀態、個人報表版面。
 """
 
 import argparse
@@ -64,6 +64,7 @@ KEPT_SETTINGS = {
     "user_avatar": models.UserAvatar,
     "user_preference": models.UserPreference,
     "user_presence": models.UserPresence,
+    "user_report_config": models.UserReportConfig,
 }
 
 

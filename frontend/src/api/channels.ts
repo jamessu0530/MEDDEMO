@@ -4,7 +4,8 @@ import type { PresenceStatus } from "@/api/presence"
 
 // national 全國；region 整區；team 一位主管帶的小組；place 地點（縣市，台北市到行政區）；customer 一家客戶的討論串；
 // topic 文字頻道：區的主管與 IT 在整區頻道、IT 在全國頻道底下開的
-export type ChannelKind = "national" | "region" | "team" | "place" | "customer" | "topic"
+export type ChannelKind =
+  "national" | "region" | "team" | "place" | "customer" | "topic"
 
 export type Channel = {
   id: number
@@ -36,6 +37,8 @@ export type ChannelMessage = {
   kind: "user" | "ai" | "notice"
   author_id: string | null
   author_name: string | null
+  // 只有真人經理發言可作為方法卡來源；舊版回應沒有此欄位時不顯示入口
+  author_role?: "sales" | "manager" | "it" | null
   body: string
   created_at: string
   mine: boolean
@@ -66,28 +69,46 @@ export function getChannel(id: number, signal?: AbortSignal) {
 
 /** 在全國或整區頻道底下開文字頻道：區的在職主管與 IT，全國只有 IT */
 export function createTopic(parentId: number, name: string) {
-  return request<Channel>("/api/channels", jsonBody("POST", { parent_id: parentId, name }))
+  return request<Channel>(
+    "/api/channels",
+    jsonBody("POST", { parent_id: parentId, name })
+  )
 }
 
 /** 文字頻道改名、封存或解除封存 */
-export function updateTopic(id: number, changes: { name?: string; archived?: boolean }) {
+export function updateTopic(
+  id: number,
+  changes: { name?: string; archived?: boolean }
+) {
   return request<Channel>(`/api/channels/${id}`, jsonBody("PATCH", changes))
 }
 
 /** 由舊到新。after 給輪詢用，before 給往上捲，around 給從看板跳回某一則（前後各 20 則）；都不給就是最新的一頁 */
-export function listMessages(id: number, params: { after?: number; before?: number; around?: number }, signal?: AbortSignal) {
+export function listMessages(
+  id: number,
+  params: { after?: number; before?: number; around?: number },
+  signal?: AbortSignal
+) {
   const query = new URLSearchParams()
   if (params.after !== undefined) query.set("after", String(params.after))
   if (params.before !== undefined) query.set("before", String(params.before))
   if (params.around !== undefined) query.set("around", String(params.around))
   const suffix = query.toString() ? `?${query}` : ""
-  return request<ChannelMessage[]>(`/api/channels/${id}/messages${suffix}`, { signal })
+  return request<ChannelMessage[]>(`/api/channels/${id}/messages${suffix}`, {
+    signal,
+  })
 }
 
 /** 發言。有附檔案就用 multipart 上傳並回報進度，沒有就照舊送 JSON */
-export function postMessage(id: number, body: string, files: File[] = [], onProgress?: (fraction: number) => void) {
+export function postMessage(
+  id: number,
+  body: string,
+  files: File[] = [],
+  onProgress?: (fraction: number) => void
+) {
   const path = `/api/channels/${id}/messages`
-  if (!files.length) return request<ChannelMessage>(path, jsonBody("POST", { body }))
+  if (!files.length)
+    return request<ChannelMessage>(path, jsonBody("POST", { body }))
   const form = new FormData()
   form.append("body", body)
   for (const file of files) form.append("files", file, file.name)
@@ -108,21 +129,33 @@ export type SearchHit = {
 }
 
 /** 頻道的搜尋：用文字找照片與檔案、附一張照片以圖找圖，或兩個一起。channelId 只搜那個頻道 */
-export function searchAttachments(params: { q: string; image?: File; channelId?: number | null }) {
+export function searchAttachments(params: {
+  q: string
+  image?: File
+  channelId?: number | null
+}) {
   const form = new FormData()
   if (params.q) form.append("q", params.q)
   if (params.image) form.append("image", params.image, params.image.name)
   if (params.channelId) form.append("channel_id", String(params.channelId))
-  return request<SearchHit[]>("/api/channels/search", { method: "POST", body: form })
+  return request<SearchHit[]>("/api/channels/search", {
+    method: "POST",
+    body: form,
+  })
 }
 
 /** IT 刪訊息：附件刪掉、內容換成固定的一句 */
 export function deleteMessage(messageId: number) {
-  return request<void>(`/api/channels/messages/${messageId}`, { method: "DELETE" })
+  return request<void>(`/api/channels/messages/${messageId}`, {
+    method: "DELETE",
+  })
 }
 
 export function markRead(id: number, messageId: number) {
-  return request<void>(`/api/channels/${id}/read`, jsonBody("POST", { message_id: messageId }))
+  return request<void>(
+    `/api/channels/${id}/read`,
+    jsonBody("POST", { message_id: messageId })
+  )
 }
 
 /** 成員與狀態，依名字排。狀態之後的變化由 WebSocket 推來（lib/presence.ts） */
@@ -137,5 +170,7 @@ export function listThreads(id: number, signal?: AbortSignal) {
 
 /** 這家客戶的討論串，沒有就建一個 */
 export function openCustomerThread(customerId: string) {
-  return request<Channel>(`/api/customers/${customerId}/thread`, { method: "POST" })
+  return request<Channel>(`/api/customers/${customerId}/thread`, {
+    method: "POST",
+  })
 }

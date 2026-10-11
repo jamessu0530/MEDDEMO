@@ -14,6 +14,7 @@ from app.services import visit_processing
 from app.services.extraction import Extraction
 from app.services.transcription import Transcript
 from app.tasks import redis, visit_queue
+from test_multilingual_transcription import SAMPLES
 
 TRANSCRIPT = (
     "今天去康泰連鎖藥局忠孝店，跟店長聊了一下。御松田有來談，條件比我們好。店長抱怨補貨延遲三天。"
@@ -112,6 +113,8 @@ def test_a_voice_note_becomes_five_editable_fields(client, providers):
     assert visit["fields"] == FIELDS
     assert visit["sources"] == SOURCES
     assert visit["unsourced"] == []
+    assert visit["error_message"] is None
+    assert visit["recording_language"] == "zh-TW"
 
 
 def test_resending_the_same_recording_does_not_create_a_second_visit(client, providers):
@@ -120,6 +123,147 @@ def test_resending_the_same_recording_does_not_create_a_second_visit(client, pro
     again = upload(client, client_ref="rec-1")
     assert again.status_code == 200
     assert again.json()["id"] == first
+
+
+def test_recording_options_only_expose_availability(client, env):
+    assert client.get("/api/visits/audio/options").json() == {
+        "taiwanese_available": False, "taiwanese_max_seconds": 180,
+    }
+    env(TAIGI_API_KEY="private-taigi-key")
+    response = client.get("/api/visits/audio/options")
+    assert response.json()["taiwanese_available"] is True
+    assert "private-taigi-key" not in response.text
+
+
+def test_taiwanese_recording_keeps_its_language_and_original_quotes(client, providers, monkeypatch, engine):
+    spoken = "店長嫌送貨傷慢，欲閣訂魚油二十盒。"
+    fields = {**FIELDS, "complaint": "送貨太慢"}
+    sources = {"complaint": "店長嫌送貨傷慢", "intent": "欲閣訂魚油二十盒"}
+    fields = {key: value if key in sources else None for key, value in fields.items()}
+
+    class Taiwanese:
+        def transcribe(self, audio, mime_type, hotwords):
+            assert "魚油" in hotwords
+            return Transcript(spoken)
+
+    class Extractor:
+        def extract(self, transcript, visit_date, products, packs=()):
+            assert transcript == spoken
+            return Extraction(fields, sources)
+
+    providers(extractor=Extractor())  # 華語辨識不可用，台語仍應走自己的供應商。
+    monkeypatch.setattr(visit_processing, "get_taiwanese_transcriber", lambda: Taiwanese())
+    created = client.post("/api/visits/audio", data={"customer_id": "C001", "language": "nan-TW", "client_ref": "taigi-offline-1"}, files={"file": ("visit.m4a", b"fake-audio", "audio/mp4")})
+    visit_id = created.json()["id"]
+    with engine.connect() as conn:
+        assert conn.execute(text("SELECT language FROM visit_audio WHERE visit_id = :id"), {"id": visit_id}).scalar_one() == "nan-TW"
+    # 舊手機的重送沒帶語言，也不能蓋掉第一份錄音的台語選擇。
+    assert upload(client, client_ref="taigi-offline-1").json()["id"] == visit_id
+    run_jobs()
+    visit = client.get(f"/api/visits/{visit_id}").json()
+    assert visit["status"] == "draft" and visit["transcript"] == spoken
+    assert visit["recording_language"] == "nan-TW"
+    assert visit["fields"]["complaint"] == "送貨太慢"
+    assert visit["sources"] == sources and visit["unsourced"] == []
+    assert "請逐欄核對" in visit["error_message"]
+    assert client.post(f"/api/visits/{visit_id}/transcript", json={"text": spoken}).status_code == 202
+    run_jobs()
+    assert "請逐欄核對" in client.get(f"/api/visits/{visit_id}").json()["error_message"]
+
+
+def test_taiwanese_can_be_retried_with_the_saved_language(client, providers, monkeypatch):
+    providers(extractor=FakeExtractor())
+    monkeypatch.setattr(visit_processing, "get_taiwanese_transcriber", not_configured)
+    created = client.post("/api/visits/audio", data={"customer_id": "C001", "language": "nan-TW"}, files={"file": ("visit.webm", b"fake-audio", "audio/webm")})
+    visit_id = created.json()["id"]
+    run_jobs()
+    assert client.get(f"/api/visits/{visit_id}").json()["status"] == "failed"
+    monkeypatch.setattr(visit_processing, "get_taiwanese_transcriber", lambda: FakeTranscriber())
+    assert client.post(f"/api/visits/{visit_id}/reprocess").status_code == 202
+    run_jobs()
+    assert client.get(f"/api/visits/{visit_id}").json()["status"] == "draft"
+
+
+def test_unknown_recording_language_is_rejected(client):
+    response = client.post("/api/visits/audio", data={"customer_id": "C001", "language": "not-a-language"}, files={"file": ("visit.webm", b"fake-audio", "audio/webm")})
+    assert response.status_code == 422
+
+
+def test_auto_recording_keeps_mode_through_resend_retry_and_chinese_draft(client, providers, monkeypatch):
+    spoken = "今仔日欲魚油二十盒，毋愛十盒。"
+    fields = {key: FIELDS[key] if key == "intent" else None for key in FIELDS}
+    attempts = []
+
+    class Automatic:
+        def transcribe(self, audio, mime_type, hotwords):
+            attempts.append(audio)
+            if len(attempts) == 1:
+                raise RuntimeError("暫時無法確認錄音內容")
+            return Transcript(spoken, review_note="華語辨識暫時無法使用，請核對逐字稿。")
+
+    class Chinese:
+        def extract(self, transcript, visit_date, products, packs=()):
+            assert transcript == spoken
+            return Extraction(fields, {"intent": spoken})
+
+    providers(extractor=Chinese())
+    monkeypatch.setattr(visit_processing, "get_auto_transcriber", lambda: Automatic())
+    created = client.post("/api/visits/audio", data={"customer_id": "C001", "language": "auto", "client_ref": "auto-offline-1"}, files={"file": ("visit.webm", b"fake-audio", "audio/webm")})
+    assert created.status_code == 202 and created.json()["recording_language"] == "auto"
+    visit_id = created.json()["id"]
+    run_jobs()
+    assert client.get(f"/api/visits/{visit_id}").json()["status"] == "failed"
+    assert upload(client, client_ref="auto-offline-1").json()["recording_language"] == "auto"
+    assert client.post(f"/api/visits/{visit_id}/reprocess").status_code == 202
+    run_jobs()
+    visit = client.get(f"/api/visits/{visit_id}").json()
+    assert visit["status"] == "draft" and visit["recording_language"] == "auto"
+    assert visit["transcript"] == spoken and visit["sources"] == {"intent": spoken}
+    assert visit["fields"]["intent"][0]["qty"] == 20 and visit["unsourced"] == []
+    assert "華語／台語已自動辨識" in visit["error_message"]
+    assert "華語辨識暫時無法使用" in visit["error_message"]
+    assert attempts == [b"fake-audio", b"fake-audio"]
+
+
+@pytest.mark.parametrize(("language", "spoken"), SAMPLES)
+def test_foreign_recording_keeps_language_through_resend_retry_and_chinese_extraction(client, providers, monkeypatch, language, spoken):
+    chosen = []
+    fields = {key: [{"product_text": spoken, "sku": "HS-FO30", "qty": 20, "unit": "盒", "promo_code": None}] if key == "intent" else None for key in FIELDS}
+
+    class ForeignTranscriber:
+        def transcribe(self, audio, mime_type, hotwords):
+            return Transcript(spoken)
+
+    def choose(selected_language):
+        chosen.append(selected_language)
+        if len(chosen) == 1:
+            raise NotConfigured("暫時無法辨識")
+        return ForeignTranscriber()
+
+    class ChineseExtractor:
+        def extract(self, transcript, visit_date, products, packs=()):
+            assert transcript == spoken
+            return Extraction(fields, {"intent": spoken})
+
+    providers(extractor=ChineseExtractor())
+    monkeypatch.setattr(visit_processing, "get_transcriber", choose)
+    data = {"customer_id": "C001", "language": language, "client_ref": f"foreign-offline-{language}"}
+    created = client.post("/api/visits/audio", data=data, files={"file": ("visit.webm", b"fake-audio", "audio/webm")})
+    assert created.status_code == 202
+    visit_id = created.json()["id"]
+    run_jobs()
+    assert client.get(f"/api/visits/{visit_id}").json()["status"] == "failed"
+    # 舊客戶端重送時選了另一種語言，也不能改掉已存的原始錄音。
+    resent = upload(client, client_ref=data["client_ref"])
+    assert resent.status_code == 200 and resent.json()["recording_language"] == language
+    assert client.post(f"/api/visits/{visit_id}/reprocess").status_code == 202
+    run_jobs()
+    visit = client.get(f"/api/visits/{visit_id}").json()
+    assert chosen == [language, language]
+    assert visit["status"] == "draft" and visit["recording_language"] == language
+    assert visit["transcript"] == spoken and visit["fields"] == fields
+    assert visit["sources"] == {"intent": spoken} and visit["unsourced"] == []
+    assert "原語言逐字稿" in visit["error_message"]
 
 
 def test_without_speech_recognition_the_rep_can_type_the_transcript(client, providers):

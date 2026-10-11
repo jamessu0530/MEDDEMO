@@ -1,9 +1,14 @@
 import { useState } from "react"
 import { ChevronDown, ThumbsDown, ThumbsUp } from "lucide-react"
 
-import { customerTypeLabel, sendMethodFeedback, type MethodCard } from "@/api/methods"
+import {
+  customerTypeLabel,
+  sendMethodFeedback,
+  type MethodCard,
+} from "@/api/methods"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { MethodSourceDisplay } from "@/components/method-source-display"
 import { tagLabel } from "@/lib/methods"
 import { cn } from "@/lib/utils"
 
@@ -19,7 +24,11 @@ type MethodCardItemProps = {
  * 一張方法卡：先看標題、什麼時候用、適用類型、作者與採用次數；點開看做法，底下按「有幫上／沒幫上」。
  * 按過的那顆保持選取，可以改。做法是主管寫的原文，照原樣顯示。方法卡頁、談判卡與新人頁共用。
  */
-export function MethodCardItem({ card, customerId, onChanged }: MethodCardItemProps) {
+export function MethodCardItem({
+  card,
+  customerId,
+  onChanged,
+}: MethodCardItemProps) {
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -49,12 +58,19 @@ export function MethodCardItem({ card, customerId, onChanged }: MethodCardItemPr
         <span className="flex items-start justify-between gap-3">
           <span className="leading-snug font-medium">{card.title}</span>
           <ChevronDown
-            className={cn("mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")}
+            className={cn(
+              "mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform",
+              open && "rotate-180"
+            )}
           />
         </span>
-        <span className="text-xs leading-relaxed text-muted-foreground">{card.situation}</span>
+        <span className="text-xs leading-relaxed text-muted-foreground">
+          {card.situation}
+        </span>
         <span className="flex flex-wrap items-center gap-1.5">
-          <Badge variant="secondary">{customerTypeLabel(card.customer_type)}</Badge>
+          <Badge variant="secondary">
+            {customerTypeLabel(card.customer_type)}
+          </Badge>
           {card.tags.map((tag) => (
             <Badge key={tag} variant="outline">
               {tagLabel(tag)}
@@ -62,12 +78,16 @@ export function MethodCardItem({ card, customerId, onChanged }: MethodCardItemPr
           ))}
         </span>
         <span className="text-[0.6875rem] text-muted-foreground">
-          {card.author_name} · 採用 <span className="tabular-nums">{card.adopted}</span> 次
+          整理者 {card.author_name} · 採用{" "}
+          <span className="tabular-nums">{card.adopted}</span> 次
         </span>
       </button>
       {open && (
         <div className="border-t px-4 pt-3 pb-4">
-          <p className="text-sm leading-relaxed whitespace-pre-line">{card.approach}</p>
+          <p className="text-sm leading-relaxed whitespace-pre-line">
+            {card.approach}
+          </p>
+          <MethodSourceDisplay source={card.source} className="mt-4" />
           <div className="mt-4 flex gap-2">
             <Button
               variant={card.my_feedback === true ? "default" : "outline"}

@@ -36,6 +36,7 @@ import { PrivacyPage } from "@/pages/privacy"
 import { CatalogPage } from "@/pages/catalog"
 import { RidesPage } from "@/pages/rides"
 import { RegisterPage } from "@/pages/register"
+import { ReportsPage } from "@/pages/reports"
 import { ManagerPage } from "@/pages/manager"
 import { MethodsPage } from "@/pages/methods"
 import { NegotiationPage } from "@/pages/negotiation"
@@ -210,6 +211,7 @@ export default function App() {
             {/* 座騎圖鑑：熊熊滾騎過的座騎；主管與 IT 打開會看到後端的說明 */}
             <Route path="/rides" element={<RidesPage />} />
             <Route path="/me" element={<MePage />} />
+            <Route path="/reports" element={<ReportsPage />} />
             {/* 語音併進問答頁了，舊書籤與導覽說明還指得到這個網址 */}
             <Route path="/voice" element={<Navigate to="/ask" replace />} />
             <Route path="/customers/:customerId" element={<CustomerPage />} />

@@ -66,6 +66,7 @@ LIMITS: dict[str, Limit] = {
     # 跟熊熊滾說要怎麼排：一次 Flash 呼叫（約 5 千輸入、1 千輸出 token，約 US$0.006），每天用滿約 US$1.2。
     # 「幫我排順一點」不呼叫 Gemini，不算
     "itinerary_ask": Limit("跟熊熊滾排行程", per_client_hour=30, per_day=200),
+    "reports_adjust": Limit("跟熊熊滾調整報表", per_client_hour=30, per_day=200),
     # 送出提問前先整理：問 Jev 該查哪一種、是不是追問（每次約 300～800 個輸入 token，US$0.042／百萬 token，幾乎不花錢）；
     # 是追問才再呼叫一次 Flash 改寫（約 1 千輸入 token，約 US$0.0005），每天用滿也不到 US$0.2。
     # 擋的是程式一直送；給到提問上限的兩倍，業務改問法重送也不會先卡在這裡
@@ -90,6 +91,7 @@ ROUTES: list[tuple[str, re.Pattern[str], str, bool]] = [
     ("POST", re.compile(r"/api/channels/search"), "attachment_search", False),
     ("POST", re.compile(r"/api/avatars/me"), "avatar", False),
     ("POST", re.compile(r"/api/itinerary/today/ask"), "itinerary_ask", False),
+    ("POST", re.compile(r"/api/reports/adjust"), "reports_adjust", False),
     ("POST", re.compile(r"/api/asks/route"), "ask_route", False),
 ]
 

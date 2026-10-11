@@ -19,7 +19,11 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from app.models import CUSTOMER_TYPES, METHOD_CARD_STATUSES, METHOD_TAGS, AppUser, Customer, MethodCard, MethodCardFeedback
+from app.models import (
+    CUSTOMER_TYPES, METHOD_CARD_STATUSES, METHOD_TAGS, AppUser, Channel, ChannelMessage, Customer,
+    MethodCard, MethodCardFeedback, MethodCardSource,
+)
+from app.services import channels
 from app.services.scope import SHARING_LEVEL, Scope
 
 # 標題在清單上只有一行；情況是清單上的兩三行；做法是點開才看的全文，上限跟主管回覆提問一樣
@@ -32,6 +36,10 @@ EDITABLE = ("title", "situation", "approach", "customer_type", "tags", "status")
 
 class NotFound(Exception):
     """卡片或客戶不存在，或這張卡登入者看不到（下架的卡對業務就是不存在）。API 回 404。"""
+
+
+class SourceNotFound(NotFound):
+    """訊息不存在、不是可引用的經理原文，或登入者看不到其頻道。統一回 404。"""
 
 
 class Forbidden(Exception):
@@ -91,6 +99,101 @@ def _visible(user: AppUser) -> Any:
     return Scope.for_user(user).includes(SHARING_LEVEL["method_card"], MethodCard.author_id)
 
 
+def _source_query():
+    return select(ChannelMessage, AppUser.name).join(AppUser, AppUser.id == ChannelMessage.author_id).where(
+        ChannelMessage.kind == "user", AppUser.role == "manager", ChannelMessage.deleted_at.is_(None),
+        ChannelMessage.body.op("~")(r"[^[:space:]]"),
+    )
+
+
+def _source_dict(message: ChannelMessage, author_name: str, info: channels.ChannelInfo) -> dict[str, Any]:
+    return {
+        "message_id": message.id, "channel_id": message.channel_id, "channel_name": info.name,
+        "author_name": author_name, "body": message.body, "created_at": message.created_at,
+    }
+
+
+def list_sources(
+    session: Session, user: AppUser, *, q: str | None = None, channel_id: int | None = None,
+    before: int | None = None, limit: int = 20,
+) -> dict[str, Any]:
+    """所有目前可見頻道的真人經理原文，依訊息 id 向前翻頁。
+
+    不用 visible_channels：那份側欄清單刻意省略客戶頻道，來源搜尋必須包含它。
+    頻道名稱、跨區客戶與封存規則統一交給 describe / can_see。
+    """
+    if user.role not in ("manager", "it"):
+        raise Forbidden
+    if channel_id is not None:
+        try:
+            info = channels.get_channel(session, user, channel_id)
+        except channels.NotFound:
+            raise SourceNotFound from None
+        visible = {info.id: info}
+    else:
+        visible = {
+            info.id: info for info in channels.describe(session, list(session.scalars(select(Channel))))
+            if channels.can_see(user, info)
+        }
+    stmt = _source_query().where(ChannelMessage.channel_id.in_(visible))
+    if q and q.strip():
+        stmt = stmt.where(ChannelMessage.body.icontains(q.strip(), autoescape=True))
+    if before is not None:
+        stmt = stmt.where(ChannelMessage.id < before)
+    limit = max(1, min(limit, 50))
+    rows = session.execute(stmt.order_by(ChannelMessage.id.desc()).limit(limit + 1)).all()
+    items = [_source_dict(message, name, visible[message.channel_id]) for message, name in rows[:limit]]
+    return {"items": items, "next_before": items[-1]["message_id"] if len(rows) > limit else None}
+
+
+def source_candidate(session: Session, user: AppUser, message_id: int, *, lock: bool = False) -> dict[str, Any]:
+    """指定來源也重新驗證；不接受前端傳來的原文、作者或頻道。寫入時鎖住訊息防止同時刪除。"""
+    if user.role not in ("manager", "it"):
+        raise Forbidden
+    stmt = _source_query().where(ChannelMessage.id == message_id)
+    if lock:
+        stmt = stmt.with_for_update(of=ChannelMessage).execution_options(populate_existing=True)
+    row = session.execute(stmt).first()
+    if row is None:
+        raise SourceNotFound
+    message, name = row
+    try:
+        info = channels.get_channel(session, user, message.channel_id)
+    except channels.NotFound:
+        raise SourceNotFound from None
+    return _source_dict(message, name, info)
+
+
+def _source_out(session: Session, ids: list[int], user: AppUser) -> dict[int, dict[str, Any]]:
+    """卡片共用輸出：來源是私人頻道的引用，不能跟著公開的方法卡洩漏原文或頻道名稱。"""
+    sources = list(session.scalars(select(MethodCardSource).where(MethodCardSource.card_id.in_(ids))))
+    if not sources:
+        return {}
+    message_ids = {source.message_id for source in sources if source.message_id is not None}
+    messages = {
+        message.id: message for message in session.scalars(select(ChannelMessage).where(ChannelMessage.id.in_(message_ids)))
+        if message.deleted_at is None
+    }
+    channel_ids = {message.channel_id for message in messages.values()}
+    visible = {
+        info.id: info for info in channels.describe(session, list(session.scalars(select(Channel).where(Channel.id.in_(channel_ids)))))
+        if channels.can_see(user, info)
+    }
+    output = {}
+    for source in sources:
+        message = messages.get(source.message_id)
+        info = visible.get(message.channel_id) if message is not None else None
+        can_view = info is not None
+        output[source.card_id] = {
+            "message_id": message.id if can_view else None,
+            "channel_id": info.id if can_view else None,
+            "channel_name": info.name if can_view else None,
+            "author_name": source.author_name, "created_at": source.created_at,
+            "body": source.body if can_view else None, "can_view": can_view,
+        }
+    return output
+
+
 def _out(session: Session, cards: list[MethodCard], user: AppUser, customer_id: str | None) -> list[dict[str, Any]]:
     """整批算次數、作者名字與「我按過什麼」，順序跟傳進來的一樣。"""
     ids = [card.id for card in cards]
@@ -119,13 +222,14 @@ def _out(session: Session, cards: list[MethodCard], user: AppUser, customer_id: 
     authors = dict(session.execute(
         select(AppUser.id, AppUser.name).where(AppUser.id.in_({card.author_id for card in cards}))
     ).all())
+    sources = _source_out(session, ids, user)
     return [
         {
             "id": card.id, "title": card.title, "situation": card.situation, "approach": card.approach,
             "customer_type": card.customer_type, "tags": list(card.tags),
             "author_name": authors[card.author_id], "status": card.status,
             "adopted": counts.get(card.id, (0, 0))[0], "not_helped": counts.get(card.id, (0, 0))[1],
-            "my_feedback": mine.get(card.id), "updated_at": card.updated_at,
+            "my_feedback": mine.get(card.id), "updated_at": card.updated_at, "source": sources.get(card.id),
         }
         for card in cards
     ]
@@ -190,12 +294,20 @@ def list_mine(session: Session, user: AppUser) -> list[dict[str, Any]]:
 
 def create(session: Session, author: AppUser, values: dict[str, Any]) -> MethodCard:
     """新增一張卡，直接上架。誰能新增由 API 擋（主管與 IT）。"""
-    cleaned = _clean(values)
+    cleaned = _clean({key: value for key, value in values.items() if key != "source_message_id"})
+    source_id = values.get("source_message_id")
+    source = source_candidate(session, author, source_id, lock=True) if source_id is not None else None
     # 時間用真實時間自己帶，不用資料庫的 now()：那是交易開始的時間，同一個交易裡寫的兩張卡會分不出先後
     now = dt.datetime.now(dt.UTC)
     card = MethodCard(**cleaned, author_id=author.id, status="published", created_at=now, updated_at=now)
     session.add(card)
     session.flush()
+    if source is not None:
+        session.add(MethodCardSource(
+            card_id=card.id, message_id=source["message_id"], author_name=source["author_name"],
+            created_at=source["created_at"], body=source["body"],
+        ))
+        session.flush()
     return card
 
 
@@ -213,7 +325,27 @@ def update(session: Session, user: AppUser, card_id: int, changes: dict[str, Any
     # 只算值真的變了的欄位（整理過再比：頭尾空白、重複的標籤不算）。表單打開沒改就按儲存不該更新時間：
     # 採用次數相同的卡照最近修改排，時間一跳，清單上的先後就跟著變
     changed = {key: value for key, value in cleaned.items() if getattr(card, key) != value}
-    if not changed:
+    source_changed = False
+    if "source_message_id" in changes:
+        source_id = changes["source_message_id"]
+        candidate = source_candidate(session, user, source_id, lock=True) if source_id is not None else None
+        source = session.get(MethodCardSource, card.id)
+        if source_id is None:
+            if source is not None:
+                session.delete(source)
+                source_changed = True
+        elif source is None or source.message_id != source_id:
+            snapshot = {
+                "message_id": candidate["message_id"], "author_name": candidate["author_name"],
+                "created_at": candidate["created_at"], "body": candidate["body"],
+            }
+            if source is None:
+                session.add(MethodCardSource(card_id=card.id, **snapshot))
+            else:
+                for key, value in snapshot.items():
+                    setattr(source, key, value)
+            source_changed = True
+    if not changed and not source_changed:
         return card
     for key, value in changed.items():
         setattr(card, key, value)

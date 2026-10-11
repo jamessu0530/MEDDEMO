@@ -49,3 +49,18 @@ def test_the_token_locks_a_transcription_only_session_with_our_vocabulary(client
     assert "御松田" in words and "上架費" in words and len(words) <= 100
     # 只放常用品項：型錄裡一千多樣不常講的不會把魚油這些擠掉
     assert "魚油 30 入" in words and "中化360海藻鈣錠 60錠" not in words
+
+
+@pytest.mark.parametrize(("language", "code"), [("en", "en-US"), ("ja", "ja-JP"), ("id", "id-ID"), ("vi", "vi-VN"), ("th", "th-TH")])
+def test_live_token_is_locked_to_the_selected_recording_language(client, monkeypatch, language, code):
+    offline, sent = offline_client(monkeypatch, {"name": "auth_tokens/multilingual"})
+    monkeypatch.setattr(voice, "gemini_client", lambda key: offline)
+    response = client.post("/api/transcription/session", json={"customer_id": "C001", "language": language})
+    assert response.status_code == 200
+    setup = sent[0]["body"]["bidiGenerateContentSetup"]
+    assert field(setup["inputAudioTranscription"], "languageCodes") == [code, "zh-TW"]
+
+
+@pytest.mark.parametrize("language", ["auto", "nan-TW", "not-a-language"])
+def test_live_session_rejects_languages_that_cannot_use_this_provider(client, language):
+    assert client.post("/api/transcription/session", json={"language": language}).status_code == 422

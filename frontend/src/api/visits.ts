@@ -66,6 +66,7 @@ export type Visit = {
   error_message: string | null
   visited_at: string
   transcript: string
+  recording_language?: RecordingLanguage
   fields: VisitFields
   sources: Partial<Record<FieldKey, string>>
   unsourced: FieldKey[]
@@ -80,10 +81,20 @@ export type Visit = {
   repeat_last: RepeatSnapshot | null
 }
 
-export function uploadAudio(customerId: string, audio: Blob, filename: string, clientRef: string) {
+// 新錄音一律 auto；明確語言保留給舊版離線錄音與歷史紀錄。
+export type RecordingLanguage = "auto" | "zh-TW" | "nan-TW" | "en" | "ja" | "id" | "vi" | "th"
+export type LiveRecordingLanguage = Exclude<RecordingLanguage, "auto" | "nan-TW">
+export type RecordingOptions = { taiwanese_available: boolean; taiwanese_max_seconds: number }
+
+export function getRecordingOptions(signal?: AbortSignal) {
+  return request<RecordingOptions>("/api/visits/audio/options", { signal })
+}
+
+export function uploadAudio(customerId: string, audio: Blob, filename: string, clientRef: string, language: RecordingLanguage = "zh-TW") {
   const form = new FormData()
   form.append("customer_id", customerId)
   form.append("client_ref", clientRef)
+  form.append("language", language)
   form.append("file", audio, filename)
   return request<Visit>("/api/visits/audio", { method: "POST", body: form })
 }

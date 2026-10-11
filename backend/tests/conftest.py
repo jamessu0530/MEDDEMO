@@ -50,6 +50,7 @@ os.environ["EMBEDDING_PROVIDER"] = ""
 # 語音問答沒有供應商開關，找得到金鑰就會啟用；Gemini SDK 還會自己去找 GEMINI_API_KEY、GOOGLE_API_KEY
 for key in (
     "ASR_API_KEY",
+    "TAIGI_API_KEY",
     "LLM_API_KEY",
     "EMBEDDING_API_KEY",
     "VOICE_API_KEY",

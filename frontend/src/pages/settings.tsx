@@ -561,6 +561,11 @@ export function SettingsPage() {
         <ProfilePhotoSection />
         <MyStatusSection />
 
+        <Link to="/reports" className="flex min-h-14 items-center justify-between rounded-2xl border-2 bg-card px-4 shadow-lip press">
+          <span className="text-sm font-medium">我的報表</span>
+          <ChevronRight className="size-4 text-muted-foreground" />
+        </Link>
+
         <Link
           to={canManage(user.role) ? "/manager?view=oa" : "/oa/forms"}
           className="flex min-h-14 items-center justify-between rounded-2xl border-2 bg-card px-4 shadow-lip press"

@@ -11,6 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.auth import CurrentUser
+from app.config import settings
 from app.db import get_session
 from app import realtime
 from app.models import AppUser, WRITEBACK_TARGETS, ChannelMessage, Customer, FollowUpReminder, OaExpenseForm, Visit, VisitAudio, ManagerNotice
@@ -25,6 +26,8 @@ from app.services.extraction import (
     validate_fields,
 )
 from app.services.reminders import create_reminder
+from app.services.speech_audio import MAX_RECORDING_SECONDS
+from app.services.speech_languages import RecordingLanguage
 from app.tasks import get_progress, visit_queue
 
 log = logging.getLogger(__name__)
@@ -34,6 +37,11 @@ SessionDep = Annotated[Session, Depends(get_session)]
 # 口述一段通常一分鐘上下，20MB 留了很大的餘裕，只擋掉明顯是錄音沒停的檔案。
 # Nginx 預設只收 1MB，frontend/nginx.conf 要設成同一個上限。
 MAX_AUDIO_BYTES = 20 * 1024 * 1024
+
+
+class RecordingOptions(BaseModel):
+    taiwanese_available: bool
+    taiwanese_max_seconds: int
 
 
 class WritebackItem(BaseModel):
@@ -65,6 +73,7 @@ class VisitDetail(BaseModel):
     error_message: str | None
     visited_at: dt.datetime
     transcript: str
+    recording_language: RecordingLanguage = "zh-TW"
     fields: dict[str, Any]
     sources: dict[str, str]
     unsourced: list[str]
@@ -123,6 +132,7 @@ def _detail(session: Session, visit: Visit) -> VisitDetail:
         error_message=visit.error_message,
         visited_at=visit.visited_at,
         transcript=visit.transcript,
+        recording_language=session.scalar(select(VisitAudio.language).where(VisitAudio.visit_id == visit.id)) or "zh-TW",
         fields=fields,
         sources=sources,
         unsourced=unsourced,
@@ -159,6 +169,14 @@ def _enqueue(session: Session, visit: Visit, job: str) -> None:
         session.commit()
 
 
+@router.get("/audio/options", response_model=RecordingOptions)
+def recording_options(user: CurrentUser):
+    return RecordingOptions(
+        taiwanese_available=bool(settings().taigi_api_key.strip()),
+        taiwanese_max_seconds=MAX_RECORDING_SECONDS,
+    )
+
+
 @router.post("/audio", status_code=202, response_model=VisitDetail)
 def upload_audio(
     session: SessionDep,
@@ -167,6 +185,7 @@ def upload_audio(
     customer_id: Annotated[str, Form()],
     user: CurrentUser,
     client_ref: Annotated[str | None, Form()] = None,
+    language: Annotated[RecordingLanguage, Form()] = "zh-TW",
 ):
     """上傳口述錄音。轉文字和整理欄位在背景做，畫面輪詢 GET /api/visits/{id} 看進度。"""
     own_customer = SHARING_LEVEL["customer_profile"]
@@ -199,7 +218,9 @@ def upload_audio(
         session.rollback()
         response.status_code = 200
         return _detail(session, session.scalar(select(Visit).where(Visit.client_ref == client_ref)))
-    session.add(VisitAudio(visit_id=visit.id, content=content, mime_type=file.content_type or "application/octet-stream"))
+    session.add(VisitAudio(
+        visit_id=visit.id, content=content, mime_type=file.content_type or "application/octet-stream", language=language,
+    ))
     session.commit()
     _enqueue(session, visit, "process_audio")
     return _detail(session, visit)

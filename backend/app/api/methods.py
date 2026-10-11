@@ -7,8 +7,8 @@
 import datetime as dt
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from app.api.auth import CurrentUser, ManagerUser
@@ -17,6 +17,30 @@ from app.services import method_cards
 
 router = APIRouter(prefix="/api/methods", tags=["methods"])
 SessionDep = Annotated[Session, Depends(get_session)]
+
+
+class MethodSourceOut(BaseModel):
+    message_id: int | None
+    channel_id: int | None
+    channel_name: str | None
+    author_name: str
+    created_at: dt.datetime
+    body: str | None
+    can_view: bool
+
+
+class SourceCandidate(BaseModel):
+    message_id: int
+    channel_id: int
+    channel_name: str
+    author_name: str
+    body: str
+    created_at: dt.datetime
+
+
+class SourcePage(BaseModel):
+    items: list[SourceCandidate]
+    next_before: int | None
 
 
 class MethodCardOut(BaseModel):
@@ -37,18 +61,24 @@ class MethodCardOut(BaseModel):
     # 登入者在這個情境（請求帶的那家客戶，沒帶就是方法卡清單）按過什麼；沒按過是 None
     my_feedback: bool | None
     updated_at: dt.datetime
+    source: MethodSourceOut | None = None
 
 
 class CardInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     title: str
     situation: str
     approach: str
     customer_type: str | None = None
     tags: list[str]
+    source_message_id: int | None = Field(default=None, gt=0, strict=True)
 
 
 class CardChanges(BaseModel):
     """只改有送的欄位。customer_type 送 null 是改成「都適用」，跟沒送不一樣，所以看的是有沒有送。"""
+
+    model_config = ConfigDict(extra="forbid")
 
     title: str | None = None
     situation: str | None = None
@@ -56,6 +86,7 @@ class CardChanges(BaseModel):
     customer_type: str | None = None
     tags: list[str] | None = None
     status: str | None = None
+    source_message_id: int | None = Field(default=None, gt=0, strict=True)
 
 
 class FeedbackInput(BaseModel):
@@ -90,11 +121,36 @@ def list_my_cards(session: SessionDep, manager: ManagerUser):
     return method_cards.list_mine(session, manager)
 
 
+@router.get("/sources", response_model=SourcePage)
+def list_sources(
+    session: SessionDep,
+    manager: ManagerUser,
+    q: str | None = Query(default=None, max_length=200),
+    channel_id: int | None = Query(default=None, gt=0),
+    before: int | None = Query(default=None, gt=0),
+    limit: int = Query(default=20, ge=1, le=50),
+):
+    try:
+        return method_cards.list_sources(session, manager, q=q, channel_id=channel_id, before=before, limit=limit)
+    except method_cards.SourceNotFound:
+        raise HTTPException(404, "找不到可引用的經理發言") from None
+
+
+@router.get("/sources/{message_id}", response_model=SourceCandidate)
+def get_source(session: SessionDep, manager: ManagerUser, message_id: int):
+    try:
+        return method_cards.source_candidate(session, manager, message_id)
+    except method_cards.SourceNotFound:
+        raise HTTPException(404, "找不到可引用的經理發言") from None
+
+
 @router.post("", response_model=MethodCardOut, status_code=status.HTTP_201_CREATED)
 def create_card(session: SessionDep, manager: ManagerUser, body: CardInput):
     """新增並直接上架。作者就是登入的主管（或 IT）。"""
     try:
         card = method_cards.create(session, manager, body.model_dump())
+    except method_cards.SourceNotFound:
+        raise HTTPException(404, "找不到可引用的經理發言") from None
     except method_cards.Invalid as exc:
         raise _invalid(exc) from None
     session.commit()
@@ -105,10 +161,12 @@ def create_card(session: SessionDep, manager: ManagerUser, body: CardInput):
 def update_card(session: SessionDep, manager: ManagerUser, card_id: int, body: CardChanges):
     """改內容、標籤、適用類型，或下架（status: retired）、重新上架（published）。作者本人或 IT。"""
     changes = body.model_dump(exclude_unset=True)
-    # 只有 customer_type 的 null 有意義（都適用）；其他欄位送 null 當作沒送，不會把必填的欄位清掉
-    changes = {key: value for key, value in changes.items() if value is not None or key == "customer_type"}
+    # 適用類型的 null 是「都適用」；來源的 null 是解除。其他 null 不會把必填內容清掉。
+    changes = {key: value for key, value in changes.items() if value is not None or key in ("customer_type", "source_message_id")}
     try:
         card = method_cards.update(session, manager, card_id, changes)
+    except method_cards.SourceNotFound:
+        raise HTTPException(404, "找不到可引用的經理發言") from None
     except method_cards.NotFound:
         raise HTTPException(404, "找不到這張方法卡") from None
     except method_cards.Forbidden:

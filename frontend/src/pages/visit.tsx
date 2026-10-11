@@ -80,18 +80,18 @@ export function VisitPage() {
   )
 }
 
-// 一分鐘都沒處理完，多半是背景工作中斷了（例如 Redis 重啟、排隊的工作不見），讓業務自己接手
-const STALL_SECONDS = 60
+// 自動辨識與台語都可能分段送出，連同抽欄位留滿背景工作的三分鐘上限。
 
 function Processing({ visit, onChange }: { visit: Visit; onChange: (visit: Visit) => void }) {
   const navigate = useNavigate()
   const [stalled, setStalled] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const stallSeconds = visit.recording_language === "auto" || visit.recording_language === "nan-TW" ? 180 : 60
 
   useEffect(() => {
-    const timer = setTimeout(() => setStalled(true), STALL_SECONDS * 1000)
+    const timer = setTimeout(() => setStalled(true), stallSeconds * 1000)
     return () => clearTimeout(timer)
-  }, [])
+  }, [stallSeconds])
 
   async function run(action: () => Promise<void>) {
     setError(null)
@@ -109,7 +109,7 @@ function Processing({ visit, onChange }: { visit: Visit; onChange: (visit: Visit
       {stalled && (
         <div className="mt-4 w-full">
           <Notice
-            text="處理超過一分鐘還沒好，可能是背景工作中斷了。"
+            text={stallSeconds === 180 ? "處理超過三分鐘還沒好，可能是背景工作中斷了。" : "處理超過一分鐘還沒好，可能是背景工作中斷了。"}
             action={{ label: "再試一次", onClick: () => run(async () => onChange(await reprocessVisit(visit.id))) }}
             secondary={{
               label: "重錄",

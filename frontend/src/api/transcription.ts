@@ -1,4 +1,5 @@
 import { jsonBody, request } from "@/api/client"
+import type { LiveRecordingLanguage } from "@/api/visits"
 
 // 錄音時即時轉錄用的連線資料：只能用一次的臨時金鑰，與後端鎖在金鑰裡的同一份設定
 export type TranscriptionSession = {
@@ -10,6 +11,6 @@ export type TranscriptionSession = {
 }
 
 // 跟熊熊滾說要怎麼排時沒有特定客戶，傳 null
-export function startTranscriptionSession(customerId: string | null) {
-  return request<TranscriptionSession>("/api/transcription/session", jsonBody("POST", { customer_id: customerId }))
+export function startTranscriptionSession(customerId: string | null, language: LiveRecordingLanguage = "zh-TW") {
+  return request<TranscriptionSession>("/api/transcription/session", jsonBody("POST", { customer_id: customerId, language }))
 }

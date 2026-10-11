@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react"
-import { Search, SendHorizontal, Store } from "lucide-react"
-import { Link, useLocation, useParams } from "react-router"
+import { NotebookPen, Search, SendHorizontal, Store } from "lucide-react"
+import { Link, useLocation, useParams, useSearchParams } from "react-router"
 
 import { ApiError } from "@/api/client"
 import {
@@ -12,22 +12,43 @@ import {
   type Channel,
   type ChannelMessage,
 } from "@/api/channels"
+import type { MethodSourceMessage } from "@/api/methods"
 import { AttachmentGallery } from "@/components/attachments/attachment-gallery"
 import { AttachButton, DraftFiles } from "@/components/attachments/draft-files"
 import { ChannelBoard } from "@/components/channel-board"
 import { ChannelMembers } from "@/components/channel-members"
 import { Mascot } from "@/components/mascot"
+import { MethodCardForm } from "@/components/method-card-form"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { LiveAvatar } from "@/components/user-avatar"
-import { addDraftFiles, removeDraftFile, shrinkPhoto, type DraftFile } from "@/lib/attachments"
+import {
+  addDraftFiles,
+  removeDraftFile,
+  shrinkPhoto,
+  type DraftFile,
+} from "@/lib/attachments"
 import { useAuth } from "@/lib/auth"
 import { channelUnread } from "@/lib/channel-unread"
 import { railPath } from "@/lib/channel-rail"
-import { awaitingMascot, KIND_LABEL, MESSAGE_PAGE, mergeMessages, withMascotMention } from "@/lib/channels"
+import {
+  awaitingMascot,
+  canSaveMethodSource,
+  KIND_LABEL,
+  MESSAGE_PAGE,
+  mergeMessages,
+  withMascotMention,
+} from "@/lib/channels"
 import { formatDateTime } from "@/lib/format"
 import { realtime, useRealtimeConnected } from "@/lib/realtime"
 import { useIsWide } from "@/lib/use-media-query"
@@ -45,13 +66,21 @@ const DELETED_BODY = "（這則訊息已被 IT 刪除）"
 // 捲動位置離底部多近算「還在底部」：在這個範圍內，新訊息進來才跟著捲到最下面
 const NEAR_BOTTOM_PX = 80
 // jumpTo：從搜尋頁、問答的出處點進來，打開後捲到那一則並標亮；tab：從右欄的「記憶看板」進來，直接打開看板
-export type ChannelLocationState = { backTo?: string; jumpTo?: number; tab?: "chat" | "board" }
-type LoadState = { status: "loading" } | { status: "error"; missing: boolean } | { status: "ready"; channel: Channel }
+export type ChannelLocationState = {
+  backTo?: string
+  jumpTo?: number
+  tab?: "chat" | "board"
+}
+type LoadState =
+  | { status: "loading" }
+  | { status: "error"; missing: boolean }
+  | { status: "ready"; channel: Channel }
 
 /** 頻道頁：訊息由舊到新，最新的在最下面；往上捲可以載入更早的。
  * 換頻道（從討論串跳到另一個）時用 key 整個重來，不必在 effect 裡把每個狀態清回初始值 */
 export function ChannelPage() {
-  const { backTo = "/channels" } = (useLocation().state as ChannelLocationState | null) ?? {}
+  const { backTo = "/channels" } =
+    (useLocation().state as ChannelLocationState | null) ?? {}
   const id = Number(useParams().channelId)
   // 網址本身就不是有效的頻道 id（手打的亂數、壞掉的連結）：不必打 API，直接顯示找不到
   if (!Number.isInteger(id) || id <= 0) {
@@ -78,8 +107,18 @@ export function ChannelConversation({
   layout?: "page" | "pane"
   onLoaded?: (channel: Channel) => void
 }) {
-  const { backTo: backState, jumpTo: jumpTarget, tab: initialTab } = (useLocation().state as ChannelLocationState | null) ?? {}
-  const selfId = useAuth()?.user.id ?? ""
+  const {
+    backTo: backState,
+    jumpTo: stateJump,
+    tab: initialTab,
+  } = (useLocation().state as ChannelLocationState | null) ?? {}
+  const [searchParams] = useSearchParams()
+  const queryJump = Number(searchParams.get("message"))
+  const jumpTarget =
+    stateJump ??
+    (Number.isSafeInteger(queryJump) && queryJump > 0 ? queryJump : undefined)
+  const viewer = useAuth()?.user
+  const selfId = viewer?.id ?? ""
   const connected = useRealtimeConnected()
   const [state, setState] = useState<LoadState>({ status: "loading" })
   // 上方兩個分頁：對話、記憶看板
@@ -98,10 +137,14 @@ export function ChannelConversation({
   const [progress, setProgress] = useState<number | null>(null)
   const [sendError, setSendError] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<ChannelMessage | null>(null)
+  const [methodSource, setMethodSource] = useState<MethodSourceMessage | null>(
+    null
+  )
+  const [methodNotice, setMethodNotice] = useState<string | null>(null)
   // 電腦版夠寬時記憶看板另外一欄，不用切換
   const wide = useIsWide()
   const boardAside = layout === "pane" && wide
-  const isIt = useAuth()?.user.role === "it"
+  const isIt = viewer?.role === "it"
   const bottom = useRef<HTMLDivElement>(null)
   // 輪詢「這則之後的新訊息」從哪裡接：只跟著拿到的那一頁前進，不跟著自己剛送出的那則。
   // 自己的那則可能比別人同時送出、還沒拿到的那則編號大，跟著它跳就永遠拿不到別人那則
@@ -121,7 +164,8 @@ export function ChannelConversation({
     const el = main.current
     if (!el) return
     const wasNearBottom = nearBottom.current
-    nearBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX
+    nearBottom.current =
+      el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX
     // 從上面捲回底部：把讀歷史訊息時錯過的新訊息補標成已讀，紅點才會跟著消掉
     if (nearBottom.current && !wasNearBottom && lastId !== undefined) {
       markRead(id, lastId)
@@ -137,7 +181,10 @@ export function ChannelConversation({
     const controller = new AbortController()
     // 從搜尋頁、問答的出處點進來：先載入那一則前後各 20 則，捲過去標亮
     const first = jumpTarget === undefined ? {} : { around: jumpTarget }
-    Promise.all([getChannel(id, controller.signal), listMessages(id, first, controller.signal)])
+    Promise.all([
+      getChannel(id, controller.signal),
+      listMessages(id, first, controller.signal),
+    ])
       .then(([channel, page]) => {
         setState({ status: "ready", channel })
         setMessages(page)
@@ -153,7 +200,10 @@ export function ChannelConversation({
       })
       .catch((error) => {
         if (controller.signal.aborted) return
-        setState({ status: "error", missing: error instanceof ApiError && error.status === 404 })
+        setState({
+          status: "error",
+          missing: error instanceof ApiError && error.status === 404,
+        })
       })
     return () => controller.abort()
   }, [id, jumpTarget])
@@ -201,7 +251,11 @@ export function ChannelConversation({
     fetchNew()
     const timer = setInterval(fetchNew, connected ? POLL_CONNECTED_MS : POLL_MS)
     const unsubscribe = realtime.subscribe((event) => {
-      if (event.type === "resync" || (event.type === "message" && event.channel_id === id)) fetchNew()
+      if (
+        event.type === "resync" ||
+        (event.type === "message" && event.channel_id === id)
+      )
+        fetchNew()
     })
     // 連著但畫面在背景時收到的通知會被略過，切回前景補一次
     const onVisible = () => document.visibilityState === "visible" && fetchNew()
@@ -235,7 +289,9 @@ export function ChannelConversation({
   // 從看板跳回原訊息：載入那一則前後各 20 則，捲過去標亮兩秒
   useEffect(() => {
     if (highlight === null || (tab !== "chat" && !boardAside)) return
-    document.getElementById(`message-${highlight}`)?.scrollIntoView({ block: "center" })
+    document
+      .getElementById(`message-${highlight}`)
+      ?.scrollIntoView({ block: "center" })
     const timer = setTimeout(() => setHighlight(null), 2_000)
     return () => clearTimeout(timer)
   }, [highlight, tab, messages, boardAside])
@@ -294,14 +350,18 @@ export function ChannelConversation({
     setPickError(null)
     setProgress(files.length ? 0 : null)
     try {
-      const ready = await Promise.all(files.map((draftFile) => shrinkPhoto(draftFile.file)))
+      const ready = await Promise.all(
+        files.map((draftFile) => shrinkPhoto(draftFile.file))
+      )
       const message = await postMessage(id, body, ready, setProgress)
       setMessages((current) => mergeMessages(current, [message]))
       setDraft("")
       setFiles([])
     } catch (error) {
       // 文字與檔案都留在輸入框，讓人直接重送
-      setSendError(error instanceof ApiError ? error.message : "沒有送出，請再試一次")
+      setSendError(
+        error instanceof ApiError ? error.message : "沒有送出，請再試一次"
+      )
     } finally {
       setSending(false)
       setProgress(null)
@@ -311,23 +371,40 @@ export function ChannelConversation({
   async function confirmDelete(message: ChannelMessage) {
     await deleteMessage(message.id)
     setMessages((current) =>
-      current.map((m) => (m.id === message.id ? { ...m, body: DELETED_BODY, deleted: true, attachments: [] } : m))
+      current.map((m) =>
+        m.id === message.id
+          ? { ...m, body: DELETED_BODY, deleted: true, attachments: [] }
+          : m
+      )
     )
   }
 
   // 沒帶返回位置（從通知、手打網址進來）：回到兩欄，停在這個頻道（文字頻道與客戶討論串停在上層）
-  const backTo = backState ?? (state.status === "ready" ? railPath(state.channel) : "/channels")
+  const backTo =
+    backState ??
+    (state.status === "ready" ? railPath(state.channel) : "/channels")
 
   if (state.status !== "ready") {
     const body = (
       <main className="flex-1 p-4">
-        {state.status === "loading" && <p className="py-10 text-center text-sm text-muted-foreground">載入中…</p>}
+        {state.status === "loading" && (
+          <p className="py-10 text-center text-sm text-muted-foreground">
+            載入中…
+          </p>
+        )}
         {state.status === "error" && (
-          <Notice text={state.missing ? "找不到這個頻道，或是你看不到它。" : "連不上伺服器，頻道沒有載入。"} />
+          <Notice
+            text={
+              state.missing
+                ? "找不到這個頻道，或是你看不到它。"
+                : "連不上伺服器，頻道沒有載入。"
+            }
+          />
         )}
       </main>
     )
-    if (layout === "pane") return <div className="flex min-w-0 flex-1 flex-col">{body}</div>
+    if (layout === "pane")
+      return <div className="flex min-w-0 flex-1 flex-col">{body}</div>
     return (
       <div className="flex min-h-svh flex-col">
         <PageHeader title="頻道" backTo={backTo} />
@@ -347,7 +424,9 @@ export function ChannelConversation({
       <Search className="size-5" />
     </Link>
   )
-  const members = !channel.archived && <ChannelMembers channelId={channel.id} selfId={selfId} />
+  const members = !channel.archived && (
+    <ChannelMembers channelId={channel.id} selfId={selfId} />
+  )
   const head =
     layout === "page" ? (
       <>
@@ -363,7 +442,10 @@ export function ChannelConversation({
           }
         />
         {channel.kind === "place" && (
-          <Link to={`/channels/${channel.id}/threads`} className="flex min-h-11 items-center gap-2 border-b px-4 text-sm text-primary">
+          <Link
+            to={`/channels/${channel.id}/threads`}
+            className="flex min-h-11 items-center gap-2 border-b px-4 text-sm text-primary"
+          >
             <Store className="size-4" />
             這裡的客戶討論串
           </Link>
@@ -388,7 +470,10 @@ export function ChannelConversation({
     <>
       {head}
       {!boardAside && (
-        <div className="grid grid-cols-2 gap-1 border-b bg-background px-4 py-2" role="tablist">
+        <div
+          className="grid grid-cols-2 gap-1 border-b bg-background px-4 py-2"
+          role="tablist"
+        >
           {(["chat", "board"] as const).map((key) => (
             <button
               key={key}
@@ -396,7 +481,12 @@ export function ChannelConversation({
               role="tab"
               aria-selected={tab === key}
               onClick={() => setTab(key)}
-              className={cn("h-9 rounded-md text-sm font-medium", tab === key ? "bg-muted text-foreground" : "text-muted-foreground")}
+              className={cn(
+                "h-9 rounded-md text-sm font-medium",
+                tab === key
+                  ? "bg-muted text-foreground"
+                  : "text-muted-foreground"
+              )}
             >
               {key === "chat" ? "對話" : "記憶看板"}
             </button>
@@ -405,23 +495,56 @@ export function ChannelConversation({
       )}
       {!boardAside && tab === "board" && (
         <main className="flex-1 overflow-y-auto px-4 py-4">
-          <ChannelBoard channel={channel} onJump={(messageId) => void jumpTo(messageId)} />
+          <ChannelBoard
+            channel={channel}
+            onJump={(messageId) => void jumpTo(messageId)}
+          />
         </main>
+      )}
+      {methodNotice && showChat && (
+        <p
+          role="status"
+          className="shrink-0 border-b bg-primary/10 px-4 py-2 text-sm leading-relaxed text-primary"
+        >
+          {methodNotice}
+          <Link
+            to="/manager?view=methods"
+            className="ml-2 underline underline-offset-2"
+          >
+            查看方法卡
+          </Link>
+        </p>
       )}
       <main
         ref={main}
         onScroll={handleScroll}
-        className={cn("flex flex-1 flex-col gap-3 overflow-y-auto px-4 py-4", !showChat && "hidden")}
+        className={cn(
+          "flex flex-1 flex-col gap-3 overflow-y-auto px-4 py-4",
+          !showChat && "hidden"
+        )}
       >
         {hasOlder && (
           <div className="flex flex-col items-center gap-1">
-            <Button variant="ghost" className="self-center text-xs" disabled={loadingOlder} onClick={() => void loadOlder()}>
+            <Button
+              variant="ghost"
+              className="self-center text-xs"
+              disabled={loadingOlder}
+              onClick={() => void loadOlder()}
+            >
               {loadingOlder ? "載入中…" : "載入更早的訊息"}
             </Button>
-            {olderError && <p className="text-xs text-destructive">更早的訊息沒有載入，請再試一次</p>}
+            {olderError && (
+              <p className="text-xs text-destructive">
+                更早的訊息沒有載入，請再試一次
+              </p>
+            )}
           </div>
         )}
-        {messages.length === 0 && <p className="py-10 text-center text-sm text-muted-foreground">還沒有人發言。</p>}
+        {messages.length === 0 && (
+          <p className="py-10 text-center text-sm text-muted-foreground">
+            還沒有人發言。
+          </p>
+        )}
         {messages.map((message) => (
           <MessageBubble
             key={message.id}
@@ -429,38 +552,93 @@ export function ChannelConversation({
             replyTo={byId.get(message.reply_to_id ?? -1)}
             highlighted={highlight === message.id}
             onDelete={isIt && !message.deleted ? setDeleting : undefined}
+            onSaveMethod={
+              canSaveMethodSource(message, viewer?.role)
+                ? (selected) =>
+                    setMethodSource({
+                      message_id: selected.id,
+                      channel_id: channel.id,
+                      channel_name: channel.name,
+                      author_name: selected.author_name ?? "經理",
+                      body: selected.body,
+                      created_at: selected.created_at,
+                    })
+                : undefined
+            }
           />
         ))}
         {awaitingMascot(messages, now) && (
           <div className="flex items-end gap-2" aria-live="polite">
-            <Mascot state="think" size={28} bust className="shrink-0 rounded-full bg-accent" />
-            <p className="rounded-xl bg-muted px-3 py-2 text-sm text-muted-foreground">熊熊滾正在想…</p>
+            <Mascot
+              state="think"
+              size={28}
+              bust
+              className="shrink-0 rounded-full bg-accent"
+            />
+            <p className="rounded-xl bg-muted px-3 py-2 text-sm text-muted-foreground">
+              熊熊滾正在想…
+            </p>
           </div>
         )}
         <div ref={bottom} />
       </main>
-      <footer className={cn("border-t bg-card px-4 pt-2 pb-[max(env(safe-area-inset-bottom),0.75rem)]", !showChat && "hidden")}>
+      <footer
+        className={cn(
+          "border-t bg-card px-4 pt-2 pb-[max(env(safe-area-inset-bottom),0.75rem)]",
+          !showChat && "hidden"
+        )}
+      >
         {channel.archived ? (
-          <p className="py-2 text-center text-sm text-muted-foreground">這個頻道已封存，不能再發言。</p>
+          <p className="py-2 text-center text-sm text-muted-foreground">
+            這個頻道已封存，不能再發言。
+          </p>
         ) : (
           <>
             <div className="flex items-center justify-between gap-2 pb-1">
-              <p className="text-[0.6875rem] text-muted-foreground">{channel.audience}</p>
-              <Button variant="ghost" size="sm" className="h-8 shrink-0 gap-1 px-2 text-xs text-primary" onClick={callMascot}>
+              <p className="text-[0.6875rem] text-muted-foreground">
+                {channel.audience}
+              </p>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 shrink-0 gap-1 px-2 text-xs text-primary"
+                onClick={callMascot}
+              >
                 {/* Button 會把沒寫 size- 的 svg 縮成 14px，頭像要自己給尺寸 */}
                 <Mascot size={18} bust className="size-4.5" />
                 @熊熊滾
               </Button>
             </div>
-            {(sendError ?? pickError) && <p className="pb-1 text-xs text-destructive">{sendError ?? pickError}</p>}
-            <DraftFiles files={files} disabled={sending} onRemove={(key) => setFiles((current) => removeDraftFile(current, key))} />
+            {(sendError ?? pickError) && (
+              <p className="pb-1 text-xs text-destructive">
+                {sendError ?? pickError}
+              </p>
+            )}
+            <DraftFiles
+              files={files}
+              disabled={sending}
+              onRemove={(key) =>
+                setFiles((current) => removeDraftFile(current, key))
+              }
+            />
             {progress !== null && (
-              <div className="mb-2 h-1 overflow-hidden rounded-full bg-muted" role="progressbar" aria-label="上傳進度" aria-valuenow={Math.round(progress * 100)}>
-                <div className="h-full bg-primary transition-[width]" style={{ width: `${Math.round(progress * 100)}%` }} />
+              <div
+                className="mb-2 h-1 overflow-hidden rounded-full bg-muted"
+                role="progressbar"
+                aria-label="上傳進度"
+                aria-valuenow={Math.round(progress * 100)}
+              >
+                <div
+                  className="h-full bg-primary transition-[width]"
+                  style={{ width: `${Math.round(progress * 100)}%` }}
+                />
               </div>
             )}
             <div className="flex items-end gap-1">
-              <AttachButton onPick={pick} disabled={sending || files.length >= MAX_FILES} />
+              <AttachButton
+                onPick={pick}
+                disabled={sending || files.length >= MAX_FILES}
+              />
               <Textarea
                 ref={textarea}
                 value={draft}
@@ -482,17 +660,40 @@ export function ChannelConversation({
           </>
         )}
       </footer>
-      {deleting && <DeleteDialog message={deleting} onConfirm={confirmDelete} onClose={() => setDeleting(null)} />}
+      {deleting && (
+        <DeleteDialog
+          message={deleting}
+          onConfirm={confirmDelete}
+          onClose={() => setDeleting(null)}
+        />
+      )}
+      {methodSource && (
+        <MethodCardForm
+          source={methodSource}
+          onClose={() => setMethodSource(null)}
+          onSaved={(card) => {
+            setMethodSource(null)
+            setMethodNotice(`「${card.title}」已存成方法卡並上架。`)
+          }}
+        />
+      )}
     </>
   )
-  if (layout === "page") return <div className="flex h-svh flex-col">{column}</div>
+  if (layout === "page")
+    return <div className="flex h-svh flex-col">{column}</div>
   return (
     <div className="flex min-h-0 min-w-0 flex-1">
       <div className="flex min-w-0 flex-1 flex-col">{column}</div>
       {boardAside && (
-        <aside aria-label="記憶看板" className="flex w-72 shrink-0 flex-col gap-3 overflow-y-auto border-l px-4 py-4">
+        <aside
+          aria-label="記憶看板"
+          className="flex w-72 shrink-0 flex-col gap-3 overflow-y-auto border-l px-4 py-4"
+        >
           <h3 className="text-sm font-semibold">記憶看板</h3>
-          <ChannelBoard channel={channel} onJump={(messageId) => void jumpTo(messageId)} />
+          <ChannelBoard
+            channel={channel}
+            onJump={(messageId) => void jumpTo(messageId)}
+          />
         </aside>
       )}
     </div>
@@ -530,17 +731,35 @@ function DeleteDialog({
         <DialogHeader>
           <DialogTitle>刪除這則訊息？</DialogTitle>
           <DialogDescription>
-            {message.author_name} · {formatDateTime(message.created_at)}。內容會換成「{DELETED_BODY}」，
-            {message.attachments.length ? `附的 ${message.attachments.length} 個檔案也會刪掉，` : ""}刪了就救不回來。
+            {message.author_name} · {formatDateTime(message.created_at)}
+            。內容會換成「{DELETED_BODY}」，
+            {message.attachments.length
+              ? `附的 ${message.attachments.length} 個檔案也會刪掉，`
+              : ""}
+            刪了就救不回來。
           </DialogDescription>
         </DialogHeader>
-        {message.body && <p className="line-clamp-4 rounded-xl bg-muted px-3 py-2 text-sm whitespace-pre-wrap">{message.body}</p>}
+        {message.body && (
+          <p className="line-clamp-4 rounded-xl bg-muted px-3 py-2 text-sm whitespace-pre-wrap">
+            {message.body}
+          </p>
+        )}
         {error && <p className="text-sm text-destructive">{error}</p>}
         <DialogFooter>
-          <Button variant="outline" className="h-11" disabled={busy} onClick={onClose}>
+          <Button
+            variant="outline"
+            className="h-11"
+            disabled={busy}
+            onClick={onClose}
+          >
             取消
           </Button>
-          <Button variant="destructive" className="h-11" disabled={busy} onClick={() => void submit()}>
+          <Button
+            variant="destructive"
+            className="h-11"
+            disabled={busy}
+            onClick={() => void submit()}
+          >
             {busy ? "刪除中…" : "刪除"}
           </Button>
         </DialogFooter>
@@ -554,17 +773,23 @@ function MessageBubble({
   replyTo,
   highlighted = false,
   onDelete,
+  onSaveMethod,
 }: {
   message: ChannelMessage
   replyTo?: ChannelMessage
   highlighted?: boolean
   onDelete?: (message: ChannelMessage) => void
+  onSaveMethod?: (message: ChannelMessage) => void
 }) {
   // 從看板跳回來的那一則：外框標亮兩秒
-  const mark = cn("scroll-mt-4 rounded-2xl transition-shadow duration-500", highlighted && "ring-2 ring-primary ring-offset-4 ring-offset-background")
+  const mark = cn(
+    "scroll-mt-4 rounded-2xl transition-shadow duration-500",
+    highlighted && "ring-2 ring-primary ring-offset-4 ring-offset-background"
+  )
   if (message.kind !== "user") {
     // 熊熊滾與風險通報用同一種樣式；熊熊滾的左邊多一個頭像，標出回覆誰（提問那一則在畫面上才標得出來）
-    const replied = replyTo && (replyTo.mine ? " · 回覆你" : ` · 回覆 ${replyTo.author_name}`)
+    const replied =
+      replyTo && (replyTo.mine ? " · 回覆你" : ` · 回覆 ${replyTo.author_name}`)
     const bubble = (
       <div className="rounded-xl bg-muted px-3 py-2 text-sm">
         <p className="text-[0.6875rem] text-muted-foreground">
@@ -577,38 +802,63 @@ function MessageBubble({
     if (message.kind === "notice" && message.visit_id) {
       // 風險通報顯示成卡片，點了進拜訪結果頁
       return (
-        <Link id={`message-${message.id}`} to={`/visits/${message.visit_id}`} className={cn("block border-l-4 border-destructive", mark)}>
+        <Link
+          id={`message-${message.id}`}
+          to={`/visits/${message.visit_id}`}
+          className={cn("block border-l-4 border-destructive", mark)}
+        >
           {bubble}
         </Link>
       )
     }
-    if (message.kind !== "ai") return <div id={`message-${message.id}`} className={mark}>{bubble}</div>
+    if (message.kind !== "ai")
+      return (
+        <div id={`message-${message.id}`} className={mark}>
+          {bubble}
+        </div>
+      )
     return (
-      <div id={`message-${message.id}`} className={cn("flex items-end gap-2", mark)}>
+      <div
+        id={`message-${message.id}`}
+        className={cn("flex items-end gap-2", mark)}
+      >
         <Mascot size={28} bust className="shrink-0 rounded-full bg-accent" />
         <div className="min-w-0 flex-1">{bubble}</div>
       </div>
     )
   }
   const bubble = (
-    <div className={cn("flex min-w-0 flex-col gap-0.5", message.mine && "items-end")}>
+    <div
+      className={cn(
+        "flex min-w-0 flex-col gap-0.5",
+        message.mine && "items-end"
+      )}
+    >
       <p className="px-1 text-[0.6875rem] text-muted-foreground">
         {message.mine ? "" : `${message.author_name} · `}
         {formatDateTime(message.created_at)}
         {onDelete && (
-          <button type="button" className="ml-2 text-destructive underline-offset-2 hover:underline" onClick={() => onDelete(message)}>
+          <button
+            type="button"
+            className="ml-2 text-destructive underline-offset-2 hover:underline"
+            onClick={() => onDelete(message)}
+          >
             刪除
           </button>
         )}
       </p>
       {message.deleted ? (
-        <p className="rounded-2xl border border-dashed px-3 py-2 text-sm text-muted-foreground italic">{message.body}</p>
+        <p className="rounded-2xl border border-dashed px-3 py-2 text-sm text-muted-foreground italic">
+          {message.body}
+        </p>
       ) : (
         message.body && (
           <p
             className={cn(
               "rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap",
-              message.mine ? "bg-primary text-primary-foreground" : "border-2 bg-card"
+              message.mine
+                ? "bg-primary text-primary-foreground"
+                : "border-2 bg-card"
             )}
           >
             {message.body}
@@ -619,14 +869,37 @@ function MessageBubble({
         attachments={message.attachments}
         className={cn("w-64 max-w-full", message.mine && "items-end")}
       />
+      {onSaveMethod && (
+        <button
+          type="button"
+          onClick={() => onSaveMethod(message)}
+          className="flex min-h-11 items-center gap-1.5 self-start px-2 text-xs text-primary underline-offset-2 hover:underline"
+        >
+          <NotebookPen className="size-3.5" />
+          存成方法卡
+        </button>
+      )}
     </div>
   )
   const anchor = `message-${message.id}`
-  if (message.mine) return <div id={anchor} className={cn("max-w-[85%] self-end", mark)}>{bubble}</div>
-  if (!message.author_id) return <div id={anchor} className={cn("max-w-[85%] self-start", mark)}>{bubble}</div>
+  if (message.mine)
+    return (
+      <div id={anchor} className={cn("max-w-[85%] self-end", mark)}>
+        {bubble}
+      </div>
+    )
+  if (!message.author_id)
+    return (
+      <div id={anchor} className={cn("max-w-[85%] self-start", mark)}>
+        {bubble}
+      </div>
+    )
   // 別人的訊息左邊放頭像，右下角是他現在的狀態
   return (
-    <div id={anchor} className={cn("flex max-w-[85%] items-end gap-2 self-start", mark)}>
+    <div
+      id={anchor}
+      className={cn("flex max-w-[85%] items-end gap-2 self-start", mark)}
+    >
       <LiveAvatar id={message.author_id} name={message.author_name ?? "?"} />
       {bubble}
     </div>

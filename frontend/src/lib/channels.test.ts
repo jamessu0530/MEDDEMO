@@ -1,35 +1,106 @@
 import { describe, expect, it } from "vitest"
 
 import type { ChannelMessage } from "@/api/channels"
-import { awaitingMascot, MASCOT_WAIT_MS, mergeMessages, withMascotMention } from "@/lib/channels"
+import {
+  awaitingMascot,
+  canSaveMethodSource,
+  MASCOT_WAIT_MS,
+  mergeMessages,
+  withMascotMention,
+} from "@/lib/channels"
 
 const message = (id: number) => ({ id, body: `第 ${id} 則` }) as ChannelMessage
 
+describe("canSaveMethodSource", () => {
+  const source = {
+    ...message(1),
+    kind: "user",
+    author_role: "manager",
+    deleted: false,
+  } as ChannelMessage
+
+  it("主管與 IT 能引用其他經理的真人文字，不限本人發言", () => {
+    expect(canSaveMethodSource({ ...source, mine: false }, "manager")).toBe(
+      true
+    )
+    expect(canSaveMethodSource(source, "it")).toBe(true)
+  })
+
+  it("業務與未登入者沒有上架入口", () => {
+    expect(canSaveMethodSource(source, "sales")).toBe(false)
+    expect(canSaveMethodSource(source)).toBe(false)
+  })
+
+  it("AI、通報、業務與 IT 發言不能冒充經理來源", () => {
+    for (const kind of ["ai", "notice"] as const)
+      expect(canSaveMethodSource({ ...source, kind }, "manager")).toBe(false)
+    for (const author_role of ["sales", "it", null, undefined] as const) {
+      expect(canSaveMethodSource({ ...source, author_role }, "manager")).toBe(
+        false
+      )
+    }
+  })
+
+  it("已刪除、空白與純附件訊息沒有引用入口", () => {
+    expect(canSaveMethodSource({ ...source, deleted: true }, "manager")).toBe(
+      false
+    )
+    expect(canSaveMethodSource({ ...source, body: " \n " }, "manager")).toBe(
+      false
+    )
+    expect(canSaveMethodSource({ ...source, body: "" }, "manager")).toBe(false)
+  })
+})
+
 describe("mergeMessages", () => {
   it("輪詢拿到的接在後面，自己剛送出又被輪詢拿到的只留一份", () => {
-    expect(mergeMessages([message(1), message(3)], [message(3), message(4)]).map((m) => m.id)).toEqual([1, 3, 4])
+    expect(
+      mergeMessages([message(1), message(3)], [message(3), message(4)]).map(
+        (m) => m.id
+      )
+    ).toEqual([1, 3, 4])
   })
 
   it("往上捲拿到的舊訊息放到前面", () => {
-    expect(mergeMessages([message(5), message(6)], [message(2), message(3)]).map((m) => m.id)).toEqual([2, 3, 5, 6])
+    expect(
+      mergeMessages([message(5), message(6)], [message(2), message(3)]).map(
+        (m) => m.id
+      )
+    ).toEqual([2, 3, 5, 6])
   })
 })
 
 describe("awaitingMascot", () => {
   const at = Date.parse("2026-10-01T01:00:00Z")
   const msg = (id: number, extra: Partial<ChannelMessage>) =>
-    ({ id, kind: "user", mentions_ai: false, reply_to_id: null, created_at: "2026-10-01T01:00:00Z", ...extra }) as ChannelMessage
+    ({
+      id,
+      kind: "user",
+      mentions_ai: false,
+      reply_to_id: null,
+      created_at: "2026-10-01T01:00:00Z",
+      ...extra,
+    }) as ChannelMessage
 
   it("叫了熊熊滾、還沒回、不到三分鐘：在想", () => {
-    expect(awaitingMascot([msg(1, {}), msg(2, { mentions_ai: true })], at + 10_000)).toBe(true)
+    expect(
+      awaitingMascot([msg(1, {}), msg(2, { mentions_ai: true })], at + 10_000)
+    ).toBe(true)
   })
 
   it("熊熊滾回了就不想了", () => {
-    expect(awaitingMascot([msg(2, { mentions_ai: true }), msg(3, { kind: "ai", reply_to_id: 2 })], at + 10_000)).toBe(false)
+    expect(
+      awaitingMascot(
+        [msg(2, { mentions_ai: true }), msg(3, { kind: "ai", reply_to_id: 2 })],
+        at + 10_000
+      )
+    ).toBe(false)
   })
 
   it("超過三分鐘還沒回就不再顯示，背景服務停了也不會一直轉", () => {
-    expect(awaitingMascot([msg(2, { mentions_ai: true })], at + MASCOT_WAIT_MS)).toBe(false)
+    expect(
+      awaitingMascot([msg(2, { mentions_ai: true })], at + MASCOT_WAIT_MS)
+    ).toBe(false)
   })
 
   it("沒有人叫熊熊滾", () => {
@@ -44,7 +115,13 @@ describe("withMascotMention", () => {
   })
 
   it("已經叫了就不重複，全形與 @AI 也算", () => {
-    for (const draft of ["@熊熊滾 在嗎", "請@熊熊 回答", "＠熊熊滾 在嗎", "@ai 請問", "＠ＡＩ請問"]) {
+    for (const draft of [
+      "@熊熊滾 在嗎",
+      "請@熊熊 回答",
+      "＠熊熊滾 在嗎",
+      "@ai 請問",
+      "＠ＡＩ請問",
+    ]) {
       expect(withMascotMention(draft)).toBe(draft)
     }
   })

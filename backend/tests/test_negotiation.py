@@ -398,8 +398,9 @@ def test_a_chain_card_brings_the_method_cards_for_this_customers_situation(clien
     # 跟方法卡頁的一張卡同一個形狀，畫面用同一個元件
     assert set(methods[0]) == {
         "id", "title", "situation", "approach", "customer_type", "tags", "author_name", "status",
-        "adopted", "not_helped", "my_feedback", "updated_at",
+        "adopted", "not_helped", "my_feedback", "updated_at", "source",
     }
+    assert all(method["source"] is None for method in methods)
     # client 登入的是主管陳建宏，他沒在這家按過
     assert all(method["status"] == "published" and method["my_feedback"] is None for method in methods)
 

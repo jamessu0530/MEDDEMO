@@ -61,7 +61,7 @@ def test_everyone_signed_in_sees_every_published_card_most_adopted_first(client,
     assert len(cards) == 10
     assert set(cards[0]) == {
         "id", "title", "situation", "approach", "customer_type", "tags", "author_name", "status",
-        "adopted", "not_helped", "my_feedback", "updated_at",
+        "adopted", "not_helped", "my_feedback", "updated_at", "source",
     }
     # 北區主管寫的卡，南區的業務一樣看得到：方法卡不分區
     assert (cards[0]["title"], cards[0]["author_name"], cards[0]["adopted"], cards[0]["not_helped"]) == (RIVAL, "陳建宏", 46, 6)

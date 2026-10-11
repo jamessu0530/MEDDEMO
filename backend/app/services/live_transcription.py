@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models import Customer, Product
 from app.services.transcription import hotword_terms
+from app.services.speech_languages import LIVE_LANGUAGE_CODES, SpeechLanguage
 from app.services.voice import API_VERSION, mint_token
 
 # Gemini 專門做即時轉錄的 Live 模型（ai.google.dev/gemini-api/docs/live-api/live-transcribe）
@@ -47,11 +48,11 @@ def vocabulary(session: Session, customer_id: str | None) -> list[str]:
     return list(dict.fromkeys(word for word in words if word))[:MAX_VOCABULARY]
 
 
-def live_config(words: list[str]) -> types.LiveConnectConfig:
+def live_config(words: list[str], language: SpeechLanguage = "zh-TW") -> types.LiveConnectConfig:
     return types.LiveConnectConfig(
         response_modalities=[types.Modality.TEXT],
         input_audio_transcription=types.AudioTranscriptionConfig(
-            language_codes=LANGUAGE_CODES,
+            language_codes=LANGUAGE_CODES if language == "zh-TW" else [LIVE_LANGUAGE_CODES[language], "zh-TW"],
             custom_vocabulary=words,
             # 去掉「嗯」「那個」和重複的字，邊講邊看比較好讀；正式逐字稿另外由語音辨識逐字產生
             mode=types.AudioTranscriptionConfigMode.SMART,
@@ -59,8 +60,8 @@ def live_config(words: list[str]) -> types.LiveConnectConfig:
     )
 
 
-def create_session(words: list[str]) -> TranscriptionSession:
-    live = live_config(words)
+def create_session(words: list[str], language: SpeechLanguage = "zh-TW") -> TranscriptionSession:
+    live = live_config(words, language)
     token, expires_at = mint_token(settings().asr_api_key, DEFAULT_MODEL, live)
     return TranscriptionSession(
         token=token,

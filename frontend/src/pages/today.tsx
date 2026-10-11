@@ -3,6 +3,7 @@ import {
   Bell,
   BookOpenText,
   CalendarDays,
+  ChartNoAxesCombined,
   ChevronRight,
   FileText,
   Flag,
@@ -372,6 +373,11 @@ export function TodayPage() {
       {/* overflow-x-clip：路線與地圖互相滑進來時，不要短暫多出左右捲軸 */}
       <main className="flex-1 overflow-x-clip px-4 pt-3 pb-48 lg:flex lg:items-start lg:gap-6 lg:px-6 lg:pb-24">
         <div className="lg:w-[27.5rem] lg:shrink-0">
+        <Link to="/reports" className="mb-3 flex min-h-14 items-center gap-3 rounded-2xl border-2 bg-card px-4 py-3 shadow-lip lg:hidden">
+          <ChartNoAxesCombined className="size-5 shrink-0 text-primary" />
+          <span className="min-w-0 flex-1 text-sm font-semibold">我的報表<span className="ml-2 text-xs font-normal text-muted-foreground">自選指標 · AI 調整</span></span>
+          <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+        </Link>
         {/* 新人才有的入口卡；自己問自己的資料，載不到就不顯示，跟下面的路線互不影響 */}
         <FirstWeekEntry userId={user.id} />
         {state.status === "ready" && state.cached && (

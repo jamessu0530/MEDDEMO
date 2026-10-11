@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react"
-import { ChevronRight, Network, Settings, TriangleAlert } from "lucide-react"
+import { ChartNoAxesCombined, ChevronRight, Network, Settings, TriangleAlert } from "lucide-react"
 import { Link, useNavigate, useSearchParams } from "react-router"
 
 import { listEscalations, replyEscalation, type Escalation } from "@/api/escalations"
@@ -11,6 +11,7 @@ import { ChannelsLink } from "@/components/channels-link"
 import { ListRow, MasterDetail } from "@/components/manager/master-detail"
 import { RoutesPanel } from "@/components/manager/routes-panel"
 import { MethodCardForm } from "@/components/method-card-form"
+import { MethodSourceDisplay } from "@/components/method-source-display"
 import { Notice } from "@/components/notice"
 import { OaFormView } from "@/components/oa-form-view"
 import { OaModelNote } from "@/components/oa-model"
@@ -150,6 +151,11 @@ export function ManagerPage() {
           view === "methods" && "lg:mx-auto lg:w-full lg:max-w-2xl"
         )}
       >
+        <Link to="/reports" className="flex min-h-14 items-center gap-3 rounded-2xl border-2 bg-card px-4 py-3 shadow-lip lg:hidden">
+          <ChartNoAxesCombined className="size-5 shrink-0 text-primary" />
+          <span className="min-w-0 flex-1 text-sm font-semibold">我的報表<span className="ml-2 text-xs font-normal text-muted-foreground">團隊數字 · AI 調整</span></span>
+          <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+        </Link>
         {view === "routes" ? (
           <RoutesPanel />
         ) : view === "asks" ? (
@@ -737,6 +743,9 @@ function MethodsPanel() {
       <Button className="h-11" disabled={state.status !== "ready"} onClick={() => setEditing({ mode: "new" })}>
         新增方法卡
       </Button>
+      <p className="text-xs leading-relaxed text-muted-foreground">
+        可以從任何可查看的對話頻道選取經理發言，或在訊息旁按「存成方法卡」。
+      </p>
       {notice && <p className="rounded-lg bg-primary/10 px-3 py-2 text-sm text-primary">{notice}</p>}
       {state.status === "loading" && <p className="py-10 text-center text-sm text-muted-foreground">載入中…</p>}
       {state.status === "error" && (
@@ -831,8 +840,9 @@ function MyMethodCard({
         <span className="font-semibold tabular-nums">{card.not_helped}</span> 次
       </p>
       <p className="mt-1 text-[0.6875rem] text-muted-foreground">
-        {card.author_name} · {formatDateTime(card.updated_at)} 更新
+        {card.source ? `整理上架：${card.author_name}` : card.author_name} · {formatDateTime(card.updated_at)} 更新
       </p>
+      <MethodSourceDisplay source={card.source} className="mt-3" />
       {error && <p className="mt-2 text-xs text-destructive">{error}</p>}
       <div className="mt-3 flex gap-2">
         <Button variant="outline" className="h-11 flex-1" disabled={busy} onClick={onEdit}>

@@ -3,6 +3,7 @@ import {
   BookOpenText,
   Calendar,
   CalendarDays,
+  ChartNoAxesCombined,
   ClipboardCheck,
   FileText,
   MessageCircleQuestion,
@@ -36,6 +37,7 @@ const SALES: SidebarGroups = {
     { to: "/products", label: "商品與促銷", icon: Pill },
   ],
   more: [
+    { to: "/reports", label: "我的報表", icon: ChartNoAxesCombined },
     { to: "/calendar", label: "日曆", icon: Calendar },
     { to: "/methods", label: "方法卡", icon: BookOpenText },
     { to: "/oa/forms", label: "我的申請單", icon: FileText },
@@ -58,7 +60,7 @@ const MANAGER_VIEWS = ["asks", "notices", "oa", "methods"]
 
 export function sidebarItems(role: Role): SidebarGroups {
   if (role === "sales") return SALES
-  return { main: role === "it" ? [ADMIN, ...MANAGER] : MANAGER, more: [CHANNELS, CATALOG] }
+  return { main: role === "it" ? [ADMIN, ...MANAGER] : MANAGER, more: [{ to: "/reports", label: "我的報表", icon: ChartNoAxesCombined }, CHANNELS, CATALOG] }
 }
 
 /** 側邊欄最上面的名字連到哪裡：跟首頁頁首的名字同一個地方。業務是個人頁，主管與 IT 沒有個人頁，是帳號設定 */

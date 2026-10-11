@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     # CARE 在同一個 K3s 叢集裡的語音辨識服務（local-asr）。ASR_PROVIDER=local 時是主要來源；
     # ASR_PROVIDER=gemini 時設了這個就當備援，Gemini 失敗時改用它
     asr_url: str = ""
+    # 台語來源選 Taigi，與華語來源同時辨識後自動比較逐字稿。
+    taigi_api_key: str = ""
+    taigi_base_url: str = "https://learn-language.tokyo"
     llm_provider: str = ""
     llm_api_key: str = ""
     llm_model: str = ""
