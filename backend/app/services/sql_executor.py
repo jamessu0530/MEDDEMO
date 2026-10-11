@@ -17,7 +17,7 @@ from app.services.scope import Scope
 
 ALLOWED_VIEWS = (
     "v_monthly_sales", "v_customer_summary", "v_visit_signal", "v_margin_breakdown",
-    "v_promotion", "v_promotion_item",
+    "v_promotion", "v_promotion_item", "v_product",
 )
 # 給模型看的結果最多 50 列：數字題的答案通常是彙總，列數多到這裡代表查詢不夠聚焦，應該再改寫
 MAX_ROWS = 50

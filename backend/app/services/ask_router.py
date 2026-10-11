@@ -38,7 +38,9 @@ OPTIONS = {
     "data": (
         "Numbers from the company's own database: monthly sales and purchase amounts by customer, region, "
         "category or product, and why they rose or fell; rankings and counts; how often each customer orders and "
-        "how long their payments are overdue; margins; this month's promotions and their items; and what the "
+        "how long their payments are overdue; margins; the complete company product catalog, including product "
+        "names, SKU codes, categories, specifications, units and item counts even for products with no sales; "
+        "this month's promotions and their items; and what the "
         "rep's own visit records say, such as competitors mentioned and the last visit date."
     ),
     "knowledge": (

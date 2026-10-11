@@ -17,7 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.asks import mentioned_customers
-from app.db import SEMANTIC_LAYER
+from app.db import PRODUCT_CATALOG, SEMANTIC_LAYER
 from app.main import app
 from app.models import AppUser, AskRecord, Visit
 from app.services.scope import SHARING_LEVEL, Scope
@@ -148,10 +148,10 @@ def test_the_sql_views_declare_the_same_depths_as_python():
     兩邊各改各的也不會有人報錯——這個測試是唯一會發現「只改了一邊」的機制，所以它直接
     從 SQL 檔把深度讀出來，跟 SHARING_LEVEL 比對，而不是各自抄一份常數。
     """
-    sql = SEMANTIC_LAYER.read_text(encoding="utf-8")
+    sql = SEMANTIC_LAYER.read_text(encoding="utf-8") + "\n" + PRODUCT_CATALOG.read_text(encoding="utf-8")
     # 依 CREATE VIEW 切段，再抓每一段裡的 app_in_scope(<別名>.org_path, <深度>)。
     # app_in_scope 的函式定義與 GRANT 在第一個 View 之前、參數也不是 <別名>.org_path，不會被抓進來
-    blocks = re.split(r"CREATE VIEW (\w+) AS", sql)[1:]
+    blocks = re.split(r"CREATE(?: OR REPLACE)? VIEW (\w+) AS", sql)[1:]
     declared = {
         name: [int(depth) for depth in re.findall(r"app_in_scope\(\s*\w+\.org_path\s*,\s*(\d+)\s*\)", body)]
         for name, body in zip(blocks[::2], blocks[1::2], strict=True)
@@ -165,6 +165,7 @@ def test_the_sql_views_declare_the_same_depths_as_python():
         # 促銷方案不分客戶，全公司共用
         "v_promotion": [],
         "v_promotion_item": [],
+        "v_product": [],
     }
 
 

@@ -36,7 +36,7 @@ const MODES: { kind: AskMode; label: string; placeholder: string; examples: stri
     kind: "data",
     label: "查數字",
     placeholder: "例如：北區這一季保健品為什麼掉？",
-    examples: ["北區這一季保健品類為什麼下滑？", "哪幾家客戶進貨間隔拉長，但單次金額持平？"],
+    examples: ["目前共有幾個商品？各類別有多少？", "有哪些海藻鈣商品？請列品名、料號和單位。", "北區這一季保健品類為什麼下滑？"],
   },
   {
     kind: "knowledge",

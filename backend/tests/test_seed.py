@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[2]
 AS_OF = seed.DEFAULT_AS_OF
 VIEWS = [
     "v_monthly_sales", "v_customer_summary", "v_visit_signal", "v_margin_breakdown",
-    "v_promotion", "v_promotion_item",
+    "v_promotion", "v_promotion_item", "v_product",
 ]
 SCHEMA = json.loads((ROOT / "backend/app/schemas/visit_fields.schema.json").read_text(encoding="utf-8"))
 
@@ -86,6 +86,7 @@ def test_schema_version_matches_the_deploy_workflow_algorithm():
     files = [
         "backend/app/models.py",
         "backend/app/sql/semantic_layer.sql",
+        "backend/app/sql/product_catalog.sql",
         "backend/app/services/org.py",
         "backend/app/embeddings.py",
         "data/seed/generate.py",

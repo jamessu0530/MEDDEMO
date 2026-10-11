@@ -9,6 +9,7 @@ import {
   MessageCircleQuestion,
   MessagesSquare,
   Network,
+  Pill,
   Route,
   TriangleAlert,
   Users,
@@ -26,13 +27,14 @@ export type SidebarGroups = { main: SidebarItem[]; more: SidebarItem[] }
 /** 側邊欄一列的樣子：跟底部分頁列一樣，目前這一列墊主色膠囊 */
 export const SIDEBAR_ITEM = "flex min-h-11 w-full items-center gap-3 rounded-full px-4 text-left text-sm font-semibold transition-colors"
 
-// 業務：上面是底部分頁列那五格，下面是手機上擠在首頁頁首的入口
+// 業務：上面是底部分頁列，下面是手機上擠在首頁頁首的入口
 const SALES: SidebarGroups = {
   main: [
     { to: "/", label: "今日", icon: CalendarDays },
     { to: "/customers", label: "客戶", icon: Users, badge: "uploads" },
     { to: "/channels", label: "頻道", icon: MessagesSquare, badge: "channels" },
     { to: "/ask", label: "問答", icon: MessageCircleQuestion },
+    { to: "/products", label: "商品", icon: Pill },
     { to: "/promotions", label: "促銷", icon: BadgePercent },
   ],
   more: [
@@ -52,12 +54,13 @@ const MANAGER: SidebarItem[] = [
   { to: "/manager?view=methods", label: "方法卡", icon: BookOpenText },
 ]
 const CHANNELS: SidebarItem = { to: "/channels", label: "頻道", icon: MessagesSquare, badge: "channels" }
+const CATALOG: SidebarItem[] = [{ to: "/products", label: "商品", icon: Pill }, { to: "/promotions", label: "促銷", icon: BadgePercent }]
 const ADMIN: SidebarItem = { to: "/admin", label: "組織管理", icon: Network }
 const MANAGER_VIEWS = ["asks", "notices", "oa", "methods"]
 
 export function sidebarItems(role: Role): SidebarGroups {
   if (role === "sales") return SALES
-  return { main: role === "it" ? [ADMIN, ...MANAGER] : MANAGER, more: [CHANNELS] }
+  return { main: role === "it" ? [ADMIN, ...MANAGER] : MANAGER, more: [CHANNELS, ...CATALOG] }
 }
 
 /** 側邊欄最上面的名字連到哪裡：跟首頁頁首的名字同一個地方。業務是個人頁，主管與 IT 沒有個人頁，是帳號設定 */

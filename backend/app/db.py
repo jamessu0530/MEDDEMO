@@ -13,6 +13,7 @@ from app.models import Base
 
 MODELS = Path(__file__).parent / "models.py"
 SEMANTIC_LAYER = Path(__file__).parent / "sql" / "semantic_layer.sql"
+PRODUCT_CATALOG = Path(__file__).parent / "sql" / "product_catalog.sql"
 # 組織樹：org_path 是灌資料時算出來寫進去的衍生欄位，演算法改了資料就得重算
 ORG = Path(__file__).parent / "services" / "org.py"
 # 向量的算法：換模型或改了文件與提問的寫法，段落向量就要重算
@@ -73,7 +74,7 @@ def schema_version() -> str:
     """
     digest = hashlib.sha256()
     for path in (
-        MODELS, SEMANTIC_LAYER, ORG, EMBEDDINGS, SEED_DIR / "generate.py", SEED_DIR / "catalog.py", SEED_DIR / "products.tsv",
+        MODELS, SEMANTIC_LAYER, PRODUCT_CATALOG, ORG, EMBEDDINGS, SEED_DIR / "generate.py", SEED_DIR / "catalog.py", SEED_DIR / "products.tsv",
         PAYMENT_TERMS,
     ):
         digest.update(path.read_bytes())
@@ -93,5 +94,9 @@ def reset_schema(engine: Engine) -> None:
         # no_parameters：整份檔案原樣交給資料庫，裡面的 % 不會被當成參數符號
         conn.exec_driver_sql(
             SEMANTIC_LAYER.read_text(encoding="utf-8"),
+            execution_options={"no_parameters": True},
+        )
+        conn.exec_driver_sql(
+            PRODUCT_CATALOG.read_text(encoding="utf-8"),
             execution_options={"no_parameters": True},
         )

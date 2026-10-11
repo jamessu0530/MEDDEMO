@@ -15,19 +15,19 @@ const item = (role: Role, label: string): SidebarItem => {
 }
 
 describe("sidebarItems", () => {
-  it("業務：底部那五個分頁，加上日曆、方法卡、申請單、主管回覆", () => {
+  it("業務：底部分頁包含商品與促銷，加上日曆、方法卡、申請單、主管回覆", () => {
     expect(labels("sales")).toEqual({
-      main: ["今日", "客戶", "頻道", "問答", "促銷"],
+      main: ["今日", "客戶", "頻道", "問答", "商品", "促銷"],
       more: ["日曆", "方法卡", "我的申請單", "主管回覆"],
     })
   })
 
   it("主管：主管端的五個分頁，加上頻道", () => {
-    expect(labels("manager")).toEqual({ main: ["團隊行程", "提問", "風險通報", "簽核", "方法卡"], more: ["頻道"] })
+    expect(labels("manager")).toEqual({ main: ["團隊行程", "提問", "風險通報", "簽核", "方法卡"], more: ["頻道", "商品", "促銷"] })
   })
 
   it("IT：組織管理在最前面，接著是主管端", () => {
-    expect(labels("it")).toEqual({ main: ["組織管理", "團隊行程", "提問", "風險通報", "簽核", "方法卡"], more: ["頻道"] })
+    expect(labels("it")).toEqual({ main: ["組織管理", "團隊行程", "提問", "風險通報", "簽核", "方法卡"], more: ["頻道", "商品", "促銷"] })
   })
 
   it("數字掛在對的項目上", () => {

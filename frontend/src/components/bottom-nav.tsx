@@ -4,6 +4,7 @@ import {
   CalendarDays,
   MessageCircleQuestion,
   MessagesSquare,
+  Pill,
   Users,
 } from "lucide-react"
 import { NavLink, useLocation } from "react-router"
@@ -18,6 +19,7 @@ const TABS = [
   { to: "/customers", label: "客戶", icon: Users },
   { to: "/channels", label: "頻道", icon: MessagesSquare },
   { to: "/ask", label: "問答", icon: MessageCircleQuestion },
+  { to: "/products", label: "商品", icon: Pill },
   { to: "/promotions", label: "促銷", icon: BadgePercent },
 ]
 
@@ -74,11 +76,11 @@ export function BottomNav() {
           ref={pillRef}
           aria-hidden
           className={cn(
-            "absolute inset-y-1 left-1 w-[calc((100%-0.5rem)/5)] rounded-full bg-primary shadow-md shadow-primary/30 transition-transform motion-reduce:transition-none dark:shadow-black/40",
+            "absolute inset-y-1 left-1 rounded-full bg-primary shadow-md shadow-primary/30 transition-transform motion-reduce:transition-none dark:shadow-black/40",
             GLIDE,
             active < 0 && "hidden"
           )}
-          style={{ transform: `translateX(${Math.max(active, 0) * 100}%)` }}
+          style={{ width: `calc((100% - 0.5rem) / ${TABS.length})`, transform: `translateX(${Math.max(active, 0) * 100}%)` }}
         />
         {TABS.map(({ to, label, icon: Icon }, index) => (
           <NavLink

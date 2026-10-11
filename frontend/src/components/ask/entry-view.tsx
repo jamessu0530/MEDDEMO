@@ -8,7 +8,7 @@ import { Mascot } from "@/components/mascot"
 
 const TOOL_LABEL = { data: "查數字", knowledge: "查規定", memory: "查頻道" }
 // 請業務選要查哪一種時，每個按鈕下面的一句說明：查得到什麼
-const KIND_HINT = { data: "業績、進貨、帳款這類數字", knowledge: "公司規定、文件或網路資料", memory: "同事在頻道說過的" }
+const KIND_HINT = { data: "商品型錄、促銷、業績、進貨或帳款", knowledge: "公司規定、文件或網路資料", memory: "同事在頻道說過的" }
 
 type EntryViewProps = {
   entry: Entry

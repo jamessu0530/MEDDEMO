@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest"
 
 import type { Product } from "@/api/products"
-import { PRODUCT_SEARCH_LIMIT, productOptions } from "@/lib/product-search"
+import { catalogProducts, PRODUCT_SEARCH_LIMIT, productOptions } from "@/lib/product-search"
 
 function product(sku: string, name: string, common: boolean, aliases: string[] = []): Product {
-  return { sku, name, category: "醫材", unit: "組", aliases, common }
+  return { sku, name, category: "醫材", spec: "", unit: "組", aliases, common }
 }
 
 const PRODUCTS = [
@@ -13,6 +13,40 @@ const PRODUCTS = [
   product("HS-FO30", "魚油 30 入", true, ["魚油"]),
   product("M484974", "日本獅王細潔寬薄牙刷炭能抗菌", false),
 ]
+
+describe("商品頁的完整型錄", () => {
+  it("預設列出所有品項，包含非常用品項，超過 50 筆也不截掉", () => {
+    expect(catalogProducts(PRODUCTS, "", null)).toEqual(PRODUCTS)
+    const many = Array.from({ length: 100 }, (_, i) =>
+      product(`M${i}`, `口罩 ${i}`, false)
+    )
+    expect(catalogProducts(many, "", null)).toHaveLength(100)
+  })
+
+  it("英文料號、別名、規格都能找，多個詞需要同時符合", () => {
+    expect(
+      catalogProducts(PRODUCTS, "f762505", null).map((p) => p.sku)
+    ).toEqual(["F762505"])
+    expect(
+      catalogProducts(PRODUCTS, "護腰 bp61", null).map((p) => p.sku)
+    ).toEqual(["F762718"])
+    expect(
+      catalogProducts([{ ...PRODUCTS[0], spec: "Large" }], "large", null)
+    ).toHaveLength(1)
+    expect(catalogProducts(PRODUCTS, "護腰 魚油", null)).toEqual([])
+  })
+
+  it("搜尋與類別一起篩，不會把其他類別的同名商品混進來", () => {
+    const rows = [
+      { ...PRODUCTS[0], category: "醫材" },
+      { ...PRODUCTS[1], category: "保健品" },
+    ]
+    expect(catalogProducts(rows, "", "保健品").map((p) => p.sku)).toEqual([
+      "F762505",
+    ])
+    expect(catalogProducts(rows, "護腰", "保健品")).toEqual([])
+  })
+})
 
 describe("productOptions", () => {
   it("沒打字只列常用品項", () => {

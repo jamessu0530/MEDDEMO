@@ -59,3 +59,5 @@ def test_product_list_includes_spoken_aliases(client):
     assert "魚油" in products["HS-FO30"]["aliases"] and products["HS-FO30"]["common"]
     assert products["C490191"]["common"] and "虎讚" in products["C490191"]["aliases"]
     assert not products["F762505"]["common"]
+    assert products["F762505"]["spec"] == ""
+    assert products["HS-FO30"]["spec"]

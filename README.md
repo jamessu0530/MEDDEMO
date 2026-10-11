@@ -164,7 +164,7 @@ IT（開發者 James，A01）坐在根節點上，路徑就是 `TW`，截到哪�
 透露那個編號是別人的客戶。第三方登入開的帳號看的都是示範業務林昱辰（U01）的資料。
 
 - 轉給主管的提問：業務只看得到自己轉出去的，主管看得到自己底下的人轉來的，IT 看得到全公司的。
-- **數字查詢的過濾做在資料庫**：SQL 是模型寫的，靠提示叫它「只查自己的」擋不住。跟客戶有關的四個語意層 View 都用 `app_in_scope()` 過濾，範圍由 `sql_executor` 在每次查詢的交易裡用 `app.scope_path` 設定；促銷方案的兩個 View 不分客戶，全公司都查得到。
+- **數字查詢的過濾做在資料庫**：SQL 是模型寫的，靠提示叫它「只查自己的」擋不住。跟客戶有關的四個語意層 View 都用 `app_in_scope()` 過濾，範圍由 `sql_executor` 在每次查詢的交易裡用 `app.scope_path` 設定；商品型錄與促銷方案不分客戶，全公司都查得到。
   - 模型的 SQL 出現 `set_config`／`current_setting` 直接拒絕，但這只是讓錯誤訊息好懂：`U&"set\005fconfig"` 這種 Unicode 跳脫寫法擋不住文字檢查。**真正的保證是資料庫收回了唯讀角色呼叫 `set_config` 的權限**（`semantic_layer.sql`），測試裡兩種繞法都試過。
 - 語音問答與錄音時的即時文字也要登入才發 Gemini 臨時金鑰（會花錢）。
 
@@ -434,6 +434,20 @@ uv run --project backend python backend/scripts/index_documents.py
 ```bash
 uv run --project backend python backend/scripts/eval_ask.py
 ```
+
+## 商品型錄
+
+底部分頁與桌面側邊欄的「商品」（`/products`），和「促銷」可以直接切換。列出完整型錄，依品名、料號、規格、口語別名搜尋，或按類別篩選；每頁 30 筆，顯示總數與各類別數量。品名、料號、類別、規格與單位跟 AI 查詢讀同一個 `v_product`，沒有交易或促銷的商品也查得到。型錄的展示價格與成本不顯示。
+
+本機資料庫已經有人在用、只要補新型錄時，執行：
+
+```bash
+uv run --project backend python data/seed/sync_products.py
+```
+
+這支只補新料號、舊資料庫缺少的 `common` 欄位與商品型錄 View，不重建 schema，不覆寫既有品項，也不動客戶、交易、拜訪與帳號；可重複執行。完整重灌仍照原本的 `seed.py`，新型錄會一起灌入。
+
+問答的「查數字」與語音的 `query_data` 也能查商品型錄，例如「目前共有幾個商品？各類別有多少？」、「有哪些海藻鈣商品？請列品名、料號和單位」。只算藥品時是「慢性處方」加「一般用藥」；型錄沒有提供庫存、效期或醫療資訊。
 
 ## 促銷
 
@@ -720,7 +734,7 @@ uv run --project backend python backend/scripts/eval_voice.py
   - 另外留五張給展示用（都是林昱辰的客戶，決賽日前一天送的）：陳建宏的簽核匣有兩張優惠（6%，客戶有帳款逾期；10%，要再送處長）與一張調高上架費率的續約；林昱辰名下有兩張系統核准的優惠。這五張的機率在灌資料時用訓練好的模型補上。
 - 模擬 SAP 的人員主檔：五位業務與四位主管各一列，是 `data/seed/catalog.py` 的 `SAP_EMPLOYEES` 這份固定的清單，不抽亂數，上面的客戶、交易、帳款與拜訪一筆都沒變。到職日都在決賽日的一年以前——這九個人在假資料裡有一整年的拜訪紀錄，沒有一個是新人；要看新人的畫面，用自建帳號登入，或由 IT 在組織管理頁開一個業務帳號。
 - 方法卡：十張手寫的卡（`data/seed/catalog.py` 的 `METHOD_CARDS`），作者是四位主管，延續上面的情境（御松田搶陳列位、北區魚油下滑、慢箋成長帶學名藥比價表、帳款逾期…），數字與規定照內部文件。每張卡配好採用與沒幫上的次數，共 301 筆回饋，分散在五位業務各自名下、這張卡適用的那種客戶上。回饋用另一條亂數、在最後才產生，前面的客戶、交易、拜訪一筆都沒變；時間跟頻道的對話一樣，從灌資料那一刻往前推。
-- 數字查詢只能讀六個語意層 View：`v_monthly_sales`、`v_customer_summary`、`v_visit_signal`、`v_margin_breakdown`，以及促銷的 `v_promotion`、`v_promotion_item`。唯讀角色是 `semantic_reader`。
+- 數字查詢只能讀七個語意層 View：`v_monthly_sales`、`v_customer_summary`、`v_visit_signal`、`v_margin_breakdown`，促銷的 `v_promotion`、`v_promotion_item`，以及完整商品型錄的 `v_product`。唯讀角色是 `semantic_reader`。
 
 ## 部署到雲端 VM（K3s）
 
