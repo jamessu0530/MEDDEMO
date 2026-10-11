@@ -5,7 +5,7 @@ import { getTodayMap, setTravelMode, type TodayMap, type TodayRoute, type Travel
 import { HomeMapSlot, MapFallback, MapPlaceholder } from "@/components/map-slot"
 
 // 地圖填滿固定的頁首與底部輸入列中間（切換捲到頁首正下面時）：一打開就看到整條路線和底下的卡。
-// 頁首的高度由首頁量好放在 --home-header（有沒有位置分享列、字放多大都不一樣）；12rem 是切換本身加上底部的輸入列與分頁列
+// 頁首的高度由首頁量好放在 --home-header（字放多大不一樣）；12rem 是切換本身加上底部的輸入列與分頁列
 // 電腦版地圖在右欄、固定在頁首下面：高度是視窗扣掉頁首，上下各留 0.75rem
 const HEIGHT = "h-[calc(100svh-var(--home-header,12rem)-12rem)] min-h-72 lg:h-[calc(100svh-var(--home-header,8rem)-1.5rem)]"
 

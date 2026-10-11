@@ -174,7 +174,7 @@ def set_paused(session: Session, user: AppUser, paused: bool, at: dt.datetime | 
 
 @dataclass(frozen=True)
 class ShareState:
-    """業務首頁的分享列要的：會不會分享、暫停了沒、伺服器記的權限、主管是誰、上班時間。"""
+    """業務的位置分享要的（首頁第一次的說明、帳號設定的位置分享）：會不會分享、暫停了沒、伺服器記的權限、主管是誰、上班時間。"""
 
     applies: bool
     paused: bool

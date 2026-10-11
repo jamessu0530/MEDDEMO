@@ -55,14 +55,19 @@ export type ShareSnapshot = {
   position: Position | null
 }
 
-// hidden：不顯示（不是業務、下班時間、還沒問到）；consent：第一次要先說明；其他三種是分享列的三種樣子
-export type BarState = "hidden" | "consent" | "sharing" | "paused" | "denied"
+// hidden：不分享（不是業務、下班時間、還沒問到）；consent：第一次要先說明；其他三種是分享中、暫停中、沒有權限
+export type ShareStatus = "hidden" | "consent" | "sharing" | "paused" | "denied"
 
-// 第一次在上班時間打開首頁時的說明（設計文件〈位置分享〉）；放在這裡而不是 share-bar.tsx，
+// 帳號設定裡位置分享的樣子（components/route/location-share.tsx）：多一種 off（下班時間）
+export type SettingsStatus = ShareStatus | "off"
+
+// 第一次在上班時間打開首頁時的說明（設計文件〈位置分享〉）；放在這裡而不是 components/route/location-share.tsx，
 // 是因為那個檔案只匯出元件給 react-refresh 用，混進一個字串常數 lint 會過不了
-export const CONSENT_TEXT = "上班時間主管看得到你的位置，只存最新的一筆，不留軌跡；可以隨時暫停。"
+export const CONSENT_TEXT = "上班時間主管看得到你的位置，只存最新的一筆，不留軌跡；可以在帳號設定暫停。"
 
-export function barState(snapshot: ShareSnapshot, now: Date): BarState {
+const DAY = ["", "一", "二", "三", "四", "五", "六", "日"]
+
+export function shareStatus(snapshot: ShareSnapshot, now: Date): ShareStatus {
   const { share } = snapshot
   if (!share || !share.applies || !withinHours(now, share.hours)) return "hidden"
   if (!snapshot.consented) return "consent"
@@ -72,12 +77,33 @@ export function barState(snapshot: ShareSnapshot, now: Date): BarState {
 }
 
 /**
+ * 帳號設定裡的樣子：暫停存在後端、隔天還在，所以不管上不上班都是暫停中，下班時間也能按繼續；
+ * 其他時候跟 shareStatus 一樣，只是下班時間是 off（還是顯示，寫上班時間）
+ */
+export function settingsStatus(snapshot: ShareSnapshot, now: Date): SettingsStatus {
+  const { share } = snapshot
+  if (!share || !share.applies) return "hidden"
+  if (share.paused) return "paused"
+  const status = shareStatus(snapshot, now)
+  return status === "hidden" ? "off" : status
+}
+
+/** 上班時間寫成一句：「週一到週五 08:30–18:30」，不連續的星期用頓號隔開 */
+export function hoursLabel(hours: ShareHours) {
+  const days = [...hours.weekdays].sort((a, b) => a - b)
+  const contiguous = days.every((day, index) => index === 0 || day === days[index - 1] + 1)
+  const span =
+    days.length > 2 && contiguous ? `週${DAY[days[0]]}到週${DAY[days[days.length - 1]]}` : days.map((day) => `週${DAY[day]}`).join("、")
+  return `${span} ${hours.start}–${hours.end}`
+}
+
+/**
  * 心跳要多帶的：分享中帶最新的位置，沒有權限帶 location_denied，其他什麼都不帶。
  * 位置太舊（超過 MAX_FIX_AGE_MS，通常是手機鎖屏、切到背景）就當作沒有，不然後端會一直把舊位置當剛更新的寫進去。
  * 帶出去的只有 lat/lng/accuracy：at 只是這支手機自己拿來判斷新不新鮮，後端的 schema 沒有這個欄位。
  */
 export function heartbeatPayload(snapshot: ShareSnapshot, now: Date): HeartbeatLocation {
-  const state = barState(snapshot, now)
+  const state = shareStatus(snapshot, now)
   if (state === "denied") return { location_denied: true }
   if (state === "sharing" && snapshot.position && now.getTime() - snapshot.position.at <= MAX_FIX_AGE_MS) {
     const { lat, lng, accuracy } = snapshot.position
@@ -86,12 +112,14 @@ export function heartbeatPayload(snapshot: ShareSnapshot, now: Date): HeartbeatL
   return {}
 }
 
-/** 分享列的句子（設計文件〈位置分享〉的表） */
-export function barText(state: BarState, managerName: string | null, hours: ShareHours) {
+/** 帳號設定裡位置分享的句子（設計文件〈位置分享〉的表） */
+export function statusText(state: SettingsStatus, managerName: string | null, hours: ShareHours) {
   const manager = managerName ?? "主管"
   if (state === "sharing") return `位置分享中，${manager}看得到你在哪（到 ${hours.end}）`
   if (state === "paused") return `已暫停分享，${manager}會看到「暫停分享」`
   if (state === "denied") return `沒有開定位權限，${manager}看不到你在哪`
+  if (state === "consent") return "還沒開始分享"
+  if (state === "off") return "下班時間，現在不分享位置"
   return null
 }
 
@@ -198,7 +226,7 @@ export class LocationShare {
   /** 分享中、watch 開著，但位置太舊（有的瀏覽器站著不動就不會再回報）就主動要一次；已經在等就不要重複要 */
   private maybeRefresh() {
     if (this.refreshing || !this.stopWatch) return
-    if (barState(this.snapshot, this.env.now()) !== "sharing") return
+    if (shareStatus(this.snapshot, this.env.now()) !== "sharing") return
     const { position } = this.snapshot
     if (position && this.env.now().getTime() - position.at <= REFRESH_AFTER_MS) return
     this.refreshing = true
@@ -222,7 +250,7 @@ export class LocationShare {
 
   /** 分享中（或沒有權限、等使用者去開）才追蹤；下班、暫停、還沒同意就停掉，不在背景一直拿 GPS */
   private async sync() {
-    const state = barState(this.snapshot, this.env.now())
+    const state = shareStatus(this.snapshot, this.env.now())
     if (state !== "sharing" && state !== "denied") {
       this.stopWatching()
       return
@@ -233,7 +261,7 @@ export class LocationShare {
     // 跟現在查到的不一樣才重試——使用者去設定打開之後，查得到的權限變了，下一次心跳這裡就會開始追蹤
     const permission = await this.env.permission()
     // 等權限回來的這段時間狀態可能變了（暫停、下班、換人）：不要在不該追蹤的時候還開始 watch
-    if (barState(this.snapshot, this.env.now()) !== state) return
+    if (shareStatus(this.snapshot, this.env.now()) !== state) return
     if (permission === "denied") {
       this.deniedWith = permission
       if (!this.snapshot.denied) this.set({ denied: true })

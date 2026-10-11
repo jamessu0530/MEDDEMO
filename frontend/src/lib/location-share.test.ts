@@ -2,12 +2,14 @@ import { describe, expect, it, vi } from "vitest"
 
 import type { ShareState } from "@/api/location"
 import {
-  barState,
-  barText,
   heartbeatPayload,
+  hoursLabel,
   LocationShare,
   MAX_FIX_AGE_MS,
   REFRESH_AFTER_MS,
+  settingsStatus,
+  shareStatus,
+  statusText,
   withinHours,
   type GeoEnv,
   type Position,
@@ -45,22 +47,22 @@ describe("上班時間", () => {
   })
 })
 
-describe("分享列與心跳", () => {
+describe("分享狀態與心跳", () => {
   it("不是業務、下班時間、還沒載入：不顯示也不帶", () => {
     for (const s of [snapshot({ share: { ...SHARE, applies: false } }), snapshot({ share: null })]) {
-      expect(barState(s, WORKING)).toBe("hidden")
+      expect(shareStatus(s, WORKING)).toBe("hidden")
       expect(heartbeatPayload(s, WORKING)).toEqual({})
     }
-    expect(barState(snapshot(), new Date("2026-10-01T19:00:00+08:00"))).toBe("hidden")
+    expect(shareStatus(snapshot(), new Date("2026-10-01T19:00:00+08:00"))).toBe("hidden")
   })
 
   it("還沒同意：先說明，什麼都不帶", () => {
-    expect(barState(snapshot({ consented: false }), WORKING)).toBe("consent")
+    expect(shareStatus(snapshot({ consented: false }), WORKING)).toBe("consent")
     expect(heartbeatPayload(snapshot({ consented: false }), WORKING)).toEqual({})
   })
 
   it("分享中帶最新的位置；還沒拿到位置就先不帶", () => {
-    expect(barState(snapshot(), WORKING)).toBe("sharing")
+    expect(shareStatus(snapshot(), WORKING)).toBe("sharing")
     expect(heartbeatPayload(snapshot(), WORKING)).toEqual({ location: LOCATION_PAYLOAD })
     expect(heartbeatPayload(snapshot({ position: null }), WORKING)).toEqual({})
   })
@@ -74,21 +76,54 @@ describe("分享列與心跳", () => {
 
   it("暫停中不帶；暫停比沒有權限優先", () => {
     const paused = snapshot({ share: { ...SHARE, paused: true }, denied: true })
-    expect(barState(paused, WORKING)).toBe("paused")
+    expect(shareStatus(paused, WORKING)).toBe("paused")
     expect(heartbeatPayload(paused, WORKING)).toEqual({})
   })
 
   it("沒有權限：帶 location_denied", () => {
-    expect(barState(snapshot({ denied: true }), WORKING)).toBe("denied")
+    expect(shareStatus(snapshot({ denied: true }), WORKING)).toBe("denied")
     expect(heartbeatPayload(snapshot({ denied: true }), WORKING)).toEqual({ location_denied: true })
   })
 
-  it("分享列的句子", () => {
-    expect(barText("sharing", "陳建宏", HOURS)).toBe("位置分享中，陳建宏看得到你在哪（到 18:30）")
-    expect(barText("paused", "陳建宏", HOURS)).toBe("已暫停分享，陳建宏會看到「暫停分享」")
-    expect(barText("denied", "陳建宏", HOURS)).toBe("沒有開定位權限，陳建宏看不到你在哪")
-    expect(barText("denied", null, HOURS)).toBe("沒有開定位權限，主管看不到你在哪")
-    expect(barText("hidden", "陳建宏", HOURS)).toBeNull()
+  it("帳號設定的句子", () => {
+    expect(statusText("sharing", "陳建宏", HOURS)).toBe("位置分享中，陳建宏看得到你在哪（到 18:30）")
+    expect(statusText("paused", "陳建宏", HOURS)).toBe("已暫停分享，陳建宏會看到「暫停分享」")
+    expect(statusText("denied", "陳建宏", HOURS)).toBe("沒有開定位權限，陳建宏看不到你在哪")
+    expect(statusText("denied", null, HOURS)).toBe("沒有開定位權限，主管看不到你在哪")
+    expect(statusText("consent", "陳建宏", HOURS)).toBe("還沒開始分享")
+    expect(statusText("off", "陳建宏", HOURS)).toBe("下班時間，現在不分享位置")
+    expect(statusText("hidden", "陳建宏", HOURS)).toBeNull()
+  })
+})
+
+describe("帳號設定的位置分享", () => {
+  const EVENING = new Date("2026-10-01T19:00:00+08:00")
+
+  it("不是業務、還沒問到：不顯示", () => {
+    expect(settingsStatus(snapshot({ share: { ...SHARE, applies: false } }), WORKING)).toBe("hidden")
+    expect(settingsStatus(snapshot({ share: null }), WORKING)).toBe("hidden")
+  })
+
+  it("下班時間是 off；上班時間跟分享狀態一樣", () => {
+    expect(settingsStatus(snapshot(), EVENING)).toBe("off")
+    expect(settingsStatus(snapshot(), WORKING)).toBe("sharing")
+    expect(settingsStatus(snapshot({ consented: false }), WORKING)).toBe("consent")
+    expect(settingsStatus(snapshot({ denied: true }), WORKING)).toBe("denied")
+  })
+
+  it("暫停中不管上不上班都是暫停，下班時間也能按繼續", () => {
+    const paused = snapshot({ share: { ...SHARE, paused: true } })
+    expect(settingsStatus(paused, WORKING)).toBe("paused")
+    expect(settingsStatus(paused, EVENING)).toBe("paused")
+  })
+
+  it.each([
+    [[1, 2, 3, 4, 5], "週一到週五 08:30–18:30"],
+    [[1, 2, 3, 4, 5, 6, 7], "週一到週日 08:30–18:30"],
+    [[5, 1, 3], "週一、週三、週五 08:30–18:30"],
+    [[6, 7], "週六、週日 08:30–18:30"],
+  ])("上班時間 %j → %s", (weekdays, label) => {
+    expect(hoursLabel({ ...HOURS, weekdays })).toBe(label)
   })
 })
 
@@ -126,7 +161,7 @@ describe("LocationShare", () => {
     expect(store.heartbeat()).toEqual({})
     await settle()
     expect(env.fetchState).toHaveBeenCalledTimes(1)
-    expect(barState(store.getSnapshot(), WORKING)).toBe("consent")
+    expect(shareStatus(store.getSnapshot(), WORKING)).toBe("consent")
     expect(watchers).toHaveLength(0)
   })
 

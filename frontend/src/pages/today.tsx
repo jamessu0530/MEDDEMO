@@ -35,7 +35,7 @@ import { RoutePath } from "@/components/route-path"
 import { EditRouteLink, SkippedHabitsNote } from "@/components/route/home-extras"
 import { HomeAsk } from "@/components/route/home-ask"
 import { HomeMapPanel } from "@/components/route/home-map-panel"
-import { ShareBar } from "@/components/route/share-bar"
+import { LocationConsent } from "@/components/route/location-share"
 import { UnlockToast } from "@/components/route/unlock-toast"
 import { SkinToggle } from "@/components/skin-toggle"
 import { Button, buttonVariants } from "@/components/ui/button"
@@ -147,7 +147,7 @@ export function TodayPage() {
   const onMap = !desktop && mappable && params.get("view") === "map"
   const headerRef = useRef<HTMLElement>(null)
   const switchRef = useRef<HTMLDivElement>(null)
-  // 固定的頁首有多高（有沒有位置分享列、字放多大都不一樣）：地圖照它算高度（home-map-panel.tsx 的 --home-header）
+  // 固定的頁首有多高（字放多大不一樣）：地圖照它算高度（home-map-panel.tsx 的 --home-header）
   const [headerHeight, setHeaderHeight] = useState<number | null>(null)
   // 按過路線／地圖切換：之後換過去的那一邊從旁邊滑進來
   const [switched, setSwitched] = useState(false)
@@ -366,8 +366,6 @@ export function TodayPage() {
             方法卡
           </Link>
         </div>
-        {/* 位置分享列：上班時間主管看得到你在哪（components/route/share-bar.tsx） */}
-        <ShareBar />
       </header>
 
       {/* 底部分頁列約 64px，上面再疊一條跟熊熊滾說的輸入列，最後的終點要露出來 */}
@@ -523,6 +521,8 @@ export function TodayPage() {
       )}
       {unlocked.length > 0 && <UnlockToast medals={unlocked} onDone={() => setUnlocked([])} />}
       <BottomNav />
+      {/* 位置分享只有第一次的說明，按「知道了」就結束；暫停、繼續在帳號設定（components/route/location-share.tsx） */}
+      <LocationConsent />
     </div>
   )
 }

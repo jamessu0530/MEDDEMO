@@ -35,8 +35,9 @@
 13. **主管端多一個「行程」分頁，放在最前面**：只能看、不能改，只看今天，看不到業務的排序習慣。
 14. **串 Google 地圖**：Maps JavaScript API 畫地圖，Routes API 算道路車程與沿路的路線。排序仍由我們的程式做
     （Google 的路線最佳化不支援先後限制）。Google 連不上或沒設金鑰時退回直線估算。
-15. **即時位置**：上班時間（週一到週五 08:30–18:30）打開 app 才分享，首頁一直顯示「位置分享中」；業務可以暫停，
-    主管會看到「暫停分享」。只存最新位置，不留軌跡。
+15. **即時位置**：上班時間（週一到週五 08:30–18:30）打開 app 才分享；業務可以暫停，
+    主管會看到「暫停分享」。只存最新位置，不留軌跡。首頁只在第一次跳說明，按「知道了」就結束，
+    暫停、繼續在帳號設定（2026-10-09 改：原本首頁橫幅下面一直有一條分享列，佔首頁的版面）。
 16. **示範帳號也用真的 GPS**：用第三方登入、代理示範業務的評審，分享的是評審手機的位置，存在示範業務名下。
 17. **IT 能重置示範業務今天的行程**：系統日期固定在決賽日不會換天，示範業務的行程給所有評審共用、第一次建好之後只會累積改動（暫緩、插入下一站、加站）。組織管理頁加一顆「重置示範業務今天的行程」，IT 按下去刪掉這份行程與所有暫緩、訊號權重，示範業務的排序習慣也回到一開始那三條，下次讀取照模型的建議重新建一份，換一批評審前用。
 18. **業務首頁也有地圖，但平常不顯示**（2026-10-04 加）：路線上方多一個「路線｜地圖」切換，預設是路線；
@@ -268,7 +269,7 @@ def cheapest_insert(start: dt.datetime, start_point: int, ordered: list[PlanStop
 
 - 橫幅右邊在「方法卡」旁多一顆「調整」（鉛筆圖示），點了進調整行程。
 - 每站標籤的時間是排程算出來的到達時間；有約的時間而且會晚到時，標籤第二行改成紅字「會晚到 N 分」。
-- 橫幅下面一條位置分享列（見〈位置分享〉）。
+- 位置分享只有第一次的說明對話框，首頁不放分享列（見〈位置分享〉）。
 - 路線下面、底部分頁膠囊上面固定一條「跟熊熊滾說要怎麼排…」的輸入列（見〈跟熊熊滾說要怎麼排〉）。
 - 「需立即處理」紅卡照舊；三顆鈕改打 `POST /api/itinerary/today/feedback`。
 
@@ -388,17 +389,19 @@ def cheapest_insert(start: dt.datetime, start_point: int, ordered: list[PlanStop
 
 ### 位置分享
 
-橫幅下面一條：
+第一次在上班時間打開首頁時，先跳一個對話框說明「上班時間主管看得到你的位置，只存最新的一筆，不留軌跡；
+可以在帳號設定暫停」，按「知道了」才向瀏覽器要定位權限，之後首頁不再有位置分享的東西。
+
+2026-10-09 改：原本橫幅下面一直有一條分享列（狀態加暫停／繼續），佔首頁的版面，搬到帳號設定的「位置分享」（業務才有）。
+上面一句寫上班時間（「上班時間（週一到週五 08:30–18:30）主管看得到你的位置…」），下面一張卡：
 
 | 狀態 | 文字 | 按鈕 |
 |---|---|---|
 | 上班時間、分享中 | 綠點「位置分享中，{主管名}看得到你在哪（到 18:30）」 | 暫停 |
-| 暫停中 | 琥珀點「已暫停分享，{主管名}會看到『暫停分享』」 | 繼續 |
+| 暫停中（不管上不上班：暫停存在後端，隔天還在） | 琥珀點「已暫停分享，{主管名}會看到『暫停分享』」 | 繼續 |
 | 瀏覽器沒給定位權限 | 「沒有開定位權限，{主管名}看不到你在哪」 | 怎麼開（說明對話框） |
-| 下班時間 | 不顯示 | |
-
-第一次在上班時間打開首頁時，先跳一個對話框說明「上班時間主管看得到你的位置，只存最新的一筆，不留軌跡；
-可以隨時暫停」，按「知道了」才向瀏覽器要定位權限。
+| 上班時間、還沒按過「知道了」 | 「還沒開始分享」 | 開始分享 |
+| 下班時間 | 「下班時間，現在不分享位置」 | |
 
 ## 跟熊熊滾說要怎麼排：後端
 
@@ -554,11 +557,11 @@ backend/scripts/eval_itinerary_ai.py      20 句話的實測
 frontend/src/api/itinerary.ts
 frontend/src/lib/itinerary.ts             清單換位置、拖移後的習慣句子、對照卡差異（純函式）
 frontend/src/lib/location-share.ts        上班時間判斷、要不要帶位置（純函式）
-frontend/src/pages/today.tsx              資料來源換掉、調整鈕、位置分享列、輸入列
+frontend/src/pages/today.tsx              資料來源換掉、調整鈕、位置分享的說明、輸入列
 frontend/src/pages/route-edit.tsx         調整行程（清單）
 frontend/src/pages/route-add.tsx          加一站
 frontend/src/pages/route-habits.tsx       我的排序習慣
-frontend/src/components/route/stop-card.tsx、stop-editor.tsx、habit-prompt.tsx、proposal-sheet.tsx、ask-bar.tsx、share-bar.tsx
+frontend/src/components/route/stop-card.tsx、stop-editor.tsx、habit-prompt.tsx、proposal-sheet.tsx、ask-bar.tsx、location-share.tsx
 frontend/src/components/manager/routes-panel.tsx、route-map.tsx（import() 載入 Google 地圖）
 frontend/src/components/map-slot.tsx      地圖的外框：問金鑰、金鑰被拒或載不下來時換成說明（主管頁與首頁共用）
 frontend/src/components/route/home-map-panel.tsx、home-map.tsx（import() 載入）、map-stop-card.tsx   首頁的地圖
@@ -590,7 +593,7 @@ frontend/src/lib/travel-mode.ts           交通方式的字、導航用的 trav
 
 - `lib/itinerary.ts`：上移下移、拖移後的習慣句子（往上、往下）、對照卡的換位標記。
 - `lib/location-share.ts`：上班時間的邊界（08:29、08:30、18:30、週六）、沒權限、暫停。
-- 元件用 `renderToStaticMarkup`：提案卡三種結果、違反規則的紅框、位置分享列四種狀態、主管卡片的各種提示。
+- 元件用 `renderToStaticMarkup`：提案卡三種結果、違反規則的紅框、帳號設定的位置分享六種狀態、主管卡片的各種提示。
 
 **AI 實測**：`scripts/eval_itinerary_ai.py` 20 句（移動、新增、刪除、約時間、停留、先後、排順路、記習慣、
 停用習慣、對不到客戶、名字有兩家、只問不改），比對預期的操作，跟 `eval_ask.py` 一樣手動跑、結果寫進 `data/eval/`。

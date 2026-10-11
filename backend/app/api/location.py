@@ -1,5 +1,5 @@
-"""位置分享（docs/superpowers/specs/2026-10-01-itinerary-planning-design.md〈即時位置〉）：業務首頁的分享列要的狀態、
-暫停與繼續。位置本身跟著在線狀態的心跳送（api/presence.py）。"""
+"""位置分享（docs/superpowers/specs/2026-10-01-itinerary-planning-design.md〈即時位置〉）：業務的分享狀態（首頁第一次的說明、
+帳號設定的位置分享）、暫停與繼續。位置本身跟著在線狀態的心跳送（api/presence.py）。"""
 
 from typing import Annotated
 
@@ -28,7 +28,7 @@ class ShareState(BaseModel):
     applies: bool
     paused: bool
     denied: bool
-    # 分享列寫「{主管名}看得到你在哪」
+    # 帳號設定的位置分享寫「{主管名}看得到你在哪」
     manager_name: str | None
     hours: Hours
 

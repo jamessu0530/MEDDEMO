@@ -16,6 +16,7 @@ import { ApiError } from "@/api/client"
 import { getTravelMode, setTravelMode, type TravelMode } from "@/api/route"
 import { MyStatusSection } from "@/components/my-status"
 import { ProfilePhotoSection } from "@/components/profile-photo"
+import { LocationShareSection } from "@/components/route/location-share"
 import { TravelModeIcon } from "@/components/route/travel-mode-icon"
 import { FacebookButton, NotReadyButton, RedirectButton } from "@/components/oauth-buttons"
 import { PageHeader } from "@/components/page-header"
@@ -601,6 +602,8 @@ export function SettingsPage() {
         )}
 
         {user.role === "sales" && <TravelModePicker userId={user.id} />}
+        {/* 首頁只有第一次的說明，暫停、繼續、沒有權限怎麼開都在這裡 */}
+        {user.role === "sales" && <LocationShareSection />}
         <SkinPicker />
         <TextSizePicker />
 

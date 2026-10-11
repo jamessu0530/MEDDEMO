@@ -3,7 +3,7 @@ import { request } from "@/api/client"
 // 上班時間（後端 LOCATION_SHARE_HOURS）：星期 1（一）～7（日），start 起、end 前，台北時間
 export type ShareHours = { weekdays: number[]; start: string; end: string }
 
-// 業務首頁分享列要的：這個帳號會不會分享（主管與 IT 不會）、暫停了沒、主管是誰、上班時間
+// 位置分享要的（首頁第一次的說明、帳號設定的位置分享）：這個帳號會不會分享（主管與 IT 不會）、暫停了沒、主管是誰、上班時間
 export type ShareState = {
   applies: boolean
   paused: boolean
