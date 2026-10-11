@@ -3,12 +3,12 @@ import { Link, useLocation } from "react-router"
 
 import { MyStatusButton } from "@/components/my-status"
 import { SidebarNav } from "@/components/sidebar-nav"
-import { changeSkin } from "@/ink/ink"
 import type { AuthUser } from "@/lib/auth"
 import { useChannelUnread } from "@/lib/channel-unread"
 import { usePendingOa, useUnseenNotices } from "@/lib/manager-counts"
 import { useUnseenReplies } from "@/lib/manager-replies"
 import { useUploadQueue } from "@/lib/offline-queue"
+import { chooseSkin } from "@/lib/preferences"
 import { profilePath, SIDEBAR_ITEM, sidebarItems, type SidebarBadge } from "@/lib/sidebar"
 import { useSkin } from "@/lib/skin"
 import { cn } from "@/lib/utils"
@@ -67,13 +67,13 @@ function Sidebar({ user, counts }: { user: AuthUser; counts: Counts }) {
   )
 }
 
-/** 深色、淺色切換：跟頁首的按鈕一樣，用噴漆從按的位置染過去（ink/ink.ts 的 changeSkin） */
+/** 深色、淺色切換：跟頁首的按鈕一樣，用噴漆從按的位置染過去，也存到帳號上（lib/preferences.ts 的 chooseSkin） */
 function SkinRow() {
   const dark = useSkin() === "dark"
   return (
     <button
       type="button"
-      onClick={() => changeSkin(dark ? "light" : "dark")}
+      onClick={() => chooseSkin(dark ? "light" : "dark")}
       className={cn(SIDEBAR_ITEM, "text-muted-foreground hover:bg-muted")}
     >
       {dark ? <Sun className="size-5 shrink-0" /> : <Moon className="size-5 shrink-0" />}
