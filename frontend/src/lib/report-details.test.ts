@@ -22,7 +22,7 @@ describe("逐筆明細", () => {
   it("拜訪時間使用台北日界線，日期和文字保持原意", () => {
     expect(
       detailValue({ ...column, kind: "datetime" }, "2031-04-09T16:00:00Z")
-    ).toContain("2031/04/10 00:00")
+    ).toMatch(/2031\/04\/10\s+00:00/u)
     expect(detailValue({ ...column, kind: "date" }, "2031-04-10")).toBe(
       "2031-04-10"
     )
