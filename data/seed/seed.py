@@ -65,6 +65,10 @@ KEPT_SETTINGS = {
     "user_preference": models.UserPreference,
     "user_presence": models.UserPresence,
     "user_report_config": models.UserReportConfig,
+    "learning_completion": models.LearningCompletion,
+    "mascot_wardrobe": models.MascotWardrobe,
+    "mascot_collectible": models.MascotCollectible,
+    "mascot_encounter": models.MascotEncounter,
 }
 
 

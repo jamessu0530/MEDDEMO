@@ -1,0 +1,32 @@
+[
+  {
+    "file": "ios-B-soft-stores-bronze.glb",
+    "triangles": 18900,
+    "drawCalls": 4
+  },
+  {
+    "file": "ios-B-soft-stores-silver.glb",
+    "triangles": 19432,
+    "drawCalls": 4
+  },
+  {
+    "file": "ios-B-soft-stores-gold.glb",
+    "triangles": 19964,
+    "drawCalls": 4
+  },
+  {
+    "file": "ios-B-soft-cities-bronze.glb",
+    "triangles": 20488,
+    "drawCalls": 4
+  },
+  {
+    "file": "ios-B-soft-cities-silver.glb",
+    "triangles": 21020,
+    "drawCalls": 4
+  },
+  {
+    "file": "ios-B-soft-cities-gold.glb",
+    "triangles": 21552,
+    "drawCalls": 4
+  }
+]

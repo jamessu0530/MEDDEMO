@@ -1,0 +1,813 @@
+.memory-map-dialog[data-slot="dialog-content"] {
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue",
+    "PingFang TC", sans-serif;
+  --primary: #007aff;
+  --primary-foreground: #fff;
+  --foreground: #1d1d1f;
+  --background: #f5f5f7;
+  --card: #fff;
+  --popover-foreground: #1d1d1f;
+  --muted: #f0f1f3;
+  --muted-foreground: #6e6e73;
+  --border: #e5e5ea;
+  --input: #d1d1d6;
+  --ring: #007aff;
+  --shadow-lip: none;
+  --shadow-lip-primary: none;
+  --primary-lip: transparent;
+  --map-canvas: #f5f6f8;
+  --map-ink: #1d1d1f;
+  --map-secondary: #6e6e73;
+  --map-glass: #ffffffb8;
+  --map-stroke: #ffffffeb;
+  --map-link: #a4acb8;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  width: min(1220px, calc(100vw - 3rem));
+  max-width: min(1220px, calc(100vw - 3rem));
+  max-height: 92svh;
+  overflow: hidden;
+  border: 1px solid #ffffffeb;
+  border-radius: 28px;
+  font-family: var(--font-sans);
+  color: var(--map-ink);
+  background: var(--card);
+  box-shadow:
+    0 40px 100px #15213826,
+    0 8px 28px #15213816;
+}
+.memory-map-dialog button,
+.memory-map-dialog input,
+.memory-map-dialog textarea {
+  font-family: inherit;
+}
+.memory-map-dialog [data-slot="button"] {
+  box-shadow: none;
+  border-width: 1px;
+  font-weight: 500;
+  transform: none;
+}
+.memory-map-dialog [data-slot="button"]:hover {
+  box-shadow: none;
+}
+.memory-map-header {
+  padding: 26px 28px 22px;
+  align-items: center;
+  background: var(--card);
+  border-bottom: 0;
+}
+.memory-map-header [data-slot="dialog-title"] {
+  font-size: 24px;
+  font-weight: 650;
+  letter-spacing: -0.7px;
+  line-height: 1.2;
+}
+.memory-map-header [data-slot="dialog-description"] {
+  font-size: 13px;
+  line-height: 1.5;
+  margin-top: 6px;
+  color: var(--map-secondary);
+}
+.memory-map-header [data-slot="dialog-close"] {
+  border-radius: 50%;
+  background: var(--muted);
+  width: 34px;
+  height: 34px;
+  color: var(--map-secondary);
+}
+.memory-map-toolbar {
+  padding: 0 28px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--card);
+}
+.memory-map-segmented {
+  gap: 2px;
+  padding: 4px;
+  border-radius: 14px;
+  background: var(--muted);
+}
+.memory-map-segmented button {
+  border-radius: 10px;
+  padding: 0 15px;
+  min-height: 32px;
+  font-size: 12px;
+  color: var(--map-secondary);
+  transition:
+    background 0.18s,
+    box-shadow 0.18s,
+    color 0.18s;
+}
+.memory-map-segmented button[aria-pressed="true"] {
+  background: var(--card);
+  color: var(--map-ink);
+  box-shadow: 0 1px 4px #151b2920;
+  font-weight: 600;
+}
+.memory-map-search {
+  background: var(--muted);
+  border: 0;
+  border-radius: 12px;
+  color: var(--map-secondary);
+}
+.memory-map-search input {
+  height: 40px;
+  width: 176px;
+  font-size: 12px;
+}
+.memory-map-search:focus-within {
+  outline: 3px solid #007aff30;
+}
+.memory-map-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 322px;
+  min-height: 0;
+  overflow: auto;
+  flex: 1;
+}
+.memory-map-visual {
+  position: relative;
+  min-width: 0;
+  background: radial-gradient(
+    ellipse at 55% 48%,
+    #fff 0%,
+    #f2f5fa 48%,
+    #e9edf5 100%
+  );
+  color: var(--map-ink);
+  overflow: hidden;
+  min-height: 500px;
+}
+.memory-map-overview {
+  position: absolute;
+  z-index: 2;
+  top: 28px;
+  left: 28px;
+  pointer-events: none;
+}
+.memory-map-overview > span {
+  display: block;
+  color: var(--map-secondary);
+  font-size: 11px;
+  letter-spacing: 0.4px;
+  margin-bottom: 8px;
+}
+.memory-map-overview strong {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.8px;
+}
+.memory-map-overview small {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--map-secondary);
+  letter-spacing: 0;
+}
+.memory-map-overview i {
+  height: 14px;
+  width: 1px;
+  background: #c8cdd5;
+  align-self: center;
+  margin: 0 10px;
+}
+.memory-map-canvas {
+  position: relative;
+  height: min(61svh, 610px);
+  min-height: 450px;
+  touch-action: none;
+  outline: none;
+  cursor: grab;
+}
+.memory-map-canvas:active {
+  cursor: grabbing;
+}
+.memory-map-canvas:focus-visible {
+  outline: 2px solid #007aff;
+  outline-offset: -3px;
+}
+.memory-map-canvas canvas {
+  display: block;
+}
+.memory-map-current {
+  position: absolute;
+  right: 24px;
+  top: 24px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(380px, 49%);
+  padding: 12px 14px;
+  background: var(--map-glass);
+  border: 1px solid var(--map-stroke);
+  border-radius: 18px;
+  pointer-events: none;
+  backdrop-filter: blur(20px) saturate(1.3);
+  -webkit-backdrop-filter: blur(20px) saturate(1.3);
+  box-shadow:
+    0 6px 24px #23344d0a,
+    inset 0 1px 0 #fff;
+}
+.memory-map-current span:not(.memory-map-status-dot) {
+  display: block;
+  font-size: 10px;
+  color: var(--map-secondary);
+  margin-bottom: 5px;
+}
+.memory-map-current strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 550;
+  color: var(--map-ink);
+}
+.memory-map-current button {
+  pointer-events: auto;
+  flex: none;
+  margin-left: auto;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 50%;
+  background: #ebeff580;
+  color: #616b7d;
+  cursor: pointer;
+}
+.memory-map-status-dot {
+  height: 7px;
+  width: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: #8e98a8;
+}
+.memory-map-status-dot.is-live {
+  background: #007aff;
+  box-shadow: 0 0 0 4px #007aff12;
+}
+.memory-map-label {
+  position: absolute;
+  transform: translate(-50%, 0);
+  max-width: 168px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-height: 30px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  padding: 6px 9px;
+  color: #394150;
+  background: #f5f7fab3;
+  font: 12px var(--font-sans);
+  cursor: pointer;
+  z-index: 1;
+  letter-spacing: -0.15px;
+  transition:
+    background 0.15s,
+    box-shadow 0.15s;
+}
+.memory-map-label[hidden] {
+  display: none;
+}
+.memory-map-label:hover {
+  background: #ffffffed;
+  box-shadow: 0 2px 12px #23344d12;
+}
+.memory-map-label.is-selected {
+  border-color: #ffffff;
+  color: #0065d5;
+  background: #ffffffed;
+  box-shadow: 0 5px 20px #28467115;
+  font-weight: 600;
+}
+.memory-map-label.is-active {
+  border-color: #007aff25;
+  color: #0068d9;
+  background: #eaf4ffed;
+  font-weight: 600;
+}
+.memory-map-label:focus-visible,
+.memory-map-controls button:focus-visible,
+.memory-map-current button:focus-visible {
+  outline: 3px solid #007aff55;
+  outline-offset: 3px;
+}
+.memory-map-controls {
+  position: absolute;
+  bottom: 25px;
+  right: 24px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: var(--map-secondary);
+  font-size: 10px;
+  z-index: 3;
+}
+.memory-map-controls > span {
+  position: absolute;
+  bottom: 58px;
+  right: 0;
+  white-space: nowrap;
+  font-size: 10px;
+}
+.memory-map-controls > div {
+  display: flex;
+  gap: 2px;
+  padding: 5px;
+  background: var(--map-glass);
+  border: 1px solid var(--map-stroke);
+  border-radius: 24px;
+  backdrop-filter: blur(22px) saturate(1.4);
+  -webkit-backdrop-filter: blur(22px) saturate(1.4);
+  box-shadow:
+    0 5px 24px #21314912,
+    inset 0 1px 0 #fff;
+}
+.memory-map-controls button {
+  display: grid;
+  place-items: center;
+  min-height: 36px;
+  min-width: 40px;
+  border: 0;
+  border-radius: 19px;
+  background: transparent;
+  color: #4f596b;
+  cursor: pointer;
+}
+.memory-map-controls button:hover {
+  background: #e8edf580;
+}
+.memory-map-controls button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.memory-map-legend {
+  position: absolute;
+  bottom: 42px;
+  left: 28px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+  font-size: 10px;
+  color: var(--map-secondary);
+  pointer-events: none;
+}
+.memory-map-legend span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.memory-map-legend i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+}
+.memory-map-message {
+  position: absolute;
+  inset: 108px 24px 100px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 13px;
+  color: var(--map-secondary);
+  font-size: 13px;
+  text-align: center;
+  pointer-events: none;
+  background: #f5f7faec;
+  border-radius: 20px;
+}
+.memory-map-message button {
+  pointer-events: auto;
+  background: var(--card);
+  color: var(--primary);
+  border-color: var(--border);
+}
+.memory-map-canvas.is-unavailable {
+  visibility: hidden;
+}
+.memory-map-detail {
+  padding: 25px 26px 28px;
+  overflow: auto;
+  max-height: min(61svh, 610px);
+  background: var(--card);
+  border-left: 1px solid var(--border);
+}
+.memory-map-detail-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 22px;
+}
+.memory-map-detail-actions > span {
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  color: var(--map-secondary);
+}
+.memory-map-detail-actions > div {
+  display: flex;
+  gap: 3px;
+}
+.memory-map-detail-actions button {
+  color: var(--map-secondary);
+  border-radius: 50%;
+}
+.memory-map-detail-actions button[aria-label="刪除節點"]:hover {
+  color: #d93b30;
+  background: #ff3b3010;
+}
+.memory-map-detail > h2 {
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: -0.65px;
+  line-height: 1.4;
+  margin-top: 12px;
+}
+.memory-map-detail > p {
+  font-size: 13px;
+  line-height: 1.8;
+}
+.memory-map-detail > p:first-of-type {
+  font-size: 11px;
+  color: #007aff;
+}
+.memory-map-detail .memory-map-relations {
+  margin-top: 26px;
+  padding-top: 22px;
+}
+.memory-map-relations h3 {
+  font-size: 12px;
+  color: var(--map-ink);
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+.memory-map-relations button {
+  font-size: 12px;
+  border-radius: 12px;
+  gap: 8px;
+  padding: 11px 8px;
+  min-height: 44px;
+}
+.memory-map-detail details {
+  margin-top: 26px;
+}
+.memory-map-detail summary {
+  font-size: 11px;
+}
+.memory-map-note {
+  margin-top: 20px;
+  padding: 15px 16px;
+  background: var(--background);
+  border-radius: 14px;
+}
+.memory-map-note span {
+  display: block;
+  font-size: 10px;
+  color: var(--map-secondary);
+  margin-bottom: 8px;
+}
+.memory-map-note p {
+  font-size: 13px;
+  line-height: 1.8;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.memory-map-editor h2 {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.5px;
+  margin-bottom: 22px;
+}
+.memory-map-editor label {
+  display: block;
+  font-size: 11px;
+  color: var(--map-secondary);
+  margin-top: 16px;
+}
+.memory-map-editor input,
+.memory-map-editor textarea {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  border: 1px solid var(--input);
+  border-radius: 11px;
+  background: var(--card);
+  color: var(--map-ink);
+  padding: 11px 12px;
+  font-size: 13px;
+  outline: none;
+  resize: vertical;
+}
+.memory-map-editor input:focus,
+.memory-map-editor textarea:focus {
+  border-color: #007aff;
+  box-shadow: 0 0 0 3px #007aff18;
+}
+.memory-map-editor > p {
+  margin-top: 12px;
+  font-size: 10px;
+  color: var(--map-secondary);
+  line-height: 1.6;
+}
+.memory-map-editor > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+}
+.memory-map-editor [type="submit"] {
+  background: #007aff;
+  color: white;
+  border-radius: 20px;
+  padding: 0 18px;
+}
+.memory-map-undo {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 26px;
+  background: #eef5ff;
+  color: #3d5270;
+  font-size: 12px;
+}
+.memory-map-undo > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.memory-map-undo button {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 500;
+  color: #007aff;
+  cursor: pointer;
+}
+.memory-map-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 15px 26px;
+  background: var(--card);
+  font-size: 10px;
+  color: var(--map-secondary);
+}
+.memory-map-footer button {
+  color: #007aff;
+  cursor: pointer;
+  flex: none;
+  min-height: 28px;
+}
+.memory-map-entry {
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Helvetica Neue", "PingFang TC",
+    sans-serif;
+  border-width: 1px;
+  border-radius: 16px;
+  padding: 12px 14px;
+  box-shadow: 0 2px 8px #15213805;
+}
+.memory-map-entry > svg {
+  color: #007aff;
+}
+.memory-map-entry [data-slot="button"] {
+  color: #007aff;
+  background: #007aff08;
+  border: 0;
+  box-shadow: none;
+  border-radius: 20px;
+  padding: 0 15px;
+  transform: none;
+}
+.memory-map-preview {
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Helvetica Neue", "PingFang TC",
+    sans-serif;
+}
+.memory-map-preview > h1 {
+  font-size: 38px;
+  line-height: 1.2;
+  letter-spacing: -1.5px;
+  margin-top: 14px;
+}
+.memory-map-preview > p:first-child {
+  color: #6e6e73;
+}
+.memory-map-preview > [class] [data-slot="button"] {
+  box-shadow: none;
+  border-width: 1px;
+  border-radius: 20px;
+  transform: none;
+}
+:root[data-skin="dark"] .memory-map-dialog {
+  --primary: #0a84ff;
+  --foreground: #f5f5f7;
+  --background: #242428;
+  --card: #1d1d21;
+  --popover-foreground: #f5f5f7;
+  --muted: #303034;
+  --muted-foreground: #a1a1a6;
+  --border: #38383d;
+  --input: #4a4a50;
+  --map-ink: #f5f5f7;
+  --map-secondary: #a1a1a6;
+  --map-glass: #37373dbb;
+  --map-stroke: #ffffff1c;
+  --map-link: #737c8e;
+  border-color: #ffffff24;
+  box-shadow: 0 40px 100px #0008;
+}
+:root[data-skin="dark"] .memory-map-visual {
+  background: radial-gradient(
+    ellipse at 55% 48%,
+    #2b3039,
+    #1c2027 65%,
+    #15181d
+  );
+}
+:root[data-skin="dark"] .memory-map-label {
+  background: #282d36b3;
+  color: #e3e6ec;
+}
+:root[data-skin="dark"] .memory-map-label.is-selected {
+  background: #3a424eed;
+  color: #fff;
+  border-color: #ffffff24;
+}
+:root[data-skin="dark"] .memory-map-label.is-active {
+  background: #15375fed;
+  color: #90c2ff;
+  border-color: #0a84ff40;
+}
+:root[data-skin="dark"] .memory-map-current,
+:root[data-skin="dark"] .memory-map-controls > div {
+  box-shadow:
+    0 5px 24px #0003,
+    inset 0 1px 0 #ffffff12;
+}
+:root[data-skin="dark"] .memory-map-controls button,
+:root[data-skin="dark"] .memory-map-current button {
+  color: #d0d6e0;
+}
+:root[data-skin="dark"] .memory-map-message {
+  background: #232830ed;
+}
+:root[data-skin="dark"] .memory-map-undo {
+  background: #203147;
+  color: #d0dcee;
+}
+@media (max-width: 760px) {
+  .memory-map-dialog[data-slot="dialog-content"] {
+    width: calc(100vw - 1rem);
+    max-width: calc(100vw - 1rem);
+    max-height: 95svh;
+    border-radius: 24px;
+  }
+  .memory-map-header {
+    padding: 22px 20px 18px;
+  }
+  .memory-map-header [data-slot="dialog-title"] {
+    font-size: 22px;
+  }
+  .memory-map-toolbar {
+    padding: 0 16px 16px;
+    gap: 12px;
+  }
+  .memory-map-segmented {
+    width: 100%;
+    justify-content: space-between;
+    flex-wrap: nowrap;
+  }
+  .memory-map-segmented button {
+    padding: 0 10px;
+    min-height: 34px;
+    font-size: 11px;
+  }
+  .memory-map-search {
+    width: 100%;
+    margin-left: 0;
+  }
+  .memory-map-search input {
+    width: 100%;
+    height: 38px;
+  }
+  .memory-map-body {
+    display: block;
+  }
+  .memory-map-visual {
+    min-height: 350px;
+  }
+  .memory-map-canvas {
+    height: 44svh;
+    min-height: 360px;
+  }
+  .memory-map-overview {
+    display: none;
+  }
+  .memory-map-current {
+    top: 16px;
+    left: 16px;
+    right: 16px;
+    max-width: none;
+    padding: 11px 13px;
+    border-radius: 16px;
+  }
+  .memory-map-detail {
+    border-left: 0;
+    border-top: 1px solid var(--border);
+    max-height: none;
+    padding: 22px;
+  }
+  .memory-map-detail > h2 {
+    font-size: 21px;
+  }
+  .memory-map-controls {
+    right: 16px;
+    bottom: 14px;
+  }
+  .memory-map-controls > span {
+    display: none;
+  }
+  .memory-map-controls > div {
+    padding: 3px;
+  }
+  .memory-map-controls button {
+    min-width: 34px;
+    min-height: 34px;
+  }
+  .memory-map-legend {
+    bottom: 30px;
+    left: 16px;
+    max-width: 54%;
+    gap: 6px 10px;
+    font-size: 9px;
+  }
+  .memory-map-label {
+    font-size: 11px;
+    max-width: 148px;
+  }
+  .memory-map-message {
+    inset: 90px 16px 75px;
+  }
+  .memory-map-footer {
+    padding: 11px 18px;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .memory-map-undo {
+    padding: 12px 18px;
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .memory-map-current,
+  .memory-map-controls > div {
+    background: var(--card);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+@media (prefers-contrast: more) {
+  .memory-map-label {
+    background: var(--card);
+    border-color: var(--map-secondary);
+    color: var(--map-ink);
+  }
+  .memory-map-current,
+  .memory-map-controls > div {
+    border-color: var(--map-secondary);
+    background: var(--card);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .memory-map-dialog[data-slot="dialog-content"],
+  .memory-map-label,
+  .memory-map-segmented button {
+    animation: none;
+    transition: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .memory-map-header [data-slot="dialog-close"],
+  .memory-map-detail-actions button {
+    width: 44px;
+    height: 44px;
+  }
+  .memory-map-controls button {
+    min-width: 40px;
+    min-height: 44px;
+  }
+}

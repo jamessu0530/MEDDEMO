@@ -8,7 +8,7 @@ import { Link, useNavigate } from "react-router"
  * 改了做法要回來改這一頁。
  */
 
-const UPDATED = "2026 年 10 月 2 日"
+const UPDATED = "2026 年 10 月 14 日"
 
 function Section({ id, title, children }: { id?: string; title: string; children: React.ReactNode }) {
   return (
@@ -102,6 +102,30 @@ export function PrivacyPage() {
             </li>
             <li>
               <b>Firecrawl</b>：內部文件答不出來時上網搜尋，只會收到從提問（包括頻道裡 @熊熊滾 的問題）改寫出來的搜尋詞。
+            </li>
+            <li>
+              <b>Google Maps</b>
+              ：顯示地圖、計算道路車程，以及搜尋客戶店家照片和街景。查照片時會送出店名、縣市與行政區；街景使用
+              Google 查到的店家位置。 瀏覽器載入 Google 內容時，Google
+              也會收到連線資訊。店家照片不下載保存。 使用這些內容時適用{" "}
+              <a
+                href="https://maps.google.com/help/terms_maps/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline"
+              >
+                Google Maps 服務條款
+              </a>{" "}
+              與{" "}
+              <a
+                href="https://policies.google.com/privacy"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline"
+              >
+                Google 隱私權政策
+              </a>
+              。
             </li>
             <li>
               <b>Google Cloud</b>：主機與資料庫；<b>Cloudflare</b>：網路連線與 HTTPS。

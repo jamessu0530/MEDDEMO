@@ -230,12 +230,11 @@ jobs:
             $KC rollout status deployment/worker --timeout=180s
           fi
 
-      # 資料表定義一改，VM 上的舊資料庫就對不上新程式，所以指紋不同時自動重灌。
-      # 假資料的產生程式也算進指紋：題庫答案與測試照新資料寫，VM 上的資料要跟著換。
-      # 假資料清掉沒有損失；自己開的帳號、第三方登入的綁定，以及每個人的大頭貼、配色與字體大小、選的狀態，
-      # 由 seed.py 先讀出來、灌完放回去。
-      # 之後要保留更多資料就改用 Alembic。
-      - name: 灌假資料（第一次部署、資料表定義或假資料有改，或手動勾選重灌）
+      # 已知的新增表版本先做保留資料的升級；未知版本停止部署，避免自動清掉使用中的資料。
+      # 第一次部署或維運明確勾選 reseed 才重灌。
+      # 假資料產生程式也算進指紋；若沒有對應升級，維運須評估後明確選擇 reseed。
+      # 手動重灌時 seed.py 會先讀出支援保留的帳號與設定，其他使用中資料會被清掉。
+      - name: 升級資料表（保留資料；首次部署或明確要求時灌假資料）
         env:
           RESEED: ${{ inputs.reseed }}
         run: |
@@ -243,6 +242,21 @@ jobs:
           expected=$(cat backend/app/models.py backend/app/sql/semantic_layer.sql backend/app/sql/product_catalog.sql backend/app/services/org.py backend/app/embeddings.py data/seed/generate.py data/seed/catalog.py data/seed/products.tsv backend/app/services/payment_terms.py | sha256sum | cut -c1-12)
           current=$($KC exec statefulset/db -- psql -U meddemo -d meddemo -tAc "SELECT value FROM app_setting WHERE key = 'schema_version'" 2>/dev/null || true)
           echo "資料表指紋：程式 $expected，資料庫 ${current:-（無）}"
+          if [ -z "$current" ] && [ "$RESEED" != "true" ]; then
+            tables=$($KC exec statefulset/db -- psql -U meddemo -d meddemo -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'")
+            if [ "$tables" != "0" ]; then
+              echo "::error::資料庫已有資料表但沒有版本紀錄，停止部署，不重灌"
+              exit 1
+            fi
+          fi
+          if [ -n "$current" ] && [ "$expected" != "$current" ] && [ "$RESEED" != "true" ]; then
+            $KC exec deployment/api -- python /srv/backend/scripts/upgrade_schema.py
+            current=$($KC exec statefulset/db -- psql -U meddemo -d meddemo -tAc "SELECT value FROM app_setting WHERE key = 'schema_version'")
+            if [ "$expected" != "$current" ]; then
+              echo "::error::升級後指紋不符，停止部署，不重灌"
+              exit 1
+            fi
+          fi
           if [ "$expected" != "$current" ] || [ "$RESEED" = "true" ]; then
             job="seed-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
             $KC create job "$job" --from=cronjob/seed

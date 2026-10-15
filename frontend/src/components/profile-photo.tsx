@@ -1,16 +1,18 @@
 import { useRef, useState, type ChangeEvent } from "react"
 import { Loader2 } from "lucide-react"
+import { Link } from "react-router"
 
 import { removeMyAvatar, uploadAvatar } from "@/api/avatars"
 import { Button } from "@/components/ui/button"
 import { UserAvatar } from "@/components/user-avatar"
-import { avatars, squarePhoto, useAvatarUrl } from "@/lib/avatars"
+import { avatars, squarePhoto, useAvatarUrl, useMascotAvatar } from "@/lib/avatars"
 import { useAuth } from "@/lib/auth"
 
 /** 設定頁的「大頭貼」一段：拍照或從相簿選一張，從中間裁成正方形；也可以移除，回到名字縮寫 */
 export function ProfilePhotoSection() {
   const user = useAuth()?.user
   const url = useAvatarUrl(user?.id ?? "")
+  const mascot = useMascotAvatar(user?.id ?? "")
   const input = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState<"upload" | "remove" | null>(null)
   const [progress, setProgress] = useState<number | null>(null)
@@ -58,13 +60,13 @@ export function ProfilePhotoSection() {
         <UserAvatar id={user.id} name={user.name} size="lg" className="size-16" />
         <div className="flex min-w-0 flex-1 flex-col gap-2">
           <p className="text-xs leading-relaxed text-muted-foreground">
-            {url ? "全公司的帳號都看得到這張照片。" : "還沒有照片，大家看到的是你的名字縮寫。"}
+            {mascot ? "目前使用熊熊滾頭像，也可以換回自己的照片。" : url ? "全公司的帳號都看得到這張照片。" : "可以上傳照片，或用收藏的熊熊滾當頭像。"}
           </p>
           <div className="flex gap-2">
             <Button variant="outline" className="h-11 flex-1" disabled={busy !== null} onClick={() => input.current?.click()}>
               {busy === "upload" ? <Loader2 className="size-5 animate-spin" /> : url ? "換照片" : "上傳照片"}
             </Button>
-            {url && (
+            {(url || mascot) && (
               <Button variant="ghost" className="h-11 px-4" disabled={busy !== null} onClick={() => void remove()}>
                 {busy === "remove" ? <Loader2 className="size-5 animate-spin" /> : "移除"}
               </Button>
@@ -74,6 +76,7 @@ export function ProfilePhotoSection() {
         {/* image/*：手機上可以選拍照或相簿 */}
         <input ref={input} type="file" accept="image/*" className="hidden" onChange={(event) => void pick(event)} />
       </div>
+      <Link to="/mascots" className="inline-flex min-h-11 items-center justify-center rounded-xl border-2 bg-accent px-4 text-sm font-medium text-primary">熊熊滾收藏與換裝</Link>
       {progress !== null && (
         <div
           className="h-1 overflow-hidden rounded-full bg-muted"

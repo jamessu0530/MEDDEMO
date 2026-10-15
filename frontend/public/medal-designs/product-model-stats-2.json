@@ -1,0 +1,62 @@
+[
+  {
+    "file": "ios-C-crystal-chronic-bronze.glb",
+    "triangles": 23516,
+    "drawCalls": 7
+  },
+  {
+    "file": "ios-C-crystal-chronic-silver.glb",
+    "triangles": 24048,
+    "drawCalls": 7
+  },
+  {
+    "file": "ios-C-crystal-chronic-gold.glb",
+    "triangles": 24580,
+    "drawCalls": 7
+  },
+  {
+    "file": "ios-C-crystal-otc-bronze.glb",
+    "triangles": 19412,
+    "drawCalls": 7
+  },
+  {
+    "file": "ios-C-crystal-otc-silver.glb",
+    "triangles": 19944,
+    "drawCalls": 7
+  },
+  {
+    "file": "ios-C-crystal-otc-gold.glb",
+    "triangles": 20476,
+    "drawCalls": 7
+  },
+  {
+    "file": "ios-C-crystal-wellness-bronze.glb",
+    "triangles": 21836,
+    "drawCalls": 7
+  },
+  {
+    "file": "ios-C-crystal-wellness-silver.glb",
+    "triangles": 22368,
+    "drawCalls": 7
+  },
+  {
+    "file": "ios-C-crystal-wellness-gold.glb",
+    "triangles": 22900,
+    "drawCalls": 7
+  },
+  {
+    "file": "ios-C-crystal-devices-bronze.glb",
+    "triangles": 22368,
+    "drawCalls": 7
+  },
+  {
+    "file": "ios-C-crystal-devices-silver.glb",
+    "triangles": 22900,
+    "drawCalls": 7
+  },
+  {
+    "file": "ios-C-crystal-devices-gold.glb",
+    "triangles": 23432,
+    "drawCalls": 7
+  }
+]

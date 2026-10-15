@@ -22,12 +22,16 @@ NO_ROUTE = "主管沒有自己的拜訪路線"
 
 
 class MedalOut(BaseModel):
-    kind: Literal["stores", "cities"]
+    kind: Literal["stores", "cities", "chronic", "otc", "wellness", "devices"]
     tier: Literal[1, 2, 3]
     need: int
     have: int
     unlocked_on: date | None
     unlocked_at: datetime | None
+    title: str
+    condition: str
+    unit: str
+    action_path: str | None
 
 
 class StatsOut(BaseModel):
@@ -67,4 +71,4 @@ def get_me(session: SessionDep, user: CurrentUser):
     rep = session.get(AppUser, user.acts_as_user_id or user.id)
     if rep is None or rep.role != "sales":
         raise HTTPException(403, NO_ROUTE)
-    return MeOut(**dataclasses.asdict(achievements.build(session, rep)))
+    return MeOut(**dataclasses.asdict(achievements.build(session, rep, learning_user_id=user.id)))

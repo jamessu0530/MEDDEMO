@@ -1,0 +1,32 @@
+[
+  {
+    "file": "ios-C-crystal-stores-bronze.glb",
+    "triangles": 21460,
+    "drawCalls": 5
+  },
+  {
+    "file": "ios-C-crystal-stores-silver.glb",
+    "triangles": 21992,
+    "drawCalls": 5
+  },
+  {
+    "file": "ios-C-crystal-stores-gold.glb",
+    "triangles": 22524,
+    "drawCalls": 5
+  },
+  {
+    "file": "ios-C-crystal-cities-bronze.glb",
+    "triangles": 23048,
+    "drawCalls": 5
+  },
+  {
+    "file": "ios-C-crystal-cities-silver.glb",
+    "triangles": 23580,
+    "drawCalls": 5
+  },
+  {
+    "file": "ios-C-crystal-cities-gold.glb",
+    "triangles": 24112,
+    "drawCalls": 5
+  }
+]

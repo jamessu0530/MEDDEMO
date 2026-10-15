@@ -135,7 +135,7 @@ def test_me_has_what_the_personal_page_shows(client, auth):
     assert len(amounts) == 5 and amounts == sorted(amounts, reverse=True)
     assert [m["month"] for m in data["monthly"]] == ["2026-05", "2026-06", "2026-07", "2026-08", "2026-09", "2026-10"]
     assert [m["through"] for m in data["monthly"]] == [None] * 5 + ["2026-10-28"]
-    assert len(data["medals"]) == 6
+    assert len(data["medals"]) == 18
 
 
 def test_managers_have_no_personal_page(client, auth):

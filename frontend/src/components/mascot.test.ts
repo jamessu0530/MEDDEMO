@@ -23,6 +23,7 @@ describe("Mascot", () => {
       idle: ["open", "smile"], hi: ["happy", "open"], listen: ["open", "smile"], think: ["up", "hmm"],
       talk: ["open", "open"], wait: ["open", "smile"], yay: ["happy", "open"],
       ride: ["happy", "open"],
+      roll: ["happy", "open"], sleep: ["closed", "smile"], stretch: ["closed", "open"], shy: ["closed", "smile"],
     }
     for (const [state, [eyes, mouth]] of Object.entries(face) as [MascotState, [string, string]][]) {
       const svg = render({ state })
@@ -52,8 +53,8 @@ describe("Mascot", () => {
     expect(svg).not.toContain("aria-hidden")
   })
 
-  it("八個狀態加起來只用定案的那幾個顏色", () => {
-    const states: MascotState[] = ["idle", "hi", "listen", "think", "talk", "wait", "yay", "ride"]
+  it("所有狀態加起來只用定案的那幾個顏色", () => {
+    const states: MascotState[] = ["idle", "hi", "listen", "think", "talk", "wait", "yay", "ride", "roll", "sleep", "stretch", "shy"]
     const colors = new Set(states.flatMap((state) => render({ state }).match(/#[0-9A-Fa-f]{6}\b|#fff\b/g) ?? []))
     // 主色、淺紫、深色；舌頭；泡泡與聲波；星星；眼睛的反光
     expect([...colors].sort()).toEqual(["#2B1B47", "#9B51E0", "#C9A2F5", "#EADBFD", "#FF8FB3", "#FFC93C", "#fff"].sort())

@@ -14,6 +14,7 @@ import {
   type ProfileStats,
 } from "@/api/customers"
 import { LastOrderSection } from "@/components/last-order-section"
+import { CustomerStorefront } from "@/components/customer-storefront"
 import { NextNotes } from "@/components/next-notes"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
@@ -216,6 +217,7 @@ export function CustomerPage() {
     />
   )
   const competitorList = <Competitors competitors={profile.competitors} />
+  const storefront = <CustomerStorefront key={customer.id} customer={{ name: customer.name, city: profile.city, area: profile.area }} clinic={customer.type === "clinic"} />
 
   return (
     <div className="flex min-h-svh flex-col">
@@ -239,6 +241,7 @@ export function CustomerPage() {
         <main className="flex flex-1 items-start gap-6 px-6 pt-4 pb-10">
           <div className="flex min-w-0 flex-1 flex-col gap-4">
             {alerts}
+            {storefront}
             {brief}
             {numbers}
             {pendingItems}
@@ -270,6 +273,7 @@ export function CustomerPage() {
       ) : (
         <main className="flex flex-1 flex-col gap-4 px-4 pt-4 pb-28">
           {alerts}
+          {storefront}
           {brief}
           {nextNotes}
           {lastOrderSection}

@@ -1,0 +1,92 @@
+[
+  {
+    "file": "ios-C-crystal-stores-bronze.glb",
+    "triangles": 21460,
+    "drawCalls": 5
+  },
+  {
+    "file": "ios-C-crystal-stores-silver.glb",
+    "triangles": 21992,
+    "drawCalls": 5
+  },
+  {
+    "file": "ios-C-crystal-stores-gold.glb",
+    "triangles": 22524,
+    "drawCalls": 5
+  },
+  {
+    "file": "ios-C-crystal-cities-bronze.glb",
+    "triangles": 23048,
+    "drawCalls": 5
+  },
+  {
+    "file": "ios-C-crystal-cities-silver.glb",
+    "triangles": 23580,
+    "drawCalls": 5
+  },
+  {
+    "file": "ios-C-crystal-cities-gold.glb",
+    "triangles": 24112,
+    "drawCalls": 5
+  },
+  {
+    "file": "ios-B-soft-stores-bronze.glb",
+    "triangles": 18900,
+    "drawCalls": 4
+  },
+  {
+    "file": "ios-B-soft-stores-silver.glb",
+    "triangles": 19432,
+    "drawCalls": 4
+  },
+  {
+    "file": "ios-B-soft-stores-gold.glb",
+    "triangles": 19964,
+    "drawCalls": 4
+  },
+  {
+    "file": "ios-B-soft-cities-bronze.glb",
+    "triangles": 20488,
+    "drawCalls": 4
+  },
+  {
+    "file": "ios-B-soft-cities-silver.glb",
+    "triangles": 21020,
+    "drawCalls": 4
+  },
+  {
+    "file": "ios-B-soft-cities-gold.glb",
+    "triangles": 21552,
+    "drawCalls": 4
+  },
+  {
+    "file": "ios-A-orbit-stores-bronze.glb",
+    "triangles": 21844,
+    "drawCalls": 8
+  },
+  {
+    "file": "ios-A-orbit-stores-silver.glb",
+    "triangles": 22376,
+    "drawCalls": 8
+  },
+  {
+    "file": "ios-A-orbit-stores-gold.glb",
+    "triangles": 22908,
+    "drawCalls": 8
+  },
+  {
+    "file": "ios-A-orbit-cities-bronze.glb",
+    "triangles": 23432,
+    "drawCalls": 8
+  },
+  {
+    "file": "ios-A-orbit-cities-silver.glb",
+    "triangles": 23964,
+    "drawCalls": 8
+  },
+  {
+    "file": "ios-A-orbit-cities-gold.glb",
+    "triangles": 24496,
+    "drawCalls": 8
+  }
+]

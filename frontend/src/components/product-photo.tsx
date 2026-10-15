@@ -4,13 +4,18 @@ import { ImageOff } from "lucide-react"
 import type { Product } from "@/api/products"
 import { productPhoto } from "@/lib/product-photos"
 
-export function ProductPhoto({ product }: { product: Product }) {
+type ProductPhotoProps = {
+  product: Pick<Product, "sku" | "name">
+  size?: "default" | "compact"
+}
+
+export function ProductPhoto({ product, size = "default" }: ProductPhotoProps) {
   const photo = productPhoto(product.sku)
   const [failedSrc, setFailedSrc] = useState<string | null>(null)
   const available = photo && failedSrc !== photo.src
 
   return (
-    <figure className="w-24 shrink-0 sm:w-28">
+    <figure className={size === "compact" ? "w-16 shrink-0" : "w-24 shrink-0 sm:w-28"}>
       <div className="flex aspect-square items-center justify-center overflow-hidden rounded-lg border bg-white">
         {available ? (
           <img

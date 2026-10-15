@@ -1,5 +1,6 @@
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
+import { MemoryRouter } from "react-router"
 import { describe, expect, it } from "vitest"
 
 import type { Medal } from "@/api/me"
@@ -17,7 +18,7 @@ const medals: Medal[] = [
 ]
 
 describe("MedalWall", () => {
-  const html = renderToStaticMarkup(createElement(MedalWall, { medals, userId: "U01" }))
+  const html = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(MedalWall, { medals, userId: "U01" })))
 
   it("兩列各三面，右上角寫解鎖幾面", () => {
     expect(html).toContain("跑過的藥局 · 3 家")
@@ -35,6 +36,17 @@ describe("MedalWall", () => {
 
   it("3D 載好之前先畫平塗的獎牌（跑不動 WebGL 時就一直是它）", () => {
     expect(html.match(/data-flat-medal/g)).toHaveLength(6)
+  })
+
+  it("品類獎牌顯示名稱、完整條件、自己的進度與練習入口", () => {
+    const learning: Medal = { kind: "devices", tier: 2, need: 2, have: 1, unlocked_on: null, unlocked_at: null,
+      title: "器材辨識員", condition: "依序通過醫材的品類辨識、規格核對，每關全部答對。", action_path: "/learning/products/devices/2" }
+    const content = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(MedalWall, { medals: [...medals, learning], userId: "X01" })))
+    expect(content).toContain("器材辨識員")
+    expect(content).toContain(learning.condition)
+    expect(content).toContain("1 / 2 關")
+    expect(content).toContain('aria-valuenow="1"')
+    expect(content).toContain('href="/learning/products/devices/2"')
   })
 })
 

@@ -1,0 +1,62 @@
+[
+  {
+    "file": "ios-A-orbit-chronic-bronze.glb",
+    "triangles": 23900,
+    "drawCalls": 10
+  },
+  {
+    "file": "ios-A-orbit-chronic-silver.glb",
+    "triangles": 24432,
+    "drawCalls": 10
+  },
+  {
+    "file": "ios-A-orbit-chronic-gold.glb",
+    "triangles": 24964,
+    "drawCalls": 10
+  },
+  {
+    "file": "ios-A-orbit-otc-bronze.glb",
+    "triangles": 19796,
+    "drawCalls": 10
+  },
+  {
+    "file": "ios-A-orbit-otc-silver.glb",
+    "triangles": 20328,
+    "drawCalls": 10
+  },
+  {
+    "file": "ios-A-orbit-otc-gold.glb",
+    "triangles": 20860,
+    "drawCalls": 10
+  },
+  {
+    "file": "ios-A-orbit-wellness-bronze.glb",
+    "triangles": 22220,
+    "drawCalls": 10
+  },
+  {
+    "file": "ios-A-orbit-wellness-silver.glb",
+    "triangles": 22752,
+    "drawCalls": 10
+  },
+  {
+    "file": "ios-A-orbit-wellness-gold.glb",
+    "triangles": 23284,
+    "drawCalls": 10
+  },
+  {
+    "file": "ios-A-orbit-devices-bronze.glb",
+    "triangles": 22752,
+    "drawCalls": 10
+  },
+  {
+    "file": "ios-A-orbit-devices-silver.glb",
+    "triangles": 23284,
+    "drawCalls": 10
+  },
+  {
+    "file": "ios-A-orbit-devices-gold.glb",
+    "triangles": 23816,
+    "drawCalls": 10
+  }
+]

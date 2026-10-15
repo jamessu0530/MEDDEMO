@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>MEDDEMO · iOS 風格獎牌提案</title>
+  <script type="module" crossorigin src="./assets/index-v_6O6__r.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-B6LSrU_8.css">
+</head>
+<body>
+  <main>
+    <header>
+      <div class="topline"><div class="eyebrow">MEDDEMO <span>DESIGN STUDY 02</span></div><button id="appearance" aria-pressed="false">深色預覽</button></div>
+      <h1>成就，值得被看見。</h1>
+      <p>參考 iOS 圖示的簡潔輪廓、柔和材質與分層立體感。</p>
+    </header>
+    <section class="choices" aria-label="三款 iOS 風格設計">
+      <button class="choice selected" data-style="0" aria-pressed="true">
+        <div class="choice-image"><img src="./ios-A-orbit.png" alt="活力圓環獎牌：漸層圓環與白色十字、地標"></div>
+        <div class="choice-heading"><span>A</span><h2>活力圓環</h2></div>
+        <p>Fitness 靈感<br>漸層圓環 · 清楚鮮明</p>
+      </button>
+      <button class="choice" data-style="1" aria-pressed="false">
+        <div class="choice-image"><img src="./ios-B-soft.png" alt="柔光方章：連續圓角、柔白底與紫色浮雕"></div>
+        <div class="choice-heading"><span>B</span><h2>柔光方章</h2></div>
+        <p>iOS 圖示靈感<br>柔白紫色 · 輕盈安靜</p>
+      </button>
+      <button class="choice" data-style="2" aria-pressed="false">
+        <div class="choice-image"><img src="./ios-C-crystal.png" alt="晶透徽章：霧透外殼、淡藍底與青色圖形"></div>
+        <div class="choice-heading"><span>C</span><h2>晶透徽章</h2></div>
+        <p>分層圖示靈感<br>霧透青藍 · 柔和層次</p>
+      </button>
+    </section>
+    <section class="detail" aria-labelledby="detail-title">
+      <div class="viewport">
+        <canvas id="model" aria-label="可拖曳旋轉的獎牌 3D 預覽"></canvas>
+        <span id="motion-label" class="motion-label">動態展示</span>
+        <div id="status" role="status" aria-live="polite">正在載入立體獎牌…</div>
+        <div class="motion-actions"><button id="unlock" disabled>✦ 播放解鎖</button><button id="motion" aria-pressed="true">暫停動態</button></div>
+        <div class="drag-hint">拖曳旋轉 · 點一下翻轉 · 滾輪縮放</div>
+      </div>
+      <div class="detail-copy">
+        <div class="eyebrow" id="detail-code">A · ORBIT</div>
+        <h2 id="detail-title">活力圓環</h2>
+        <p id="detail-description">以 Fitness 成就徽章為靈感。深色底、漸層圓環與單一白色主圖形，在小尺寸下仍有清楚的辨識度。</p>
+        <fieldset><legend>成就類別</legend><div class="segmented kinds">
+          <button data-kind="stores" class="active" aria-pressed="true">跑過的藥局</button>
+          <button data-kind="cities" aria-pressed="false">跑過的縣市</button>
+          <button data-kind="chronic" aria-pressed="false">慢性處方</button>
+          <button data-kind="otc" aria-pressed="false">一般用藥</button>
+          <button data-kind="wellness" aria-pressed="false">保健品</button>
+          <button data-kind="devices" aria-pressed="false">醫材</button>
+        </div></fieldset>
+        <div class="achievement-condition" aria-live="polite">
+          <h3 id="achievement-title">藥局巡訪家</h3>
+          <p id="achievement-condition">在首頁累積到訪 5 家不同藥局。</p>
+          <progress id="achievement-progress" value="3" max="5" aria-label="成就示例進度"></progress>
+          <p id="achievement-count">示例進度：3 / 5 家</p>
+          <span class="small">此頁是設計預覽；實際進度與解鎖由個人頁依帳號紀錄計算。</span>
+        </div>
+        <fieldset><legend>獎牌等級</legend><div class="segmented tiers">
+          <button data-tier="bronze" aria-pressed="false"><i class="bronze"></i>銅牌</button>
+          <button data-tier="silver" aria-pressed="false"><i class="silver"></i>銀牌</button>
+          <button data-tier="gold" class="active" aria-pressed="true"><i class="gold"></i>金牌</button>
+        </div></fieldset>
+        <div class="view-actions"><button id="front">看正面</button><button id="back">看背面</button></div>
+        <a id="model-link" class="download" href="./ios-A-orbit-stores-gold.glb" download>下載這面 3D 獎牌 ↗</a>
+        <p class="small">用 1、2、3 個圓點表示等級，縮小也能辨識。</p>
+      </div>
+    </section>
+    <section class="product-collection" aria-label="四種品類成就圖示">
+      <article><img src="./product-chronic.png" alt="慢性處方成就：膠囊浮雕"><h3>慢性處方</h3><p>品類辨識 → 規格核對 → 情境練習</p></article>
+      <article><img src="./product-otc.png" alt="一般用藥成就：藥錠浮雕"><h3>一般用藥</h3><p>品類辨識 → 規格核對 → 情境練習</p></article>
+      <article><img src="./product-wellness.png" alt="保健品成就：葉片浮雕"><h3>保健品</h3><p>品類辨識 → 規格核對 → 情境練習</p></article>
+      <article><img src="./product-devices.png" alt="醫材成就：器材浮雕"><h3>醫材</h3><p>品類辨識 → 規格核對 → 情境練習</p></article>
+    </section>
+    <section class="family" aria-labelledby="family-title">
+      <div><h2 id="family-title">完整系列</h2><p>上排藥局、下排縣市；左至右為銅、銀、金。</p></div>
+      <img id="family-image" src="./ios-A-orbit-family.png" alt="活力圓環六面完整獎牌">
+    </section>
+    <footer><span>MEDDEMO · iOS DESIGN STUDY · 2026.10</span><a href="./round-one.html">查看第一輪設計 ↗</a></footer>
+  </main>
+</body>
+</html>

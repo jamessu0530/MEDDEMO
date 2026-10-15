@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react"
 
 import { listAvatars } from "@/api/avatars"
 import { realtime } from "@/lib/realtime"
+import type { MascotLook } from "@/lib/mascot-collection"
 
 /*
  * 大頭貼（docs/superpowers/specs/2026-10-01-avatars-text-size-design.md）：登入後拿一次全部的網址，
@@ -15,14 +16,19 @@ const JPEG_QUALITY = 0.9
 
 export class AvatarStore {
   private urls: ReadonlyMap<string, string> = new Map()
+  private mascots: ReadonlyMap<string, MascotLook> = new Map()
   private readonly listeners = new Set<() => void>()
 
-  replace(urls: Record<string, string>) {
+  replace(urls: Record<string, string>, mascots: Record<string, MascotLook> = {}) {
+    this.mascots = new Map(Object.entries(mascots))
     this.set(new Map(Object.entries(urls)))
   }
 
   /** 自己剛換或剛移除：不等通知，畫面馬上換 */
   update(id: string, url: string | null) {
+    const mascots = new Map(this.mascots)
+    mascots.delete(id)
+    this.mascots = mascots
     const next = new Map(this.urls)
     if (url) next.set(id, url)
     else next.delete(id)
@@ -30,6 +36,15 @@ export class AvatarStore {
   }
 
   urlOf = (id: string) => this.urls.get(id) ?? null
+  mascotOf = (id: string) => this.mascots.get(id) ?? null
+
+  updateMascot(id: string, look: MascotLook | null) {
+    const next = new Map(this.mascots)
+    if (look) next.set(id, look)
+    else next.delete(id)
+    this.mascots = next
+    this.listeners.forEach((listener) => listener())
+  }
 
   subscribe = (listener: () => void) => {
     this.listeners.add(listener)
@@ -52,8 +67,8 @@ let generation = 0
 export async function loadAvatars() {
   const mine = ++generation
   try {
-    const { avatars: urls } = await listAvatars()
-    if (mine === generation) avatars.replace(urls)
+    const { avatars: urls, mascot_avatars } = await listAvatars()
+    if (mine === generation) avatars.replace(urls, mascot_avatars)
   } catch {
     // 拿不到就照舊用名字縮寫，下次通知或重連再拿
   }
@@ -72,6 +87,11 @@ realtime.subscribe((event) => {
 export function useAvatarUrl(id: string) {
   const read = () => avatars.urlOf(id)
   // 第三個參數給伺服器端 render（元件測試）用，同一份
+  return useSyncExternalStore(avatars.subscribe, read, read)
+}
+
+export function useMascotAvatar(id: string) {
+  const read = () => avatars.mascotOf(id)
   return useSyncExternalStore(avatars.subscribe, read, read)
 }
 

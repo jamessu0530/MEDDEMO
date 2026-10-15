@@ -35,7 +35,7 @@ function withAuth(init?: RequestInit) {
   return headers
 }
 
-export async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function checkedResponse(path: string, init?: RequestInit): Promise<Response> {
   const response = await fetch(path, { ...init, headers: withAuth(init) })
   if (!response.ok) {
     const body = await response.json().catch(() => null)
@@ -44,7 +44,16 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
     if (response.status === 401 && !LOGIN_PATHS.test(path)) signOut(message)
     throw new ApiError(message, response.status)
   }
+  return response
+}
+
+export async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await checkedResponse(path, init)
   return response.status === 204 ? (undefined as T) : response.json()
+}
+
+export async function requestBlob(path: string, init?: RequestInit): Promise<Blob> {
+  return (await checkedResponse(path, init)).blob()
 }
 
 export function jsonBody(method: string, body: unknown): RequestInit {

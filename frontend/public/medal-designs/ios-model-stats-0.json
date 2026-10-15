@@ -1,0 +1,32 @@
+[
+  {
+    "file": "ios-A-orbit-stores-bronze.glb",
+    "triangles": 21844,
+    "drawCalls": 8
+  },
+  {
+    "file": "ios-A-orbit-stores-silver.glb",
+    "triangles": 22376,
+    "drawCalls": 8
+  },
+  {
+    "file": "ios-A-orbit-stores-gold.glb",
+    "triangles": 22908,
+    "drawCalls": 8
+  },
+  {
+    "file": "ios-A-orbit-cities-bronze.glb",
+    "triangles": 23432,
+    "drawCalls": 8
+  },
+  {
+    "file": "ios-A-orbit-cities-silver.glb",
+    "triangles": 23964,
+    "drawCalls": 8
+  },
+  {
+    "file": "ios-A-orbit-cities-gold.glb",
+    "triangles": 24496,
+    "drawCalls": 8
+  }
+]

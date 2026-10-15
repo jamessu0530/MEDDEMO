@@ -82,6 +82,8 @@ export type ProfileStats = {
 // 客戶檔案（FR-2）：交易概況、待處理事項、競品紀錄
 export type CustomerProfile = {
   customer: Customer
+  city: string
+  area: string
   today: string
   highlights: string[]
   stats: ProfileStats

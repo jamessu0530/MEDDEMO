@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.models import AppUser, Customer, Itinerary, SalesTransaction, StopArrival, Visit
 from app.services.customer_profile import app_today
+from app.services.achievement_catalog import medal_details
 from app.timeutil import TAIPEI
 
 # 每一類三級（銅、銀、金）的門檻：跑過幾家藥局、跑過幾個縣市
@@ -33,6 +34,14 @@ class Medal:
     # 解鎖的那一刻（第 N 家第一次點到的真實時間）：系統日固定，IT 重置前後 unlocked_on 一樣，
     # 前端靠這個判斷「這面看過了沒」，重置之後再解鎖會再演一次
     unlocked_at: dt.datetime | None
+    title: str = ""
+    condition: str = ""
+    unit: str = ""
+    action_path: str | None = None
+
+    def __post_init__(self):
+        for name, value in medal_details(self.kind, self.tier, self.need).items():
+            setattr(self, name, value)
 
 
 @dataclass
@@ -109,7 +118,7 @@ def _months(today: dt.date, count: int) -> list[dt.date]:
     return starts[::-1]
 
 
-def build(session: Session, rep: AppUser) -> Me:
+def build(session: Session, rep: AppUser, learning_user_id: str | None = None) -> Me:
     today = app_today(session)
     year_from = today - dt.timedelta(days=YEAR_DAYS)
     owned = Customer.owner_user_id == rep.id
@@ -149,7 +158,9 @@ def build(session: Session, rep: AppUser) -> Me:
         current = start.year == today.year and start.month == today.month
         total = session.scalar(sales(SalesTransaction.date >= start, SalesTransaction.date <= min(end, today)))
         monthly.append(MonthSales(f"{start:%Y-%m}", float(total), today if current else None))
+    from app.services import product_learning
     return Me(
-        name=rep.name, region=rep.region, stats=stats, medals=medals(session, rep.id),
+        name=rep.name, region=rep.region, stats=stats,
+        medals=medals(session, rep.id) + product_learning.medals(session, learning_user_id or rep.id),
         top_customers=[TopCustomer(cid, name, float(total)) for cid, name, total in top], monthly=monthly,
     )

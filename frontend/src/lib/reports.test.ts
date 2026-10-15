@@ -9,9 +9,12 @@ import {
   reportCsv,
   reportDataKey,
   validDimensions,
+  toggleReportSelection,
+  pruneReportSelections,
   type ReportCard,
   type ReportConfig,
   type ReportMetric,
+  type ReportSelectionPoint,
 } from "@/lib/reports"
 
 function card(patch: Partial<ReportCard> = {}): ReportCard {
@@ -89,6 +92,90 @@ describe("normalizeCard", () => {
     expect(normalizeCard(original)).toEqual(before)
     normalizeCard({ ...original, metric: "customers" })
     expect(original).toEqual(before)
+  })
+})
+
+describe("精確聯動選取", () => {
+  const april: ReportSelectionPoint = {
+    label: "四月 / 診所",
+    filters: [
+      { dimension: "month", key: "2031-04" },
+      { dimension: "customer_type", key: "clinic" },
+    ],
+  }
+  const march: ReportSelectionPoint = {
+    label: "三月 / 藥局",
+    filters: [
+      { dimension: "month", key: "2031-03" },
+      { dimension: "customer_type", key: "independent" },
+    ],
+  }
+  it("同圖保留精確的成對多選，不把月份與系列拆成笛卡兒組合", () => {
+    const first = toggleReportSelection([], "trend", april, true)
+    const both = toggleReportSelection(first, "trend", march, true)
+    expect(both[0].points).toEqual([april, march])
+    expect(toggleReportSelection(both, "trend", april, true)[0].points).toEqual(
+      [march]
+    )
+    expect(toggleReportSelection(first, "trend", april, true)).toEqual([])
+    expect(first[0].points).toEqual([april])
+  })
+  it("不同圖保留各自條件，單選只替換該來源圖", () => {
+    const other = {
+      label: "客戶甲",
+      filters: [{ dimension: "customer" as const, key: "c01" }],
+    }
+    const groups = toggleReportSelection(
+      toggleReportSelection([], "trend", april, true),
+      "customer-sales",
+      other,
+      false
+    )
+    const next = toggleReportSelection(groups, "trend", march, false)
+    expect(next).toEqual([
+      { source_id: "customer-sales", points: [other] },
+      { source_id: "trend", points: [march] },
+    ])
+  })
+  it("查詢快取包含選取与互動模式，但選取順序與標籤不改變資料需求", () => {
+    const groups = [{ source_id: "trend", points: [april, march] }]
+    const key = reportDataKey({ ...config(), selection_groups: groups })
+    expect(key).not.toBe(reportDataKey(config()))
+    expect(key).toBe(
+      reportDataKey({
+        ...config(),
+        selection_groups: [
+          { source_id: "trend", points: [{ ...march, label: "更名" }, april] },
+        ],
+      })
+    )
+    expect(
+      reportDataKey(config({ cards: [card({ interaction: "none" })] }))
+    ).not.toBe(reportDataKey(config({ cards: [card()] })))
+  })
+  it("刪圖或換分組移除過期選取，其他系列不當成單一分類", () => {
+    const groups = [{ source_id: "trend", points: [april] }]
+    expect(pruneReportSelections(groups, config())).toEqual([])
+    const report = config({
+      cards: [
+        card({ id: "trend", dimension: "month", legend: "customer_type" }),
+      ],
+    })
+    expect(pruneReportSelections(groups, report)).toEqual(groups)
+    expect(
+      pruneReportSelections(
+        groups,
+        config({ cards: [card({ id: "trend", dimension: "month" })] })
+      )
+    ).toEqual([])
+    expect(
+      toggleReportSelection(
+        [],
+        "trend",
+        { label: "其他", filters: [{ dimension: "owner", key: "__other__" }] },
+        true
+      )
+    ).toEqual([])
   })
 })
 

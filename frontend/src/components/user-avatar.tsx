@@ -2,7 +2,8 @@ import { Check, Clock, Minus } from "lucide-react"
 
 import type { PresenceStatus } from "@/api/presence"
 import { Avatar, AvatarBadge, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { useAvatarUrl } from "@/lib/avatars"
+import { useAvatarUrl, useMascotAvatar } from "@/lib/avatars"
+import { Mascot } from "@/components/mascot"
 import { avatarTone, initials, STATUS_LABEL, usePresence } from "@/lib/presence"
 import { cn } from "@/lib/utils"
 
@@ -52,11 +53,12 @@ export function UserAvatar({
   className?: string
 }) {
   const url = useAvatarUrl(id)
+  const mascot = useMascotAvatar(id)
   return (
     <Avatar size={size} className={className}>
       {/* 旁邊一定寫著名字，照片本身不必再念一次 */}
-      {url && <AvatarImage src={url} alt="" />}
-      <AvatarFallback
+      {mascot ? <span className="flex size-full items-center justify-center overflow-hidden bg-accent"><Mascot look={mascot} bust size={64} className="size-full" /></span> : url && <AvatarImage src={url} alt="" />}
+      {!mascot && <AvatarFallback
         aria-hidden
         className={cn(
           "text-[0.6875rem] font-medium group-data-[size=lg]/avatar:text-sm group-data-[size=sm]/avatar:text-[0.5625rem]",
@@ -64,7 +66,7 @@ export function UserAvatar({
         )}
       >
         {initials(name)}
-      </AvatarFallback>
+      </AvatarFallback>}
       {status && (
         <AvatarBadge role="img" aria-label={`狀態：${STATUS_LABEL[status]}`} className={DOT[status]}>
           <DotIcon status={status} />

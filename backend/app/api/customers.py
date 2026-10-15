@@ -90,6 +90,9 @@ class Competitor(BaseModel):
 
 class CustomerProfile(BaseModel):
     customer: CustomerItem
+    # Google 店家搜尋只用縣市、行政區；示範座標不是實際店址，不能拿來當藥局街景。
+    city: str
+    area: str
     today: date
     highlights: list[str]
     stats: ProfileStats
@@ -263,7 +266,7 @@ def get_profile(session: SessionDep, customer_id: str, user: CurrentUser):
     profile = customer_profile.build_profile(session, customer)
     data = dataclasses.asdict(profile)
     data.pop("signals")
-    return CustomerProfile(customer=item, **data)
+    return CustomerProfile(customer=item, city=customer.city, area=customer.area, **data)
 
 
 @router.get("/{customer_id}/negotiation", response_model=NegotiationCard)

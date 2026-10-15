@@ -3,6 +3,7 @@ import { ChartNoAxesCombined, ChevronRight, Settings } from "lucide-react"
 import { Link, Navigate } from "react-router"
 
 import { getMe, type Me } from "@/api/me"
+import { UserAvatar } from "@/components/user-avatar"
 import { Mascot } from "@/components/mascot"
 import { MedalWall } from "@/components/me/medal-wall"
 import { MonthlySales, TopCustomers } from "@/components/me/sales-charts"
@@ -31,7 +32,7 @@ export function MePage() {
         if (!controller.signal.aborted) setState({ status: "error" })
       })
     return () => controller.abort()
-  }, [attempt])
+  }, [attempt, user?.id, user?.acting_as?.id])
 
   if (user && user.role !== "sales") return <Navigate to="/settings" replace />
 
@@ -69,7 +70,7 @@ export function MePage() {
           <>
             <div className="flex items-center gap-3.5">
               <span className="flex size-16 shrink-0 items-center justify-center rounded-full bg-accent">
-                <Mascot bust size={56} />
+                <UserAvatar id={user.id} name={user.name} size="lg" className="size-16" />
               </span>
               <div className="min-w-0">
                 <p className="text-xl font-semibold">{state.me.name}</p>
@@ -84,7 +85,8 @@ export function MePage() {
               <Stat value={String(state.me.stats.customers)} label="名下客戶" />
               <Stat value={formatWan(state.me.stats.sales_last_year, 0)} label="近一年業績" />
             </div>
-            <MedalWall medals={state.me.medals} userId={user.acting_as?.id ?? user.id} />
+            <Link to="/mascots" className="flex min-h-20 items-center gap-3 rounded-2xl border-2 bg-card px-4 py-3 shadow-lip"><Mascot state="hi" size={54} /><span className="min-w-0 flex-1"><span className="block text-sm font-semibold">熊熊滾收藏與換裝</span><span className="block text-xs text-muted-foreground">蒐集縣市款、遇見異色，換成你的頭像</span></span><ChevronRight className="size-4 shrink-0 text-muted-foreground" /></Link>
+            <MedalWall medals={state.me.medals} userId={user.id} />
             <section className="rounded-3xl border-2 bg-card p-4 shadow-lip">
               <div className="flex items-baseline justify-between">
                 <h2 className="text-base font-semibold">賣最多的藥局</h2>

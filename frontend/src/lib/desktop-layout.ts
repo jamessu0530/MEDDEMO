@@ -11,7 +11,7 @@ export type PageWidth = "wide" | "column" | "bare"
 // 不畫側邊欄、照手機的寬度置中：沒登入的頁，和錄音（跟手機一樣，錄到一半不能誤點離開）
 const BARE = [/^\/login$/, /^\/register$/, /^\/privacy$/, /^\/auth\//, /^\/customers\/[^/]+\/record$/]
 // 自己排成兩欄以上的頁；其他頁放在中間一欄
-const WIDE = [/^\/$/, /^\/channels$/, /^\/channels\/\d+$/, /^\/manager$/, /^\/reports$/, /^\/customers\/[^/]+$/, /^\/customers\/[^/]+\/quote$/]
+const WIDE = [/^\/$/, /^\/channels$/, /^\/channels\/\d+$/, /^\/manager$/, /^\/reports$/, /^\/mascots$/, /^\/customers\/[^/]+$/, /^\/customers\/[^/]+\/quote$/]
 // 電腦版頻道四欄那一頁的網址：/channels 與 /channels/:id 換來換去只是換欄，不播換頁的墨
 const CHANNEL_PANES = /^\/channels(\/\d+)?$/
 

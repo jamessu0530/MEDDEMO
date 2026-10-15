@@ -3,7 +3,8 @@ import { request } from "@/api/client"
 // 個人頁（docs/superpowers/specs/2026-10-09-tap-to-ride-and-personal-page-design.md）：後端 api/me.py
 
 // stores：跑過的藥局；cities：跑過的縣市。各三級：1 銅、2 銀、3 金
-export type MedalKind = "stores" | "cities"
+export type ProductMedalKind = "chronic" | "otc" | "wellness" | "devices"
+export type MedalKind = "stores" | "cities" | ProductMedalKind
 
 // unlocked_on 是那份行程的日期（系統日）；unlocked_at 是第 N 家第一次點到的真實時間，判斷「看過了沒」用
 export type Medal = {
@@ -13,6 +14,10 @@ export type Medal = {
   have: number
   unlocked_on: string | null
   unlocked_at: string | null
+  title?: string
+  condition?: string
+  unit?: string
+  action_path?: string | null
 }
 
 export type Me = {

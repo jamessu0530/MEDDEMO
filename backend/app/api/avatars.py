@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app import realtime
 from app.api.auth import CurrentUser, ItUser
 from app.db import get_session
-from app.services import avatars
+from app.services import avatars, mascot_collection
 from app.services.attachments import MAX_FILE_BYTES, Rejected
 
 router = APIRouter(prefix="/api/avatars", tags=["avatars"])
@@ -25,6 +25,7 @@ CACHE = "private, max-age=31536000, immutable"
 class Avatars(BaseModel):
     # 有大頭貼的人，帳號 → 網址；不在裡面的用名字縮寫
     avatars: dict[str, str]
+    mascot_avatars: dict[str, dict[str, str]]
 
 
 class AvatarUrl(BaseModel):
@@ -33,7 +34,7 @@ class AvatarUrl(BaseModel):
 
 @router.get("", response_model=Avatars)
 def list_avatars(session: SessionDep, user: CurrentUser):
-    return Avatars(avatars=avatars.urls(session))
+    return Avatars(avatars=avatars.urls(session), mascot_avatars=mascot_collection.avatar_looks(session))
 
 
 @router.post("/me", response_model=AvatarUrl)

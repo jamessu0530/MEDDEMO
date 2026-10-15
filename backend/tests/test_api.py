@@ -1,5 +1,6 @@
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 
 from app.main import app
 
@@ -35,7 +36,7 @@ def test_single_customer_lookup(client):
     assert client.get("/api/customers/C999").status_code == 404
 
 
-def test_promotions_list_every_period_newest_first(client):
+def test_promotions_list_every_period_newest_first(client, db):
     promotions = client.get("/api/promotions").json()
     assert [(p["name"], p["status"]) for p in promotions] == [
         ("202610保藥特搭活動", "進行中"), ("202609保藥特搭活動", "已結束"), ("202608保藥特搭活動", "已結束"),
@@ -45,6 +46,13 @@ def test_promotions_list_every_period_newest_first(client):
     # 數字跟問答查的 v_promotion_item 是同一份：骨營膠囊小口 <11+1>，每口 11,550、平均每個 962.5
     small = next(i for i in current["items"] if i["name"] == "骨營膠囊600T(小口)")
     assert (small["buy_qty"], small["free_qty"], small["deal_price"], small["unit_deal_price"]) == (11, 1, 11550, 962.5)
+    # 篩選用商品類別（不是品牌）；折扣跟 AI 讀同一個 View，沒有改用零售價或贈品數比例。
+    rows = db.execute(text("SELECT item_code, category, discount_rate FROM v_promotion_item")).all()
+    expected = {code: (category, float(discount)) for code, category, discount in rows}
+    for promotion in promotions:
+        for item in promotion["items"]:
+            assert (item["category"], item["discount_rate"]) == expected[item["code"]]
+    assert small["category"] == "保健品" and small["group_name"] == "骨營"
 
 
 def test_promotions_need_sign_in(engine):

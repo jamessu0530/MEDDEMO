@@ -1,23 +1,48 @@
 import type { KeyboardEvent, ReactNode } from "react"
 import { BarChart3, ChevronDown } from "lucide-react"
+import { ReportMatrix } from "@/components/reports/report-matrix"
+import { ReportFormattedValue } from "@/components/reports/report-formatted-value"
+import {
+  reportCellStyle,
+  reportDisplayValue,
+  reportFormatDomain,
+  reportTooltip,
+  reportConditionalColor,
+  reportSeriesColor,
+} from "@/lib/report-format"
+import {
+  ReportComparisonSummary,
+  ReportPointComparison,
+} from "@/components/reports/report-comparison"
 
 import {
   DIMENSIONS,
   METRICS,
   REPORT_COLORS,
   formatReportValue,
+  formatReportExactValue,
+  emptyMetricValue,
+  NON_ADDITIVE_METRICS,
+  PART_WHOLE_VISUALS,
+  selectionPointKey,
+  chartSelection,
   type CardData,
   type ReportCard,
   type ReportDimension,
   type ReportMetric,
   type ReportPoint,
+  type ReportSelectionPoint,
+  type ReportMatrixView,
 } from "@/lib/reports"
 import {
   chartDomain,
   chartSeries,
+  numericCardData,
+  trendSegments,
   stackRows,
   treeRects,
-  type ChartSeries,
+  type NumericChartSeries,
+  type NumericCardData,
 } from "@/components/reports/report-chart-math"
 
 type ChartProps = {
@@ -29,28 +54,27 @@ type ChartProps = {
     label: string
   ) => void
   selectedKey?: string
+  onSelectData?: (point: ReportSelectionPoint) => void
+  pointActionLabel?: string
+  selections?: ReportSelectionPoint[]
   expanded?: boolean
+  matrixView?: ReportMatrixView
+  onMatrixViewChange?: (view: ReportMatrixView) => void
 }
-type PlotProps = ChartProps & { series: ChartSeries[]; colors: string[] }
+type PlotProps = Omit<ChartProps, "data"> & {
+  data: NumericCardData
+  series: NumericChartSeries[]
+  colors: string[]
+}
 
-function exactValue(value: number, metric: ReportMetric): string {
-  const currency = METRICS[metric].unit === "currency"
-  return `${value.toLocaleString("zh-TW", { maximumFractionDigits: currency ? 2 : 0 })} ${currency ? "元" : metric === "visits" ? "次" : "家"}`
+function exactValue(value: number | null, metric: ReportMetric): string {
+  return formatReportExactValue(value, metric)
 }
-function axisValue(value: number, metric: ReportMetric) {
+function axisValue(value: number, metric: ReportMetric, card?: ReportCard) {
+  if (card) return reportDisplayValue(card, value, metric, "axis")
   return Math.abs(value) >= 10000
     ? formatReportValue(value, metric)
     : exactValue(value, metric)
-}
-function colorPalette(card: ReportCard) {
-  const color = card.color ?? REPORT_COLORS[0]
-  return [
-    color,
-    ...REPORT_COLORS.filter((item) => item !== color),
-    "#5993bd",
-    "#81a85a",
-    "#bb7b43",
-  ]
 }
 function colorAt(colors: string[], index: number) {
   return colors[index % colors.length]
@@ -58,40 +82,121 @@ function colorAt(colors: string[], index: number) {
 function percentValue(value: number) {
   return `${value.toLocaleString("zh-TW", { maximumFractionDigits: 1 })}%`
 }
-function pointLabel(point: ReportPoint, card: ReportCard) {
-  return `${point.label}：${exactValue(point.value, card.metric)}`
+function plotPointTooltip(
+  props: PlotProps,
+  point: ReportPoint & { missing?: boolean },
+  series?: NumericChartSeries,
+  share?: number
+) {
+  const sample =
+    series?.points.find((entry) => entry.key === point.key) ?? point
+  return reportTooltip(
+    props.card,
+    {
+      ...sample,
+      label: chartSelection(props.card, point, series).label,
+      value: (sample as { missing?: boolean }).missing ? null : sample.value,
+    },
+    {
+      comparison: sample.comparison,
+      ...(props.data.highlight
+        ? { highlight: highlightValue(props, point, series) }
+        : {}),
+      share,
+    }
+  )
+}
+function pointColor(
+  props: PlotProps,
+  point: ReportPoint & { missing?: boolean },
+  column = 0,
+  metric = props.card.metric,
+  fallback?: string
+) {
+  const series = props.series[column]
+  const sample =
+    series?.points.find((entry) => entry.key === point.key) ?? point
+  const value =
+    metric === props.card.secondary_metric
+      ? (point.secondary_value ?? null)
+      : (sample as { missing?: boolean }).missing
+        ? null
+        : sample.value
+  const chosen = props.card.legend
+    ? colorAt(props.colors, column)
+    : (props.card.format?.series_colors?.find(
+        (entry) =>
+          entry.dimension === props.card.dimension && entry.key === point.key
+      )?.color ??
+      props.card.format?.metric_colors?.[metric] ??
+      fallback ??
+      (metric === props.card.secondary_metric
+        ? reportSeriesColor(props.card, "primary", column, "none", metric)
+        : colorAt(props.colors, column)))
+  return (
+    reportConditionalColor(
+      props.card,
+      value,
+      reportFormatDomain(props.card, props.data, metric),
+      metric
+    ) ?? chosen
+  )
+}
+function chartTooltip(card: ReportCard, text: string) {
+  return card.format?.tooltip?.show === false ? undefined : text
 }
 
 function Total({
   card,
   total,
+  data,
   large = false,
 }: {
   card: ReportCard
-  total: number
+  total: number | null
+  data: CardData
   large?: boolean
 }) {
-  const formatted = formatReportValue(total, card.metric)
+  const formatted = reportDisplayValue(card, total, card.metric, "compact")
   const exact = exactValue(total, card.metric)
   return (
     <div className={large ? "py-2" : "mb-3"}>
-      <p className="mb-1 text-[11px] text-muted-foreground">所選範圍合計</p>
+      <p className="mb-1 text-[11px] text-muted-foreground">
+        {NON_ADDITIVE_METRICS.includes(card.metric)
+          ? "所選範圍"
+          : "所選範圍合計"}
+      </p>
       <p
-        className={`${large ? "text-[clamp(1.125rem,5.5vw,1.625rem)] sm:text-3xl" : "text-xl"} leading-tight font-semibold tracking-tight break-words tabular-nums ${total < 0 ? "text-destructive" : "text-foreground"}`}
-        title={exact}
-        style={total >= 0 ? { color: card.color } : undefined}
+        className={`${large ? "text-[clamp(1.125rem,5.5vw,1.625rem)] sm:text-3xl" : "text-xl"} leading-tight font-semibold tracking-tight break-words tabular-nums ${total != null && total < 0 ? "text-destructive" : "text-foreground"}`}
+        title={reportTooltip(
+          card,
+          { label: "所選範圍", value: total, row_count: data.row_count },
+          { comparison: data.comparison?.value }
+        )}
+        style={
+          reportCellStyle(
+            card,
+            total,
+            reportFormatDomain(card, data),
+            card.metric,
+            !large
+          ) ??
+          (total != null && total >= 0
+            ? { color: card.format?.metric_colors?.[card.metric] ?? card.color }
+            : undefined)
+        }
       >
         {formatted}
       </p>
-      {formatted !== exact && (
+      {formatted !== exact && !card.format?.numbers?.[card.metric] && (
         <p className="mt-1 text-[11px] break-words text-muted-foreground tabular-nums">
           {exact}
         </p>
       )}
       {large && typeof card.target === "number" && (
         <p className="mt-3 text-xs text-muted-foreground">
-          目標 {exactValue(card.target, card.metric)}
-          {card.target > 0 && (
+          目標 {reportDisplayValue(card, card.target, card.metric)}
+          {card.target > 0 && total != null && (
             <> · 達成 {percentValue((total / card.target) * 100)}</>
           )}
         </p>
@@ -120,15 +225,106 @@ function Unsupported({ children }: { children: ReactNode }) {
   )
 }
 
-function svgInteraction(props: ChartProps, point: ReportPoint) {
-  if (!props.onSelectPoint || props.card.dimension === "none") return {}
-  const select = () =>
-    props.onSelectPoint?.(props.card.dimension, point.key, point.label)
+function interactive(props: ChartProps) {
+  return Boolean(props.onSelectData || props.onSelectPoint)
+}
+
+function pointSelected(
+  props: ChartProps,
+  point: ReportPoint,
+  series?: { key: string; label: string }
+) {
+  if (props.selectedKey === point.key) return true
+  const selections = props.selections ?? []
+  return series
+    ? selections.some(
+        (selection) =>
+          selectionPointKey(selection) ===
+            selectionPointKey(chartSelection(props.card, point, series)) ||
+          (selection.filters.length === 1 &&
+            selection.filters[0].dimension === props.card.dimension &&
+            selection.filters[0].key === point.key)
+      )
+    : selections.some((selection) =>
+        selection.filters.some(
+          (filter) =>
+            filter.dimension === props.card.dimension &&
+            filter.key === point.key
+        )
+      )
+}
+
+function selectionOpacity(
+  props: ChartProps,
+  point: ReportPoint,
+  series?: { key: string; label: string }
+) {
+  if (
+    (props.selectedKey || props.selections?.length) &&
+    !pointSelected(props, point, series)
+  )
+    return 0.3
+  if (props.data.highlight) {
+    const points =
+      series && props.card.legend
+        ? props.data.highlight.series?.find((item) => item.key === series.key)
+            ?.points
+        : props.data.highlight.points
+    const entry = points?.find((item) => item.key === point.key)
+    if (
+      entry?.row_count === 0 ||
+      (entry?.row_count == null && highlightValue(props, point, series) === 0)
+    )
+      return 0.25
+  }
+  return 1
+}
+
+function highlightValue(
+  props: ChartProps,
+  point: ReportPoint,
+  series?: { key: string; label: string }
+) {
+  const highlight = props.data.highlight
+  if (!highlight) return null
+  const points =
+    series && props.card.legend
+      ? highlight.series?.find((item) => item.key === series.key)?.points
+      : highlight.points
+  return (
+    points?.find((item) => item.key === point.key)?.value ??
+    emptyMetricValue(props.card.metric)
+  )
+}
+
+function selectPoint(
+  props: ChartProps,
+  point: ReportPoint,
+  series?: { key: string; label: string }
+) {
+  if (props.card.dimension === "none" || series?.key === "__other__") return
+  const selection = chartSelection(props.card, point, series)
+  if (props.onSelectData) props.onSelectData(selection)
+  else props.onSelectPoint?.(props.card.dimension, point.key, point.label)
+}
+
+function svgInteraction(
+  props: ChartProps,
+  point: ReportPoint,
+  series?: { key: string; label: string }
+) {
+  if (
+    !interactive(props) ||
+    props.card.dimension === "none" ||
+    series?.key === "__other__"
+  )
+    return {}
+  const select = () => selectPoint(props, point, series)
   return {
     role: "button" as const,
     tabIndex: 0,
-    "aria-label": `${pointLabel(point, props.card)}，點選篩選`,
-    "aria-pressed": props.selectedKey === point.key,
+    "aria-label": `${chartSelection(props.card, point, series).label}：${exactValue(series ? seriesValue(props.data, point, series.key) : (point as ReportPoint & { missing?: boolean }).missing ? null : point.value, props.card.metric)}，點選${props.pointActionLabel ?? "篩選"}`,
+    "aria-pressed": pointSelected(props, point, series),
     onClick: select,
     onKeyDown: (event: KeyboardEvent<SVGGElement>) => {
       if (event.key === "Enter" || event.key === " ") {
@@ -141,8 +337,16 @@ function svgInteraction(props: ChartProps, point: ReportPoint) {
   }
 }
 
+function seriesValue(data: CardData, point: ReportPoint, key: string) {
+  const value = data.series
+    ?.find((item) => item.key === key)
+    ?.points.find((item) => item.key === point.key) as
+    (ReportPoint & { missing?: boolean }) | undefined
+  return value?.missing ? null : value ? value.value : point.value
+}
+
 function ValueTable(props: ChartProps & { matrix?: boolean }) {
-  const { card, data, matrix = false, onSelectPoint, selectedKey } = props
+  const { card, data, matrix = false } = props
   const series = matrix ? (data.series ?? []) : []
   const indexes = series.map(
     (item) => new Map(item.points.map((point) => [point.key, point.value]))
@@ -153,7 +357,7 @@ function ValueTable(props: ChartProps & { matrix?: boolean }) {
       <table
         className={`w-full text-left text-xs ${series.length ? "min-w-max" : "table-fixed"}`}
       >
-        <caption className="sr-only">{card.title}明細</caption>
+        <caption className="sr-only">{card.title}分組彙總</caption>
         <thead className="bg-muted/40 text-muted-foreground">
           <tr>
             <th
@@ -172,7 +376,11 @@ function ValueTable(props: ChartProps & { matrix?: boolean }) {
               </th>
             ))}
             <th scope="col" className="px-3 py-2.5 text-right font-medium">
-              {series.length ? "合計" : METRICS[card.metric].label}
+              {series.length
+                ? NON_ADDITIVE_METRICS.includes(card.metric)
+                  ? "本列整體"
+                  : "合計"
+                : METRICS[card.metric].label}
             </th>
             {secondary && (
               <th scope="col" className="px-3 py-2.5 text-right font-medium">
@@ -185,20 +393,20 @@ function ValueTable(props: ChartProps & { matrix?: boolean }) {
           {data.points.map((point) => (
             <tr
               key={point.key}
-              className={selectedKey === point.key ? "bg-primary/8" : undefined}
+              className={
+                pointSelected(props, point) ? "bg-primary/8" : undefined
+              }
             >
               <th
                 scope="row"
                 className="max-w-48 px-3 py-2 font-normal break-words"
               >
-                {onSelectPoint && card.dimension !== "none" ? (
+                {interactive(props) && card.dimension !== "none" ? (
                   <button
                     type="button"
                     className="min-h-11 w-full text-left text-primary underline-offset-2 focus-visible:underline"
-                    aria-pressed={selectedKey === point.key}
-                    onClick={() =>
-                      onSelectPoint(card.dimension, point.key, point.label)
-                    }
+                    aria-pressed={pointSelected(props, point)}
+                    onClick={() => selectPoint(props, point)}
                   >
                     {point.label}
                   </button>
@@ -210,20 +418,149 @@ function ValueTable(props: ChartProps & { matrix?: boolean }) {
                 <td
                   key={series[column].key}
                   className="px-3 py-2.5 text-right whitespace-nowrap tabular-nums"
+                  title={reportTooltip(
+                    card,
+                    {
+                      label: `${point.label} / ${series[column].label}`,
+                      value:
+                        index.get(point.key) ?? emptyMetricValue(card.metric),
+                      row_count: series[column].points.find(
+                        (entry) => entry.key === point.key
+                      )?.row_count,
+                    },
+                    {
+                      comparison: series[column].points.find(
+                        (entry) => entry.key === point.key
+                      )?.comparison,
+                    }
+                  )}
                 >
-                  {exactValue(index.get(point.key) ?? 0, card.metric)}
+                  <ReportFormattedValue
+                    card={card}
+                    value={
+                      index.get(point.key) ?? emptyMetricValue(card.metric)
+                    }
+                    domain={reportFormatDomain(card, data)}
+                  >
+                    {interactive(props) &&
+                    series[column].key !== "__other__" ? (
+                      <button
+                        type="button"
+                        className="min-h-10 min-w-12 rounded px-1 text-primary"
+                        aria-label={`${point.label} / ${series[column].label}，點選${props.pointActionLabel ?? "篩選"}`}
+                        aria-pressed={pointSelected(
+                          props,
+                          point,
+                          series[column]
+                        )}
+                        onClick={() =>
+                          selectPoint(props, point, series[column])
+                        }
+                      >
+                        <span className="report-value-text">
+                          {reportDisplayValue(
+                            card,
+                            index.get(point.key) ??
+                              emptyMetricValue(card.metric),
+                            card.metric
+                          )}
+                        </span>
+                      </button>
+                    ) : (
+                      <span className="report-value-text">
+                        {reportDisplayValue(
+                          card,
+                          index.get(point.key) ?? emptyMetricValue(card.metric),
+                          card.metric
+                        )}
+                      </span>
+                    )}
+                    {data.highlight && (
+                      <span className="block text-[10px] text-primary">
+                        選取{" "}
+                        {reportDisplayValue(
+                          card,
+                          highlightValue(props, point, series[column]),
+                          card.metric
+                        )}
+                      </span>
+                    )}
+                    <ReportPointComparison
+                      card={card}
+                      value={
+                        series[column].points.find(
+                          (item) => item.key === point.key
+                        )?.comparison
+                      }
+                      metric={card.metric}
+                    />
+                  </ReportFormattedValue>
                 </td>
               ))}
               <td
-                className={`px-3 py-2.5 text-right break-words tabular-nums ${point.value < 0 ? "text-destructive" : ""}`}
+                className={`px-3 py-2.5 text-right break-words tabular-nums ${point.value != null && point.value < 0 ? "text-destructive" : ""}`}
+                title={reportTooltip(card, point, {
+                  comparison: point.comparison,
+                  ...(data.highlight
+                    ? { highlight: highlightValue(props, point) }
+                    : {}),
+                })}
               >
-                {exactValue(point.value, card.metric)}
+                <ReportFormattedValue
+                  card={card}
+                  value={point.value}
+                  domain={reportFormatDomain(card, data)}
+                  total={series.length > 0}
+                >
+                  <span className="report-value-text">
+                    {reportDisplayValue(card, point.value, card.metric)}
+                  </span>
+                  <ReportPointComparison
+                    card={card}
+                    value={point.comparison}
+                    metric={card.metric}
+                  />
+                  {data.highlight && (
+                    <span className="block text-[10px] text-primary">
+                      選取{" "}
+                      {reportDisplayValue(
+                        card,
+                        highlightValue(props, point),
+                        card.metric
+                      )}
+                    </span>
+                  )}
+                </ReportFormattedValue>
               </td>
               {secondary && (
-                <td className="px-3 py-2.5 text-right break-words tabular-nums">
-                  {typeof point.secondary_value === "number"
-                    ? exactValue(point.secondary_value, secondary)
-                    : "—"}
+                <td
+                  className="px-3 py-2.5 text-right break-words tabular-nums"
+                  title={reportTooltip(
+                    card,
+                    {
+                      label: point.label,
+                      value: point.secondary_value ?? null,
+                      row_count: point.row_count,
+                    },
+                    { metric: secondary }
+                  )}
+                >
+                  <ReportFormattedValue
+                    card={card}
+                    value={point.secondary_value ?? null}
+                    metric={secondary}
+                    domain={reportFormatDomain(card, data, secondary)}
+                  >
+                    <span className="report-value-text">
+                      {typeof point.secondary_value === "number"
+                        ? reportDisplayValue(
+                            card,
+                            point.secondary_value,
+                            secondary
+                          )
+                        : "—"}
+                    </span>
+                  </ReportFormattedValue>
                 </td>
               )}
             </tr>
@@ -240,7 +577,7 @@ function DataDetails(props: ChartProps) {
   return (
     <details className="group rounded-xl border border-border bg-muted/10">
       <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-xl px-3 py-2 text-xs font-medium text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
-        {props.card.dimension === "month" ? "查看各月數值" : "查看數值明細"}
+        查看分組彙總數值
         <ChevronDown
           className="size-4 transition-transform group-open:rotate-180"
           aria-hidden="true"
@@ -283,7 +620,7 @@ function Legend({
 }
 
 function BarChart(props: PlotProps) {
-  const { card, data, series, colors, onSelectPoint, selectedKey } = props
+  const { card, data, series, colors } = props
   const stacked = card.visual === "stacked_bar" || card.visual === "percent_bar"
   const percentage = card.visual === "percent_bar"
   const rows = stackRows(data.points, series, percentage)
@@ -317,20 +654,56 @@ function BarChart(props: PlotProps) {
           const content = (
             <>
               <div className="mb-1.5 flex items-start justify-between gap-3 text-xs">
-                <span className="min-w-0 break-words">{point.label}</span>
+                {interactive(props) ? (
+                  <button
+                    type="button"
+                    data-axis="y"
+                    style={
+                      card.format?.axes?.show_y === false
+                        ? { display: "none" }
+                        : undefined
+                    }
+                    className="min-h-8 min-w-0 rounded text-left break-words text-primary"
+                    aria-pressed={pointSelected(props, point)}
+                    onClick={() => selectPoint(props, point)}
+                  >
+                    {point.label}
+                  </button>
+                ) : (
+                  <span
+                    data-axis="y"
+                    style={
+                      card.format?.axes?.show_y === false
+                        ? { display: "none" }
+                        : undefined
+                    }
+                    className="min-w-0 break-words"
+                  >
+                    {point.label}
+                  </span>
+                )}
                 {card.show_labels !== false && (
                   <span
                     className={`shrink-0 text-right tabular-nums ${point.value < 0 ? "text-destructive" : "text-muted-foreground"}`}
                   >
-                    {exactValue(point.value, card.metric)}
+                    {reportDisplayValue(
+                      card,
+                      point.missing ? null : point.value,
+                      card.metric
+                    )}
                   </span>
                 )}
               </div>
               {stacked ? (
                 <div
                   className={`relative overflow-hidden rounded-sm bg-muted/40 ${card.height === "compact" ? "h-5" : card.height === "tall" ? "h-8" : "h-6"}`}
-                  aria-hidden="true"
                 >
+                  <BarGrid
+                    card={card}
+                    minimum={domain.minimum}
+                    maximum={domain.maximum}
+                    percentage={percentage}
+                  />
                   <span
                     className="absolute inset-y-0 z-10 w-px bg-muted-foreground/60"
                     style={{ left: `${Math.min(99.8, baseline)}%` }}
@@ -340,22 +713,57 @@ function BarChart(props: PlotProps) {
                     const width =
                       (Math.abs(segment.end - segment.start) / span) * 100
                     return (
-                      <span
+                      <button
+                        type="button"
                         key={series[segment.series].key}
-                        className="absolute inset-y-0 flex items-center justify-center overflow-hidden text-[10px] font-medium text-white"
+                        disabled={
+                          !interactive(props) ||
+                          series[segment.series].key === "__other__"
+                        }
+                        aria-label={`${point.label} / ${series[segment.series].label}：${exactValue(segment.value, card.metric)}，點選${props.pointActionLabel ?? "篩選"}`}
+                        aria-pressed={pointSelected(
+                          props,
+                          point,
+                          series[segment.series]
+                        )}
+                        onClick={() =>
+                          selectPoint(props, point, series[segment.series])
+                        }
+                        className="absolute inset-y-0 flex items-center justify-center overflow-hidden text-[10px] font-medium text-white focus-visible:z-30 focus-visible:outline-2 focus-visible:outline-ring"
                         style={{
                           left: `${left}%`,
                           width: `${width}%`,
-                          backgroundColor: colorAt(colors, segment.series),
+                          backgroundColor: pointColor(
+                            props,
+                            point,
+                            segment.series
+                          ),
+                          opacity: selectionOpacity(
+                            props,
+                            point,
+                            series[segment.series]
+                          ),
                         }}
-                        title={`${series[segment.series].label}：${exactValue(segment.value, card.metric)}${percentage ? ` · ${percentValue(segment.end - segment.start)}` : ""}`}
+                        title={plotPointTooltip(
+                          props,
+                          point,
+                          series[segment.series],
+                          percentage
+                            ? (segment.end - segment.start) / 100
+                            : undefined
+                        )}
                       >
                         {card.show_labels !== false &&
                           width > 13 &&
                           (percentage
                             ? percentValue(segment.end - segment.start)
-                            : formatReportValue(segment.value, card.metric))}
-                      </span>
+                            : reportDisplayValue(
+                                card,
+                                segment.value,
+                                card.metric,
+                                "compact"
+                              ))}
+                      </button>
                     )
                   })}
                   {!percentage && typeof card.target === "number" && (
@@ -368,15 +776,42 @@ function BarChart(props: PlotProps) {
               ) : (
                 <div className="space-y-1">
                   {series.map((item, column) => {
+                    if (
+                      item.points.find((entry) => entry.key === point.key)
+                        ?.missing
+                    )
+                      return (
+                        <span
+                          key={item.key}
+                          className="block text-[10px] text-muted-foreground"
+                        >
+                          {item.label}：無法計算
+                        </span>
+                      )
                     const value = indexes[column].get(point.key) ?? 0
                     const left = x(Math.min(0, value))
                     const width = (Math.abs(value) / span) * 100
                     return (
-                      <div
+                      <button
+                        type="button"
                         key={item.key}
-                        className={`relative overflow-hidden rounded-sm bg-muted/40 ${card.height === "compact" ? "h-3" : card.height === "tall" ? "h-5" : "h-3.5"}`}
-                        aria-hidden="true"
+                        disabled={
+                          !interactive(props) || item.key === "__other__"
+                        }
+                        aria-label={`${chartSelection(card, point, item).label}：${exactValue(value, card.metric)}，點選${props.pointActionLabel ?? "篩選"}`}
+                        aria-pressed={pointSelected(props, point, item)}
+                        onClick={() => selectPoint(props, point, item)}
+                        className={`relative block w-full overflow-hidden rounded-sm bg-muted/40 focus-visible:outline-2 focus-visible:outline-ring ${card.height === "compact" ? "h-5" : card.height === "tall" ? "h-8" : "h-6"}`}
+                        style={{
+                          opacity: selectionOpacity(props, point, item),
+                        }}
                       >
+                        <BarGrid
+                          card={card}
+                          minimum={domain.minimum}
+                          maximum={domain.maximum}
+                          percentage={percentage}
+                        />
                         <span
                           className="absolute inset-y-0 z-10 w-px bg-muted-foreground/60"
                           style={{ left: `${Math.min(99.8, baseline)}%` }}
@@ -386,12 +821,43 @@ function BarChart(props: PlotProps) {
                           style={{
                             left: `${left}%`,
                             width: `${width}%`,
-                            ...(value < 0 && series.length === 1
-                              ? {}
-                              : { backgroundColor: colorAt(colors, column) }),
+                            backgroundColor: pointColor(
+                              props,
+                              point,
+                              column,
+                              card.metric,
+                              value < 0 && series.length === 1
+                                ? REPORT_COLORS[4]
+                                : undefined
+                            ),
+                            opacity:
+                              data.highlight &&
+                              !NON_ADDITIVE_METRICS.includes(card.metric)
+                                ? 0.25
+                                : undefined,
                           }}
-                          title={`${item.label}：${exactValue(value, card.metric)}`}
+                          title={plotPointTooltip(props, point, item)}
                         />
+                        {data.highlight &&
+                          !NON_ADDITIVE_METRICS.includes(card.metric) &&
+                          value >= 0 &&
+                          (highlightValue(props, point, item) ?? 0) >= 0 &&
+                          (highlightValue(props, point, item) ?? 0) <=
+                            value && (
+                            <span
+                              className="absolute inset-y-0 rounded-sm border-2 border-foreground/70"
+                              style={{
+                                left: `${x(0)}%`,
+                                width: `${Math.min(width, (Math.abs(highlightValue(props, point, item) ?? 0) / span) * 100)}%`,
+                                backgroundColor: pointColor(
+                                  props,
+                                  point,
+                                  column
+                                ),
+                              }}
+                              title={plotPointTooltip(props, point, item)}
+                            />
+                          )}
                         {typeof card.target === "number" && (
                           <span
                             className="absolute inset-y-0 z-20 border-l-2 border-dashed border-foreground"
@@ -400,7 +866,7 @@ function BarChart(props: PlotProps) {
                             }}
                           />
                         )}
-                      </div>
+                      </button>
                     )
                   })}
                 </div>
@@ -409,25 +875,25 @@ function BarChart(props: PlotProps) {
           )
           return (
             <li key={point.key}>
-              {onSelectPoint ? (
-                <button
-                  type="button"
-                  className={`min-h-11 w-full rounded-md p-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring ${selectedKey === point.key ? "bg-primary/8 ring-1 ring-primary/30" : ""}`}
-                  onClick={() =>
-                    onSelectPoint(card.dimension, point.key, point.label)
-                  }
-                  aria-pressed={selectedKey === point.key}
-                  aria-label={`${pointLabel(point, card)}，點選篩選`}
-                >
-                  {content}
-                </button>
-              ) : (
-                <div>{content}</div>
-              )}
+              <div
+                className={
+                  pointSelected(props, point)
+                    ? "rounded bg-primary/5"
+                    : undefined
+                }
+              >
+                {content}
+              </div>
             </li>
           )
         })}
       </ol>
+      <BarAxisLabels
+        card={card}
+        minimum={domain.minimum}
+        maximum={domain.maximum}
+        percentage={percentage}
+      />
       <Legend card={card} colors={colors} items={series} />
       {percentage && (
         <p className="text-[11px] text-muted-foreground">
@@ -438,7 +904,12 @@ function BarChart(props: PlotProps) {
   )
 }
 
-function chartFrame(card: ReportCard, expanded?: boolean, secondary = false) {
+function chartFrame(
+  card: ReportCard,
+  expanded?: boolean,
+  secondary = false,
+  data?: NumericCardData
+) {
   const width = expanded ? 480 : 360
   const height = expanded
     ? 300
@@ -447,13 +918,56 @@ function chartFrame(card: ReportCard, expanded?: boolean, secondary = false) {
       : card.height === "tall"
         ? 280
         : 220
+  const labelWidth = (metric: ReportMetric, fallback: number) => {
+    if (!data || !card.format?.numbers?.[metric]) return fallback
+    const amounts =
+      metric === card.secondary_metric
+        ? data.points.map((point) => point.secondary_value)
+        : [
+            ...data.points.map((point) => point.value),
+            ...(data.series ?? []).flatMap((series) =>
+              series.points.map((point) => point.value)
+            ),
+          ]
+    const values = [
+      0,
+      ...amounts,
+      metric === card.metric && card.visual !== "scatter" ? card.target : null,
+    ].filter(
+      (value): value is number =>
+        typeof value === "number" && Number.isFinite(value)
+    )
+    const labels = values.map((value) =>
+      reportDisplayValue(card, value, metric, "axis")
+    )
+    const measured = Math.max(
+      ...labels.map((text) =>
+        [...text].reduce(
+          (sum, char) =>
+            sum + (/[0-9.,+−-]/.test(char) ? 5.5 : /\s/.test(char) ? 3 : 9),
+          0
+        )
+      )
+    )
+    return Math.max(fallback, Math.min(width / 3, measured + 10))
+  }
+  const yMetric =
+    card.visual === "scatter"
+      ? (card.secondary_metric ?? card.metric)
+      : card.metric
   return {
     width,
     height,
-    left: 48,
-    right: width - (secondary ? 52 : 14),
-    top: 22,
-    bottom: height - 35,
+    left: card.format?.axes?.show_y === false ? 16 : labelWidth(yMetric, 48),
+    right:
+      width -
+      (secondary
+        ? card.format?.axes?.show_secondary === false
+          ? 14
+          : labelWidth(card.secondary_metric ?? card.metric, 52)
+        : 14),
+    top: card.format?.axes?.show_titles ? 36 : 22,
+    bottom: height - (card.format?.axes?.show_titles ? 53 : 35),
   }
 }
 function axisTicks(
@@ -481,6 +995,9 @@ function axisTicks(
   ]
 }
 function categoryLabel(point: ReportPoint, dimension: ReportDimension) {
+  if (dimension === "year") return point.key
+  if (dimension === "quarter")
+    return `${point.key.slice(0, 4)} Q${point.key.slice(-1)}`
   if (dimension === "month") {
     const match = point.label.match(/(?:\d{4}[-/])?(\d{1,2})$/)
     if (match) return `${Number(match[1])} 月`
@@ -488,12 +1005,161 @@ function categoryLabel(point: ReportPoint, dimension: ReportDimension) {
   return point.label.length > 7 ? `${point.label.slice(0, 6)}…` : point.label
 }
 
+function AxisTitles({
+  card,
+  frame,
+  secondary,
+  scatter = false,
+}: {
+  card: ReportCard
+  frame: ReturnType<typeof chartFrame>
+  secondary?: ReportMetric
+  scatter?: boolean
+}) {
+  if (!card.format?.axes?.show_titles) return null
+  const settings = card.format.axes
+  const x =
+    settings.x_title ||
+    (scatter ? METRICS[card.metric].label : DIMENSIONS[card.dimension])
+  const y =
+    settings.y_title ||
+    METRICS[scatter && secondary ? secondary : card.metric].label
+  const right =
+    settings.secondary_title || (secondary ? METRICS[secondary].label : "")
+  const text = (value: string, maximum = 20) =>
+    value.length > maximum ? `${value.slice(0, maximum - 1)}…` : value
+  const yMaximum =
+    secondary && !scatter
+      ? Math.max(4, Math.floor((frame.right - frame.left) / 18))
+      : 20
+  return (
+    <g aria-label="座標軸標題">
+      <text
+        x={(frame.left + frame.right) / 2}
+        y={frame.height - 2}
+        textAnchor="middle"
+        fontSize="9"
+        className="fill-muted-foreground"
+      >
+        {text(x)}
+        <title>{chartTooltip(card, x)}</title>
+      </text>
+      <text
+        x={frame.left}
+        y="11"
+        fontSize="9"
+        className="fill-muted-foreground"
+      >
+        {text(y, yMaximum)}
+        <title>{chartTooltip(card, y)}</title>
+      </text>
+      {secondary && !scatter && (
+        <text
+          x={frame.right}
+          y="11"
+          textAnchor="end"
+          fontSize="9"
+          className="fill-muted-foreground"
+        >
+          {text(right, yMaximum)}
+          <title>{chartTooltip(card, right)}</title>
+        </text>
+      )}
+    </g>
+  )
+}
+function BarGrid({
+  card,
+  minimum,
+  maximum,
+  percentage,
+}: {
+  card: ReportCard
+  minimum: number
+  maximum: number
+  percentage: boolean
+}) {
+  if (card.format?.axes?.show_grid === false) return null
+  return (
+    <span
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-0"
+      data-grid="true"
+    >
+      {axisTicks(minimum, maximum, card.metric, percentage).map((tick) => (
+        <span
+          key={tick}
+          className="absolute inset-y-0 w-px bg-border/80"
+          style={{ left: `${((tick - minimum) / (maximum - minimum)) * 100}%` }}
+        />
+      ))}
+    </span>
+  )
+}
+function BarAxisLabels({
+  card,
+  minimum,
+  maximum,
+  percentage,
+}: {
+  card: ReportCard
+  minimum: number
+  maximum: number
+  percentage: boolean
+}) {
+  const settings = card.format?.axes
+  return (
+    <div className="space-y-1">
+      {settings?.show_x !== false && (
+        <div
+          className="relative h-5 text-[9px] text-muted-foreground"
+          data-axis="x"
+        >
+          {axisTicks(minimum, maximum, card.metric, percentage).map(
+            (tick, index, list) => (
+              <span
+                key={tick}
+                className="absolute max-w-[30%] truncate"
+                style={{
+                  left: `${((tick - minimum) / (maximum - minimum)) * 100}%`,
+                  transform:
+                    index === 0
+                      ? undefined
+                      : index === list.length - 1
+                        ? "translateX(-100%)"
+                        : "translateX(-50%)",
+                }}
+                title={chartTooltip(
+                  card,
+                  percentage
+                    ? `${tick}%`
+                    : formatReportExactValue(tick, card.metric)
+                )}
+              >
+                {percentage
+                  ? `${tick}%`
+                  : reportDisplayValue(card, tick, card.metric, "axis")}
+              </span>
+            )
+          )}
+        </div>
+      )}
+      {settings?.show_titles && (
+        <p className="text-[10px] text-muted-foreground">
+          X 軸：{settings.x_title || METRICS[card.metric].label} · Y 軸：
+          {settings.y_title || DIMENSIONS[card.dimension]}
+        </p>
+      )}
+    </div>
+  )
+}
+
 function ColumnChart(props: PlotProps) {
   const { card, data, series, colors, expanded } = props
   const stacked =
     card.visual === "stacked_column" || card.visual === "percent_column"
   const percentage = card.visual === "percent_column"
-  const frame = chartFrame(card, expanded)
+  const frame = chartFrame(card, expanded, false, data)
   const rows = stackRows(data.points, series, percentage)
   const values = stacked
     ? rows.flatMap((row) =>
@@ -520,10 +1186,10 @@ function ColumnChart(props: PlotProps) {
       <svg
         viewBox={`0 0 ${frame.width} ${frame.height}`}
         className="block h-auto w-full"
-        role={props.onSelectPoint ? "group" : "img"}
+        role={interactive(props) ? "group" : "img"}
         aria-label={`${card.title}，${percentage ? "百分比" : "直條"}比較`}
       >
-        <title>{card.title}</title>
+        <title>{chartTooltip(card, card.title)}</title>
         {axisTicks(minimum, maximum, card.metric, percentage).map((tick) => (
           <g key={tick}>
             <line
@@ -531,17 +1197,29 @@ function ColumnChart(props: PlotProps) {
               x2={frame.right}
               y1={y(tick)}
               y2={y(tick)}
+              data-grid="true"
+              style={
+                card.format?.axes?.show_grid === false
+                  ? { display: "none" }
+                  : undefined
+              }
               className="stroke-border"
               strokeDasharray="3 4"
             />
             <text
+              data-axis="y"
+              style={
+                card.format?.axes?.show_y === false
+                  ? { display: "none" }
+                  : undefined
+              }
               x={frame.left - 6}
               y={y(tick) + 3}
               textAnchor="end"
               fontSize="9"
               className="fill-muted-foreground"
             >
-              {percentage ? `${tick}%` : axisValue(tick, card.metric)}
+              {percentage ? `${tick}%` : axisValue(tick, card.metric, card)}
             </text>
           </g>
         ))}
@@ -553,14 +1231,8 @@ function ColumnChart(props: PlotProps) {
           className="stroke-muted-foreground/60"
         />
         {data.points.map((point, index) => (
-          <g
-            key={point.key}
-            {...svgInteraction(props, point)}
-            opacity={
-              props.selectedKey && props.selectedKey !== point.key ? 0.35 : 1
-            }
-          >
-            <title>{pointLabel(point, card)}</title>
+          <g key={point.key}>
+            <title>{plotPointTooltip(props, point)}</title>
             {(stacked
               ? rows[index]
               : series.map((_, column) => {
@@ -568,6 +1240,12 @@ function ColumnChart(props: PlotProps) {
                   return { series: column, value, start: 0, end: value }
                 })
             ).map((segment) => {
+              if (
+                series[segment.series].points.find(
+                  (entry) => entry.key === point.key
+                )?.missing
+              )
+                return null
               const barWidth = (band * 0.7) / (stacked ? 1 : series.length)
               const x =
                 frame.left +
@@ -577,17 +1255,82 @@ function ColumnChart(props: PlotProps) {
               const top = y(Math.max(segment.start, segment.end))
               const height = Math.abs(y(segment.end) - y(segment.start))
               return (
-                <g key={series[segment.series].key}>
+                <g
+                  key={series[segment.series].key}
+                  {...svgInteraction(props, point, series[segment.series])}
+                  opacity={selectionOpacity(
+                    props,
+                    point,
+                    series[segment.series]
+                  )}
+                >
                   <rect
                     x={x}
                     y={top}
                     width={Math.max(1, barWidth - (stacked ? 0 : 1))}
                     height={height}
-                    fill={colorAt(colors, segment.series)}
+                    fill={pointColor(props, point, segment.series)}
+                    fillOpacity={data.highlight ? 0.25 : 1}
                     rx="1"
                   >
-                    <title>{`${series[segment.series].label}：${exactValue(segment.value, card.metric)}${percentage ? ` · ${percentValue(segment.end - segment.start)}` : ""}`}</title>
+                    <title>
+                      {plotPointTooltip(
+                        props,
+                        point,
+                        series[segment.series],
+                        percentage
+                          ? (segment.end - segment.start) / 100
+                          : undefined
+                      )}
+                    </title>
                   </rect>
+                  {data.highlight &&
+                    !NON_ADDITIVE_METRICS.includes(card.metric) &&
+                    segment.value > 0 &&
+                    (highlightValue(props, point, series[segment.series]) ??
+                      0) >= 0 &&
+                    (highlightValue(props, point, series[segment.series]) ??
+                      0) <= segment.value && (
+                      <rect
+                        x={x}
+                        y={
+                          top +
+                          height *
+                            (1 -
+                              Math.min(
+                                1,
+                                (highlightValue(
+                                  props,
+                                  point,
+                                  series[segment.series]
+                                ) ?? 0) / segment.value
+                              ))
+                        }
+                        width={Math.max(1, barWidth - (stacked ? 0 : 1))}
+                        height={
+                          height *
+                          Math.min(
+                            1,
+                            (highlightValue(
+                              props,
+                              point,
+                              series[segment.series]
+                            ) ?? 0) / segment.value
+                          )
+                        }
+                        fill={pointColor(props, point, segment.series)}
+                        stroke="currentColor"
+                        strokeWidth="0.5"
+                      >
+                        <title>
+                          {plotPointTooltip(
+                            props,
+                            point,
+                            series[segment.series]
+                          )}
+                        </title>
+                      </rect>
+                    )}
                   {card.show_labels !== false &&
                     (stacked
                       ? height > 16 && barWidth > 30
@@ -610,7 +1353,12 @@ function ColumnChart(props: PlotProps) {
                       >
                         {percentage
                           ? percentValue(segment.end - segment.start)
-                          : formatReportValue(segment.value, card.metric)}
+                          : reportDisplayValue(
+                              card,
+                              segment.value,
+                              card.metric,
+                              "compact"
+                            )}
                       </text>
                     )}
                 </g>
@@ -622,6 +1370,12 @@ function ColumnChart(props: PlotProps) {
                 index < data.points.length - labelStep)) && (
               <text
                 x={frame.left + band * (index + 0.5)}
+                data-axis="x"
+                style={
+                  card.format?.axes?.show_x === false
+                    ? { display: "none" }
+                    : undefined
+                }
                 y={frame.height - 12}
                 textAnchor="middle"
                 fontSize="10"
@@ -642,9 +1396,15 @@ function ColumnChart(props: PlotProps) {
               className="stroke-foreground"
               strokeDasharray="5 3"
             />
-            <title>{`目標：${exactValue(card.target, card.metric)}`}</title>
+            <title>
+              {chartTooltip(
+                card,
+                `目標：${exactValue(card.target, card.metric)}`
+              )}
+            </title>
           </g>
         )}
+        <AxisTitles card={card} frame={frame} />
       </svg>
       <Legend card={card} colors={colors} items={series} />
       {percentage && (
@@ -656,9 +1416,70 @@ function ColumnChart(props: PlotProps) {
   )
 }
 
+function SeriesPath({
+  props,
+  path,
+  x,
+  y,
+  value,
+  column,
+  metric = props.card.metric,
+  area = false,
+}: {
+  props: PlotProps
+  path: number[]
+  x: (index: number) => number
+  y: (value: number) => number
+  value: (index: number) => number
+  column: number
+  metric?: ReportMetric
+  area?: boolean
+}) {
+  const conditional = props.card.format?.conditional?.[metric]?.color_mode
+  const colored = conditional === "rules" || conditional === "gradient"
+  const parts = colored
+    ? path.slice(1).map((end, index) => [path[index], end])
+    : [path]
+  return (
+    <>
+      {parts.map((part, index) => {
+        const color = colored
+          ? pointColor(
+              props,
+              props.data.points[part[part.length - 1]],
+              column,
+              metric
+            )
+          : colorAt(props.colors, column)
+        const coords = part.map((row) => `${x(row)},${y(value(row))}`).join(" ")
+        return (
+          <g key={index}>
+            {area && (
+              <polygon
+                points={`${x(part[0])},${y(0)} ${coords} ${x(part[part.length - 1])},${y(0)}`}
+                fill={color}
+                fillOpacity="0.16"
+              />
+            )}
+            <polyline
+              points={coords}
+              fill="none"
+              stroke={color}
+              strokeWidth="2.5"
+              strokeLinejoin="round"
+              strokeLinecap="round"
+              pointerEvents="none"
+            />
+          </g>
+        )
+      })}
+    </>
+  )
+}
+
 function TrendChart(props: PlotProps) {
   const { card, data, series, colors, expanded } = props
-  const frame = chartFrame(card, expanded)
+  const frame = chartFrame(card, expanded, false, data)
   const domain = chartDomain(
     series.flatMap((item) => item.points.map((point) => point.value)),
     card.target
@@ -680,10 +1501,10 @@ function TrendChart(props: PlotProps) {
       <svg
         viewBox={`0 0 ${frame.width} ${frame.height}`}
         className="block h-auto w-full"
-        role={props.onSelectPoint ? "group" : "img"}
-        aria-label={`${card.title}趨勢，可展開查看各月數值`}
+        role={interactive(props) ? "group" : "img"}
+        aria-label={`${card.title}日期趨勢，可展開查看分組數值`}
       >
-        <title>{`${card.title}逐月趨勢`}</title>
+        <title>{chartTooltip(card, `${card.title}日期趨勢`)}</title>
         {axisTicks(domain.minimum, domain.maximum, card.metric).map((tick) => (
           <g key={tick}>
             <line
@@ -691,17 +1512,29 @@ function TrendChart(props: PlotProps) {
               x2={frame.right}
               y1={y(tick)}
               y2={y(tick)}
+              data-grid="true"
+              style={
+                card.format?.axes?.show_grid === false
+                  ? { display: "none" }
+                  : undefined
+              }
               className="stroke-border"
               strokeDasharray="3 4"
             />
             <text
+              data-axis="y"
+              style={
+                card.format?.axes?.show_y === false
+                  ? { display: "none" }
+                  : undefined
+              }
               x={frame.left - 6}
               y={y(tick) + 3}
               textAnchor="end"
               fontSize="9"
               className="fill-muted-foreground"
             >
-              {axisValue(tick, card.metric)}
+              {axisValue(tick, card.metric, card)}
             </text>
           </g>
         ))}
@@ -717,63 +1550,65 @@ function TrendChart(props: PlotProps) {
             item.points.map((point) => [point.key, point.value])
           )
           const values = data.points.map((point) => index.get(point.key) ?? 0)
-          const coords = values
-            .map((value, row) => `${x(row)},${y(value)}`)
-            .join(" ")
+          const paths = trendSegments(
+            data.points.map((point) => point.key),
+            item.points
+          )
           return (
             <g key={item.key}>
-              {card.visual === "area" && (
-                <polygon
-                  points={`${x(0)},${y(0)} ${coords} ${x(values.length - 1)},${y(0)}`}
-                  fill={colorAt(colors, column)}
-                  fillOpacity="0.16"
+              {paths.map((path, segment) => (
+                <SeriesPath
+                  key={segment}
+                  props={props}
+                  path={path}
+                  x={x}
+                  y={y}
+                  value={(row) => values[row]}
+                  column={column}
+                  area={card.visual === "area"}
                 />
-              )}
-              <polyline
-                points={coords}
-                fill="none"
-                stroke={colorAt(colors, column)}
-                strokeWidth="2.5"
-                strokeLinejoin="round"
-                strokeLinecap="round"
-              />
-              {data.points.map((point, row) => (
-                <g
-                  key={point.key}
-                  {...svgInteraction(props, point)}
-                  opacity={
-                    props.selectedKey && props.selectedKey !== point.key
-                      ? 0.35
-                      : 1
-                  }
-                >
-                  <circle
-                    cx={x(row)}
-                    cy={y(values[row])}
-                    r={props.selectedKey === point.key ? 5 : 3.5}
-                    fill={colorAt(colors, column)}
-                    className="stroke-card"
-                    strokeWidth="1.5"
-                  >
-                    <title>{`${point.label} · ${item.label}：${exactValue(values[row], card.metric)}`}</title>
-                  </circle>
-                  {card.show_labels !== false &&
-                    series.length === 1 &&
-                    (data.points.length <= 6 ||
-                      row === values.indexOf(Math.max(...values)) ||
-                      row === values.length - 1) && (
-                      <text
-                        x={x(row)}
-                        y={y(values[row]) - 8}
-                        textAnchor="middle"
-                        fontSize="9"
-                        className="fill-foreground"
-                      >
-                        {formatReportValue(values[row], card.metric)}
-                      </text>
-                    )}
-                </g>
               ))}
+              {data.points.map((point, row) =>
+                item.points.find((entry) => entry.key === point.key)
+                  ?.missing ? null : (
+                  <g
+                    key={point.key}
+                    {...svgInteraction(props, point, item)}
+                    opacity={selectionOpacity(props, point, item)}
+                  >
+                    <circle
+                      cx={x(row)}
+                      cy={y(values[row])}
+                      r={pointSelected(props, point) ? 5 : 3.5}
+                      fill={pointColor(props, point, column)}
+                      className="stroke-card"
+                      strokeWidth="1.5"
+                    >
+                      <title>{plotPointTooltip(props, point, item)}</title>
+                    </circle>
+                    {card.show_labels !== false &&
+                      series.length === 1 &&
+                      (data.points.length <= 6 ||
+                        row === values.indexOf(Math.max(...values)) ||
+                        row === values.length - 1) && (
+                        <text
+                          x={x(row)}
+                          y={y(values[row]) - 8}
+                          textAnchor="middle"
+                          fontSize="9"
+                          className="fill-foreground"
+                        >
+                          {reportDisplayValue(
+                            card,
+                            values[row],
+                            card.metric,
+                            "compact"
+                          )}
+                        </text>
+                      )}
+                  </g>
+                )
+              )}
             </g>
           )
         })}
@@ -786,6 +1621,12 @@ function TrendChart(props: PlotProps) {
               <text
                 key={point.key}
                 x={x(index)}
+                data-axis="x"
+                style={
+                  card.format?.axes?.show_x === false
+                    ? { display: "none" }
+                    : undefined
+                }
                 y={frame.height - 12}
                 textAnchor={
                   index === 0
@@ -811,9 +1652,15 @@ function TrendChart(props: PlotProps) {
               className="stroke-foreground"
               strokeDasharray="5 3"
             />
-            <title>{`目標：${exactValue(card.target, card.metric)}`}</title>
+            <title>
+              {chartTooltip(
+                card,
+                `目標：${exactValue(card.target, card.metric)}`
+              )}
+            </title>
           </g>
         )}
+        <AxisTitles card={card} frame={frame} />
       </svg>
       <Legend card={card} colors={colors} items={series} />
     </div>
@@ -871,10 +1718,10 @@ function ShareChart(props: PlotProps) {
         <svg
           viewBox={`0 0 360 ${height}`}
           className="block h-auto w-full"
-          role={props.onSelectPoint ? "group" : "img"}
+          role={interactive(props) ? "group" : "img"}
           aria-label={`${card.title}，以圖中分類合計計算占比`}
         >
-          <title>{card.title}</title>
+          <title>{chartTooltip(card, card.title)}</title>
           {card.visual === "treemap"
             ? rectangles.map(({ point, x, y, width, height }) => {
                 const index = data.points.findIndex(
@@ -884,13 +1731,16 @@ function ShareChart(props: PlotProps) {
                   <g
                     key={point.key}
                     {...svgInteraction(props, point)}
-                    opacity={
-                      props.selectedKey && props.selectedKey !== point.key
-                        ? 0.35
-                        : 1
-                    }
+                    opacity={selectionOpacity(props, point)}
                   >
-                    <title>{`${pointLabel(point, card)} · ${percentValue((point.value / sum) * 100)}`}</title>
+                    <title>
+                      {plotPointTooltip(
+                        props,
+                        point,
+                        undefined,
+                        point.value / sum
+                      )}
+                    </title>
                     <rect
                       x={x}
                       y={y}
@@ -934,13 +1784,11 @@ function ShareChart(props: PlotProps) {
                   <g
                     key={point.key}
                     {...svgInteraction(props, point)}
-                    opacity={
-                      props.selectedKey && props.selectedKey !== point.key
-                        ? 0.35
-                        : 1
-                    }
+                    opacity={selectionOpacity(props, point)}
                   >
-                    <title>{`${pointLabel(point, card)} · ${percentValue(share * 100)}`}</title>
+                    <title>
+                      {plotPointTooltip(props, point, undefined, share)}
+                    </title>
                     {positive.length === 1 ? (
                       <circle
                         cx="180"
@@ -987,7 +1835,9 @@ function ShareChart(props: PlotProps) {
               fontSize="13"
               className="fill-foreground"
             >
-              <tspan x="180">{formatReportValue(sum, card.metric)}</tspan>
+              <tspan x="180">
+                {reportDisplayValue(card, sum, card.metric, "compact")}
+              </tspan>
               <tspan
                 x="180"
                 dy="17"
@@ -1022,7 +1872,7 @@ function ComboChart(props: PlotProps) {
         請選擇第二指標，並確認目前範圍有對應數值，才能呈現組合圖。
       </Unsupported>
     )
-  const frame = chartFrame(card, expanded, true)
+  const frame = chartFrame(card, expanded, true, data)
   const primaryDomain = chartDomain(
     data.points.map((point) => point.value),
     card.target
@@ -1044,10 +1894,10 @@ function ComboChart(props: PlotProps) {
       (frame.bottom - frame.top)
   const band = (frame.right - frame.left) / data.points.length
   const x = (index: number) => frame.left + band * (index + 0.5)
-  const paths: string[][] = [[]]
+  const paths: number[][] = [[]]
   data.points.forEach((point, index) => {
     if (typeof point.secondary_value === "number")
-      paths[paths.length - 1].push(`${x(index)},${y2(point.secondary_value)}`)
+      paths[paths.length - 1].push(index)
     else if (paths.at(-1)?.length) paths.push([])
   })
   const secondaryColor = colorAt(colors, 1)
@@ -1056,10 +1906,15 @@ function ComboChart(props: PlotProps) {
       <svg
         viewBox={`0 0 ${frame.width} ${frame.height}`}
         className="block h-auto w-full"
-        role={props.onSelectPoint ? "group" : "img"}
+        role={interactive(props) ? "group" : "img"}
         aria-label={`${card.title}：直條 ${METRICS[card.metric].label} 使用左軸，折線 ${METRICS[secondary].label} 使用右軸`}
       >
-        <title>{`${METRICS[card.metric].label}（左軸）與${METRICS[secondary].label}（右軸），兩軸刻度獨立`}</title>
+        <title>
+          {chartTooltip(
+            card,
+            `${METRICS[card.metric].label}（左軸）與${METRICS[secondary].label}（右軸），兩軸刻度獨立`
+          )}
+        </title>
         {axisTicks(
           primaryDomain.minimum,
           primaryDomain.maximum,
@@ -1071,17 +1926,29 @@ function ComboChart(props: PlotProps) {
               x2={frame.right}
               y1={y(tick)}
               y2={y(tick)}
+              data-grid="true"
+              style={
+                card.format?.axes?.show_grid === false
+                  ? { display: "none" }
+                  : undefined
+              }
               className="stroke-border"
               strokeDasharray="3 4"
             />
             <text
+              data-axis="y"
+              style={
+                card.format?.axes?.show_y === false
+                  ? { display: "none" }
+                  : undefined
+              }
               x={frame.left - 5}
               y={y(tick) + 3}
               textAnchor="end"
               fontSize="8"
               className="fill-muted-foreground"
             >
-              {axisValue(tick, card.metric)}
+              {axisValue(tick, card.metric, card)}
             </text>
           </g>
         ))}
@@ -1092,12 +1959,18 @@ function ComboChart(props: PlotProps) {
         ).map((tick) => (
           <text
             key={tick}
+            data-axis="secondary"
+            style={
+              card.format?.axes?.show_secondary === false
+                ? { display: "none" }
+                : undefined
+            }
             x={frame.right + 5}
             y={y2(tick) + 3}
             fontSize="8"
             fill={secondaryColor}
           >
-            {axisValue(tick, secondary)}
+            {axisValue(tick, secondary, card)}
           </text>
         ))}
         <line
@@ -1111,44 +1984,57 @@ function ComboChart(props: PlotProps) {
           <g
             key={point.key}
             {...svgInteraction(props, point)}
-            opacity={
-              props.selectedKey && props.selectedKey !== point.key ? 0.35 : 1
-            }
+            opacity={selectionOpacity(props, point)}
           >
-            <title>{`${pointLabel(point, card)} · ${METRICS[secondary].label}：${typeof point.secondary_value === "number" ? exactValue(point.secondary_value, secondary) : "無資料"}`}</title>
-            <rect
-              x={x(index) - band * 0.28}
-              y={Math.min(y(point.value), y(0))}
-              width={band * 0.56}
-              height={Math.abs(y(point.value) - y(0))}
-              fill={colors[0]}
-              fillOpacity="0.8"
-              rx="1"
-            />
+            <title>{plotPointTooltip(props, point)}</title>
+            {!point.missing && (
+              <rect
+                x={x(index) - band * 0.28}
+                y={Math.min(y(point.value), y(0))}
+                width={band * 0.56}
+                height={Math.abs(y(point.value) - y(0))}
+                fill={pointColor(props, point)}
+                fillOpacity="0.8"
+                rx="1"
+              />
+            )}
             {typeof point.secondary_value === "number" && (
               <circle
                 cx={x(index)}
                 cy={y2(point.secondary_value)}
                 r="3.5"
-                fill={secondaryColor}
+                fill={pointColor(props, point, 1, secondary)}
                 className="stroke-card"
                 strokeWidth="1.5"
               />
             )}
-            {card.show_labels !== false && data.points.length <= 6 && (
-              <text
-                x={x(index)}
-                y={Math.max(12, y(point.value) - 5)}
-                fontSize="9"
-                textAnchor="middle"
-                className="fill-foreground"
-              >
-                {formatReportValue(point.value, card.metric)}
-              </text>
-            )}
+            {!point.missing &&
+              card.show_labels !== false &&
+              data.points.length <= 6 && (
+                <text
+                  x={x(index)}
+                  y={Math.max(12, y(point.value) - 5)}
+                  fontSize="9"
+                  textAnchor="middle"
+                  className="fill-foreground"
+                >
+                  {reportDisplayValue(
+                    card,
+                    point.value,
+                    card.metric,
+                    "compact"
+                  )}
+                </text>
+              )}
             {(data.points.length <= 6 || index % 2 === 0) && (
               <text
                 x={x(index)}
+                data-axis="x"
+                style={
+                  card.format?.axes?.show_x === false
+                    ? { display: "none" }
+                    : undefined
+                }
                 y={frame.height - 12}
                 textAnchor="middle"
                 fontSize="10"
@@ -1162,15 +2048,15 @@ function ComboChart(props: PlotProps) {
         {paths
           .filter((path) => path.length > 1)
           .map((path, index) => (
-            <polyline
+            <SeriesPath
               key={index}
-              points={path.join(" ")}
-              fill="none"
-              stroke={secondaryColor}
-              strokeWidth="2.5"
-              strokeLinejoin="round"
-              strokeLinecap="round"
-              pointerEvents="none"
+              props={props}
+              path={path}
+              x={x}
+              y={y2}
+              value={(row) => data.points[row].secondary_value as number}
+              column={1}
+              metric={secondary}
             />
           ))}
         {typeof card.target === "number" && (
@@ -1183,9 +2069,15 @@ function ComboChart(props: PlotProps) {
               className="stroke-foreground"
               strokeDasharray="5 3"
             />
-            <title>{`左軸目標：${exactValue(card.target, card.metric)}`}</title>
+            <title>
+              {chartTooltip(
+                card,
+                `左軸目標：${exactValue(card.target, card.metric)}`
+              )}
+            </title>
           </g>
         )}
+        <AxisTitles card={card} frame={frame} secondary={secondary} />
       </svg>
       <p className="text-[11px] text-muted-foreground">
         左軸：{METRICS[card.metric].label} · 右軸：{METRICS[secondary].label}
@@ -1204,10 +2096,10 @@ function ComboChart(props: PlotProps) {
 }
 
 function ScatterChart(props: PlotProps) {
-  const { card, data, colors, expanded } = props
+  const { card, data, expanded } = props
   const secondary = card.secondary_metric
   const points = data.points.filter(
-    (point) => typeof point.secondary_value === "number"
+    (point) => !point.missing && typeof point.secondary_value === "number"
   )
   if (!secondary || !points.length)
     return (
@@ -1215,7 +2107,7 @@ function ScatterChart(props: PlotProps) {
         散佈圖需要兩個真實指標。目前沒有第二指標的對應數值，請改用比較圖或選擇第二指標。
       </Unsupported>
     )
-  const frame = chartFrame(card, expanded)
+  const frame = chartFrame(card, expanded, false, data)
   const xDomain = chartDomain(points.map((point) => point.value))
   const yDomain = chartDomain(
     points.map((point) => point.secondary_value as number)
@@ -1233,10 +2125,15 @@ function ScatterChart(props: PlotProps) {
       <svg
         viewBox={`0 0 ${frame.width} ${frame.height}`}
         className="block h-auto w-full"
-        role={props.onSelectPoint ? "group" : "img"}
+        role={interactive(props) ? "group" : "img"}
         aria-label={`${card.title}：橫軸 ${METRICS[card.metric].label}，縱軸 ${METRICS[secondary].label}`}
       >
-        <title>{`${METRICS[card.metric].label}與${METRICS[secondary].label}的實際數值關係`}</title>
+        <title>
+          {chartTooltip(
+            card,
+            `${METRICS[card.metric].label}與${METRICS[secondary].label}的實際數值關係`
+          )}
+        </title>
         {axisTicks(yDomain.minimum, yDomain.maximum, secondary).map((tick) => (
           <g key={tick}>
             <line
@@ -1244,17 +2141,29 @@ function ScatterChart(props: PlotProps) {
               x2={frame.right}
               y1={y(tick)}
               y2={y(tick)}
+              data-grid="true"
+              style={
+                card.format?.axes?.show_grid === false
+                  ? { display: "none" }
+                  : undefined
+              }
               className="stroke-border"
               strokeDasharray="3 4"
             />
             <text
+              data-axis="y"
+              style={{
+                display:
+                  card.format?.axes?.show_y === false ? "none" : undefined,
+                fill: card.format?.metric_colors?.[secondary],
+              }}
               x={frame.left - 5}
               y={y(tick) + 3}
               textAnchor="end"
               fontSize="9"
               className="fill-muted-foreground"
             >
-              {axisValue(tick, secondary)}
+              {axisValue(tick, secondary, card)}
             </text>
           </g>
         ))}
@@ -1263,6 +2172,12 @@ function ScatterChart(props: PlotProps) {
             <text
               key={tick}
               x={x(tick)}
+              data-axis="x"
+              style={{
+                display:
+                  card.format?.axes?.show_x === false ? "none" : undefined,
+                fill: card.format?.metric_colors?.[card.metric],
+              }}
               y={frame.height - 12}
               textAnchor={
                 tick === xDomain.minimum
@@ -1274,7 +2189,7 @@ function ScatterChart(props: PlotProps) {
               fontSize="9"
               className="fill-muted-foreground"
             >
-              {axisValue(tick, card.metric)}
+              {axisValue(tick, card.metric, card)}
             </text>
           )
         )}
@@ -1296,20 +2211,31 @@ function ScatterChart(props: PlotProps) {
           <g
             key={point.key}
             {...svgInteraction(props, point)}
-            opacity={
-              props.selectedKey && props.selectedKey !== point.key ? 0.3 : 1
-            }
+            opacity={selectionOpacity(props, point)}
           >
             <circle
               cx={x(point.value)}
               cy={y(point.secondary_value as number)}
-              r={props.selectedKey === point.key ? 7 : 5}
-              fill={colors[0]}
+              r={pointSelected(props, point) ? 7 : 5}
+              fill={
+                reportConditionalColor(
+                  card,
+                  point.value,
+                  reportFormatDomain(card, data)
+                ) ??
+                reportConditionalColor(
+                  card,
+                  point.secondary_value ?? null,
+                  reportFormatDomain(card, data, secondary),
+                  secondary
+                ) ??
+                pointColor(props, point)
+              }
               fillOpacity="0.75"
               className="stroke-card"
               strokeWidth="1.5"
             >
-              <title>{`${pointLabel(point, card)} · ${METRICS[secondary].label}：${exactValue(point.secondary_value as number, secondary)}`}</title>
+              <title>{plotPointTooltip(props, point)}</title>
             </circle>
             {card.show_labels !== false && (
               <text
@@ -1324,6 +2250,7 @@ function ScatterChart(props: PlotProps) {
             )}
           </g>
         ))}
+        <AxisTitles card={card} frame={frame} secondary={secondary} scatter />
       </svg>
       <p className="text-[11px] text-muted-foreground">
         橫軸：{METRICS[card.metric].label} · 縱軸：{METRICS[secondary].label}
@@ -1337,20 +2264,119 @@ function ScatterChart(props: PlotProps) {
   )
 }
 
+function HighlightSummary(props: ChartProps) {
+  const highlight = props.data.highlight
+  if (!highlight) return null
+  return (
+    <div
+      className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-xs"
+      role="status"
+    >
+      <p className="font-medium text-primary">
+        聯動選取
+        {NON_ADDITIVE_METRICS.includes(props.card.metric) ? "指標" : "合計"}：
+        {reportDisplayValue(props.card, highlight.total, props.card.metric)}
+      </p>
+      <p className="mt-1 text-[11px] text-muted-foreground">
+        圖表保留完整範圍；淡色分類沒有聯動資料，數值明細同時列出選取數值。
+      </p>
+      {props.card.metric === "net_margin" && (
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          淨毛利的正負數值可能互相抵銷，請以明細的實際選取數值比較。
+        </p>
+      )}
+      {NON_ADDITIVE_METRICS.includes(props.card.metric) && (
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          選取值以子集重新計算，比率與平均值可大於完整範圍；請以實際數值比較。
+        </p>
+      )}
+      <ReportComparisonSummary
+        card={props.card}
+        comparison={highlight.comparison}
+        metric={props.card.metric}
+        label="聯動子集比較"
+      />
+    </div>
+  )
+}
+
 export function ReportChart(props: ChartProps) {
   const { card, data } = props
   if (card.visual === "kpi")
-    return <Total card={card} total={data.total} large />
+    return (
+      <div className="space-y-2">
+        <Total card={card} total={data.total} data={data} large />
+        <ReportComparisonSummary
+          card={card}
+          comparison={data.comparison}
+          metric={card.metric}
+        />
+        <HighlightSummary {...props} />
+      </div>
+    )
   const series = chartSeries(data, METRICS[card.metric].label)
-  const plot = { ...props, series, colors: colorPalette(card) }
   const share = ["pie", "donut", "treemap"].includes(card.visual)
+  const colors = share
+    ? data.points.map(
+        (point, index) =>
+          reportConditionalColor(
+            card,
+            point.value,
+            reportFormatDomain(card, data)
+          ) ?? reportSeriesColor(card, point.key, index, card.dimension)
+      )
+    : card.visual === "combo" || card.visual === "scatter"
+      ? [
+          reportSeriesColor(card, "primary", 0, "none"),
+          reportSeriesColor(
+            card,
+            "primary",
+            1,
+            "none",
+            card.secondary_metric ?? card.metric
+          ),
+        ]
+      : series.map((item, index) =>
+          reportSeriesColor(card, item.key, index, card.legend ?? "none")
+        )
+  const plot = {
+    ...props,
+    data: numericCardData(data),
+    series,
+    colors,
+  }
   const percentage =
     card.visual === "percent_bar" || card.visual === "percent_column"
   const negative = share
-    ? data.points.some((point) => point.value < 0)
+    ? data.points.some((point) => point.value != null && point.value < 0)
     : series.some((item) => item.points.some((point) => point.value < 0))
   let chart: ReactNode
-  if (!data.points.length) chart = <EmptyChart />
+  if (
+    NON_ADDITIVE_METRICS.includes(card.metric) &&
+    PART_WHOLE_VISUALS.includes(card.visual)
+  )
+    chart = (
+      <Unsupported>
+        比率、平均與去重訂單數不能直接相加；請使用比較、趨勢或表格。
+      </Unsupported>
+    )
+  else if (!data.points.length) chart = <EmptyChart />
+  else if (
+    !["table", "matrix"].includes(card.visual) &&
+    !data.points.some(
+      (point) =>
+        point.value != null || typeof point.secondary_value === "number"
+    ) &&
+    !data.series?.some((series) =>
+      series.points.some((point) => point.value != null)
+    )
+  )
+    chart = (
+      <Unsupported>
+        此範圍沒有可計算的{METRICS[card.metric].label}
+        。分組彙總與逐筆明細仍提供實際資料。
+      </Unsupported>
+    )
   else if ((share || percentage) && negative)
     chart = (
       <Unsupported>
@@ -1359,6 +2385,18 @@ export function ReportChart(props: ChartProps) {
           : "百分比堆疊圖需要非負數值；目前包含負值，請改用一般堆疊圖。"}
         下方保留完整數值。
       </Unsupported>
+    )
+  else if (card.visual === "matrix" && data.matrix)
+    chart = (
+      <ReportMatrix
+        card={card}
+        data={data.matrix}
+        highlight={data.highlight?.matrix}
+        view={props.matrixView}
+        onViewChange={props.onMatrixViewChange}
+        onSelect={props.onSelectData}
+        selections={props.selections}
+      />
     )
   else if (card.visual === "table" || card.visual === "matrix")
     chart = <ValueTable {...props} matrix={card.visual === "matrix"} />
@@ -1373,14 +2411,28 @@ export function ReportChart(props: ChartProps) {
   else chart = <ScatterChart {...plot} />
   return (
     <div className="min-w-0 space-y-3">
-      <Total card={card} total={data.total} />
+      <Total card={card} total={data.total} data={data} />
+      <ReportComparisonSummary
+        card={card}
+        comparison={data.comparison}
+        metric={card.metric}
+      />
+      {(data.points.some((point) => point.value == null) ||
+        data.series?.some((series) =>
+          series.points.some((point) => point.value == null)
+        )) && (
+        <p role="status" className="text-[11px] text-muted-foreground">
+          無法計算的資料點保留在分組彙總，趨勢圖在該處留空。
+        </p>
+      )}
+      <HighlightSummary {...props} />
       {chart}
       {typeof card.target === "number" &&
         !percentage &&
         !share &&
         !["table", "matrix", "scatter"].includes(card.visual) && (
           <p className="text-[11px] text-muted-foreground">
-            虛線目標：{exactValue(card.target, card.metric)}
+            虛線目標：{reportDisplayValue(card, card.target, card.metric)}
           </p>
         )}
       {data.points.length > 0 &&

@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest"
 import { ReportChart } from "@/components/reports/report-chart"
 import {
   VISUALS,
+  chartSelection,
   type CardData,
   type ReportCard,
   type ReportVisual,
@@ -45,6 +46,59 @@ function render(
 }
 
 describe("ReportChart", () => {
+  it("資料點的可讀名稱說明目前是下鑽或逐筆明細動作", () => {
+    for (const label of ["下鑽", "查看逐筆明細"]) {
+      const html = renderToStaticMarkup(
+        createElement(ReportChart, {
+          card: card({ visual: "column" }),
+          data: {
+            id: "sales",
+            total: 100,
+            points: [{ key: "C1", label: "診所", value: 100 }],
+            note: null,
+          },
+          onSelectData: () => undefined,
+          pointActionLabel: label,
+        })
+      )
+      expect(html).toContain(`點選${label}`)
+      expect(html).not.toContain("點選篩選")
+    }
+  })
+  it("系列資料點與矩陣儲存格同時攜帶主分組和圖例", () => {
+    const point = { key: "2031-04", label: "2031/04", value: 100 }
+    expect(
+      chartSelection(card({ dimension: "month", legend: "owner" }), point, {
+        key: "u01",
+        label: "業務甲",
+      })
+    ).toEqual({
+      label: "2031/04 / 業務甲",
+      filters: [
+        { dimension: "month", key: "2031-04" },
+        { dimension: "owner", key: "u01" },
+      ],
+    })
+  })
+  it("醒目提示保留完整合計並提供實際選取金額，包含負值", () => {
+    const html = render(
+      [100, -50],
+      { metric: "net_margin", interaction: "highlight" },
+      {
+        total: 50,
+        highlight: {
+          total: -20,
+          points: [
+            { key: "row-0", label: "客戶 1", value: 0 },
+            { key: "row-1", label: "客戶 2", value: -20 },
+          ],
+        },
+      }
+    )
+    expect(html).toContain('title="所選範圍 · 淨毛利：50 元"')
+    expect(html).toContain("聯動選取合計：-20 元")
+    expect(html).toContain("選取 -20 元")
+  })
   it("排行榜只列前幾名，但合計仍是完整範圍，精確值也能閱讀", () => {
     const html = render([100000, 50000, 25000], {}, { total: 270003.25 })
     expect(html).toContain("所選範圍合計")
@@ -58,7 +112,7 @@ describe("ReportChart", () => {
     const html = render([-30, 0, 90], { metric: "net_margin" })
     expect(html).toContain("-30 元")
     expect(html).toContain('style="left:25%"')
-    expect(html).toContain('style="left:0%;width:25%"')
+    expect(html).toContain('style="left:0%;width:25%;')
     expect(html).toContain('style="left:25%;width:75%')
     expect(html).toContain("bg-destructive/80")
   })
@@ -121,7 +175,7 @@ describe("ReportChart", () => {
     expect(html).toContain("<polyline")
     expect(html).toContain("<details")
     expect(html).not.toMatch(/<details[^>]*\sopen(?:[\s=>])/)
-    expect(html).toContain("查看各月數值")
+    expect(html).toContain("查看分組彙總數值")
     expect(html).toContain("<table")
     expect(
       html.match(/<tbody[^>]*>(.*?)<\/tbody>/)?.[1].match(/<tr>/g)
@@ -253,10 +307,10 @@ describe("Power BI 圖表呈現", () => {
 
   it("堆疊圖使用每個真實系列的數值，百分比以各分類合計計算", () => {
     const percent = visualHtml("percent_bar")
-    expect(percent).toContain("連鎖藥局：25 元 · 25%")
-    expect(percent).toContain("診所：75 元 · 75%")
-    expect(percent).toContain("連鎖藥局：50 元 · 25%")
-    expect(percent).toContain("診所：150 元 · 75%")
+    expect(percent).toContain("連鎖藥局 · 業績：25 元 · 圖中占比 25%")
+    expect(percent).toContain("診所 · 業績：75 元 · 圖中占比 75%")
+    expect(percent).toContain("連鎖藥局 · 業績：50 元 · 圖中占比 25%")
+    expect(percent).toContain("診所 · 業績：150 元 · 圖中占比 75%")
     expect(percent).toContain("每個分類合計為 100%")
     const stacked = visualHtml("stacked_column")
     expect(stacked.match(/<rect /g)).toHaveLength(4)

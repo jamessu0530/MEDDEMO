@@ -11,7 +11,9 @@
     "typecheck": "tsc -b",
     "test": "vitest run",
     "preview": "vite preview",
-    "ride-sheet": "node scripts/ride-sheet.mjs"
+    "ride-sheet": "node scripts/ride-sheet.mjs",
+    "mascot-sheet": "node scripts/mascot-sheet.mjs",
+    "mascot-wardrobe-sheet": "node scripts/mascot-wardrobe-sheet.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

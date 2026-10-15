@@ -15,6 +15,8 @@ from app.api import route_habits as route_habits_api
 from app.api import notes  # 拜訪備忘與日曆
 from app.api import me  # 個人頁
 from app.api import reports  # 可自訂的行動報表
+from app.api import learning
+from app.api import mascot
 from app.config import settings
 from app.db import get_session
 
@@ -44,6 +46,7 @@ app.include_router(channels.router)
 app.include_router(attachments.router)
 app.include_router(memory.router)
 app.include_router(first_week.router)
+app.include_router(learning.router)
 app.include_router(documents.router)
 app.include_router(methods.router)
 app.include_router(presence.router)
@@ -53,6 +56,7 @@ app.include_router(location.router)
 app.include_router(notes.router)
 app.include_router(vehicles.router)
 app.include_router(me.router)
+app.include_router(mascot.router)
 app.include_router(preferences.router)
 app.include_router(reports.router)
 

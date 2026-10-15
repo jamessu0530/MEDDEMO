@@ -1,0 +1,122 @@
+[
+  {
+    "file": "D-paw-stores-bronze.glb",
+    "triangles": 32256,
+    "drawCalls": 5
+  },
+  {
+    "file": "D-paw-stores-silver.glb",
+    "triangles": 32824,
+    "drawCalls": 5
+  },
+  {
+    "file": "D-paw-stores-gold.glb",
+    "triangles": 33392,
+    "drawCalls": 5
+  },
+  {
+    "file": "D-paw-cities-bronze.glb",
+    "triangles": 35580,
+    "drawCalls": 5
+  },
+  {
+    "file": "D-paw-cities-silver.glb",
+    "triangles": 36148,
+    "drawCalls": 5
+  },
+  {
+    "file": "D-paw-cities-gold.glb",
+    "triangles": 36716,
+    "drawCalls": 5
+  },
+  {
+    "file": "C-compass-stores-bronze.glb",
+    "triangles": 48780,
+    "drawCalls": 4
+  },
+  {
+    "file": "C-compass-stores-silver.glb",
+    "triangles": 49348,
+    "drawCalls": 4
+  },
+  {
+    "file": "C-compass-stores-gold.glb",
+    "triangles": 49916,
+    "drawCalls": 4
+  },
+  {
+    "file": "C-compass-cities-bronze.glb",
+    "triangles": 52104,
+    "drawCalls": 4
+  },
+  {
+    "file": "C-compass-cities-silver.glb",
+    "triangles": 52672,
+    "drawCalls": 4
+  },
+  {
+    "file": "C-compass-cities-gold.glb",
+    "triangles": 53240,
+    "drawCalls": 4
+  },
+  {
+    "file": "B-hexagon-stores-bronze.glb",
+    "triangles": 25572,
+    "drawCalls": 4
+  },
+  {
+    "file": "B-hexagon-stores-silver.glb",
+    "triangles": 26140,
+    "drawCalls": 4
+  },
+  {
+    "file": "B-hexagon-stores-gold.glb",
+    "triangles": 26708,
+    "drawCalls": 4
+  },
+  {
+    "file": "B-hexagon-cities-bronze.glb",
+    "triangles": 28896,
+    "drawCalls": 4
+  },
+  {
+    "file": "B-hexagon-cities-silver.glb",
+    "triangles": 29464,
+    "drawCalls": 4
+  },
+  {
+    "file": "B-hexagon-cities-gold.glb",
+    "triangles": 30032,
+    "drawCalls": 4
+  },
+  {
+    "file": "A-laurel-stores-bronze.glb",
+    "triangles": 44072,
+    "drawCalls": 3
+  },
+  {
+    "file": "A-laurel-stores-silver.glb",
+    "triangles": 44640,
+    "drawCalls": 3
+  },
+  {
+    "file": "A-laurel-stores-gold.glb",
+    "triangles": 45208,
+    "drawCalls": 3
+  },
+  {
+    "file": "A-laurel-cities-bronze.glb",
+    "triangles": 47396,
+    "drawCalls": 3
+  },
+  {
+    "file": "A-laurel-cities-silver.glb",
+    "triangles": 47964,
+    "drawCalls": 3
+  },
+  {
+    "file": "A-laurel-cities-gold.glb",
+    "triangles": 48532,
+    "drawCalls": 3
+  }
+]

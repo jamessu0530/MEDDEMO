@@ -1,0 +1,32 @@
+[
+  {
+    "file": "B-hexagon-stores-bronze.glb",
+    "triangles": 25572,
+    "drawCalls": 4
+  },
+  {
+    "file": "B-hexagon-stores-silver.glb",
+    "triangles": 26140,
+    "drawCalls": 4
+  },
+  {
+    "file": "B-hexagon-stores-gold.glb",
+    "triangles": 26708,
+    "drawCalls": 4
+  },
+  {
+    "file": "B-hexagon-cities-bronze.glb",
+    "triangles": 28896,
+    "drawCalls": 4
+  },
+  {
+    "file": "B-hexagon-cities-silver.glb",
+    "triangles": 29464,
+    "drawCalls": 4
+  },
+  {
+    "file": "B-hexagon-cities-gold.glb",
+    "triangles": 30032,
+    "drawCalls": 4
+  }
+]

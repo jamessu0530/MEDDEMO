@@ -1,8 +1,9 @@
 import * as THREE from "three"
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js"
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js"
 
 import type { MedalKind } from "@/api/me"
-import { LOCK_SHACKLE, LOCKED_COLORS, MEDAL_ICON, TIER_COLORS } from "@/components/me/medal-colors"
+import { LOCK_SHACKLE, LOCKED_COLORS, MEDAL_ICON, PRODUCT_ACCENTS, TIER_COLORS } from "@/components/me/medal-colors"
 
 /*
  * 個人頁的立體獎牌（docs/superpowers/specs/2026-10-09-tap-to-ride-and-personal-page-design.md〈獎牌牆〉）。
@@ -21,7 +22,7 @@ type State = { obj: THREE.Group; key: string; vel: THREE.Vector2; phase: number;
 // 拖一個 px 轉多少；點一下翻一圈的轉速；新解鎖快轉的轉速
 const DRAG = 0.02
 const FLICK = 14
-const FRESH_SPIN = 16
+const FRESH_SPIN = 10
 // 放開時移動不到幾 px 算點一下
 const TAP_PX = 6
 
@@ -30,16 +31,12 @@ function faceTexture(m: SlotMedal, back: boolean): THREE.CanvasTexture {
   const canvas = document.createElement("canvas")
   canvas.width = canvas.height = 256
   const g = canvas.getContext("2d")!
-  g.fillStyle = c.face
+  g.fillStyle = m.open ? "#F0EFFB" : c.inner
   g.beginPath()
-  g.arc(128, 128, 128, 0, Math.PI * 2)
+  g.roundRect(0, 0, 256, 256, 58)
   g.fill()
-  g.fillStyle = c.inner
-  g.beginPath()
-  g.arc(128, 128, 103, 0, Math.PI * 2)
-  g.fill()
-  g.fillStyle = c.icon
-  g.strokeStyle = c.icon
+  g.fillStyle = m.open ? PRODUCT_ACCENTS[m.kind] : c.icon
+  g.strokeStyle = m.open ? PRODUCT_ACCENTS[m.kind] : c.icon
   g.textAlign = "center"
   const font = getComputedStyle(document.body).fontFamily
   if (back) {
@@ -71,7 +68,6 @@ function faceTexture(m: SlotMedal, back: boolean): THREE.CanvasTexture {
   return texture
 }
 
-const ridgeGeometry = new THREE.BoxGeometry(0.02, 0.05, 0.2)
 const BACK_SHINE = { metalness: 0.15, roughness: 0.7 }
 
 function buildMedal(m: SlotMedal): THREE.Group {
@@ -79,28 +75,26 @@ function buildMedal(m: SlotMedal): THREE.Group {
     ? new THREE.MeshStandardMaterial({ color: TIER_COLORS[m.tier].metal, metalness: 0.92, roughness: 0.26 })
     : new THREE.MeshStandardMaterial({ color: 0x9c97a8, metalness: 0.35, roughness: 0.6 })
   const group = new THREE.Group()
-  const disc = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.14, 96), metal)
-  disc.rotation.x = Math.PI / 2
-  group.add(disc, new THREE.Mesh(new THREE.TorusGeometry(1, 0.075, 20, 96), metal))
-  // 邊緣一圈壓紋：轉到側面看得出厚度
-  const ridges = new THREE.InstancedMesh(ridgeGeometry, metal, 96)
-  const dummy = new THREE.Object3D()
-  for (let k = 0; k < 96; k++) {
-    const a = (k / 96) * Math.PI * 2
-    dummy.position.set(Math.cos(a) * 1.07, Math.sin(a) * 1.07, 0)
-    dummy.rotation.set(0, 0, a)
-    dummy.updateMatrix()
-    ridges.setMatrixAt(k, dummy.matrix)
-  }
-  group.add(ridges)
+  const shape = new THREE.Shape()
+  shape.moveTo(-.55, -.97)
+  shape.lineTo(.55, -.97); shape.quadraticCurveTo(.97, -.97, .97, -.55)
+  shape.lineTo(.97, .55); shape.quadraticCurveTo(.97, .97, .55, .97)
+  shape.lineTo(-.55, .97); shape.quadraticCurveTo(-.97, .97, -.97, .55)
+  shape.lineTo(-.97, -.55); shape.quadraticCurveTo(-.97, -.97, -.55, -.97)
+  const body = new THREE.ExtrudeGeometry(shape, { depth: .12, bevelEnabled: true, bevelThickness: .025, bevelSize: .025, bevelSegments: 3, steps: 1, curveSegments: 16 })
+  body.translate(0, 0, -.06)
+  group.add(new THREE.Mesh(body, metal))
   for (const back of [false, true]) {
     // 解鎖的背面是字：跟正面一樣亮的話，環境的高光轉到某些角度會整片蓋過去（銅牌的字幾乎看不到），背面霧一點；正面照舊
     const shine = !m.open ? { metalness: 0.1, roughness: 0.8 } : back ? BACK_SHINE : { metalness: 0.5, roughness: 0.38 }
     const face = new THREE.Mesh(
-      new THREE.CircleGeometry(0.93, 96),
+      new THREE.ShapeGeometry(shape, 24),
       new THREE.MeshStandardMaterial({ map: faceTexture(m, back), ...shine })
     )
-    face.position.z = back ? -0.071 : 0.071
+    const uv = face.geometry.attributes.uv
+    const positions = face.geometry.attributes.position
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, (positions.getX(i) + .97) / 1.94, (positions.getY(i) + .97) / 1.94)
+    face.position.z = back ? -0.087 : 0.087
     if (back) face.rotation.y = Math.PI
     group.add(face)
   }
@@ -111,10 +105,12 @@ function buildMedal(m: SlotMedal): THREE.Group {
 function dispose(group: THREE.Group) {
   group.traverse((obj) => {
     if (obj instanceof THREE.Mesh) {
-      if (obj.geometry !== ridgeGeometry) obj.geometry.dispose()
-      const material = obj.material as THREE.MeshStandardMaterial
-      material.map?.dispose()
-      material.dispose()
+      obj.geometry.dispose()
+      const materials = Array.isArray(obj.material) ? obj.material : [obj.material]
+      materials.forEach((material) => {
+        if (material instanceof THREE.MeshStandardMaterial) material.map?.dispose()
+        material.dispose()
+      })
     }
   })
 }
@@ -153,6 +149,8 @@ export function createMedalScene({
   camera.position.set(0, 0, 4.6)
 
   const states = new Map<string, State>()
+  const loader = new GLTFLoader()
+  let destroyed = false
   const opened = new Map<string, boolean>()
   const Y = new THREE.Vector3(0, 1, 0)
   const X = new THREE.Vector3(1, 0, 0)
@@ -228,7 +226,7 @@ export function createMedalScene({
         const calm = Math.max(0, 1 - state.vel.length() / 3)
         if (calm > 0) {
           const sway = still ? 0 : 1
-          target.setFromEuler(euler.set(0.08 * sway * Math.sin(t / 1300 + state.phase), 0.45 * sway * Math.sin(t / 1100 + state.phase), 0))
+          target.setFromEuler(euler.set(0.045 * sway * Math.sin(t / 1700 + state.phase), 0.14 * sway * Math.sin(t / 1600 + state.phase), 0))
           state.obj.quaternion.slerp(target, Math.min(dt * 2.4 * calm, 1))
         }
         if (state.wiggle > 0) {
@@ -237,6 +235,7 @@ export function createMedalScene({
         }
       }
       const r = slot.getBoundingClientRect()
+      if (r.bottom < 0 || r.top > window.innerHeight) continue
       if (r.bottom < box.top || r.top > box.bottom) continue
       const left = r.left - box.left
       const bottom = box.bottom - r.bottom
@@ -264,9 +263,26 @@ export function createMedalScene({
         }
         const vel = new THREE.Vector2(m.fresh && !still ? FRESH_SPIN : 0, 0)
         states.set(m.id, { obj, key, vel, phase: index * 1.3, dragging: false, wiggle: 0 })
+        if (m.open) {
+          const tier = ["bronze", "silver", "gold"][m.tier - 1]
+          void loader.loadAsync(`/medal-designs/ios-B-soft-${m.kind}-${tier}.glb`).then(({ scene: asset }) => {
+            const current = states.get(m.id)
+            if (destroyed || !current || current.key !== key) { dispose(asset); return }
+            const back = new THREE.Mesh(new THREE.CircleGeometry(.705, 64), new THREE.MeshStandardMaterial({ map: faceTexture(m, true), metalness: .08, roughness: .7 }))
+            back.position.z = -.152
+            back.rotation.y = Math.PI
+            asset.add(back)
+            asset.quaternion.copy(current.obj.quaternion)
+            asset.visible = false
+            scene.remove(current.obj); dispose(current.obj)
+            current.obj = asset
+            scene.add(asset)
+          }).catch(() => { /* Offline or missing asset: keep the procedural 3D medal. */ })
+        }
       })
     },
     destroy() {
+      destroyed = true
       canvas.removeEventListener("webglcontextlost", lost)
       renderer.setAnimationLoop(null)
       wall.removeEventListener("pointerdown", onDown)

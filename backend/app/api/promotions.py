@@ -22,6 +22,7 @@ SessionDep = Annotated[Session, Depends(get_session)]
 class PromotionItemOut(BaseModel):
     code: str
     group_name: str
+    category: str
     name: str
     sku: str
     spec: str
@@ -52,7 +53,7 @@ def list_promotions(session: SessionDep, user: CurrentUser):
     """新的一期在前；品項照促銷品項編號排，同一個品牌的編號本來就連在一起。"""
     items: dict[str, list[PromotionItemOut]] = {}
     for row in session.execute(text("""
-        SELECT promotion_name, item_code AS code, group_name, item_name AS name, sku, spec, unit, deal,
+        SELECT promotion_name, item_code AS code, group_name, category, item_name AS name, sku, spec, unit, deal,
                buy_qty, free_qty, deal_price, unit_deal_price, list_price, ship_price, discount_rate
         FROM v_promotion_item ORDER BY item_code
     """)).mappings():

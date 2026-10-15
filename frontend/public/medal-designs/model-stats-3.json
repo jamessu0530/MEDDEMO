@@ -1,0 +1,32 @@
+[
+  {
+    "file": "D-paw-stores-bronze.glb",
+    "triangles": 32256,
+    "drawCalls": 5
+  },
+  {
+    "file": "D-paw-stores-silver.glb",
+    "triangles": 32824,
+    "drawCalls": 5
+  },
+  {
+    "file": "D-paw-stores-gold.glb",
+    "triangles": 33392,
+    "drawCalls": 5
+  },
+  {
+    "file": "D-paw-cities-bronze.glb",
+    "triangles": 35580,
+    "drawCalls": 5
+  },
+  {
+    "file": "D-paw-cities-silver.glb",
+    "triangles": 36148,
+    "drawCalls": 5
+  },
+  {
+    "file": "D-paw-cities-gold.glb",
+    "triangles": 36716,
+    "drawCalls": 5
+  }
+]

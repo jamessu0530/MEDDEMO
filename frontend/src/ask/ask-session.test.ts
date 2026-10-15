@@ -38,6 +38,15 @@ afterEach(() => {
 })
 
 describe("askSessionFor", () => {
+  it("地圖編輯切頁保留，換帳號不沿用另一人的名稱、筆記或刪除紀錄", () => {
+    signIn({ token: "t", user: user("U01") })
+    const first = askSessionFor("U01")
+    first.mapEdits.edit("question:1", "我的問題", "待辦筆記")
+    first.mapEdits.remove("topic:data")
+    expect(askSessionFor("U01").mapEdits.getSnapshot()).toEqual(first.mapEdits.getSnapshot())
+    signIn({ token: "another", user: user("U02") })
+    expect(askSessionFor("U02").mapEdits.getSnapshot()).toEqual({ nodes: {}, deleted: [] })
+  })
   it("切到別的頁面再回來，對話和查到一半的提問都還在，而且會查完", async () => {
     signIn({ token: "t", user: user("U01") })
     api.createAsk.mockResolvedValue(ask("queued"))

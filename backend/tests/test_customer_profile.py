@@ -48,6 +48,13 @@ def test_an_unknown_customer_is_not_found(client):
     assert client.get("/api/customers/C999/profile").status_code == 404
 
 
+def test_profile_provides_the_district_for_google_storefront_search(client):
+    profile = client.get("/api/customers/C001/profile").json()
+    assert (profile["city"], profile["area"]) == ("台北市", "大安")
+    # 示範座標不是店址：只給搜尋地區，街景必須從核對過的 Google 店家取位置。
+    assert "lat" not in profile and "lng" not in profile
+
+
 def test_the_brief_says_which_packs_changed_since_the_last_order(client):
     highlights = client.get("/api/customers/C001/profile").json()["highlights"]
     # 排在進貨間隔那句後面

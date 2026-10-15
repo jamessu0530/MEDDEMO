@@ -10,10 +10,24 @@ import {
 } from "lucide-react"
 
 import { ReportVisualIcon } from "@/components/reports/report-visual-icon"
+import { ReportMatrixFields } from "@/components/reports/report-matrix-fields"
+import { ReportFormatFields } from "@/components/reports/report-format-fields"
+import { ReportLayoutFields } from "@/components/reports/report-layout-fields"
+import { mobileReportCards } from "@/lib/report-layout"
 import {
-  CUSTOMER_TYPES,
+  ReportDateRangeEditor,
+  ReportFilterChips,
+  ReportSlicerEditor,
+} from "@/components/reports/report-filters"
+import { emptyFilterOptions, setReportSlicer } from "@/lib/report-filters"
+import { COMPARISONS } from "@/lib/report-comparison"
+import {
   DIMENSIONS,
+  DATE_DIMENSIONS,
   METRICS,
+  SALES_METRICS,
+  NON_ADDITIVE_METRICS,
+  PART_WHOLE_VISUALS,
   PERIODS,
   REPORT_COLORS,
   VISUALS,
@@ -27,13 +41,21 @@ import {
   type ReportDimension,
   type ReportMetric,
   type ReportVisual,
+  type ReportFilterOptions,
+  type ReportDateRange,
+  type ReportDateDimension,
+  type CardData,
 } from "@/lib/reports"
 import { cn } from "@/lib/utils"
 
 type ReportInspectorProps = {
   card: ReportCard | null
+  data?: CardData
   config: ReportConfig
   owners: OwnerOption[]
+  filterOptions?: ReportFilterOptions
+  asOf?: string
+  dateFallback?: ReportDateRange
   onChange: (patch: Partial<ReportCard>) => void
   onAdd: (visual: ReportVisual) => void
   onDuplicate: () => void
@@ -41,6 +63,7 @@ type ReportInspectorProps = {
   onMove: (direction: -1 | 1) => void
   onClose?: () => void
   hideHeading?: boolean
+  mobileLayout?: boolean
 }
 
 const CONTROL =
@@ -77,6 +100,7 @@ const TABS = [
   { id: "build", label: "建立圖表" },
   { id: "format", label: "格式" },
   { id: "filters", label: "篩選" },
+  { id: "layout", label: "版面" },
 ] as const
 type InspectorTab = (typeof TABS)[number]["id"]
 
@@ -87,15 +111,19 @@ function unavailableReason(
   if (!metric) return null
   if (
     (visual === "combo" || visual === "scatter") &&
-    metric !== "sales" &&
-    metric !== "net_margin"
+    !SALES_METRICS.includes(metric)
   )
-    return "此圖表需要業績與淨毛利兩個數值"
+    return "此圖表需要兩個不同的交易指標"
+  if (
+    NON_ADDITIVE_METRICS.includes(metric) &&
+    PART_WHOLE_VISUALS.includes(visual)
+  )
+    return "比率、平均與去重訂單數不能直接相加，請用比較或趨勢圖"
   if (
     TREND_VISUALS.includes(visual) &&
     !validDimensions(metric).includes("month")
   )
-    return "此數據是目前快照，無法按月份顯示趨勢"
+    return "此數據是目前快照，無法按日期顯示歷史趨勢"
   return null
 }
 
@@ -269,22 +297,14 @@ function TargetInput({
   )
 }
 
-function filterValue(
-  dimension: ReportDimension,
-  key: string,
-  owners: OwnerOption[]
-): string {
-  if (dimension === "owner")
-    return owners.find((owner) => owner.id === key)?.name ?? key
-  if (dimension === "customer_type")
-    return CUSTOMER_TYPES[key as keyof typeof CUSTOMER_TYPES] ?? key
-  return key
-}
-
 export function ReportInspector({
   card,
+  data,
   config,
   owners,
+  filterOptions,
+  asOf,
+  dateFallback,
   onChange,
   onAdd,
   onDuplicate,
@@ -292,6 +312,7 @@ export function ReportInspector({
   onMove,
   onClose,
   hideHeading = false,
+  mobileLayout = false,
 }: ReportInspectorProps) {
   const [tab, setTab] = useState<InspectorTab>("build")
   const id = useId()
@@ -300,26 +321,29 @@ export function ReportInspector({
   const pageCards = config.cards.filter(
     (item) => (item.page_id ?? pages[0]?.id ?? "overview") === pageId
   )
-  const index = pageCards.findIndex((item) => item.id === card?.id)
+  const orderedCards = mobileLayout
+    ? mobileReportCards(pageCards, true)
+    : pageCards
+  const index = orderedCards.findIndex((item) => item.id === card?.id)
   const dimensions = card ? validDimensions(card.metric) : []
+  const options = filterOptions ?? {
+    ...emptyFilterOptions(),
+    owner: owners.map((owner) => ({ key: owner.id, label: owner.name })),
+  }
   const isTrend = card ? TREND_VISUALS.includes(card.visual) : false
   const axisOptions =
     card?.visual === "kpi"
       ? ["none" as const]
       : isTrend
-        ? ["month" as const]
+        ? DATE_DIMENSIONS
         : dimensions.filter((dimension) => dimension !== "none")
   const legendOptions = dimensions.filter(
     (dimension) =>
       dimension !== "none" &&
       dimension !== card?.dimension &&
-      (card?.visual === "matrix" || dimension !== "month")
+      (card?.visual === "matrix" ||
+        !DATE_DIMENSIONS.includes(dimension as ReportDateDimension))
   )
-  const otherFilters =
-    card?.filters?.filter(
-      (filter) =>
-        filter.dimension !== "owner" && filter.dimension !== "customer_type"
-    ) ?? []
 
   function changeVisual(visual: ReportVisual) {
     if (!card) {
@@ -333,14 +357,6 @@ export function ReportInspector({
       legend: next.legend ?? null,
       secondary_metric: next.secondary_metric ?? null,
     })
-  }
-
-  function setFilter(dimension: "owner" | "customer_type", key: string) {
-    if (!card) return
-    const remaining = (card.filters ?? []).filter(
-      (filter) => filter.dimension !== dimension
-    )
-    onChange({ filters: key ? [...remaining, { dimension, key }] : remaining })
   }
 
   return (
@@ -379,7 +395,7 @@ export function ReportInspector({
             </div>
           )}
           <div
-            className="mt-3 grid grid-cols-3 border-b border-border px-2"
+            className="mt-3 grid grid-cols-4 border-b border-border px-2"
             role="tablist"
             aria-label="圖表設定"
           >
@@ -467,7 +483,10 @@ export function ReportInspector({
                       className={CONTROL}
                       value={card.metric}
                       onChange={(event) =>
-                        onChange({ metric: event.target.value as ReportMetric })
+                        onChange({
+                          metric: event.target.value as ReportMetric,
+                          target: null,
+                        })
                       }
                     >
                       {METRIC_KEYS.map((metric) => (
@@ -477,19 +496,53 @@ export function ReportInspector({
                       ))}
                     </select>
                   </Field>
-                  {card.visual !== "kpi" && (
+                  {METRICS[card.metric].definition && (
+                    <p className="text-[11px] leading-relaxed text-muted-foreground">
+                      {METRICS[card.metric].definition}
+                    </p>
+                  )}
+                  <Field
+                    label="月增／年增比較"
+                    htmlFor={`${id}-comparison`}
+                    help={
+                      card.metric === "customers" || card.metric === "overdue"
+                        ? "目前快照不產生歷史比較。"
+                        : "同區間前移一個月或一年；月底對齊月底。淨毛利率以百分點比較。"
+                    }
+                  >
+                    <select
+                      id={`${id}-comparison`}
+                      className={CONTROL}
+                      value={card.comparison ?? "none"}
+                      disabled={
+                        card.metric === "customers" || card.metric === "overdue"
+                      }
+                      onChange={(event) =>
+                        onChange({
+                          comparison: event.target
+                            .value as ReportCard["comparison"],
+                        })
+                      }
+                    >
+                      {Object.entries(COMPARISONS).map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  {card.visual === "matrix" && (
+                    <ReportMatrixFields card={card} onChange={onChange} />
+                  )}
+                  {card.visual !== "kpi" && card.visual !== "matrix" && (
                     <Field
                       label={
-                        card.visual === "matrix"
-                          ? "列"
-                          : card.visual === "scatter"
-                            ? "資料點分組"
-                            : "軸 / 分組"
+                        card.visual === "scatter" ? "資料點分組" : "軸 / 分組"
                       }
                       htmlFor={`${id}-dimension`}
                       help={
                         isTrend
-                          ? "趨勢圖依月份呈現，會保留所選期間內的所有月份。"
+                          ? "趨勢圖依年、季或月呈現，保留所選期間內的日期順序。"
                           : undefined
                       }
                     >
@@ -511,49 +564,45 @@ export function ReportInspector({
                       </select>
                     </Field>
                   )}
-                  {(isSeriesVisual(card.visual) ||
-                    OPTIONAL_SERIES.includes(card.visual)) && (
-                    <Field
-                      label={
-                        card.visual === "matrix" ? "欄" : "圖例 / 系列分組"
-                      }
-                      htmlFor={`${id}-legend`}
-                    >
-                      <select
-                        id={`${id}-legend`}
-                        className={CONTROL}
-                        value={
-                          card.legend ??
-                          (OPTIONAL_SERIES.includes(card.visual)
-                            ? ""
-                            : legendOptions[0]) ??
-                          ""
-                        }
-                        onChange={(event) =>
-                          onChange({
-                            legend: (event.target.value ||
-                              null) as ReportDimension | null,
-                          })
-                        }
-                      >
-                        {OPTIONAL_SERIES.includes(card.visual) && (
-                          <option value="">不分系列</option>
-                        )}
-                        {legendOptions.map((dimension) => (
-                          <option key={dimension} value={dimension}>
-                            {DIMENSIONS[dimension]}
-                          </option>
-                        ))}
-                      </select>
-                    </Field>
-                  )}
+                  {card.visual !== "matrix" &&
+                    (isSeriesVisual(card.visual) ||
+                      OPTIONAL_SERIES.includes(card.visual)) && (
+                      <Field label="圖例 / 系列分組" htmlFor={`${id}-legend`}>
+                        <select
+                          id={`${id}-legend`}
+                          className={CONTROL}
+                          value={
+                            card.legend ??
+                            (OPTIONAL_SERIES.includes(card.visual)
+                              ? ""
+                              : legendOptions[0]) ??
+                            ""
+                          }
+                          onChange={(event) =>
+                            onChange({
+                              legend: (event.target.value ||
+                                null) as ReportDimension | null,
+                            })
+                          }
+                        >
+                          {OPTIONAL_SERIES.includes(card.visual) && (
+                            <option value="">不分系列</option>
+                          )}
+                          {legendOptions.map((dimension) => (
+                            <option key={dimension} value={dimension}>
+                              {DIMENSIONS[dimension]}
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
+                    )}
                   {(card.visual === "combo" || card.visual === "scatter") && (
                     <Field
                       label={
                         card.visual === "scatter" ? "Y 軸數值" : "折線數值"
                       }
                       htmlFor={`${id}-secondary`}
-                      help="搭配業績與淨毛利，比較同一期間的表現。"
+                      help="兩個交易指標使用同一批品項與條件，左右軸分別標示單位。"
                     >
                       <select
                         id={`${id}-secondary`}
@@ -569,17 +618,13 @@ export function ReportInspector({
                           })
                         }
                       >
-                        <option
-                          value={
-                            card.metric === "sales" ? "net_margin" : "sales"
-                          }
-                        >
-                          {
-                            METRICS[
-                              card.metric === "sales" ? "net_margin" : "sales"
-                            ].label
-                          }
-                        </option>
+                        {SALES_METRICS.filter(
+                          (metric) => metric !== card.metric
+                        ).map((metric) => (
+                          <option key={metric} value={metric}>
+                            {METRICS[metric].label}
+                          </option>
+                        ))}
                       </select>
                     </Field>
                   )}
@@ -591,7 +636,10 @@ export function ReportInspector({
                       className={CONTROL}
                       value={card.sort ?? "value_desc"}
                       disabled={
-                        card.visual === "kpi" || card.dimension === "month"
+                        card.visual === "kpi" ||
+                        DATE_DIMENSIONS.includes(
+                          card.dimension as ReportDateDimension
+                        )
                       }
                       onChange={(event) =>
                         onChange({
@@ -604,13 +652,25 @@ export function ReportInspector({
                       <option value="label_asc">名稱順序</option>
                     </select>
                   </Field>
-                  <Field label="顯示筆數" htmlFor={`${id}-limit`}>
+                  <Field
+                    label="顯示筆數"
+                    htmlFor={`${id}-limit`}
+                    help={
+                      card.visual === "matrix"
+                        ? "矩陣以分頁顯示全部分組，不使用前 N 筆限制。"
+                        : undefined
+                    }
+                  >
                     <select
                       id={`${id}-limit`}
                       className={CONTROL}
                       value={card.limit}
                       disabled={
-                        card.visual === "kpi" || card.dimension === "month"
+                        card.visual === "kpi" ||
+                        card.visual === "matrix" ||
+                        DATE_DIMENSIONS.includes(
+                          card.dimension as ReportDateDimension
+                        )
                       }
                       onChange={(event) =>
                         onChange({ limit: Number(event.target.value) })
@@ -725,57 +785,44 @@ export function ReportInspector({
                   />
                 </div>
                 <Field
-                  label={`目標值${METRICS[card.metric].unit === "currency" ? "（元）" : card.metric === "visits" ? "（次）" : "（家）"}`}
+                  label={`目標值${METRICS[card.metric].unit === "currency" ? "（元）" : METRICS[card.metric].unit === "percent" ? "（%）" : card.metric === "order_count" ? "（張）" : card.metric === "visits" ? "（次）" : "（家）"}`}
                   htmlFor={`${id}-target`}
                   help={
                     TARGET_VISUALS.includes(card.visual)
-                      ? "留空可移除目標；金額請輸入完整元數。"
+                      ? METRICS[card.metric].unit === "percent"
+                        ? "留空可移除目標；輸入 50 代表 50%。"
+                        : "留空可移除目標；金額請輸入完整元數。"
                       : "此圖表不顯示目標線。"
                   }
                 >
                   <TargetInput
-                    key={card.id}
+                    key={`${card.id}-${card.metric}`}
                     id={`${id}-target`}
-                    value={card.target ?? null}
+                    value={
+                      card.target == null
+                        ? null
+                        : METRICS[card.metric].unit === "percent"
+                          ? card.target * 100
+                          : card.target
+                    }
                     disabled={!TARGET_VISUALS.includes(card.visual)}
-                    onChange={(target) => onChange({ target })}
+                    onChange={(target) =>
+                      onChange({
+                        target:
+                          target == null
+                            ? null
+                            : METRICS[card.metric].unit === "percent"
+                              ? target / 100
+                              : target,
+                      })
+                    }
                   />
                 </Field>
-                <div className="grid grid-cols-2 gap-3 border-t border-border pt-4">
-                  <Field label="圖表寬度" htmlFor={`${id}-width`}>
-                    <select
-                      id={`${id}-width`}
-                      className={CONTROL}
-                      value={card.width ?? "half"}
-                      onChange={(event) =>
-                        onChange({
-                          width: event.target.value as ReportCard["width"],
-                        })
-                      }
-                    >
-                      <option value="half">
-                        {card.visual === "kpi" ? "指標格" : "半寬"}
-                      </option>
-                      <option value="full">全寬</option>
-                    </select>
-                  </Field>
-                  <Field label="圖表高度" htmlFor={`${id}-height`}>
-                    <select
-                      id={`${id}-height`}
-                      className={CONTROL}
-                      value={card.height ?? "regular"}
-                      onChange={(event) =>
-                        onChange({
-                          height: event.target.value as ReportCard["height"],
-                        })
-                      }
-                    >
-                      <option value="compact">緊湊</option>
-                      <option value="regular">標準</option>
-                      <option value="tall">加高</option>
-                    </select>
-                  </Field>
-                </div>
+                <ReportFormatFields
+                  card={card}
+                  data={data}
+                  onChange={onChange}
+                />
                 <Field label="所在頁面" htmlFor={`${id}-page`}>
                   <select
                     id={`${id}-page`}
@@ -803,118 +850,142 @@ export function ReportInspector({
                 </Field>
               </>
             )}
+            {tab === "layout" && (
+              <ReportLayoutFields
+                card={card}
+                config={config}
+                mobile={mobileLayout}
+                onChange={onChange}
+              />
+            )}
             {tab === "filters" && (
               <>
                 <div className="space-y-3">
                   <h3 className="text-xs font-semibold">套用至這個視覺效果</h3>
-                  <Field label="業務" htmlFor={`${id}-owner`}>
+                  <Field
+                    label="接收其他圖表的聯動"
+                    htmlFor={`${id}-interaction`}
+                    help="固定的報表與單圖篩選仍會生效。醒目提示保留完整範圍並顯示選取部分。"
+                  >
                     <select
-                      id={`${id}-owner`}
+                      id={`${id}-interaction`}
                       className={CONTROL}
-                      value={
-                        card.filters?.find(
-                          (filter) => filter.dimension === "owner"
-                        )?.key ?? ""
-                      }
+                      value={card.interaction ?? "filter"}
                       onChange={(event) =>
-                        setFilter("owner", event.target.value)
+                        onChange({
+                          interaction: event.target
+                            .value as ReportCard["interaction"],
+                        })
                       }
                     >
-                      <option value="">全部可見業務</option>
-                      {owners.map((owner) => (
-                        <option key={owner.id} value={owner.id}>
-                          {owner.name}
-                        </option>
-                      ))}
+                      <option value="filter">篩選：只看聯動範圍</option>
+                      <option value="highlight">醒目提示：保留完整範圍</option>
+                      <option value="none">不受其他圖表影響</option>
                     </select>
                   </Field>
-                  <Field label="客戶類型" htmlFor={`${id}-type`}>
-                    <select
-                      id={`${id}-type`}
-                      className={CONTROL}
-                      value={
-                        card.filters?.find(
-                          (filter) => filter.dimension === "customer_type"
-                        )?.key ?? ""
-                      }
-                      onChange={(event) =>
-                        setFilter("customer_type", event.target.value)
-                      }
-                    >
-                      <option value="">全部類型</option>
-                      {Object.entries(CUSTOMER_TYPES).map(([key, label]) => (
-                        <option key={key} value={key}>
-                          {label}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                  {otherFilters.length > 0 && (
-                    <div className="space-y-1.5 rounded-md bg-muted/40 p-2.5">
-                      <p className="text-[0.6875rem] font-medium">
-                        其他圖表篩選
-                      </p>
-                      {otherFilters.map((filter) => (
-                        <p
-                          key={`${filter.dimension}-${filter.key}`}
-                          className="text-[0.6875rem] break-words text-muted-foreground"
-                        >
-                          {DIMENSIONS[filter.dimension]}：
-                          {filterValue(filter.dimension, filter.key, owners)}
-                        </p>
-                      ))}
-                    </div>
+                  <ReportSlicerEditor
+                    options={options}
+                    slicers={card.slicers}
+                    dimensions={dimensions.filter(
+                      (dimension) => dimension !== "none"
+                    )}
+                    onChange={(dimension, keys) =>
+                      onChange({
+                        slicers: setReportSlicer(
+                          card.slicers ?? [],
+                          dimension,
+                          keys
+                        ),
+                        filters: (card.filters ?? []).filter(
+                          (item) => item.dimension !== dimension
+                        ),
+                      })
+                    }
+                  />
+                  <ReportFilterChips
+                    options={options}
+                    filters={card.filters}
+                    scope="單圖既有條件"
+                    onRemoveFilter={(filter) =>
+                      onChange({
+                        filters: (card.filters ?? []).filter(
+                          (item) =>
+                            item.dimension !== filter.dimension ||
+                            item.key !== filter.key
+                        ),
+                      })
+                    }
+                  />
+                  {asOf && dateFallback && (
+                    <ReportDateRangeEditor
+                      value={card.date_range ?? null}
+                      fallback={dateFallback}
+                      asOf={asOf}
+                      label="單圖日期"
+                      allowClear
+                      onChange={(date_range) => onChange({ date_range })}
+                    />
                   )}
-                  {!!card.filters?.length && (
+                  {card.filters?.length ||
+                  card.slicers?.length ||
+                  card.date_range ? (
                     <button
                       type="button"
-                      className="min-h-10 text-left text-xs text-primary hover:underline"
-                      onClick={() => onChange({ filters: [] })}
+                      className="min-h-10 text-left text-xs text-primary"
+                      onClick={() =>
+                        onChange({ filters: [], slicers: [], date_range: null })
+                      }
                     >
                       清除此圖表的篩選
                     </button>
-                  )}
+                  ) : null}
                   <p className="text-[0.6875rem] leading-relaxed text-muted-foreground">
                     圖表篩選會與報表篩選同時生效。
                   </p>
                 </div>
                 <div className="space-y-2 border-t border-border pt-4">
                   <h3 className="text-xs font-semibold">整份報表的篩選</h3>
-                  <dl className="space-y-2 rounded-md bg-muted/40 p-3 text-[0.6875rem]">
-                    <div className="flex items-start justify-between gap-3">
-                      <dt className="text-muted-foreground">期間</dt>
-                      <dd>{PERIODS[config.period]}</dd>
-                    </div>
-                    <div className="flex items-start justify-between gap-3">
-                      <dt className="text-muted-foreground">業務</dt>
-                      <dd className="min-w-0 text-right break-words">
-                        {config.owner_id
-                          ? filterValue("owner", config.owner_id, owners)
-                          : "全部可見業務"}
-                      </dd>
-                    </div>
-                    <div className="flex items-start justify-between gap-3">
-                      <dt className="text-muted-foreground">客戶類型</dt>
-                      <dd>
-                        {config.customer_type
-                          ? CUSTOMER_TYPES[config.customer_type]
-                          : "全部類型"}
-                      </dd>
-                    </div>
-                    {config.filters?.map((filter) => (
-                      <div
-                        key={`${filter.dimension}-${filter.key}`}
-                        className="flex items-start justify-between gap-3"
-                      >
-                        <dt className="shrink-0 text-muted-foreground">
-                          {DIMENSIONS[filter.dimension]}
-                        </dt>
-                        <dd className="min-w-0 text-right break-words">
-                          {filterValue(filter.dimension, filter.key, owners)}
-                        </dd>
-                      </div>
-                    ))}
-                  </dl>
+                  <p className="text-[11px] text-muted-foreground">
+                    期間：{PERIODS[config.period]}
+                    {config.period === "custom" && config.date_range
+                      ? ` · ${config.date_range.start} 至 ${config.date_range.end}`
+                      : ""}
+                  </p>
+                  <ReportFilterChips
+                    options={options}
+                    scope="報表"
+                    slicers={config.slicers}
+                    filters={[
+                      ...(config.filters ?? []),
+                      ...(config.owner_id
+                        ? [
+                            {
+                              dimension: "owner" as const,
+                              key: config.owner_id,
+                            },
+                          ]
+                        : []),
+                      ...(config.customer_type
+                        ? [
+                            {
+                              dimension: "customer_type" as const,
+                              key: config.customer_type,
+                            },
+                          ]
+                        : []),
+                    ]}
+                  />
+                  <ReportFilterChips
+                    options={options}
+                    scope="目前分頁"
+                    slicers={pages.find((page) => page.id === pageId)?.slicers}
+                    filters={pages.find((page) => page.id === pageId)?.filters}
+                  />
+                  {pages.find((page) => page.id === pageId)?.date_range && (
+                    <p className="text-[11px] text-muted-foreground">
+                      目前分頁另設日期，與報表及單圖日期取交集。
+                    </p>
+                  )}
                   <p className="text-[0.6875rem] leading-relaxed text-muted-foreground">
                     整份報表的條件可在畫布上方的篩選列調整。
                   </p>

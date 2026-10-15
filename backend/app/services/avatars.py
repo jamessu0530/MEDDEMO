@@ -18,7 +18,7 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, undefer
 
-from app.models import AppUser, UserAvatar
+from app.models import AppUser, MascotWardrobe, UserAvatar
 from app.services import auth
 from app.services.attachments import IMAGE_FORMATS, MAX_FILE_BYTES, Rejected, _encode, _flatten
 
@@ -67,6 +67,9 @@ def urls(session: Session) -> dict[str, str]:
 
 def save(session: Session, user: AppUser, content: bytes) -> str:
     """換成這張，回傳新網址。版本每次都換新的隨機值，舊網址跟著失效。"""
+    wardrobe = session.get(MascotWardrobe, user.id)
+    if wardrobe is not None:
+        wardrobe.use_as_avatar = False
     avatar = session.get(UserAvatar, user.id)
     if avatar is None:
         avatar = UserAvatar(user_id=user.id)
@@ -80,9 +83,13 @@ def save(session: Session, user: AppUser, content: bytes) -> str:
 
 def remove(session: Session, user_id: str) -> bool:
     """移除大頭貼，回到名字縮寫。本來就沒有回 False。"""
+    wardrobe = session.get(MascotWardrobe, user_id)
+    was_mascot = wardrobe is not None and wardrobe.use_as_avatar
+    if wardrobe is not None:
+        wardrobe.use_as_avatar = False
     avatar = session.get(UserAvatar, user_id)
     if avatar is None:
-        return False
+        return was_mascot
     session.delete(avatar)
     return True
 

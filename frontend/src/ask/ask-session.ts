@@ -10,11 +10,13 @@
 
 import { ASK_KINDS, isFinished, routeAsk, type AskKind, type AskMode, type RouteResult, type Turn } from "@/api/asks"
 import { createConversation, type Conversation, type ToolRun } from "@/ask/conversation"
+import { createMapEditsStore, type MapEditsStore } from "@/ask/memory-map-edits"
 import { runAsk } from "@/ask/run-ask"
 import { onAuthChange, readUser } from "@/lib/auth"
 
 export type AskSession = {
   conversation: Conversation
+  mapEdits: MapEditsStore
   /** 登出或換人登入時中止。打字的查詢與語音呼叫工具的查詢都看這一個，離開問答頁不會中止 */
   polls: AbortSignal
   /** 送出一題打字的提問（可以附一個檔案）並輪詢到有結果，錯誤寫在那一格上。已經有一題在跑就不送。
@@ -78,6 +80,7 @@ function create(userId: string): NonNullable<typeof current> {
 
   const session: AskSession = {
     conversation,
+    mapEdits: createMapEditsStore(),
     polls: controller.signal,
     isBusy: () => busy,
     subscribe: (listener) => {

@@ -1,0 +1,17 @@
+{
+  "commit": "c23a2b3d9a20bec8620c635bd0ff729610841a46",
+  "files": [
+    {
+      "file": "Huninn-Regular.ttf",
+      "url": "https://raw.githubusercontent.com/google/fonts/c23a2b3d9a20bec8620c635bd0ff729610841a46/ofl/huninn/Huninn-Regular.ttf",
+      "sha256": "1bd770a5ffc0c06723b567686f8b5db5abf9ab54227f3bbc4e6fd648f4698805",
+      "bytes": 4683972
+    },
+    {
+      "file": "OFL.txt",
+      "url": "https://raw.githubusercontent.com/google/fonts/c23a2b3d9a20bec8620c635bd0ff729610841a46/ofl/huninn/OFL.txt",
+      "sha256": "d71824aeb09afc4c2cac01acab5c3db79796e927ba37be40d69fb62a412639b6",
+      "bytes": 4382
+    }
+  ]
+}

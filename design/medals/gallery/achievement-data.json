@@ -1,0 +1,164 @@
+[
+  {
+    "kind": "stores",
+    "tier": 1,
+    "need": 1,
+    "title": "初次到訪",
+    "condition": "在首頁點選路線上的站，累積到訪 1 家不同藥局。",
+    "unit": "家",
+    "action_path": "/"
+  },
+  {
+    "kind": "stores",
+    "tier": 2,
+    "need": 3,
+    "title": "街坊熟客",
+    "condition": "在首頁點選路線上的站，累積到訪 3 家不同藥局。",
+    "unit": "家",
+    "action_path": "/"
+  },
+  {
+    "kind": "stores",
+    "tier": 3,
+    "need": 5,
+    "title": "藥局巡訪家",
+    "condition": "在首頁點選路線上的站，累積到訪 5 家不同藥局。",
+    "unit": "家",
+    "action_path": "/"
+  },
+  {
+    "kind": "cities",
+    "tier": 1,
+    "need": 1,
+    "title": "城市起點",
+    "condition": "在首頁點選路線上的站，累積到訪 1 個不同縣市。",
+    "unit": "個縣市",
+    "action_path": "/"
+  },
+  {
+    "kind": "cities",
+    "tier": 2,
+    "need": 2,
+    "title": "跨城探索",
+    "condition": "在首頁點選路線上的站，累積到訪 2 個不同縣市。",
+    "unit": "個縣市",
+    "action_path": "/"
+  },
+  {
+    "kind": "cities",
+    "tier": 3,
+    "need": 3,
+    "title": "縣市旅行家",
+    "condition": "在首頁點選路線上的站，累積到訪 3 個不同縣市。",
+    "unit": "個縣市",
+    "action_path": "/"
+  },
+  {
+    "kind": "chronic",
+    "tier": 1,
+    "need": 1,
+    "title": "處方品類入門",
+    "condition": "依序通過慢性處方的品類辨識，每關全部答對。",
+    "unit": "關",
+    "action_path": "/learning/products/chronic/1"
+  },
+  {
+    "kind": "chronic",
+    "tier": 2,
+    "need": 2,
+    "title": "處方規格熟手",
+    "condition": "依序通過慢性處方的品類辨識、規格核對，每關全部答對。",
+    "unit": "關",
+    "action_path": "/learning/products/chronic/2"
+  },
+  {
+    "kind": "chronic",
+    "tier": 3,
+    "need": 3,
+    "title": "處方品項達人",
+    "condition": "依序通過慢性處方的品類辨識、規格核對、情境練習，每關全部答對。",
+    "unit": "關",
+    "action_path": "/learning/products/chronic/3"
+  },
+  {
+    "kind": "otc",
+    "tier": 1,
+    "need": 1,
+    "title": "一般用藥入門",
+    "condition": "依序通過一般用藥的品類辨識，每關全部答對。",
+    "unit": "關",
+    "action_path": "/learning/products/otc/1"
+  },
+  {
+    "kind": "otc",
+    "tier": 2,
+    "need": 2,
+    "title": "用藥品項熟手",
+    "condition": "依序通過一般用藥的品類辨識、規格核對，每關全部答對。",
+    "unit": "關",
+    "action_path": "/learning/products/otc/2"
+  },
+  {
+    "kind": "otc",
+    "tier": 3,
+    "need": 3,
+    "title": "一般用藥達人",
+    "condition": "依序通過一般用藥的品類辨識、規格核對、情境練習，每關全部答對。",
+    "unit": "關",
+    "action_path": "/learning/products/otc/3"
+  },
+  {
+    "kind": "wellness",
+    "tier": 1,
+    "need": 1,
+    "title": "保健品入門",
+    "condition": "依序通過保健品的品類辨識，每關全部答對。",
+    "unit": "關",
+    "action_path": "/learning/products/wellness/1"
+  },
+  {
+    "kind": "wellness",
+    "tier": 2,
+    "need": 2,
+    "title": "保健品辨識員",
+    "condition": "依序通過保健品的品類辨識、規格核對，每關全部答對。",
+    "unit": "關",
+    "action_path": "/learning/products/wellness/2"
+  },
+  {
+    "kind": "wellness",
+    "tier": 3,
+    "need": 3,
+    "title": "保健品達人",
+    "condition": "依序通過保健品的品類辨識、規格核對、情境練習，每關全部答對。",
+    "unit": "關",
+    "action_path": "/learning/products/wellness/3"
+  },
+  {
+    "kind": "devices",
+    "tier": 1,
+    "need": 1,
+    "title": "醫材入門",
+    "condition": "依序通過醫材的品類辨識，每關全部答對。",
+    "unit": "關",
+    "action_path": "/learning/products/devices/1"
+  },
+  {
+    "kind": "devices",
+    "tier": 2,
+    "need": 2,
+    "title": "器材辨識員",
+    "condition": "依序通過醫材的品類辨識、規格核對，每關全部答對。",
+    "unit": "關",
+    "action_path": "/learning/products/devices/2"
+  },
+  {
+    "kind": "devices",
+    "tier": 3,
+    "need": 3,
+    "title": "醫材達人",
+    "condition": "依序通過醫材的品類辨識、規格核對、情境練習，每關全部答對。",
+    "unit": "關",
+    "action_path": "/learning/products/devices/3"
+  }
+]

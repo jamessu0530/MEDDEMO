@@ -5,11 +5,13 @@ import { type Ask, type AskMode } from "@/api/asks"
 import { askSessionFor } from "@/ask/ask-session"
 import { useConversation } from "@/ask/use-conversation"
 import { EntryView } from "@/components/ask/entry-view"
+import { AskMemoryMap } from "@/components/ask/memory-map"
 import { AttachButton, DraftFiles } from "@/components/attachments/draft-files"
 // type-only：只拿型別，不會把 VoiceDock（跟著它的 src/voice）拉進主 chunk
 import type { VoiceSession } from "@/components/ask/voice-dock"
 import { BottomNav } from "@/components/bottom-nav"
-import { Mascot } from "@/components/mascot"
+import { LearningAiGate } from "@/components/learning/ai-gate"
+import { CollectedMascotPlay } from "@/components/collected-mascot-play"
 import { Notice } from "@/components/notice"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -54,6 +56,10 @@ const MODES: { kind: AskMode; label: string; placeholder: string; examples: stri
 
 /** 問答（原型 S-07）：打字與語音在同一條對話裡，兩種問法共用同一套查詢與查詢軌跡 */
 export function AskPage() {
+  return <LearningAiGate><AskContent /></LearningAiGate>
+}
+
+function AskContent() {
   const user = useAuth()?.user
   // 對話與還在跑的查詢不放在這個頁面的 state：切去促銷、客戶再回來，要看得到原本的對話，查到一半的也要查完
   const asking = askSessionFor(user?.id ?? "")
@@ -129,6 +135,13 @@ export function AskPage() {
       <header className="sticky top-0 z-10 border-b bg-background/95 px-4 pt-4 pb-3 backdrop-blur">
         <p className="text-xs text-muted-foreground">先查公司資料與內部文件，查不到才參考網路公開資料（會另外標示）</p>
         <h1 className="mt-0.5 text-lg font-semibold">問答</h1>
+        <AskMemoryMap entries={entries} edits={asking.mapEdits} onJump={(id) => {
+          requestAnimationFrame(() => {
+            const element = document.getElementById(`ask-entry-${id}`)
+            element?.scrollIntoView({ behavior: "smooth", block: "center" })
+            element?.focus({ preventScroll: true })
+          })
+        }} />
         {/* 語音會話裡是模型自己選要查數字還是查規定，這組切換只對打字有用。
             看的是 session 不是 voiceOn：連線中或掛斷後打字走的還是這裡選的工具，這時候藏起來業務就看不到也改不了 */}
         {!session && (
@@ -156,7 +169,7 @@ export function AskPage() {
       <main className="flex flex-1 flex-col gap-4 px-4 pt-4 pb-56">
         {entries.length === 0 && !voiceOn && (
           <div className="flex flex-col gap-2">
-            <Mascot state="hi" size={96} className="self-center" />
+            <CollectedMascotPlay state="hi" size={96} className="self-center" />
             <p className="text-sm text-muted-foreground">可以這樣問，或按右下角的麥克風用說的：</p>
             {mode.examples.map((example) => (
               <button
@@ -171,14 +184,15 @@ export function AskPage() {
           </div>
         )}
         {entries.map((entry) => (
-          <EntryView
-            key={entry.id}
-            entry={entry}
-            onAskChange={replaceAsk}
-            onChoose={(entryId, picked) => void asking.choose(entryId, picked)}
-            onAskAsTyped={(entryId) => void asking.askAsTyped(entryId)}
-            busy={sending}
-          />
+          <div key={entry.id} id={`ask-entry-${entry.id}`} tabIndex={-1} className="rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-primary">
+            <EntryView
+              entry={entry}
+              onAskChange={replaceAsk}
+              onChoose={(entryId, picked) => void asking.choose(entryId, picked)}
+              onAskAsTyped={(entryId) => void asking.askAsTyped(entryId)}
+              busy={sending}
+            />
+          </div>
         ))}
         {/* 語音會話的訊息不放按鈕：重試就在下面 dock 的「重新開始」。
             但整包載不下來時沒有 dock，那一種才自己帶重新整理 */}

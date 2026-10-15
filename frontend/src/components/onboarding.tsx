@@ -37,7 +37,7 @@ export function Onboarding() {
   const { pathname } = useLocation()
   const [step, setStep] = useState(0)
   // 主管端是另一種身分，不必看業務的操作說明
-  if (!open || pathname.startsWith("/manager")) return null
+  if (!open || pathname.startsWith("/manager") || pathname.startsWith("/first-week")) return null
 
   const last = step === STEPS.length - 1
   const { icon: Icon, mascot, title, body } = STEPS[step]

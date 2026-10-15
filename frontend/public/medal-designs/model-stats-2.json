@@ -1,0 +1,32 @@
+[
+  {
+    "file": "C-compass-stores-bronze.glb",
+    "triangles": 48780,
+    "drawCalls": 4
+  },
+  {
+    "file": "C-compass-stores-silver.glb",
+    "triangles": 49348,
+    "drawCalls": 4
+  },
+  {
+    "file": "C-compass-stores-gold.glb",
+    "triangles": 49916,
+    "drawCalls": 4
+  },
+  {
+    "file": "C-compass-cities-bronze.glb",
+    "triangles": 52104,
+    "drawCalls": 4
+  },
+  {
+    "file": "C-compass-cities-silver.glb",
+    "triangles": 52672,
+    "drawCalls": 4
+  },
+  {
+    "file": "C-compass-cities-gold.glb",
+    "triangles": 53240,
+    "drawCalls": 4
+  }
+]

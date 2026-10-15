@@ -1,0 +1,62 @@
+[
+  {
+    "file": "ios-B-soft-chronic-bronze.glb",
+    "triangles": 20956,
+    "drawCalls": 6
+  },
+  {
+    "file": "ios-B-soft-chronic-silver.glb",
+    "triangles": 21488,
+    "drawCalls": 6
+  },
+  {
+    "file": "ios-B-soft-chronic-gold.glb",
+    "triangles": 22020,
+    "drawCalls": 6
+  },
+  {
+    "file": "ios-B-soft-otc-bronze.glb",
+    "triangles": 16852,
+    "drawCalls": 6
+  },
+  {
+    "file": "ios-B-soft-otc-silver.glb",
+    "triangles": 17384,
+    "drawCalls": 6
+  },
+  {
+    "file": "ios-B-soft-otc-gold.glb",
+    "triangles": 17916,
+    "drawCalls": 6
+  },
+  {
+    "file": "ios-B-soft-wellness-bronze.glb",
+    "triangles": 19276,
+    "drawCalls": 6
+  },
+  {
+    "file": "ios-B-soft-wellness-silver.glb",
+    "triangles": 19808,
+    "drawCalls": 6
+  },
+  {
+    "file": "ios-B-soft-wellness-gold.glb",
+    "triangles": 20340,
+    "drawCalls": 6
+  },
+  {
+    "file": "ios-B-soft-devices-bronze.glb",
+    "triangles": 19808,
+    "drawCalls": 6
+  },
+  {
+    "file": "ios-B-soft-devices-silver.glb",
+    "triangles": 20340,
+    "drawCalls": 6
+  },
+  {
+    "file": "ios-B-soft-devices-gold.glb",
+    "triangles": 20872,
+    "drawCalls": 6
+  }
+]

@@ -1,5 +1,6 @@
-import { useEffect, type ReactNode } from "react"
-import { BrowserRouter, Navigate, Outlet, Route, useLocation, useNavigate, useParams } from "react-router"
+import { useEffect, useState, type ReactNode } from "react"
+import { createBrowserRouter, Navigate, Outlet, Route, useLocation, useNavigate, useParams } from "react-router"
+import { RouterProvider } from "react-router/dom"
 
 import { fetchMe } from "@/api/auth"
 import { AppShell } from "@/components/app-shell"
@@ -27,11 +28,14 @@ import { CustomerPicker } from "@/pages/customer-picker"
 import { DocumentPage } from "@/pages/document"
 import { EscalationsPage } from "@/pages/escalations"
 import { FirstWeekPage } from "@/pages/first-week"
+import { LearningLessonPage } from "@/pages/learning-lesson"
+import { ProductLearningPage } from "@/pages/product-learning"
 import { OaFormPage } from "@/pages/oa-form"
 import { OaFormsPage } from "@/pages/oa-forms"
 import { OAuthCallbackPage } from "@/pages/oauth-callback"
 import { LoginPage } from "@/pages/login"
 import { MePage } from "@/pages/me"
+import { MascotsPage } from "@/pages/mascots"
 import { PrivacyPage } from "@/pages/privacy"
 import { CatalogPage } from "@/pages/catalog"
 import { RidesPage } from "@/pages/rides"
@@ -173,9 +177,13 @@ function ItOnly({ children }: { children: ReactNode }) {
 export default function App() {
   // 手機裡還沒送出的錄音：一打開 App 就開始自動重送，不管停在哪一頁（FR-4.3）
   useEffect(() => uploadQueue.start(), [])
+  const [router] = useState(() => createBrowserRouter([{ path: "*", element: <ApplicationRoutes /> }]))
+  return <RouterProvider router={router} />
+}
 
+function ApplicationRoutes() {
   return (
-    <BrowserRouter>
+    <>
       {/* 以手機為主：手機與平板維持手機的寬度置中；電腦版（≥1024px）登入後的頁由 AppShell 排，沒登入的頁照舊置中 */}
       <div className="mx-auto min-h-svh max-w-md bg-background lg:max-w-none">
         {/* 換頁時用墨蓋過去再露出來（components/ink-transition.tsx）；路由的寫法跟 <Routes> 一樣 */}
@@ -211,6 +219,7 @@ export default function App() {
             {/* 座騎圖鑑：熊熊滾騎過的座騎；主管與 IT 打開會看到後端的說明 */}
             <Route path="/rides" element={<RidesPage />} />
             <Route path="/me" element={<MePage />} />
+            <Route path="/mascots" element={<MascotsPage />} />
             <Route path="/reports" element={<ReportsPage />} />
             {/* 語音併進問答頁了，舊書籤與導覽說明還指得到這個網址 */}
             <Route path="/voice" element={<Navigate to="/ask" replace />} />
@@ -243,12 +252,15 @@ export default function App() {
             <Route path="/settings" element={<SettingsPage />} />
             {/* 新人第一週：業務帳號都打得開；必讀文件點開是 /documents/檔名 */}
             <Route path="/first-week" element={<FirstWeekPage />} />
+            <Route path="/first-week/lessons/:lessonId" element={<LearningLessonPage />} />
+            <Route path="/learning/products" element={<ProductLearningPage />} />
+            <Route path="/learning/products/:kind/:tier" element={<ProductLearningPage />} />
             <Route path="/documents/:sourceName" element={<DocumentPage />} />
             <Route path="*" element={<NotFound />} />
           </Route>
         </InkRoutes>
       </div>
       <InkOverlay />
-    </BrowserRouter>
+    </>
   )
 }

@@ -25,6 +25,8 @@ dependencies = [
     "pillow>=12.3.0",
     "pypdf>=6.19.0",
     "av==18.1.0",
+    "reportlab>=5.0.1",
+    "openpyxl>=3.1.5",
 ]
 
 [build-system]

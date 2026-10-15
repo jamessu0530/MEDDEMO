@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>MEDDEMO · 獎牌設計提案</title>
+  <script type="module" crossorigin src="./assets/index-BHfq1VXs.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-Ci0jgf2d.css">
+</head>
+<body>
+  <main>
+    <header>
+      <div class="eyebrow">MEDDEMO <span>ACHIEVEMENT COLLECTION</span></div>
+      <h1>讓每一次抵達，<br>都值得收藏。</h1>
+      <p>四款獎牌提案 · Blender 立體建模 · 金、銀、銅完整系列</p>
+    </header>
+    <section class="choices" aria-label="四款設計">
+      <button class="choice selected" data-style="0" aria-pressed="true">
+        <div class="choice-image"><img src="./A-laurel.png" alt="金色月桂獎牌：藥局十字與縣市地標"></div>
+        <div class="choice-heading"><span>A</span><h2>月桂典藏</h2></div>
+        <p>深藍琺瑯 × 月桂浮雕<br>典雅、有榮譽感</p>
+      </button>
+      <button class="choice" data-style="1" aria-pressed="false">
+        <div class="choice-image"><img src="./B-hexagon.png" alt="六角科技獎牌：藥局十字與縣市地標"></div>
+        <div class="choice-heading"><span>B</span><h2>六角科技</h2></div>
+        <p>六角切面 × 青綠電路<br>俐落、有專業感</p>
+      </button>
+      <button class="choice" data-style="2" aria-pressed="false">
+        <div class="choice-image"><img src="./C-compass.png" alt="旅行羅盤獎牌：藥局十字與縣市地標"></div>
+        <div class="choice-heading"><span>C</span><h2>旅行羅盤</h2></div>
+        <p>象牙錶盤 × 路線刻度<br>呼應跑點與探索</p>
+      </button>
+      <button class="choice" data-style="3" aria-pressed="false">
+        <div class="choice-image"><img src="./D-paw.png" alt="療癒熊掌獎牌：十字與地標藏在掌心"></div>
+        <div class="choice-heading"><span>D</span><h2>療癒熊掌</h2></div>
+        <p>柔和花邊 × 立體熊掌<br>親切、呼應熊熊滾</p>
+      </button>
+    </section>
+    <section class="detail" aria-labelledby="detail-title">
+      <div class="viewport">
+        <canvas id="model" aria-label="可拖曳旋轉的獎牌 3D 預覽"></canvas>
+        <div id="status" role="status" aria-live="polite">正在載入立體獎牌…</div>
+        <div class="drag-hint">拖曳旋轉 · 滾輪縮放</div>
+      </div>
+      <div class="detail-copy">
+        <div class="eyebrow" id="detail-code">A / CLASSIC</div>
+        <h2 id="detail-title">月桂典藏</h2>
+        <p id="detail-description">深藍琺瑯襯托立體金屬徽記。雙側月桂、細緻齒邊與星等，讓成就像一枚值得收藏的紀念章。</p>
+        <fieldset><legend>成就類別</legend><div class="segmented">
+          <button data-kind="stores" class="active" aria-pressed="true">跑過的藥局</button>
+          <button data-kind="cities" aria-pressed="false">跑過的縣市</button>
+        </div></fieldset>
+        <fieldset><legend>獎牌等級</legend><div class="segmented tiers">
+          <button data-tier="bronze" aria-pressed="false"><i class="bronze"></i>銅牌</button>
+          <button data-tier="silver" aria-pressed="false"><i class="silver"></i>銀牌</button>
+          <button data-tier="gold" class="active" aria-pressed="true"><i class="gold"></i>金牌</button>
+        </div></fieldset>
+        <div class="view-actions"><button id="front">看正面</button><button id="back">看背面</button></div>
+        <a id="model-link" class="download" href="./A-laurel-stores-gold.glb" download>下載這面 3D 獎牌 ↗</a>
+        <p class="small">背面保留成就類別與星等，可在個人頁翻轉展示。</p>
+      </div>
+    </section>
+    <section class="family" aria-labelledby="family-title">
+      <div><h2 id="family-title">完整系列</h2><p>上排藥局、下排縣市；左至右為銅、銀、金。</p></div>
+      <img id="family-image" src="./A-laurel-family.png" alt="月桂典藏六面完整獎牌">
+    </section>
+    <footer>MEDDEMO · MEDAL DESIGN STUDY · 2026.10</footer>
+  </main>
+</body>
+</html>

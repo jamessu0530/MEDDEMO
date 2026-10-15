@@ -69,12 +69,14 @@ export function HomeMapSlot({
  * 沒有金鑰、Google 的程式載不下來或金鑰被拒，就換成一行「地圖暫時載入不了」，頁面其他地方照常。
  * className 是地圖的高度，載入中的骨架跟它一樣高，載好時版面不會跳
  */
-function MapGate({
+export function MapGate({
   className,
   children,
+  fallback = <MapFallback />,
 }: {
   className: string
   children: (config: NonNullable<MapsConfig>, onFail: () => void) => ReactNode
+  fallback?: ReactNode
 }) {
   // undefined：還在問；null：沒有瀏覽器金鑰
   const [config, setConfig] = useState<MapsConfig | undefined>(undefined)
@@ -96,9 +98,9 @@ function MapGate({
   const onFail = useCallback(() => setFailed(true), [])
 
   // 先看金鑰有沒有被拒：頁面已經知道的話，不要先閃一下「還在問」的骨架
-  if (failed || rejected) return <MapFallback />
+  if (failed || rejected) return fallback
   if (config === undefined) return <MapPlaceholder className={className} />
-  if (config === null) return <MapFallback />
+  if (config === null) return fallback
   return (
     <MapBoundary onFail={onFail}>
       <Suspense fallback={<MapPlaceholder className={className} />}>{children(config, onFail)}</Suspense>

@@ -16,6 +16,7 @@ import {
 import { ChangeNote } from "@/components/change-note"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
+import { ProductPhoto } from "@/components/product-photo"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -218,14 +219,17 @@ export function QuotePage() {
             <ul className="flex flex-col gap-2">
               {lines.map(({ item, qty }) => (
                 <li key={item.sku} className={cn("rounded-xl border-2 bg-card px-4 py-3 shadow-lip", qty === 0 && "bg-muted/60")}>
-                  <div className="flex items-baseline justify-between gap-3">
-                    <p className={cn("min-w-0 text-sm font-medium", qty === 0 && "text-muted-foreground")}>
-                      {item.name}
-                      {item.spec && <span className="ml-1 font-normal text-muted-foreground">{item.spec}</span>}
-                    </p>
-                    <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                      {formatMoney(item.unit_price)} / {item.unit}
-                    </span>
+                  <div className="flex items-start gap-3">
+                    <ProductPhoto product={item} size="compact" />
+                    <div className="flex min-w-0 flex-1 flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                      <p className={cn("min-w-0 text-sm font-medium", qty === 0 && "text-muted-foreground")}>
+                        {item.name}
+                        {item.spec && <span className="ml-1 font-normal text-muted-foreground">{item.spec}</span>}
+                      </p>
+                      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                        {formatMoney(item.unit_price)} / {item.unit}
+                      </span>
+                    </div>
                   </div>
                   <div className="mt-2 flex items-center gap-2">
                     <Input
@@ -373,15 +377,20 @@ function PromotionSection({ promotion, packCounts, quantities, notes, onPackChan
                       key={pack.code}
                       className={cn("rounded-xl border-2 bg-card px-4 py-3 shadow-lip", count === 0 && "bg-muted/60")}
                     >
-                      <div className="flex items-baseline justify-between gap-3">
-                        <p className={cn("min-w-0 text-sm font-medium", count === 0 && "text-muted-foreground")}>{pack.name}</p>
-                        <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                          {formatMoney(pack.deal_price)} / 口
-                        </span>
+                      <div className="flex items-start gap-3">
+                        <ProductPhoto product={product} size="compact" />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                            <p className={cn("min-w-0 text-sm font-medium", count === 0 && "text-muted-foreground")}>{pack.name}</p>
+                            <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                              {formatMoney(pack.deal_price)} / 口
+                            </span>
+                          </div>
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            {packDeal(pack)}・{pack.deal}
+                          </p>
+                        </div>
                       </div>
-                      <p className="mt-0.5 text-xs text-muted-foreground">
-                        {packDeal(pack)}・{pack.deal}
-                      </p>
                       <div className="mt-2 flex items-center gap-2">
                         <Input
                           type="number"
@@ -404,13 +413,16 @@ function PromotionSection({ promotion, packCounts, quantities, notes, onPackChan
                 })}
                 {!product.usual && (
                   <li className={cn("rounded-xl border-2 bg-card px-4 py-3 shadow-lip", qty === 0 && "bg-muted/60")}>
-                    <div className="flex items-baseline justify-between gap-3">
-                      <p className={cn("min-w-0 text-sm font-medium", qty === 0 && "text-muted-foreground")}>
-                        {product.name} 不走促銷
-                      </p>
-                      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                        {formatMoney(product.supply_price)} / {product.unit}
-                      </span>
+                    <div className="flex items-start gap-3">
+                      <ProductPhoto product={product} size="compact" />
+                      <div className="flex min-w-0 flex-1 flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                        <p className={cn("min-w-0 text-sm font-medium", qty === 0 && "text-muted-foreground")}>
+                          {product.name} 不走促銷
+                        </p>
+                        <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                          {formatMoney(product.supply_price)} / {product.unit}
+                        </span>
+                      </div>
                     </div>
                     <div className="mt-2 flex items-center gap-2">
                       <Input

@@ -1,15 +1,17 @@
 import "./mascot.css"
 
 import type { MascotState } from "@/lib/mascot"
+import { mascotPalette, type MascotLook } from "@/lib/mascot-collection"
+import { MascotCape, MascotCostume } from "@/components/mascot-costume"
 import { cn } from "@/lib/utils"
 
 /**
  * 吉祥物「熊熊滾」（docs/superpowers/specs/2026-09-30-mascot-design.md）。
  * 一隻紫色、站著的小熊，AI 在聽、在想、在回答、在處理的時候，用牠的動作告訴使用者。
- * 形狀只有七個、顏色三個，不描邊也沒有漸層；沒有手，每個狀態靠身體、耳朵、眼睛和嘴表現。
+ * 基本輪廓只有七個形狀，不描邊也沒有漸層；沒有手，每個狀態靠身體、耳朵、眼睛和嘴表現。look 可換異色與服裝。
  * 動畫在 mascot.css，每個狀態一組；狀態的清單在 lib/mascot.ts。
  */
-type Eyes = "open" | "up" | "happy"
+type Eyes = "open" | "up" | "happy" | "closed"
 type Mouth = "smile" | "hmm" | "open"
 
 const BASE = "#9B51E0"
@@ -30,6 +32,10 @@ const FACE: Record<MascotState, [Eyes, Mouth]> = {
   wait: ["open", "smile"],
   yay: ["happy", "open"],
   ride: ["happy", "open"],
+  roll: ["happy", "open"],
+  sleep: ["closed", "smile"],
+  stretch: ["closed", "open"],
+  shy: ["closed", "smile"],
 }
 
 type MascotProps = {
@@ -41,9 +47,10 @@ type MascotProps = {
   /** 旁邊沒有文字說明狀態時才給：有給就讓讀屏唸，沒給就是裝飾 */
   label?: string
   className?: string
+  look?: MascotLook
 }
 
-export function Mascot({ state = "idle", size = 96, bust = false, label, className }: MascotProps) {
+export function Mascot({ state = "idle", size = 96, bust = false, label, className, look }: MascotProps) {
   return (
     <svg
       className={cn("mascot", `mascot-${state}`, className)}
@@ -54,7 +61,7 @@ export function Mascot({ state = "idle", size = 96, bust = false, label, classNa
       {...(label ? { role: "img", "aria-label": label } : { "aria-hidden": true })}
     >
       {!bust && <ellipse className="mascot-shadow" cx="120" cy="222" rx="60" ry="7" fill={INK} opacity=".13" />}
-      <MascotFigure state={state} props={!bust} />
+      <MascotFigure state={state} props={!bust} look={look} />
     </svg>
   )
 }
@@ -64,27 +71,31 @@ export function Mascot({ state = "idle", size = 96, bust = false, label, classNa
  * 座騎（components/rides/ride.tsx）把它疊進自己的 svg。狀態的動畫掛在外層的 .mascot-<state> 上，
  * 疊到別處時外面要包一層 <g className={`mascot mascot-${state}`}>。
  */
-export function MascotFigure({ state = "idle", props = true }: { state?: MascotState; props?: boolean }) {
+export function MascotFigure({ state = "idle", props = true, look }: { state?: MascotState; props?: boolean; look?: MascotLook }) {
   const [eyes, mouth] = FACE[state]
+  const { base = BASE, light = LIGHT, ink = INK } = mascotPalette(look?.color)
+  const outfit = look?.outfit ?? "none"
   return (
     <g className="mascot-all">
       <g className="mascot-body">
-        <Ear side="l" x={80} />
-        <Ear side="r" x={160} />
+        <MascotCape outfit={outfit} />
+        <Ear side="l" x={80} base={base} light={light} />
+        <Ear side="r" x={160} base={base} light={light} />
         {/* 頭和身體是同一個形狀，底下分出兩條短腿 */}
         <path
           d="M56 118 C56 80 84 56 120 56 C156 56 184 80 184 118 V188 C184 204 173 215 159 215 C147 215 139 209 135 200 H105 C101 209 93 215 81 215 C67 215 56 204 56 188 Z"
-          fill={BASE}
+          fill={base}
         />
+        <MascotCostume outfit={outfit} />
         <g transform="translate(120 120)">
           <g className="mascot-face">
             <g className="mascot-eyes" data-eyes={eyes}>
-              <EyesShape kind={eyes} />
+              <EyesShape kind={eyes} ink={ink} />
             </g>
-            <ellipse cx="0" cy="9" rx="24" ry="17" fill={LIGHT} />
-            <path d="M-9 0 Q0 -4 9 0 Q10.5 5 0 10 Q-10.5 5 -9 0 Z" fill={INK} />
+            <ellipse cx="0" cy="9" rx="24" ry="17" fill={light} />
+            <path d="M-9 0 Q0 -4 9 0 Q10.5 5 0 10 Q-10.5 5 -9 0 Z" fill={ink} />
             <g data-mouth={mouth}>
-              <MouthShape kind={mouth} />
+              <MouthShape kind={mouth} ink={ink} />
             </g>
           </g>
         </g>
@@ -94,11 +105,11 @@ export function MascotFigure({ state = "idle", props = true }: { state?: MascotS
   )
 }
 
-function Ear({ side, x }: { side: "l" | "r"; x: number }) {
+function Ear({ side, x, base, light }: { side: "l" | "r"; x: number; base: string; light: string }) {
   return (
     <g className={`mascot-ear-${side}`}>
-      <circle cx={x} cy="62" r="22" fill={BASE} />
-      <circle cx={x} cy="62" r="10.5" fill={LIGHT} />
+      <circle cx={x} cy="62" r="22" fill={base} />
+      <circle cx={x} cy="62" r="10.5" fill={light} />
     </g>
   )
 }
@@ -115,20 +126,28 @@ const EYE_AT: Record<"open" | "up", [number, number, number, number][]> = {
   ],
 }
 
-function EyesShape({ kind }: { kind: Eyes }) {
+function EyesShape({ kind, ink }: { kind: Eyes; ink: string }) {
+  if (kind === "closed") {
+    return (
+      <>
+        <path d="M-38 -12 Q-29 -3 -20 -12" fill="none" stroke={ink} strokeWidth="4.8" strokeLinecap="round" />
+        <path d="M20 -12 Q29 -3 38 -12" fill="none" stroke={ink} strokeWidth="4.8" strokeLinecap="round" />
+      </>
+    )
+  }
   if (kind === "happy") {
     // 笑到瞇起來
     return (
       <>
-        <path d="M-38 -8 Q-29 -22 -20 -8" fill="none" stroke={INK} strokeWidth="4.8" strokeLinecap="round" />
-        <path d="M20 -8 Q29 -22 38 -8" fill="none" stroke={INK} strokeWidth="4.8" strokeLinecap="round" />
+        <path d="M-38 -8 Q-29 -22 -20 -8" fill="none" stroke={ink} strokeWidth="4.8" strokeLinecap="round" />
+        <path d="M20 -8 Q29 -22 38 -8" fill="none" stroke={ink} strokeWidth="4.8" strokeLinecap="round" />
       </>
     )
   }
   return (
     <>
       {EYE_AT[kind].map(([x, y]) => (
-        <ellipse key={x} cx={x} cy={y} rx="7.6" ry="9.6" fill={INK} />
+        <ellipse key={x} cx={x} cy={y} rx="7.6" ry="9.6" fill={ink} />
       ))}
       {EYE_AT[kind].map(([, , x, y]) => (
         <circle key={x} cx={x} cy={y} r="2.7" fill="#fff" />
@@ -137,12 +156,12 @@ function EyesShape({ kind }: { kind: Eyes }) {
   )
 }
 
-function MouthShape({ kind }: { kind: Mouth }) {
+function MouthShape({ kind, ink }: { kind: Mouth; ink: string }) {
   if (kind === "open") {
     // 開合的動畫掛在這一組上（回答的時候）
     return (
       <g className="mascot-mouth">
-        <path d="M-8.5 12 Q0 9.5 8.5 12 Q8 24 0 24 Q-8 24 -8.5 12 Z" fill={INK} />
+        <path d="M-8.5 12 Q0 9.5 8.5 12 Q8 24 0 24 Q-8 24 -8.5 12 Z" fill={ink} />
         <path d="M-4.6 20 Q0 16.4 4.6 20 Q2.6 24 0 24 Q-2.6 24 -4.6 20 Z" fill={TONGUE} />
       </g>
     )
@@ -150,8 +169,8 @@ function MouthShape({ kind }: { kind: Mouth }) {
   if (kind === "hmm") {
     return (
       <>
-        <path d="M0 9 V12" fill="none" stroke={INK} strokeWidth="2.8" strokeLinecap="round" />
-        <ellipse cx="3.5" cy="17" rx="3.4" ry="3" fill={INK} />
+        <path d="M0 9 V12" fill="none" stroke={ink} strokeWidth="2.8" strokeLinecap="round" />
+        <ellipse cx="3.5" cy="17" rx="3.4" ry="3" fill={ink} />
       </>
     )
   }
@@ -159,7 +178,7 @@ function MouthShape({ kind }: { kind: Mouth }) {
     <path
       d="M0 9 V12.5 M-7 13.5 Q-3.5 18.5 0 13.5 Q3.5 18.5 7 13.5"
       fill="none"
-      stroke={INK}
+      stroke={ink}
       strokeWidth="2.8"
       strokeLinecap="round"
       strokeLinejoin="round"
@@ -172,8 +191,17 @@ function starPath(x: number, y: number, r: number) {
   return `M${x} ${y - r} Q${x} ${y} ${x + r} ${y} Q${x} ${y} ${x} ${y + r} Q${x} ${y} ${x - r} ${y} Q${x} ${y} ${x} ${y - r} Z`
 }
 
-/** 各狀態的道具：聲波、想法泡泡、等待的點、星星。data-n 是第幾個，動畫照順序錯開 */
+/** 各狀態的道具：聲波、想法泡泡、等待的點、星星、睡眠符號。data-n 是第幾個，動畫照順序錯開 */
 function Props({ state }: { state: MascotState }) {
+  if (state === "sleep") {
+    return (
+      <g fill="none" stroke={PROP} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
+        <path className="mascot-zzz" data-n="1" d="M190 76 H200 L190 86 H200" />
+        <path className="mascot-zzz" data-n="2" d="M201 51 H215 L201 65 H215" />
+        <path className="mascot-zzz" data-n="3" d="M211 23 H229 L211 41 H229" />
+      </g>
+    )
+  }
   if (state === "listen") {
     return (
       <>

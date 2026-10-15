@@ -1013,6 +1013,48 @@ class UserPreference(Base):
     updated_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
 
 
+class MascotWardrobe(Base):
+    """熊熊滾的穿搭與頭像選擇跟著登入帳號；縣市進度可來自代理路線，收藏仍是自己的。"""
+
+    __tablename__ = "mascot_wardrobe"
+    user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), primary_key=True)
+    color_id: Mapped[str] = mapped_column(server_default="classic")
+    outfit_id: Mapped[str] = mapped_column(server_default="none")
+    use_as_avatar: Mapped[bool] = mapped_column(server_default=false())
+    misses: Mapped[int] = mapped_column(server_default="0")
+    updated_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+
+
+class MascotCollectible(Base):
+    """永久收藏：例如 color:mint 或 outfit:taipei；重複遇到同款不重複入庫。"""
+
+    __tablename__ = "mascot_collectible"
+    user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), primary_key=True)
+    item_id: Mapped[str] = mapped_column(primary_key=True)
+    unlocked_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+
+
+class MascotEncounter(Base):
+    """每次分裂的伺服器抽選結果；同一個事件重送照原結果回，不重抽、不重算保底。"""
+
+    __tablename__ = "mascot_encounter"
+    user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), primary_key=True)
+    event_id: Mapped[str] = mapped_column(primary_key=True)
+    color_id: Mapped[str]
+    newly_collected: Mapped[bool]
+    created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+
+
+class LearningCompletion(Base):
+    """新人操作課程的過關紀錄；跟登入帳號走，不跟代理的示範業務共用。"""
+
+    __tablename__ = "learning_completion"
+
+    user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), primary_key=True)
+    lesson_id: Mapped[str] = mapped_column(primary_key=True)
+    completed_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+
+
 class UserReportConfig(Base):
     """行動報表版面跟著登入帳號；代理示範業務時也不共用他的設定。"""
 

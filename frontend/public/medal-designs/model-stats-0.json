@@ -1,0 +1,32 @@
+[
+  {
+    "file": "A-laurel-stores-bronze.glb",
+    "triangles": 44072,
+    "drawCalls": 3
+  },
+  {
+    "file": "A-laurel-stores-silver.glb",
+    "triangles": 44640,
+    "drawCalls": 3
+  },
+  {
+    "file": "A-laurel-stores-gold.glb",
+    "triangles": 45208,
+    "drawCalls": 3
+  },
+  {
+    "file": "A-laurel-cities-bronze.glb",
+    "triangles": 47396,
+    "drawCalls": 3
+  },
+  {
+    "file": "A-laurel-cities-silver.glb",
+    "triangles": 47964,
+    "drawCalls": 3
+  },
+  {
+    "file": "A-laurel-cities-gold.glb",
+    "triangles": 48532,
+    "drawCalls": 3
+  }
+]

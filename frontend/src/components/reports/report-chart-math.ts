@@ -1,6 +1,44 @@
 import type { CardData, ReportPoint } from "@/lib/reports"
 
 export type ChartSeries = { key: string; label: string; points: ReportPoint[] }
+export type NumericReportPoint = Omit<ReportPoint, "value"> & {
+  value: number
+  missing?: boolean
+}
+export type NumericChartSeries = Omit<ChartSeries, "points"> & {
+  points: NumericReportPoint[]
+}
+export type NumericCardData = Omit<CardData, "points" | "series" | "total"> & {
+  total: number
+  points: NumericReportPoint[]
+  series?: NumericChartSeries[]
+}
+
+export function numericCardData(data: CardData): NumericCardData {
+  if (
+    data.total != null &&
+    data.points.every((point) => point.value != null) &&
+    data.series?.every((series) =>
+      series.points.every((point) => point.value != null)
+    ) !== false
+  )
+    return data as NumericCardData
+  const points = (items: ReportPoint[]) =>
+    items.map((point) => ({
+      ...point,
+      value: point.value ?? 0,
+      missing: point.value == null,
+    }))
+  return {
+    ...data,
+    total: data.total ?? 0,
+    points: points(data.points),
+    series: data.series?.map((series) => ({
+      ...series,
+      points: points(series.points),
+    })),
+  }
+}
 export type StackSegment = {
   series: number
   value: number
@@ -8,10 +46,30 @@ export type StackSegment = {
   end: number
 }
 
-export function chartSeries(data: CardData, label: string): ChartSeries[] {
-  return data.series?.length
-    ? data.series
-    : [{ key: "primary", label, points: data.points }]
+export function chartSeries(
+  data: CardData,
+  label: string
+): NumericChartSeries[] {
+  const numeric = numericCardData(data)
+  return numeric.series?.length
+    ? numeric.series
+    : [{ key: "primary", label, points: numeric.points }]
+}
+
+/** 留空的指標切斷曲線；數值零仍是有效資料點。 */
+export function trendSegments(
+  keys: string[],
+  points: (ReportPoint & { missing?: boolean })[]
+): number[][] {
+  const index = new Map(points.map((point) => [point.key, point]))
+  const paths: number[][] = [[]]
+  keys.forEach((key, row) => {
+    const point = index.get(key)
+    if (point && point.value != null && !point.missing)
+      paths[paths.length - 1].push(row)
+    else if (paths.at(-1)?.length) paths.push([])
+  })
+  return paths.filter((path) => path.length)
 }
 
 /** Each category accumulates gains and losses independently from the same zero. */
@@ -41,8 +99,14 @@ export function stackRows(
   })
 }
 
-export function chartDomain(values: number[], target?: number | null) {
-  const finite = values.filter(Number.isFinite)
+export function chartDomain(
+  values: (number | null | undefined)[],
+  target?: number | null
+) {
+  const finite = values.filter(
+    (value): value is number =>
+      typeof value === "number" && Number.isFinite(value)
+  )
   if (typeof target === "number" && Number.isFinite(target)) finite.push(target)
   const minimum = Math.min(0, ...finite)
   const maximum = Math.max(0, ...finite)
@@ -50,7 +114,7 @@ export function chartDomain(values: number[], target?: number | null) {
 }
 
 export type TreeRect = {
-  point: ReportPoint
+  point: NumericReportPoint
   x: number
   y: number
   width: number
@@ -65,7 +129,7 @@ export function treeRects(
 ): TreeRect[] {
   const result: TreeRect[] = []
   function partition(
-    items: ReportPoint[],
+    items: NumericReportPoint[],
     x: number,
     y: number,
     w: number,
@@ -94,7 +158,10 @@ export function treeRects(
     }
   }
   partition(
-    points.filter((point) => point.value > 0),
+    points.filter(
+      (point): point is NumericReportPoint =>
+        point.value != null && point.value > 0
+    ),
     0,
     0,
     width,

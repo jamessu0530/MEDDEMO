@@ -1,0 +1,9 @@
+.report-fixed-visual svg[role="img"] {
+  max-height: var(--report-plot-height);
+}
+
+@media print {
+  [data-report-layout="desktop-free"] {
+    background-image: none !important;
+  }
+}

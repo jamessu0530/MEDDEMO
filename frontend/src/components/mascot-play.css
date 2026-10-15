@@ -1,0 +1,31 @@
+.mascot-play { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.mascot-play-button { display: block; padding: 0; border: 0; border-radius: 20px; background: transparent; cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.mascot-play-button:focus-visible, .mascot-play-reset:focus-visible { outline: 3px solid #9b51e0; outline-offset: 4px; }
+.mascot-play-button:disabled { cursor: default; }
+.mascot-play-message { font-size: 11px; line-height: 1.6; color: #8950bf; text-align: center; }
+.mascot-play-reset { padding: 6px 12px; border: 1px solid #dcc4f3; border-radius: 99px; color: #8950bf; background: #f5edfc; font: inherit; font-size: 12px; cursor: pointer; }
+.mascot-play-nudge, .mascot-play-single { transform-box: fill-box; transform-origin: 50% 70%; }
+.mascot-play:not([data-taps="0"]):not([data-split="true"]) .mascot-play-nudge { animation: mascot-play-nudge .3s ease-out; }
+@keyframes mascot-play-nudge { 0%, 100% { transform: scale(1) rotate(0deg); } 30% { transform: scale(1.07, .92) rotate(-5deg); } 65% { transform: scale(.98, 1.025) rotate(3deg); } }
+.mascot-play[data-taps="4"] .mascot-body { animation: mascot-play-shake .16s linear infinite; }
+.mascot-play[data-taps="5"] .mascot-body { animation: mascot-play-shake .08s linear infinite; }
+@keyframes mascot-play-shake { 0%, 100% { transform: translateX(-3px) rotate(-3deg) scale(1.04, .96); } 50% { transform: translateX(3px) rotate(3deg) scale(1.04, .96); } }
+.mascot-play[data-split="true"] .mascot-play-single { animation: mascot-play-pop .38s ease-out forwards; pointer-events: none; }
+@keyframes mascot-play-pop { 0% { transform: scale(1); opacity: 1; } 38% { transform: scale(1.2, .8); opacity: 1; } 68% { transform: scale(.85, 1.15); opacity: 1; } 100% { transform: scale(1.3); opacity: 0; } }
+.mascot-play-twin { opacity: 1; animation: mascot-play-split-l .85s cubic-bezier(.2, .7, .3, 1) both; }
+.mascot-play-twin-r { animation-name: mascot-play-split-r; }
+@keyframes mascot-play-split-l { 0%, 28% { transform: translate(44px, -12px) scale(.85); opacity: 0; } 43% { opacity: 1; } 64% { transform: translate(-4px, -24px); } 83% { transform: translate(0, 3px); } 100% { transform: translate(0, 0); } }
+@keyframes mascot-play-split-r { 0%, 28% { transform: translate(-44px, -12px) scale(.85); opacity: 0; } 43% { opacity: 1; } 64% { transform: translate(4px, -30px); } 83% { transform: translate(0, 3px); } 100% { transform: translate(0, 0); } }
+.mascot-play-puff { transform-box: fill-box; transform-origin: 50% 50%; --puff-x: -70px; --puff-y: -60px; animation: mascot-play-puff .65s ease-out both; }
+.mascot-play-puff[data-n="1"] { --puff-x: 0px; --puff-y: -90px; }
+.mascot-play-puff[data-n="2"] { --puff-x: 70px; --puff-y: -60px; }
+.mascot-play-puff[data-n="3"] { --puff-x: 95px; --puff-y: -5px; }
+.mascot-play-puff[data-n="4"] { --puff-x: 65px; --puff-y: 60px; }
+.mascot-play-puff[data-n="5"] { --puff-x: 0px; --puff-y: 70px; }
+.mascot-play-puff[data-n="6"] { --puff-x: -65px; --puff-y: 60px; }
+.mascot-play-puff[data-n="7"] { --puff-x: -95px; --puff-y: -5px; }
+@keyframes mascot-play-puff { 0%, 30% { transform: translate(0, 0) scale(0); opacity: 0; } 48% { opacity: .95; } 100% { transform: translate(var(--puff-x), var(--puff-y)) scale(.75); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .mascot-play *, .mascot-play .mascot * { animation: none !important; }
+  .mascot-play[data-split="true"] .mascot-play-single, .mascot-play-particles { display: none; }
+}

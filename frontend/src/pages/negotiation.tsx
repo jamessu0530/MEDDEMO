@@ -7,6 +7,7 @@ import type { MethodCard } from "@/api/methods"
 import { MethodCardItem } from "@/components/method-card"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
+import { ProductPhoto } from "@/components/product-photo"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/lib/auth"
@@ -196,7 +197,7 @@ function ShelfBlock({ shelf, festival }: { shelf: Shelf; festival: Festival | nu
   return (
     <section className="rounded-2xl border-2 bg-card p-4 shadow-lip">
       <div className="flex items-baseline justify-between gap-2">
-        <p className="text-sm font-semibold">架上有什麼</p>
+        <p className="shrink-0 text-sm font-semibold">架上有什麼</p>
         <p className="text-[0.6875rem] text-muted-foreground">近 90 天每月進貨次數 · 灰線是同區平均</p>
       </div>
       {items.length === 0 && <p className="mt-2 text-sm text-muted-foreground">近半年沒有進貨紀錄。</p>}
@@ -213,20 +214,25 @@ function ShelfBlock({ shelf, festival }: { shelf: Shelf; festival: Festival | nu
           const region = item.region_orders_per_month
           const below = region !== null && item.orders_per_month < region
           return (
-            <div key={item.sku} className="flex items-center gap-2.5">
-              <span className="w-24 shrink-0 truncate text-xs">{item.name}</span>
-              <span className="relative block h-4 flex-1 overflow-hidden rounded bg-secondary">
-                <span
-                  className={cn("absolute inset-y-0 left-0 rounded", below ? "bg-destructive" : "bg-primary")}
-                  style={{ width: `${(item.orders_per_month / scale) * 100}%` }}
-                />
-                {region !== null && (
-                  <span className="absolute inset-y-0 w-0.5 bg-muted-foreground" style={{ left: `${(region / scale) * 100}%` }} />
-                )}
-              </span>
-              <span className={cn("w-16 shrink-0 text-right text-xs tabular-nums", below ? "text-destructive" : "text-muted-foreground")}>
-                {item.orders_per_month.toFixed(1)} / {region === null ? "—" : region.toFixed(1)}
-              </span>
+            <div key={item.sku} className="flex items-start gap-3">
+              <ProductPhoto product={item} size="compact" />
+              <div className="min-w-0 flex-1">
+                <p className="mb-1.5 text-xs">{item.name}</p>
+                <div className="flex items-center gap-2.5">
+                  <span className="relative block h-4 flex-1 overflow-hidden rounded bg-secondary">
+                    <span
+                      className={cn("absolute inset-y-0 left-0 rounded", below ? "bg-destructive" : "bg-primary")}
+                      style={{ width: `${(item.orders_per_month / scale) * 100}%` }}
+                    />
+                    {region !== null && (
+                      <span className="absolute inset-y-0 w-0.5 bg-muted-foreground" style={{ left: `${(region / scale) * 100}%` }} />
+                    )}
+                  </span>
+                  <span className={cn("w-16 shrink-0 text-right text-xs tabular-nums", below ? "text-destructive" : "text-muted-foreground")}>
+                    {item.orders_per_month.toFixed(1)} / {region === null ? "—" : region.toFixed(1)}
+                  </span>
+                </div>
+              </div>
             </div>
           )
         })}
@@ -240,15 +246,18 @@ function GapsBlock({ gaps }: { gaps: Gaps }) {
   return (
     <section className="rounded-2xl border-2 bg-card px-4 pb-1 shadow-lip">
       <div className="flex items-baseline justify-between gap-2 py-3">
-        <p className="text-sm font-semibold">架上缺什麼</p>
+        <p className="shrink-0 text-sm font-semibold">架上缺什麼</p>
         <p className="text-[0.6875rem] text-muted-foreground">同區連鎖近 90 天有進 · 這家近半年沒進</p>
       </div>
       {gaps.map((gap) => (
-        <div key={gap.sku} className="flex min-h-12 items-center justify-between gap-3 border-t py-2">
-          <p className="text-sm">{gap.name}</p>
-          <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-            同區其他 {gap.peers_total} 家連鎖裡 {gap.peers_with} 家有進
-          </span>
+        <div key={gap.sku} className="flex items-start gap-3 border-t py-3">
+          <ProductPhoto product={gap} size="compact" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm">{gap.name}</p>
+            <p className="mt-1 text-xs text-muted-foreground tabular-nums">
+              同區其他 {gap.peers_total} 家連鎖裡 {gap.peers_with} 家有進
+            </p>
+          </div>
         </div>
       ))}
     </section>
@@ -274,11 +283,16 @@ function DealsBlock({ deals, festival }: { deals: Deals; festival: Festival | nu
       <ul className="mt-2 flex flex-col gap-2">
         {deals.items.map((item) => (
           <li key={item.sku} className="rounded-xl border-2 bg-card px-4 py-3 shadow-lip">
-            <div className="flex items-start justify-between gap-3">
-              <p className="leading-snug font-medium">{item.name}</p>
-              <Badge variant="secondary">毛利 {formatRate(item.profit_rate, 1)}</Badge>
+            <div className="flex items-start gap-3">
+              <ProductPhoto product={item} size="compact" />
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <p className="leading-snug font-medium">{item.name}</p>
+                  <Badge variant="secondary">毛利 {formatRate(item.profit_rate, 1)}</Badge>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">{item.deal}</p>
+              </div>
             </div>
-            <p className="mt-1 text-xs text-muted-foreground">{item.deal}</p>
             <dl className="mt-3 grid grid-cols-3 gap-2 border-t pt-2 text-center">
               <div>
                 <dt className="text-[0.6875rem] text-muted-foreground">每口</dt>

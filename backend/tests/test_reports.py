@@ -398,7 +398,8 @@ def test_old_saved_report_configs_load_with_new_defaults_without_overwriting(sam
     tx.flush()
     loaded = client.get("/api/reports", headers=headers(sample["RPT01"])).json()["config"]
     assert loaded["name"] == old["name"]
-    assert loaded["pages"] == [{"id": "overview", "name": "總覽"}] and loaded["filters"] == []
+    assert loaded["pages"] == [{"id": "overview", "name": "總覽", "filters": [], "slicers": [], "date_range": None, "desktop_layout": "flow"}] and loaded["filters"] == []
+    assert loaded["refresh_seconds"] == 0
     card = loaded["cards"][0]
     assert card["page_id"] == "overview" and card["legend"] is None and card["secondary_metric"] is None
     assert card["width"] == "half" and card["height"] == "regular" and card["color"] == "#6455c7"
@@ -573,7 +574,9 @@ def test_multiple_pages_and_formats_persist_and_cards_use_existing_page_ids(samp
     body["cards"][0].update(color="#aA1122", width="full", height="tall", target=100000, show_labels=False, show_legend=False)
     response = client.put("/api/reports/config", headers=headers(sample["RPT01"]), json=body)
     assert response.status_code == 200, response.text
-    assert client.get("/api/reports", headers=headers(sample["RPT01"])).json()["config"] == body
+    expected = reports.ReportConfig.model_validate(body).model_dump(mode="json")
+    assert response.json() == expected
+    assert client.get("/api/reports", headers=headers(sample["RPT01"])).json()["config"] == expected
     body["cards"].append(dict(body["cards"][0], id="too-many", page_id="sales"))
     assert client.put("/api/reports/config", headers=headers(sample["RPT01"]), json=body).status_code == 422
 
@@ -613,11 +616,14 @@ def test_provider_schema_is_compact_typed_and_supports_nullable_and_legacy_confi
     schema = reports.ADJUSTMENT_SCHEMA
     Draft202012Validator.check_schema(schema)
     assert api_schema(schema) == schema
-    encoded = json.dumps(schema)
-    for keyword in ("anyOf", "$ref", "$defs", "title", "default", "minItems", "maxItems", "minimum", "maximum", "pattern", "minLength", "maxLength"):
-        # 卡片的 title 是欄位名稱，仍然存在；僅檢查 schema 節點的關鍵字。
-        if keyword != "title":
-            assert f'"{keyword}":' not in encoded
+    forbidden = {"anyOf", "$ref", "$defs", "title", "default", "minItems", "maxItems", "minimum", "maximum", "pattern", "minLength", "maxLength"}
+    def check_node(node):
+        # title／minimum／maximum 也可能是合法欄位名稱，只檢查 schema 節點。
+        assert not forbidden.intersection(node)
+        for child in node.get("properties", {}).values(): check_node(child)
+        if isinstance(node.get("items"), dict): check_node(node["items"])
+        if isinstance(node.get("additionalProperties"), dict): check_node(node["additionalProperties"])
+    check_node(schema)
     config_schema = schema["properties"]["config"]
     assert config_schema["type"] == ["object", "null"]
     card_schema = config_schema["properties"]["cards"]["items"]

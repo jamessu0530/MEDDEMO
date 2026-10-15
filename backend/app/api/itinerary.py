@@ -22,6 +22,7 @@ from app.llm import LLMOutputError
 from app.models import AppUser
 from app.services import itinerary as service
 from app.services import itinerary_ai
+from app.services import mascot_collection
 from app.services import team_itineraries as team
 from app.services.google_routes import DayMode, TravelMode
 
@@ -535,6 +536,7 @@ def arrive(session: SessionDep, customer_id: str, user: CurrentUser):
         raise HTTPException(404, "這家不在今天的路線上") from None
     except LookupError:
         raise HTTPException(403, NO_ROUTE) from None
+    mascot_collection.sync_collection(session, user)
     # 先提交、放掉列鎖再讀進度；進度不算車程，不會等 Google
     session.commit()
     found = service.progress(session, itinerary)

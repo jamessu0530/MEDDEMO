@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 
 import { getLastOrder, type LastOrder } from "@/api/customers"
 import { ChangeNote } from "@/components/change-note"
+import { ProductPhoto } from "@/components/product-photo"
 import { lastOrderLine, lastOrderSources, splitLastOrder } from "@/lib/last-order"
 
 type LoadState = { status: "loading" } | { status: "error" } | { status: "ready"; last: LastOrder | null }
@@ -49,9 +50,12 @@ export function LastOrderSection({ customerId }: { customerId: string }) {
         <>
           <ul className="flex flex-col">
             {rows.map((line, index) => (
-              <li key={`${line.source}-${line.sku}-${line.pack?.code ?? "plain"}-${index}`} className="flex flex-col gap-1 border-t py-2 first:border-t-0">
-                <span className="text-sm">{lastOrderLine(line)}</span>
-                {line.change && <ChangeNote text={line.change.text} />}
+              <li key={`${line.source}-${line.sku}-${line.pack?.code ?? "plain"}-${index}`} className="flex items-start gap-3 border-t py-3 first:border-t-0">
+                <ProductPhoto product={line} size="compact" />
+                <div className="flex min-w-0 flex-1 flex-col gap-1">
+                  <span className="text-sm">{lastOrderLine(line)}</span>
+                  {line.change && <ChangeNote text={line.change.text} />}
+                </div>
               </li>
             ))}
           </ul>

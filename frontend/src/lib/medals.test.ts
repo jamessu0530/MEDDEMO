@@ -1,13 +1,22 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import type { Medal } from "@/api/me"
-import { freshIds, lockedHint, markSeen, medalBack, medalId, medalStatus, niceTicks, readSeen, unlockedText } from "@/lib/medals"
+import { freshIds, lockedHint, markSeen, medalBack, medalId, medalStatus, medalName, medalCondition, medalProgress, niceTicks, readSeen, unlockedText } from "@/lib/medals"
 
 const medal = (kind: Medal["kind"], tier: Medal["tier"], need: number, have: number, unlocked_on: string | null = null): Medal => ({
   kind, tier, need, have, unlocked_on, unlocked_at: unlocked_on && `${unlocked_on}T09:18:04.123456+08:00`,
 })
 
 describe("獎牌的字", () => {
+  it("品類成就有條件與名稱，已過的關數不讓進度條超過 100%", () => {
+    const device = medal("devices", 2, 2, 1)
+    expect(medalName(device)).toBe("器材辨識員")
+    expect(medalCondition(device)).toContain("前 2 關，每關全部答對")
+    expect(medalProgress(device)).toEqual({ completed: 1, total: 2, percent: 50 })
+    expect(medalProgress({ ...device, have: 3 })).toEqual({ completed: 2, total: 2, percent: 100 })
+    expect(lockedHint(device)).toContain("目前完成 1 / 2 關")
+    expect(unlockedText([medal("wellness", 3, 3, 3, "2026-10-14")])).toBe("解鎖金牌：保健品達人")
+  })
   it("解鎖的寫日期，沒解鎖的寫還差多少", () => {
     expect(medalStatus(medal("stores", 2, 3, 3, "2026-10-28"))).toBe("10/28 解鎖")
     expect(medalStatus(medal("stores", 3, 5, 3))).toBe("還差 2 家")
@@ -75,6 +84,18 @@ describe("新解鎖、這支手機還沒看過的", () => {
     })
     expect(readSeen("U01").size).toBe(0)
     expect(() => markSeen("U01", [medal("stores", 1, 1, 1, "2026-10-28")])).not.toThrow()
+  })
+
+  it("單面過關畫面保留其他已看過的獎牌，重置仍會清掉該面", () => {
+    fakeStorage()
+    const route = medal("stores", 1, 1, 1, "2026-10-28")
+    const device = { ...route, kind: "devices" as const }
+    markSeen("U01", [route])
+    markSeen("U01", [device])
+    expect(freshIds([route, device], readSeen("U01"))).toEqual([])
+    markSeen("U01", [{ ...route, unlocked_on: null, unlocked_at: null }])
+    expect(readSeen("U01").size).toBe(1)
+    expect(freshIds([route, device], readSeen("U01"))).toEqual([medalId(route)])
   })
 })
 

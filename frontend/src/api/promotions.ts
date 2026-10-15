@@ -5,6 +5,7 @@ import { request } from "@/api/client"
 export type PromotionItem = {
   code: string
   group_name: string
+  category: string
   name: string
   sku: string
   spec: string

@@ -1,8 +1,9 @@
 import { request, upload } from "@/api/client"
+import type { MascotLook } from "@/lib/mascot-collection"
 
 /** 有大頭貼的人：帳號 → 圖片網址（簽過名，<img> 直接用）。不在裡面的用名字縮寫 */
 export function listAvatars(signal?: AbortSignal) {
-  return request<{ avatars: Record<string, string> }>("/api/avatars", { signal })
+  return request<{ avatars: Record<string, string>; mascot_avatars?: Record<string, MascotLook> }>("/api/avatars", { signal })
 }
 
 /** 換成這張照片；後端會再轉正、清 EXIF、裁成 256×256 */

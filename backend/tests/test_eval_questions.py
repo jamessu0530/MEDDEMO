@@ -7,6 +7,8 @@ from pathlib import Path
 import pytest
 from sqlalchemy import text
 
+from test_promotion_discounts import BEST_SQL
+
 ROOT = Path(__file__).resolve().parents[2]
 ITEMS = {i["id"]: i for i in json.loads((ROOT / "data/eval/data_questions.json").read_text(encoding="utf-8"))["items"]}
 _spec = importlib.util.spec_from_file_location("eval_ask", ROOT / "backend" / "scripts" / "eval_ask.py")
@@ -25,14 +27,15 @@ GOLD_SQL = {
     "D08": "SELECT category FROM v_margin_breakdown GROUP BY category ORDER BY sum(net_margin) / sum(revenue) LIMIT 1",
     "D09": "SELECT count(*) FROM v_visit_signal WHERE competitor_names LIKE '%御松田%' AND visit_date > app_today() - 90",
     "D10": "SELECT sum(amount) FROM v_monthly_sales WHERE region = '南區' AND category = '保健品' AND month = '2026-09-01'",
+    "D11": BEST_SQL,
 }
 
 
 @pytest.mark.parametrize("question_id", sorted(GOLD_SQL))
 def test_gold_answer_still_matches_the_data(db, question_id):
     item = ITEMS[question_id]
-    values = db.execute(text(GOLD_SQL[question_id])).one()
-    answer_text = " ".join(str(v) for v in values)
+    values = db.execute(text(GOLD_SQL[question_id])).all()
+    answer_text = " ".join(str(v) for row in values for v in row)
     assert eval_ask.score_data(item, answer_text) == [], (question_id, values)
 
 

@@ -1,0 +1,21 @@
+{
+  "colors": [
+    {"id":"classic","name":"經典紫","base":"#9B51E0","light":"#EADBFD","ink":"#2B1B47","rarity":"classic"},
+    {"id":"mint","name":"薄荷星光","base":"#42BFA6","light":"#DDF8EF","ink":"#173F3A","rarity":"shiny"},
+    {"id":"peach","name":"蜜桃泡泡","base":"#ED8EAB","light":"#FFF0E9","ink":"#64354D","rarity":"shiny"},
+    {"id":"midnight","name":"午夜銀河","base":"#44457E","light":"#DDE3FC","ink":"#151D39","rarity":"shiny"},
+    {"id":"gold","name":"奶油星星","base":"#E6B64F","light":"#FFF3CE","ink":"#65451F","rarity":"shiny"}
+  ],
+  "outfits": [
+    {"id":"none","name":"原本的熊熊","city":null,"hint":"最熟悉的熊熊滾","unlock":"一開始就有"},
+    {"id":"scarf","name":"雲朵圍巾","city":null,"hint":"軟軟的藍色小圍巾","unlock":"一開始就有"},
+    {"id":"beret","name":"小畫家","city":null,"hint":"戴上貝雷帽出門","unlock":"一開始就有"},
+    {"id":"taipei","name":"小籠包熊","city":"台北市","hint":"把小籠包戴在頭上","unlock":"到過台北市的任一站"},
+    {"id":"new-taipei","name":"天燈熊","city":"新北市","hint":"披上天燈色的小披風","unlock":"到過新北市的任一站"},
+    {"id":"hsinchu","name":"貢丸熊","city":"新竹市","hint":"三顆貢丸的小帽子","unlock":"到過新竹市的任一站"},
+    {"id":"taichung","name":"珍奶熊","city":"台中市","hint":"圍巾上藏著小珍珠","unlock":"到過台中市的任一站"},
+    {"id":"changhua","name":"肉圓熊","city":"彰化縣","hint":"Q 彈肉圓變成帽子","unlock":"到過彰化縣的任一站"},
+    {"id":"tainan","name":"虱目魚熊","city":"台南市","hint":"一條小魚當領巾","unlock":"到過台南市的任一站"},
+    {"id":"kaohsiung","name":"香蕉熊","city":"高雄市","hint":"頭頂一彎金黃香蕉","unlock":"到過高雄市的任一站"}
+  ]
+}

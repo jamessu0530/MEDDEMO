@@ -1,0 +1,4 @@
+# 保留第三方授權原文與編譯後 shader 字串，避免重排改變資產內容。
+backend/app/assets/fonts/OFL.txt -whitespace linguist-vendored=true
+frontend/public/medal-designs/assets/* -whitespace linguist-generated=true
+docs/superpowers/specs/assets/2026-10-14-mascot-wardrobe.html -whitespace linguist-generated=true

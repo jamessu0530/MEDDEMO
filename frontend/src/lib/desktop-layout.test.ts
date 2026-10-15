@@ -4,7 +4,7 @@ import { desktopSamePage, pageWidth, trimPath } from "@/lib/desktop-layout"
 
 describe("pageWidth", () => {
   it("自己排成兩欄以上的六種頁是寬版", () => {
-    for (const path of ["/", "/channels", "/channels/12", "/manager", "/reports", "/customers/C0123", "/customers/C0123/quote"]) {
+    for (const path of ["/", "/channels", "/channels/12", "/manager", "/reports", "/mascots", "/customers/C0123", "/customers/C0123/quote"]) {
       expect(pageWidth(path), path).toBe("wide")
     }
   })
