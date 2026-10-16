@@ -62,7 +62,7 @@ export function ReportRibbon({
                 ] as HTMLElement
               )?.focus()
             }}
-            className={`min-h-10 px-4 text-xs ${tab === item.id ? "border-b-2 border-primary font-semibold text-primary" : "text-muted-foreground"}`}
+            className={`min-h-10 shrink-0 px-4 text-xs whitespace-nowrap ${tab === item.id ? "border-b-2 border-primary font-semibold text-primary" : "text-muted-foreground"}`}
             onClick={() => setTab(item.id)}
           >
             {item.label}
@@ -72,7 +72,7 @@ export function ReportRibbon({
       <div
         role="toolbar"
         aria-label={`${tab}工具`}
-        className="flex min-h-16 flex-wrap items-center gap-2 p-2"
+        className="flex min-h-14 items-center gap-2 overflow-x-auto p-2 [&>*]:shrink-0"
       >
         {tab === "home" && children}
         {tab === "insert" && (

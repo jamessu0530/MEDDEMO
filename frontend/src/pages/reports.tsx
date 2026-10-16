@@ -166,6 +166,7 @@ import {
   type ReportMatrixView,
 } from "@/lib/reports"
 import { useIsDesktop } from "@/lib/use-media-query"
+import { useReportWorkspaceLayout } from "@/lib/report-workspace-layout"
 import { cn } from "@/lib/utils"
 
 type Boot =
@@ -319,6 +320,8 @@ function ReportDocument({
     filters: false,
     layers: false,
   })
+  const workspaceLayout = useReportWorkspaceLayout(studioPanels.data)
+  const dockedPanels = isDesktop && workspaceLayout.fitsPanels
   const [datasetEpoch, setDatasetEpoch] = useState(0)
   const [studioSelection, setStudioSelection] = useState<string[]>([])
   const [canvasValues, setCanvasValues] = useState<StudioSelections>({})
@@ -615,7 +618,7 @@ function ReportDocument({
   }
   function selectCard(id: string) {
     setSelectedId(id)
-    if (!isDesktop) setMobileInspector(true)
+    if (!dockedPanels) setMobileInspector(true)
   }
   function exploreSnapshot(): StudioExploration {
     return {
@@ -747,13 +750,13 @@ function ReportDocument({
     setSelectedId(object.id)
     setStudioSelection([object.id])
     setEditing(true)
-    if (!isDesktop) setMobileInspector(true)
+    if (!dockedPanels) setMobileInspector(true)
   }
   function addDataset(source: DataSource, field?: StudioField) {
     addObject(createDatasetObject(source, currentPage.id, field))
   }
   function assignField(field: StudioField, role?: FieldRole) {
-    if (!isDesktop) setMobileInspector(true)
+    if (!dockedPanels) setMobileInspector(true)
     try {
       if (field.kind === "dataset") {
         if (
@@ -866,7 +869,7 @@ function ReportDocument({
     setEditing(true)
     setSelectedId(card.id)
     setGallery(false)
-    if (!isDesktop) setMobileInspector(true)
+    if (!dockedPanels) setMobileInspector(true)
   }
   function duplicate() {
     if (!selected || config.cards.length >= 24 || pageCards.length >= 12) return
@@ -1118,7 +1121,7 @@ function ReportDocument({
   })
 
   return (
-    <div className="min-h-svh bg-muted/30">
+    <div ref={workspaceLayout.ref} className="min-h-svh min-w-0 bg-muted/30">
       <PageHeader
         title="報表工作區"
         backTo={backTo}
@@ -1236,7 +1239,7 @@ function ReportDocument({
                 setEditing(true)
                 setDrills({})
                 setSelectionGroups([])
-                if (!isDesktop) setMobileInspector(true)
+                if (!dockedPanels) setMobileInspector(true)
               }}
             >
               <Pencil className="size-3.5" />
@@ -1496,31 +1499,48 @@ function ReportDocument({
       )}
       <main
         className={cn(
-          "grid min-w-0 pb-[calc(9rem+env(safe-area-inset-bottom))]",
+          "grid min-w-0 gap-4 p-3 pb-[calc(9rem+env(safe-area-inset-bottom))] lg:p-5 lg:pb-[calc(9rem+env(safe-area-inset-bottom))]",
           editing &&
+            dockedPanels &&
             (studioPanels.data
-              ? "lg:grid-cols-[14rem_minmax(0,1fr)_18rem]"
-              : "lg:grid-cols-[minmax(0,1fr)_18rem]")
+              ? "grid-cols-[14rem_minmax(0,1fr)_18rem]"
+              : "grid-cols-[minmax(0,1fr)_18rem]")
         )}
       >
         {editing && studioPanels.data && (
           <aside
             aria-label="資料欄位面板"
-            className="min-w-0 border-r bg-card p-3 lg:sticky lg:top-16 lg:max-h-[calc(100dvh-5rem)] lg:self-start lg:overflow-y-auto"
+            className={cn(
+              "min-w-0 rounded-lg border bg-card p-3",
+              dockedPanels &&
+                "sticky top-16 max-h-[calc(100dvh-5rem)] self-start overflow-y-auto"
+            )}
           >
-            <details open={isDesktop}>
-              <summary className="min-h-9 text-xs font-semibold lg:hidden">
+            <details open={dockedPanels}>
+              <summary
+                className={cn(
+                  "cursor-pointer py-2 text-sm font-semibold",
+                  dockedPanels && "hidden"
+                )}
+              >
                 資料欄位（點開選取）
               </summary>
-              <ReportDataFields
-                key={datasetEpoch}
-                onField={assignField}
-                onDataset={addDataset}
-              />
+              <div
+                className={cn(
+                  !dockedPanels &&
+                    "max-h-72 overflow-y-auto overscroll-contain pt-3"
+                )}
+              >
+                <ReportDataFields
+                  key={datasetEpoch}
+                  onField={assignField}
+                  onDataset={addDataset}
+                />
+              </div>
             </details>
           </aside>
         )}
-        <div className="min-w-0 p-3 lg:p-5">
+        <div ref={workspaceLayout.canvasRef} className="min-w-0">
           {navigationStack.length > 0 && (
             <div className="mb-3 flex flex-wrap items-center gap-2 rounded border bg-card p-2 text-xs">
               <Button
@@ -1540,8 +1560,11 @@ function ReportDocument({
               </span>
             </div>
           )}
-          {editing && !isDesktop && (
-            <details className="mb-3 rounded border bg-card p-3">
+          {editing && !dockedPanels && (
+            <details
+              open={studioPanels.filters || studioPanels.layers}
+              className="mb-3 rounded-lg border bg-card p-3"
+            >
               <summary className="min-h-9 text-xs">篩選與圖層</summary>
               {studioPanels.filters && asOf && (
                 <ReportFilterPane
@@ -1588,6 +1611,17 @@ function ReportDocument({
                   ? "正在更新資料…"
                   : "資料載入失敗"}
             </span>
+            {editing && !dockedPanels && (
+              <Button
+                variant="outline"
+                className="h-10 shrink-0 rounded-md shadow-none"
+                onClick={() => setMobileInspector(true)}
+                aria-haspopup="dialog"
+              >
+                <SlidersHorizontal className="size-4" />
+                視覺效果設定
+              </Button>
+            )}
           </div>
           {!editing && (
             <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
@@ -1868,10 +1902,10 @@ function ReportDocument({
             {editing && "最多 5 頁，每頁 12 個圖表。 · "}金額：新台幣
           </p>
         </div>
-        {editing && isDesktop && (
+        {editing && dockedPanels && (
           <aside
             aria-label="視覺效果設定面板"
-            className="sticky top-16 max-h-[calc(100dvh-5rem)] self-start overflow-y-auto border-l bg-card p-3 pb-24"
+            className="sticky top-16 max-h-[calc(100dvh-5rem)] min-w-0 self-start overflow-y-auto rounded-lg border bg-card p-3 pb-24"
           >
             {studioPanels.filters && asOf && (
               <div className="mb-4 border-b pb-4">
@@ -1930,12 +1964,12 @@ function ReportDocument({
         )}
       </main>
       <Dialog
-        open={editing && mobileInspector && !isDesktop}
+        open={editing && mobileInspector && !dockedPanels}
         onOpenChange={setMobileInspector}
       >
         <DialogContent
           showCloseButton={false}
-          className="inset-x-0 top-auto bottom-0 grid max-h-[88dvh] max-w-none translate-x-0 translate-y-0 grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden rounded-t-2xl rounded-b-none border p-0 shadow-xl"
+          className="inset-x-0 top-auto bottom-0 mx-auto grid max-h-[88dvh] max-w-none translate-x-0 translate-y-0 grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden rounded-t-2xl rounded-b-none border p-0 shadow-xl sm:max-w-xl"
         >
           <DialogHeader className="flex-row items-center justify-between border-b px-4 py-2">
             <div>
@@ -1985,7 +2019,7 @@ function ReportDocument({
                 }}
               />
             ) : (
-              <ReportInspector {...inspectorProps} />
+              <ReportInspector {...inspectorProps} hideHeading />
             )}
           </div>
         </DialogContent>
@@ -2168,6 +2202,7 @@ function ReportDocument({
       )}
       {!readonly && (
         <AiReportDock
+          bounds={workspaceLayout.dockBounds}
           config={config}
           owners={workspace.owners}
           available={workspace.ai_available}
@@ -2479,11 +2514,13 @@ function useKeyboardInset() {
 }
 
 function AiReportDock({
+  bounds,
   config,
   owners,
   available,
   onApply,
 }: {
+  bounds?: { left: number; width: number }
   config: ReportConfig
   owners: OwnerOption[]
   available: boolean
@@ -2558,10 +2595,18 @@ function AiReportDock({
 
   return (
     <div
-      className="pointer-events-none fixed inset-x-0 z-30 mx-auto max-w-md px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] lg:left-56 lg:max-w-3xl lg:px-6"
-      style={{ bottom: keyboardInset }}
+      className="pointer-events-none fixed inset-x-0 z-30 mx-auto max-w-md pb-[calc(0.75rem+env(safe-area-inset-bottom))] lg:max-w-3xl"
+      style={{
+        bottom: keyboardInset,
+        ...(bounds && {
+          left: bounds.left,
+          right: "auto",
+          width: bounds.width,
+          maxWidth: "none",
+        }),
+      }}
     >
-      <div className="pointer-events-auto">
+      <div className="pointer-events-auto mx-auto max-w-3xl">
         {(expanded || activeResult || error) && (
           <div className="mb-3 max-h-[min(55dvh,28rem)] overflow-y-auto rounded-3xl border-2 bg-card p-4 shadow-xl">
             <div className="mb-2 flex items-center justify-between gap-2">

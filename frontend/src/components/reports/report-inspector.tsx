@@ -395,7 +395,7 @@ export function ReportInspector({
             </div>
           )}
           <div
-            className="mt-3 grid grid-cols-4 border-b border-border px-2"
+            className="mt-3 flex overflow-x-auto border-b border-border px-2"
             role="tablist"
             aria-label="圖表設定"
           >
@@ -434,7 +434,7 @@ export function ReportInspector({
                 }}
                 onClick={() => setTab(item.id)}
                 className={cn(
-                  "min-h-10 border-b-2 px-1 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary",
+                  "min-h-10 min-w-max flex-1 border-b-2 px-2 text-xs font-medium whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary",
                   tab === item.id
                     ? "border-primary text-primary"
                     : "border-transparent text-muted-foreground hover:text-foreground"
