@@ -14,16 +14,16 @@ import { Link, useBlocker, useParams } from "react-router"
 import {
   createOrder,
   getOrder,
-  getOrderCustomers,
   saveOrder,
   submitOrder,
-  type OrderCustomer,
   type OrderDetail,
   type OrderInput,
   type OrderProduct,
 } from "@/api/orders"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
+import { CustomerSelect } from "@/components/customers/customer-select"
+import { SearchSelect } from "@/components/ui/search-select"
 import { OrderProducts } from "@/components/orders/order-products"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -104,7 +104,10 @@ function OrderEditor({ initial }: { initial: OrderDetail }) {
   const [products, setProducts] = useState<
     Record<string, OrderProduct | OrderDetail["items"][number]>
   >(() => Object.fromEntries(initial.items.map((item) => [item.sku, item])))
-  const [customers, setCustomers] = useState<OrderCustomer[] | null>(null)
+  const [shipTo, setShipTo] = useState({
+    name: initial.ship_to_name,
+    address: initial.shipping_address,
+  })
   const [tab, setTab] = useState<Tab>("items")
   const [picker, setPicker] = useState(false)
   const [editingItems, setEditingItems] = useState(false)
@@ -120,16 +123,6 @@ function OrderEditor({ initial }: { initial: OrderDetail }) {
     ({ currentLocation, nextLocation }) =>
       dirty && currentLocation.pathname !== nextLocation.pathname
   )
-  useEffect(() => {
-    const controller = new AbortController()
-    if (!readonly)
-      getOrderCustomers(controller.signal)
-        .then((value) => {
-          if (!controller.signal.aborted) setCustomers(value)
-        })
-        .catch(() => {})
-    return () => controller.abort()
-  }, [readonly])
   useEffect(() => {
     if (!dirty) return
     const warn = (event: BeforeUnloadEvent) => event.preventDefault()
@@ -347,11 +340,7 @@ function OrderEditor({ initial }: { initial: OrderDetail }) {
         <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-4 text-sm sm:grid-cols-3 xl:grid-cols-6">
           {[
             ["客戶名稱", order.customer_name],
-            [
-              "收貨點",
-              customers?.find((customer) => customer.id === draft.ship_to_id)
-                ?.name ?? order.ship_to_name,
-            ],
+            ["收貨點", shipTo.name],
             ["訂單金額", `${orderMoney(total)} 元`],
             [
               order.source === "history" ? "交易日期" : "指定出貨日期",
@@ -800,22 +789,22 @@ function OrderEditor({ initial }: { initial: OrderDetail }) {
             </div>
             <label className="block space-y-1.5 text-xs">
               <span className="text-muted-foreground">收貨點</span>
-              <select
-                aria-label="收貨點"
-                className={FIELD}
+              <CustomerSelect
+                label="收貨點"
                 value={draft.ship_to_id}
-                disabled={readonly || busy || !customers}
-                onChange={(event) => update({ ship_to_id: event.target.value })}
-              >
-                {!customers && (
-                  <option value={order.ship_to_id}>{order.ship_to_name}</option>
-                )}
-                {customers?.map((customer) => (
-                  <option key={customer.id} value={customer.id}>
-                    {customer.name} · {customer.address || `${customer.city || customer.region}${customer.area || ""}`}
-                  </option>
-                ))}
-              </select>
+                selected={shipTo}
+                disabled={readonly || busy}
+                onSelect={(customer) => {
+                  setShipTo({
+                    name: customer.name,
+                    address: customer.address || "",
+                  })
+                  update({
+                    ship_to_id: customer.id,
+                    shipping_address: customer.address || "",
+                  })
+                }}
+              />
             </label>
             <label className="block space-y-1.5 text-xs">
               <span className="text-muted-foreground">
@@ -841,21 +830,15 @@ function OrderEditor({ initial }: { initial: OrderDetail }) {
                   ? "付款條件（目前客戶設定）"
                   : "付款條件"}
               </span>
-              <select
-                aria-label="付款條件"
-                className={FIELD}
+              <SearchSelect
+                label="付款條件"
                 value={draft.payment_term}
                 disabled={readonly || busy}
-                onChange={(event) =>
-                  update({ payment_term: event.target.value })
-                }
-              >
-                {Object.entries(PAYMENT_TERMS).map(([code, label]) => (
-                  <option key={code} value={code}>
-                    {label}
-                  </option>
-                ))}
-              </select>
+                options={Object.entries(PAYMENT_TERMS).map(
+                  ([value, label]) => ({ value, label })
+                )}
+                onValueChange={(payment_term) => update({ payment_term })}
+              />
             </label>
             <div className="grid gap-4">
               {field("收貨點地址", "shipping_address", 240)}

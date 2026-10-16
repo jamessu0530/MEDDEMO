@@ -1,12 +1,12 @@
 import { useId, useState } from "react"
-import { ChevronDown, Search, X } from "lucide-react"
+import { X } from "lucide-react"
+import { SearchSelect } from "@/components/ui/search-select"
 
 import {
   SLICER_DIMENSIONS,
   dateRangeError,
   filterOptionLabel,
   filterSummary,
-  searchFilterOptions,
 } from "@/lib/report-filters"
 import {
   DIMENSIONS,
@@ -95,116 +95,29 @@ function SlicerField({
   keys: string[]
   onChange: (keys: string[]) => void
 }) {
-  const id = useId()
-  const [search, setSearch] = useState("")
-  const [count, setCount] = useState(50)
-  const matches = searchFilterOptions(options[dimension], search)
-  const selected = new Set(keys)
-  const toggle = (key: string) =>
-    onChange(
-      selected.has(key) ? keys.filter((value) => value !== key) : [...keys, key]
-    )
   return (
-    <details className="min-w-0 rounded-md border bg-background">
-      <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 px-3 text-xs [&::-webkit-details-marker]:hidden">
-        <span className="min-w-0 break-words">
-          {DIMENSIONS[dimension]}{" "}
-          <span className="text-muted-foreground">
-            {keys.length ? `已選 ${keys.length} 項` : "全部可見資料"}
-          </span>
-        </span>
-        <ChevronDown className="size-3.5 shrink-0" />
-      </summary>
-      <div className="space-y-2 border-t p-2">
-        <label className="flex items-center gap-1.5" htmlFor={`${id}-search`}>
-          <Search className="size-3.5 shrink-0 text-muted-foreground" />
-          <input
-            id={`${id}-search`}
-            type="search"
-            aria-label={`搜尋${DIMENSIONS[dimension]}`}
-            placeholder="搜尋名稱或編號"
-            className={INPUT}
-            value={search}
-            onChange={(event) => {
-              setSearch(event.target.value)
-              setCount(50)
-            }}
-          />
-        </label>
-        {!!keys.length && (
-          <div className="max-h-28 space-y-1 overflow-y-auto">
-            {keys.map((key) => (
-              <button
-                key={key}
-                type="button"
-                aria-label={`取消${filterOptionLabel(options, dimension, key)}`}
-                onClick={() => toggle(key)}
-                className="flex min-h-9 w-full items-center justify-between gap-1 rounded bg-primary/5 px-2 text-left text-xs text-primary"
-              >
-                <span className="min-w-0 break-words">
-                  {filterOptionLabel(options, dimension, key)}
-                </span>
-                <X className="size-3 shrink-0" />
-              </button>
-            ))}
-          </div>
-        )}
-        <div
-          className="max-h-52 space-y-0.5 overflow-y-auto"
-          role="group"
-          aria-label={`${DIMENSIONS[dimension]}多選選項`}
-        >
-          {matches.slice(0, count).map((option) => (
-            <label
-              key={option.key}
-              className="flex min-h-11 cursor-pointer items-center gap-2 rounded px-2 text-xs hover:bg-muted"
-            >
-              <input
-                type="checkbox"
-                className="size-4 shrink-0 accent-primary"
-                checked={selected.has(option.key)}
-                disabled={keys.length >= 500 && !selected.has(option.key)}
-                onChange={() => toggle(option.key)}
-              />
-              <span className="min-w-0 break-words">
-                {option.label}{" "}
-                <span className="text-[10px] text-muted-foreground">
-                  {option.key}
-                </span>
-              </span>
-            </label>
-          ))}
-          {!matches.length && (
-            <p className="px-2 py-3 text-xs text-muted-foreground">
-              {search ? "沒有符合的可見選項" : "目前沒有可見資料"}
-            </p>
-          )}
-          {matches.length > count && (
-            <button
-              type="button"
-              className="min-h-11 w-full rounded bg-muted text-xs"
-              onClick={() => setCount((value) => value + 50)}
-            >
-              再顯示 50 項（共 {matches.length} 項）
-            </button>
-          )}
-        </div>
-        {!!keys.length && (
-          <button
-            type="button"
-            className="min-h-9 text-xs text-primary"
-            onClick={() => onChange([])}
-          >
-            清除此欄位選取
-          </button>
-        )}
-        {keys.length >= 500 && (
-          <p className="text-xs text-muted-foreground">
-            每個欄位最多選取 500 項。
-          </p>
-        )}
-      </div>
-    </details>
+    <div className="min-w-0 space-y-1.5">
+      <p className="text-xs font-medium text-muted-foreground">
+        {DIMENSIONS[dimension]}
+      </p>
+      <SearchSelect
+        multiple
+        label={DIMENSIONS[dimension]}
+        value={keys}
+        maximum={500}
+        placeholder="全部可見資料"
+        options={options[dimension].map((option) => ({
+          value: option.key,
+          label: option.label,
+          meta: option.key,
+        }))}
+        selectedOptions={keys.map((key) => ({
+          value: key,
+          label: filterOptionLabel(options, dimension, key),
+        }))}
+        onValueChange={onChange}
+      />
+    </div>
   )
 }
 

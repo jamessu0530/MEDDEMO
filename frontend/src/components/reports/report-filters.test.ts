@@ -18,7 +18,7 @@ describe("報表篩選介面", () => {
     ],
   }
   const fallback = { start: "2031-04-01", end: "2031-04-17" }
-  it("四種切片器都有搜尋和多選，已選項目可取消", () => {
+  it("四種切片器顯示選擇器入口與已選摘要，不預先渲染長清單", () => {
     const html = renderToStaticMarkup(
       createElement(ReportSlicerEditor, {
         options,
@@ -27,10 +27,11 @@ describe("報表篩選介面", () => {
       })
     )
     for (const label of ["業務", "客戶", "商品", "客戶類型"])
-      expect(html).toContain(`搜尋${label}`)
-    expect(html).toContain('aria-label="取消杏林診所"')
-    expect(html).toContain('type="checkbox"')
-    expect(html).toContain('checked=""')
+      expect(html).toContain(`aria-label="${label}"`)
+    expect(html.match(/role="combobox"/g)).toHaveLength(4)
+    expect(html).toContain("杏林診所")
+    expect(html).toContain('aria-expanded="false"')
+    expect(html).not.toContain('role="option"')
   })
   it("有效條件使用可見名称並標明範圍，未知值仍可清除", () => {
     const html = renderToStaticMarkup(
