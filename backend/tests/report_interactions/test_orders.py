@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
 from app.main import app
-from app.models import AppUser, Customer, Promotion, PromotionItem, Receivable, SalesOrder, SalesTransaction, SapQuotationDraft
+from app.models import AppUser, Customer, Product, Promotion, PromotionItem, Receivable, SalesOrder, SalesTransaction, SapQuotationDraft
 from app.services import auth, order_workspace as service
 
 
@@ -103,6 +103,18 @@ def test_order_customers_and_full_catalog_use_edit_scope_and_current_supply_pric
     assert catalog["total"] == 1 and catalog["items"][0]["unit_price"] == 95
     assert api.get("/api/orders/products?customer_id=C3", headers=headers).status_code == 200
     assert api.get("/api/orders/products?customer_id=C2&q=%25", headers=headers).json()["total"] == 0
+
+
+def test_formal_product_lists_exclude_legacy_and_named_demo_products(workspace):
+    workspace.add_all([Product(sku=sku, name=name, category="保健品", spec="盒", unit="盒", unit_price=100, unit_cost=40)
+        for sku, name in [("HS-FO30", "魚油 30 入"), ("DEMO-P001", "教學商品"), ("EXAMPLE-P1", "示範產品"), ("F-REAL", "正式型錄商品")]])
+    workspace.flush()
+    api, headers = client(workspace)
+    order_list = api.get("/api/orders/products?customer_id=C1", headers=headers).json()
+    assert order_list["total"] == 3
+    assert {row["sku"] for row in order_list["items"]} == {"P1", "P2", "F-REAL"}
+    assert {row["sku"] for row in api.get("/api/products", headers=headers).json()} == {"P1", "P2", "F-REAL"}
+    assert workspace.get(Product, "HS-FO30") is not None
 
 
 @pytest.mark.parametrize("patch", [

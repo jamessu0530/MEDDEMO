@@ -7,15 +7,25 @@ import { productPhoto } from "@/lib/product-photos"
 type ProductPhotoProps = {
   product: Pick<Product, "sku" | "name">
   size?: "default" | "compact"
+  showSource?: boolean
 }
 
-export function ProductPhoto({ product, size = "default" }: ProductPhotoProps) {
+export function ProductPhoto({
+  product,
+  size = "default",
+  showSource = true,
+}: ProductPhotoProps) {
   const photo = productPhoto(product.sku)
   const [failedSrc, setFailedSrc] = useState<string | null>(null)
-  const available = photo && failedSrc !== photo.src
+  const available =
+    photo &&
+    failedSrc !== photo.src &&
+    (photo.kind === "exact" || photo.kind === "series")
 
   return (
-    <figure className={size === "compact" ? "w-16 shrink-0" : "w-24 shrink-0 sm:w-28"}>
+    <figure
+      className={size === "compact" ? "w-16 shrink-0" : "w-24 shrink-0 sm:w-28"}
+    >
       <div className="flex aspect-square items-center justify-center overflow-hidden rounded-lg border bg-white">
         {available ? (
           <img
@@ -23,7 +33,7 @@ export function ProductPhoto({ product, size = "default" }: ProductPhotoProps) {
             alt={
               photo.kind === "exact"
                 ? `${product.name} 商品照片`
-                : `${product.name} 參考示意圖，照片商品：${photo.title}`
+                : `${product.name} 同系列商品照，照片商品：${photo.title}；容量、尺寸與包裝以商品名稱為準`
             }
             width={112}
             height={112}
@@ -39,24 +49,36 @@ export function ProductPhoto({ product, size = "default" }: ProductPhotoProps) {
           />
         )}
       </div>
-      <figcaption className="mt-1.5 text-center text-[10px] leading-relaxed text-muted-foreground">
+      <figcaption
+        title={available ? `${photo.title}；${photo.note ?? ""}` : undefined}
+        className="mt-1.5 text-center text-xs leading-relaxed text-muted-foreground"
+      >
         {available ? (
           <>
-            {photo.kind === "exact" ? "商品照片" : "示意圖"}
-            {" · "}
-            <a
-              href={photo.sourceUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              title={`照片商品：${photo.title}`}
-              aria-label={`${product.name} 的圖片來源：${photo.title}`}
-              className="underline underline-offset-2 hover:text-foreground"
-            >
-              來源
-            </a>
+            {photo.kind === "exact"
+              ? "商品照片"
+              : photo.kind === "series"
+                ? "同系列商品照"
+                : "同名商品參考照"}
+            {showSource && (
+              <>
+                {" "}
+                ·{" "}
+                <a
+                  href={photo.sourceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={`照片商品：${photo.title}`}
+                  aria-label={`${product.name} 的圖片來源：${photo.title}`}
+                  className="underline underline-offset-2 hover:text-foreground"
+                >
+                  來源
+                </a>
+              </>
+            )}
           </>
         ) : (
-          "暫無照片"
+          "待補商品照"
         )}
       </figcaption>
     </figure>

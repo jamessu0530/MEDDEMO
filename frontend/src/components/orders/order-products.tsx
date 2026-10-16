@@ -3,7 +3,6 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
-  Eye,
   PackageSearch,
   X,
 } from "lucide-react"
@@ -13,7 +12,7 @@ import {
   type OrderProductList,
   type OrderItemInput,
 } from "@/api/orders"
-import { ProductQuickLook } from "@/components/orders/product-quick-look"
+import { ProductPhoto } from "@/components/product-photo"
 import { Button } from "@/components/ui/button"
 import { SearchField } from "@/components/ui/search-field"
 import {
@@ -39,7 +38,6 @@ export function OrderProducts({
 }) {
   const id = useId(),
     pageCheckbox = useRef<HTMLInputElement>(null)
-  const previewTrigger = useRef<HTMLButtonElement | null>(null)
   const [query, setQuery] = useState(""),
     [page, setPage] = useState(1)
   const [result, setResult] = useState<OrderProductList | null>(null)
@@ -47,8 +45,7 @@ export function OrderProducts({
   const [busy, setBusy] = useState(true),
     [error, setError] = useState(""),
     [retry, setRetry] = useState(0)
-  const [selectedOnly, setSelectedOnly] = useState(false),
-    [preview, setPreview] = useState<OrderProduct | null>(null)
+  const [selectedOnly, setSelectedOnly] = useState(false)
   useEffect(() => {
     const controller = new AbortController()
     const timer = setTimeout(() => {
@@ -123,12 +120,12 @@ export function OrderProducts({
   const visible = selectedOnly ? chosen : (result?.items ?? [])
   return (
     <>
-      <Dialog open onOpenChange={(open) => !open && !preview && onClose()}>
+      <Dialog open onOpenChange={(open) => !open && onClose()}>
         <DialogContent className="flex h-[min(48rem,90dvh)] max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl">
           <DialogHeader className="shrink-0 border-b px-5 py-4 pr-12">
             <DialogTitle>新增產品</DialogTitle>
             <DialogDescription>
-              搜尋並勾選產品，點眼睛查看圖片與規格。跨頁搜尋會保留已選項目。
+              直接查看照片、名稱與規格再勾選產品。跨頁搜尋會保留已選項目。
             </DialogDescription>
           </DialogHeader>
           <div className="shrink-0 space-y-3 border-b p-4">
@@ -237,7 +234,7 @@ export function OrderProducts({
                   </span>
                 </label>
               )}
-              <span className="hidden sm:inline">眼睛：快速預覽</span>
+              <span className="hidden sm:inline">照片與規格</span>
             </div>
             <div
               className="min-h-0 flex-1 overflow-y-auto px-4"
@@ -301,6 +298,11 @@ export function OrderProducts({
                             onChange={() => toggle(product)}
                             className="size-5 shrink-0 accent-primary"
                           />
+                          <ProductPhoto
+                            product={product}
+                            size="default"
+                            showSource={false}
+                          />
                           <span className="min-w-0 flex-1">
                             <span className="block text-sm leading-relaxed font-medium break-words">
                               {product.name}
@@ -325,20 +327,6 @@ export function OrderProducts({
                             </span>
                           </span>
                         </label>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="icon"
-                          className="size-11 shrink-0 rounded-xl"
-                          aria-label={`快速查看 ${product.name}`}
-                          title="快速查看圖片與規格"
-                          onClick={(event) => {
-                            previewTrigger.current = event.currentTarget
-                            setPreview(product)
-                          }}
-                        >
-                          <Eye aria-hidden className="size-5" />
-                        </Button>
                       </li>
                     )
                   })}
@@ -411,14 +399,6 @@ export function OrderProducts({
           </div>
         </DialogContent>
       </Dialog>
-      {preview && (
-        <ProductQuickLook
-          key={preview.sku}
-          product={preview}
-          onRestoreFocus={() => previewTrigger.current?.focus()}
-          onClose={() => setPreview(null)}
-        />
-      )}
     </>
   )
 }

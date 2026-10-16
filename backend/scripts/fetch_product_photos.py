@@ -412,4 +412,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit("Use match_verified_product_photos.py then import_verified_product_photos.py; category-based photo substitution is disabled.")
