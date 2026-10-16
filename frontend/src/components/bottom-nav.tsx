@@ -1,10 +1,10 @@
 import { useLayoutEffect, useRef } from "react"
 import {
   CalendarDays,
+  ClipboardList,
   MessageCircleQuestion,
   MessagesSquare,
   Pill,
-  Users,
 } from "lucide-react"
 import { NavLink, useLocation } from "react-router"
 
@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils"
 
 const TABS = [
   { to: "/", label: "今日", icon: CalendarDays },
-  { to: "/customers", label: "客戶", icon: Users },
+  { to: "/orders", label: "訂單", icon: ClipboardList },
   { to: "/channels", label: "頻道", icon: MessagesSquare },
   { to: "/ask", label: "問答", icon: MessageCircleQuestion },
   { to: "/products", label: "商品", icon: Pill },
@@ -40,7 +40,7 @@ export function BottomNav() {
   const linkRefs = useRef<(HTMLAnchorElement | null)[]>([])
   // 第一次畫的時候記下從哪一格來；開發模式的 StrictMode 會把 effect 跑兩次，第二次也要從同一格滑
   const fromRef = useRef(lastIndex)
-  // FR-4.3：手機裡還有沒送出的錄音，客戶分頁上顯示筆數（錄音是從客戶清單進去錄的）
+  // FR-4.3：手機裡還有沒送出的錄音，今日分頁上顯示筆數
   const pending = items.filter((item) => item.state === "pending").length
   const path = pathname.length > 1 && pathname.endsWith("/") ? pathname.slice(0, -1) : pathname
   const active = TABS.findIndex((tab) => tab.to === path)
@@ -98,7 +98,7 @@ export function BottomNav() {
           >
             <span className="relative">
               <Icon className="size-5" />
-              {to === "/customers" && pending > 0 && (
+              {to === "/" && pending > 0 && (
                 <span
                   aria-label={`待送出 ${pending} 筆`}
                   className="absolute -top-1.5 -right-2.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[0.625rem] font-semibold text-white"

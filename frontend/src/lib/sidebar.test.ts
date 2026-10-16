@@ -17,21 +17,21 @@ const item = (role: Role, label: string): SidebarItem => {
 describe("sidebarItems", () => {
   it("業務：商品與促銷共用一個入口，加上日曆、方法卡、申請單、主管回覆", () => {
     expect(labels("sales")).toEqual({
-      main: ["今日", "客戶", "頻道", "問答", "商品與促銷"],
+      main: ["今日", "訂單", "頻道", "問答", "商品與促銷"],
       more: ["我的報表", "日曆", "方法卡", "我的申請單", "主管回覆"],
     })
   })
 
   it("主管：主管端的五個分頁，加上頻道", () => {
-    expect(labels("manager")).toEqual({ main: ["團隊行程", "提問", "風險通報", "簽核", "方法卡"], more: ["我的報表", "頻道", "商品與促銷"] })
+    expect(labels("manager")).toEqual({ main: ["團隊行程", "提問", "風險通報", "簽核", "方法卡"], more: ["我的報表", "訂單", "頻道", "商品與促銷"] })
   })
 
   it("IT：組織管理在最前面，接著是主管端", () => {
-    expect(labels("it")).toEqual({ main: ["組織管理", "團隊行程", "提問", "風險通報", "簽核", "方法卡"], more: ["我的報表", "頻道", "商品與促銷"] })
+    expect(labels("it")).toEqual({ main: ["組織管理", "團隊行程", "提問", "風險通報", "簽核", "方法卡"], more: ["我的報表", "訂單", "頻道", "商品與促銷"] })
   })
 
   it("數字掛在對的項目上", () => {
-    expect(item("sales", "客戶").badge).toBe("uploads")
+    expect(item("sales", "今日").badge).toBe("uploads")
     expect(item("sales", "頻道").badge).toBe("channels")
     expect(item("sales", "主管回覆").badge).toBe("replies")
     expect(item("manager", "風險通報").badge).toBe("notices")
@@ -52,8 +52,8 @@ describe("isActiveItem", () => {
     expect(isActiveItem(item("sales", "今日"), "/customers", "")).toBe(false)
   })
 
-  it("其他項目連它底下的頁都算（客戶檔案算客戶、搜尋算頻道）", () => {
-    expect(isActiveItem(item("sales", "客戶"), "/customers/C0123/quote", "")).toBe(true)
+  it("其他項目連它底下的頁都算（訂單明細算訂單、搜尋算頻道）", () => {
+    expect(isActiveItem(item("sales", "訂單"), "/orders/123", "")).toBe(true)
     expect(isActiveItem(item("sales", "頻道"), "/channels/search", "")).toBe(true)
     expect(isActiveItem(item("sales", "我的申請單"), "/oa/forms/3/", "")).toBe(true)
     expect(isActiveItem(item("sales", "商品與促銷"), "/products-old", "")).toBe(false)

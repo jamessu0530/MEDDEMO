@@ -1,0 +1,299 @@
+"""可儲存空白草稿的訂單工作區，沿用既有供貨價、訂單入帳與 SAP 展示服務。"""
+
+import base64
+import datetime as dt
+import json
+import uuid
+from decimal import Decimal, ROUND_HALF_UP
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+from sqlalchemy import DateTime, cast, func, literal, select, union_all
+from sqlalchemy.orm import Session
+
+from app.models import AppUser, Customer, PAYMENT_TERM_CODES, Product, SalesOrder, SalesTransaction, SapQuotationDraft
+from app.pricing import supply_price
+from app.services import customer_profile, orders, writeback
+from app.services.scope import SHARING_LEVEL, Scope
+
+CENT = Decimal("0.01")
+TAIPEI = dt.timezone(dt.timedelta(hours=8))
+
+
+class OrderError(ValueError):
+    def __init__(self, message: str, status: int = 422):
+        super().__init__(message)
+        self.status = status
+
+
+class ItemInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    sku: str = Field(min_length=1, max_length=80)
+    qty: int = Field(ge=1, le=100000, strict=True)
+    unit_price: Decimal = Field(ge=0, le=10000000, max_digits=10, decimal_places=2)
+
+
+class OrderInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    customer_id: str = Field(min_length=1, max_length=64)
+    ship_to_id: str = Field(min_length=1, max_length=64)
+    shipping_date: dt.date
+    shipping_address: str = Field(default="", max_length=240)
+    recipient: str = Field(default="", max_length=80)
+    payment_term: str = Field(max_length=8)
+    purchase_no: str = Field(default="", max_length=80)
+    note: str = Field(default="", max_length=1000)
+    items: list[ItemInput] = Field(default_factory=list, max_length=100)
+
+    @model_validator(mode="after")
+    def valid(self):
+        if self.payment_term not in PAYMENT_TERM_CODES:
+            raise ValueError("請選擇有效的付款條件")
+        if len({item.sku for item in self.items}) != len(self.items):
+            raise ValueError("同一產品只需加入一次，請調整數量")
+        if sum(item.qty * item.unit_price for item in self.items) > Decimal("9999999999.99"):
+            raise ValueError("訂單總額超過上限")
+        return self
+
+
+class SaveInput(OrderInput):
+    revision: int = Field(ge=1, strict=True)
+
+
+def customer(session: Session, user: AppUser, customer_id: str) -> Customer:
+    found = session.scalar(select(Customer).where(Customer.id == customer_id, Scope.for_user(user).customers_at(SHARING_LEVEL["quote"])))
+    if found is None:
+        raise OrderError("找不到這家可操作的客戶", 404)
+    return found
+
+
+def _load(session: Session, user: AppUser, order_id: str, lock=False) -> SalesOrder:
+    statement = select(SalesOrder).join(Customer, Customer.id == SalesOrder.customer_id).where(
+        SalesOrder.id == order_id, Scope.for_user(user).customers_at(SHARING_LEVEL["quote"])
+    )
+    if lock:
+        statement = statement.with_for_update(of=SalesOrder)
+    order = session.scalar(statement.execution_options(populate_existing=True))
+    if order is None:
+        raise OrderError("找不到這張訂單", 404)
+    return order
+
+
+def _products(session: Session, items) -> dict[str, Product]:
+    skus = {item.sku if isinstance(item, ItemInput) else item["sku"] for item in items}
+    found = {row.sku: row for row in session.scalars(select(Product).where(Product.sku.in_(skus)))}
+    if set(found) != skus:
+        raise OrderError("部分產品已不存在，請重新選擇產品")
+    return found
+
+
+def price_check(product: Product, customer_type: str, price: Decimal):
+    standard = Decimal(supply_price(product.unit_price, customer_type))
+    floor = (standard * Decimal("0.97")).quantize(CENT, ROUND_HALF_UP)
+    if standard <= 0:
+        return "gray", "尚無標準供貨價，請先確認商品價格", standard, floor
+    if price >= standard:
+        return "green", "不低於標準供貨價", standard, floor
+    if price >= floor:
+        return "yellow", "低於標準價，仍在業務 3% 優惠權限內", standard, floor
+    return "red", "超過業務 3% 優惠權限，需先透過開報價申請優惠", standard, floor
+
+
+def _item_out(product: Product, kind: str, item: dict, index: int):
+    price = Decimal(str(item["unit_price"]))
+    light, message, standard, floor = price_check(product, kind, price)
+    return {**item, "line_no": (index + 1) * 10, "name": product.name, "category": product.category,
+        "spec": product.spec, "unit": product.unit, "unit_price": float(price),
+        "amount": float((price * item["qty"]).quantize(CENT)), "standard_price": float(standard),
+        "minimum_price": float(floor), "price_status": light, "price_message": message}
+
+
+def detail(session: Session, user: AppUser, order_id: str):
+    if order_id.startswith("history-"):
+        return historical_detail(session, user, order_id)
+    order = _load(session, user, order_id)
+    target = customer(session, user, order.customer_id)
+    products = _products(session, order.items)
+    ship = session.get(Customer, order.ship_to_id)
+    owner = session.get(AppUser, target.owner_user_id)
+    items = [_item_out(products[item["sku"]], target.type, item, i) for i, item in enumerate(order.items)]
+    return {"id": order.id, "order_no": order.order_no, "customer_id": target.id, "customer_name": target.name,
+        "ship_to_id": order.ship_to_id, "ship_to_name": ship.name, "shipping_address": order.shipping_address,
+        "recipient": order.recipient, "shipping_date": order.shipping_date, "payment_term": order.payment_term,
+        "purchase_no": order.purchase_no, "note": order.note, "status": order.status, "revision": order.revision,
+        "order_type": "Z200 標準出貨", "currency": "TWD", "owner_id": owner.id, "owner_name": owner.name,
+        "amount": float(order.amount), "items": items, "sap_order_no": order.sap_order_no, "as_of": customer_profile.app_today(session),
+        "created_at": order.created_at, "updated_at": order.updated_at, "readonly": order.status != "draft", "source": "workspace"}
+
+
+def create(session: Session, user: AppUser, body: OrderInput):
+    customer(session, user, body.customer_id)
+    customer(session, user, body.ship_to_id)
+    _products(session, body.items)
+    key = uuid.uuid4().hex
+    today = customer_profile.app_today(session)
+    payload = body.model_dump(exclude={"items"})
+    order = SalesOrder(id=key, order_no=f"OD{today:%Y%m%d}-{key[:12].upper()}", created_by=user.id,
+        **payload, items=[item.model_dump(mode="json") for item in body.items], status="draft", revision=1,
+        amount=sum((item.unit_price * item.qty for item in body.items), Decimal(0)))
+    session.add(order)
+    session.commit()
+    return detail(session, user, key)
+
+
+def save(session: Session, user: AppUser, order_id: str, body: SaveInput):
+    order = _load(session, user, order_id, lock=True)
+    if order.status != "draft":
+        raise OrderError("生效訂單不能修改，請建立新訂單", 409)
+    if order.revision != body.revision:
+        raise OrderError("訂單已被其他頁面修改，請重新載入後再編輯", 409)
+    customer(session, user, body.customer_id)
+    customer(session, user, body.ship_to_id)
+    _products(session, body.items)
+    for key, value in body.model_dump(exclude={"items", "revision"}).items():
+        setattr(order, key, value)
+    order.items = [item.model_dump(mode="json") for item in body.items]
+    order.amount = sum((item.unit_price * item.qty for item in body.items), Decimal(0))
+    order.revision += 1
+    order.updated_at = dt.datetime.now(dt.timezone.utc)
+    session.commit()
+    return detail(session, user, order_id)
+
+
+def submit(session: Session, user: AppUser, order_id: str, revision: int):
+    order = _load(session, user, order_id, lock=True)
+    if order.status == "effective":
+        return detail(session, user, order_id)
+    if order.revision != revision:
+        raise OrderError("訂單已變更，請重新載入再送出", 409)
+    target = customer(session, user, order.customer_id)
+    customer(session, user, order.ship_to_id)
+    if not order.items:
+        raise OrderError("請先新增至少一項產品")
+    if not order.shipping_address.strip():
+        raise OrderError("請填寫完整收貨地址")
+    if order.shipping_date < customer_profile.app_today(session):
+        raise OrderError("指定出貨日期不能早於資料基準日")
+    products = _products(session, order.items)
+    for item in order.items:
+        status, message, _, _ = price_check(products[item["sku"]], target.type, Decimal(item["unit_price"]))
+        if status in {"red", "gray"}:
+            raise OrderError(f"{products[item['sku']].name}：{message}")
+    if writeback.is_mock_down("sap"):
+        raise OrderError("SAP 展示服務暫時無法連線，草稿已保留，請稍後重試", 503)
+    quote_no = f"WEB-{order.id}"
+    for index, item in enumerate(order.items):
+        price = Decimal(item["unit_price"])
+        session.add(SapQuotationDraft(quote_no=quote_no, created_by=order.created_by, line_no=(index + 1) * 10,
+            customer_id=target.id, sku=item["sku"], qty=item["qty"], unit_price=price, discount_pct=0,
+            amount=(price * item["qty"]).quantize(CENT), free_qty=0, status="draft"))
+    session.flush()
+    # 沿用付款條件計算與入帳邏輯；指定出貨日供排程使用，銷售及應收依現有系統日入帳。
+    placed = orders.place(session, target, quote_no, payment_term=order.payment_term)
+    if placed is None:
+        raise OrderError("訂單未完成同步，請重新載入", 409)
+    order.status, order.sap_order_no = "effective", placed.order_no
+    order.revision += 1
+    order.updated_at = dt.datetime.now(dt.timezone.utc)
+    session.commit()
+    return detail(session, user, order_id)
+
+
+def history_id(customer_id: str, order_no: str):
+    return "history-" + base64.urlsafe_b64encode(json.dumps([customer_id, order_no]).encode()).decode().rstrip("=")
+
+
+def historical_detail(session: Session, user: AppUser, order_id: str):
+    try:
+        encoded = order_id.removeprefix("history-")
+        if len(encoded) > 2048:
+            raise ValueError()
+        customer_id, number = json.loads(base64.b64decode(encoded + "=" * (-len(encoded) % 4), altchars=b"-_", validate=True))
+        if not isinstance(customer_id, str) or not isinstance(number, str):
+            raise ValueError()
+    except (ValueError, TypeError):
+        raise OrderError("找不到這張訂單", 404) from None
+    target = customer(session, user, customer_id)
+    rows = session.execute(select(SalesTransaction, Product).join(Product, Product.sku == SalesTransaction.sku).where(
+        SalesTransaction.customer_id == target.id, SalesTransaction.order_no == number).order_by(SalesTransaction.id)).all()
+    if not rows:
+        raise OrderError("找不到這張訂單", 404)
+    owner = session.get(AppUser, target.owner_user_id)
+    items = []
+    grouped = {}
+    for transaction, product in rows:
+        entry = grouped.setdefault(product.sku, {"product": product, "qty": 0, "amount": Decimal(0)})
+        entry["qty"] += transaction.qty
+        entry["amount"] += transaction.amount
+    for i, entry in enumerate(grouped.values()):
+        product = entry["product"]
+        price = (entry["amount"] / entry["qty"]).quantize(CENT)
+        item = _item_out(product, target.type, {"sku": product.sku, "qty": entry["qty"], "unit_price": str(price)}, i)
+        item.update(amount=float(entry["amount"]), price_status="gray", price_message="歷史成交價格，不套用目前價格檢查")
+        items.append(item)
+    day = min(row[0].date for row in rows)
+    stamp = dt.datetime.combine(day, dt.time(), TAIPEI)
+    return {"id": order_id, "order_no": number, "customer_id": target.id, "customer_name": target.name,
+        "ship_to_id": target.id, "ship_to_name": "未記錄", "shipping_address": "", "recipient": "",
+        "shipping_date": day, "payment_term": target.payment_term, "purchase_no": "", "note": "歷史交易未記錄的收貨資訊以空白呈現。",
+        "status": "effective", "revision": 1, "order_type": "歷史交易", "currency": "TWD", "owner_id": owner.id,
+        "owner_name": owner.name, "amount": float(sum((transaction.amount for transaction, _ in rows), Decimal(0))), "items": items, "sap_order_no": None,
+        "as_of": customer_profile.app_today(session),
+        "created_at": stamp, "updated_at": None, "readonly": True, "source": "history"}
+
+
+def list_orders(session: Session, user: AppUser, q="", status="all", page=1, page_size=25, sort="updated_desc"):
+    scope = Scope.for_user(user).customers_at(SHARING_LEVEL["quote"])
+    fresh = select(SalesOrder.id.label("id"), SalesOrder.order_no.label("order_no"), Customer.id.label("customer_id"),
+        Customer.name.label("customer_name"), SalesOrder.status.label("status"), SalesOrder.shipping_date.label("shipping_date"),
+        SalesOrder.updated_at.label("updated_at"), SalesOrder.sap_order_no.label("sap_order_no"), AppUser.id.label("owner_id"),
+        AppUser.name.label("owner_name"), SalesOrder.amount.label("amount"), literal("workspace").label("source")) \
+        .join(Customer, Customer.id == SalesOrder.customer_id).join(AppUser, AppUser.id == Customer.owner_user_id).where(scope)
+    history = select(SalesTransaction.order_no.label("id"), SalesTransaction.order_no.label("order_no"),
+        Customer.id.label("customer_id"), Customer.name.label("customer_name"), literal("effective").label("status"),
+        func.min(SalesTransaction.date).label("shipping_date"), cast(func.min(SalesTransaction.date), DateTime(timezone=True)).label("updated_at"),
+        SalesTransaction.order_no.label("sap_order_no"), AppUser.id.label("owner_id"), AppUser.name.label("owner_name"),
+        func.sum(SalesTransaction.amount).label("amount"), literal("history").label("source")) \
+        .join(Customer, Customer.id == SalesTransaction.customer_id).join(AppUser, AppUser.id == Customer.owner_user_id).where(
+        scope, ~select(SalesOrder.id).where(SalesOrder.sap_order_no == SalesTransaction.order_no, SalesOrder.customer_id == SalesTransaction.customer_id).exists()) \
+        .group_by(SalesTransaction.order_no, Customer.id, AppUser.id)
+    if q:
+        pattern = "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        fresh = fresh.where(Customer.name.ilike(pattern, escape="\\") | SalesOrder.order_no.ilike(pattern, escape="\\") | SalesOrder.sap_order_no.ilike(pattern, escape="\\"))
+        history = history.where(Customer.name.ilike(pattern, escape="\\") | SalesTransaction.order_no.ilike(pattern, escape="\\"))
+    if status != "all":
+        fresh = fresh.where(SalesOrder.status == status)
+    if status == "draft":
+        history = history.where(literal(False))
+    combined = union_all(fresh, history).subquery()
+    total = session.scalar(select(func.count()).select_from(combined))
+    key = combined.c.amount if sort == "amount_desc" else combined.c.shipping_date if sort == "shipping_desc" else combined.c.updated_at
+    query = select(combined).order_by(key.desc(), combined.c.order_no.desc(), combined.c.customer_id).offset((page - 1) * page_size).limit(page_size)
+    items = []
+    for row in session.execute(query).mappings():
+        item = dict(row)
+        item["amount"] = float(item["amount"])
+        if row["source"] == "history":
+            item["id"] = history_id(row["customer_id"], row["order_no"])
+            item["updated_at"] = None
+            item["sap_order_no"] = None
+        items.append(item)
+    return {"items": items, "total": total, "page": page, "page_size": page_size, "as_of": customer_profile.app_today(session), "integration": "demo"}
+
+
+
+def catalog(session: Session, user: AppUser, customer_id: str, q="", page=1):
+    target = customer(session, user, customer_id)
+    query = select(Product)
+    if q:
+        pattern = "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        query = query.where(Product.name.ilike(pattern, escape="\\") | Product.sku.ilike(pattern, escape="\\") | Product.category.ilike(pattern, escape="\\"))
+    total = session.scalar(select(func.count()).select_from(query.subquery()))
+    products = session.scalars(query.order_by(Product.common.desc(), Product.sku).offset((page - 1) * 25).limit(25))
+    return {"items": [{"sku": product.sku, "name": product.name, "category": product.category, "spec": product.spec, "unit": product.unit,
+        "unit_price": supply_price(product.unit_price, target.type)} for product in products], "total": total, "page": page, "page_size": 25}
+
+
+def customers(session: Session, user: AppUser):
+    rows = session.execute(select(Customer, AppUser.name).join(AppUser, AppUser.id == Customer.owner_user_id).where(
+        Scope.for_user(user).customers_at(SHARING_LEVEL["quote"])).order_by(Customer.name)).all()
+    return [{"id": row.id, "name": row.name, "owner_name": name, "owner_id": row.owner_user_id, "payment_term": row.payment_term, "region": row.region} for row, name in rows]

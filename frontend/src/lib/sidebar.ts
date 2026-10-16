@@ -5,6 +5,7 @@ import {
   CalendarDays,
   ChartNoAxesCombined,
   ClipboardCheck,
+  ClipboardList,
   FileText,
   MessageCircleQuestion,
   MessagesSquare,
@@ -12,7 +13,6 @@ import {
   Pill,
   Route,
   TriangleAlert,
-  Users,
   type LucideIcon,
 } from "lucide-react"
 
@@ -30,8 +30,8 @@ export const SIDEBAR_ITEM = "flex min-h-11 w-full items-center gap-3 rounded-ful
 // 業務：上面是底部分頁列，下面是手機上擠在首頁頁首的入口
 const SALES: SidebarGroups = {
   main: [
-    { to: "/", label: "今日", icon: CalendarDays },
-    { to: "/customers", label: "客戶", icon: Users, badge: "uploads" },
+    { to: "/", label: "今日", icon: CalendarDays, badge: "uploads" },
+    { to: "/orders", label: "訂單", icon: ClipboardList },
     { to: "/channels", label: "頻道", icon: MessagesSquare, badge: "channels" },
     { to: "/ask", label: "問答", icon: MessageCircleQuestion },
     { to: "/products", label: "商品與促銷", icon: Pill },
@@ -60,7 +60,7 @@ const MANAGER_VIEWS = ["asks", "notices", "oa", "methods"]
 
 export function sidebarItems(role: Role): SidebarGroups {
   if (role === "sales") return SALES
-  return { main: role === "it" ? [ADMIN, ...MANAGER] : MANAGER, more: [{ to: "/reports", label: "我的報表", icon: ChartNoAxesCombined }, CHANNELS, CATALOG] }
+  return { main: role === "it" ? [ADMIN, ...MANAGER] : MANAGER, more: [{ to: "/reports", label: "我的報表", icon: ChartNoAxesCombined }, { to: "/orders", label: "訂單", icon: ClipboardList }, CHANNELS, CATALOG] }
 }
 
 /** 側邊欄最上面的名字連到哪裡：跟首頁頁首的名字同一個地方。業務是個人頁，主管與 IT 沒有個人頁，是帳號設定 */

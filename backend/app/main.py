@@ -17,6 +17,7 @@ from app.api import me  # 個人頁
 from app.api import reports  # 可自訂的行動報表
 from app.api import learning
 from app.api import mascot
+from app.api import orders as orders_api
 from app.config import settings
 from app.db import get_session
 
@@ -59,6 +60,7 @@ app.include_router(me.router)
 app.include_router(mascot.router)
 app.include_router(preferences.router)
 app.include_router(reports.router)
+app.include_router(orders_api.router)
 
 
 @app.get("/health")

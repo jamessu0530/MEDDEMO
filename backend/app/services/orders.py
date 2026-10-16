@@ -28,7 +28,7 @@ def _fee(amount: Decimal, rate: float) -> Decimal:
     return (amount * Decimal(str(rate))).quantize(Decimal("1"), ROUND_HALF_UP)
 
 
-def place(session: Session, customer: Customer, quote_no: str) -> Placed | None:
+def place(session: Session, customer: Customer, quote_no: str, *, payment_term: str | None = None) -> Placed | None:
     """把一張 draft 的報價寫成系統日的進貨；不是 draft（已經成交、還在等簽核、被駁回）回 None。
 
     先把狀態改掉再寫交易：兩個人同時按，後到的那個改不到任何一列，不會寫兩次。
@@ -59,10 +59,11 @@ def place(session: Session, customer: Customer, quote_no: str) -> Placed | None:
             channel_reward=_fee(line.amount, terms["channel_reward_rate"]),
         ))
     total = sum((line.amount for line in lines), Decimal(0))
+    term = payment_term or customer.payment_term
     session.add(Receivable(
         invoice_no=order_no, customer_id=customer.id, invoice_date=today,
-        due_date=payment_terms.due_date(customer.payment_term, today),
-        amount=payment_terms.receivable_amount(customer.payment_term, total), paid_date=None,
+        due_date=payment_terms.due_date(term, today),
+        amount=payment_terms.receivable_amount(term, total), paid_date=None,
     ))
     session.flush()
     return Placed(order_no, today, float(total))

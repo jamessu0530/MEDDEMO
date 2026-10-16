@@ -25,6 +25,8 @@ import { ChannelSearchPage } from "@/pages/channel-search"
 import { ContractPage } from "@/pages/contract"
 import { CustomerPage } from "@/pages/customer"
 import { CustomerPicker } from "@/pages/customer-picker"
+import { OrdersPage } from "@/pages/orders"
+import { OrderPage } from "@/pages/order"
 import { DocumentPage } from "@/pages/document"
 import { EscalationsPage } from "@/pages/escalations"
 import { FirstWeekPage } from "@/pages/first-week"
@@ -201,6 +203,8 @@ function ApplicationRoutes() {
             {/* 首頁是今日路線；客戶清單移到 /customers，要自己挑一家時從底部分頁進去 */}
             <Route path="/" element={<Home />} />
             <Route path="/customers" element={<CustomerPicker />} />
+            <Route path="/orders" element={<OrdersPage />} />
+            <Route path="/orders/:orderId" element={<OrderPage />} />
             {/* 調整今天的行程（清單）、加一站、我的排序習慣：只有業務有自己的行程，主管打開會看到後端的說明 */}
             <Route path="/route/edit" element={<RouteEditPage />} />
             <Route path="/route/edit/add" element={<RouteAddPage />} />

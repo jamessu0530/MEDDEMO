@@ -223,7 +223,7 @@ export function CustomerPage() {
     <div className="flex min-h-svh flex-col">
       <PageHeader
         title={customer.name}
-        subtitle={`${CUSTOMER_TYPE_LABEL[customer.type]} · ${customer.grade} 級 · ${customer.region}`}
+        subtitle={`${CUSTOMER_TYPE_LABEL[customer.type]} · ${customer.region}`}
         backTo={backTo}
         trailing={
           <button

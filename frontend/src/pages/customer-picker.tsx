@@ -6,7 +6,6 @@ import { CUSTOMER_TYPE_LABEL, listCustomers, type Customer } from "@/api/custome
 import { BottomNav } from "@/components/bottom-nav"
 import { Notice } from "@/components/notice"
 import { PendingUploads } from "@/components/pending-uploads"
-import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { useAuth } from "@/lib/auth"
 import { formatDate } from "@/lib/format"
@@ -147,7 +146,6 @@ function CustomerRow({ customer }: { customer: Customer }) {
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-3">
             <p className="leading-snug font-medium">{customer.name}</p>
-            <Badge variant="secondary">{customer.grade} 級</Badge>
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
             {CUSTOMER_TYPE_LABEL[customer.type]} · {customer.region} ·{" "}

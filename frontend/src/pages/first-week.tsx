@@ -15,7 +15,6 @@ import { MethodCardItem } from "@/components/method-card"
 import { CoursePath } from "@/components/learning/course-path"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
-import { Badge } from "@/components/ui/badge"
 import { useAuth } from "@/lib/auth"
 import { dayLabel } from "@/lib/first-week"
 import { formatMoney } from "@/lib/format"
@@ -28,7 +27,6 @@ type LoadState =
   | { status: "ready"; data: FirstWeek; course: Course }
 
 const TYPES: Customer["type"][] = ["chain", "independent", "clinic"]
-const GRADES = ["A", "B", "C"]
 
 function documentPath(sourceName: string) {
   return `/documents/${encodeURIComponent(sourceName)}`
@@ -256,12 +254,6 @@ function ProfileSection({ data }: { data: FirstWeek }) {
                   `${CUSTOMER_TYPE_LABEL[type]} ${customers.by_type[type] ?? 0}`
               ).join("、")}
             />
-            <Row
-              label="依等級"
-              value={GRADES.map(
-                (grade) => `${grade} 級 ${customers.by_grade[grade] ?? 0}`
-              ).join("、")}
-            />
           </>
         )}
       </dl>
@@ -350,13 +342,13 @@ function KeyCustomers({ data }: { data: FirstWeek }) {
     <section className="flex flex-col gap-2">
       <h2 className="text-sm font-semibold">先認識這五家</h2>
       <p className="text-xs text-muted-foreground">
-        名下 A 級客戶裡近 90 天進貨金額最高的，不足五家用 B 級補。
+        先認識名下客戶的近期進貨與拜訪紀錄。
       </p>
       {data.key_customers.length === 0 ? (
         <p className="rounded-xl bg-muted px-4 py-6 text-center text-sm text-muted-foreground">
           {data.customers.total === 0
             ? "名下還沒有客戶，等主管分配。"
-            : "名下還沒有 A 級或 B 級的客戶。"}
+            : "目前沒有可顯示的客戶。"}
         </p>
       ) : (
         <ul className="flex flex-col gap-2">
@@ -369,7 +361,6 @@ function KeyCustomers({ data }: { data: FirstWeek }) {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-start justify-between gap-3">
                     <p className="leading-snug font-medium">{customer.name}</p>
-                    <Badge variant="secondary">{customer.grade} 級</Badge>
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">
                     {CUSTOMER_TYPE_LABEL[customer.type]} · {customer.city} · 近

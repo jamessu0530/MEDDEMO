@@ -265,6 +265,36 @@ class Product(Base):
     common: Mapped[bool] = mapped_column(server_default=false())
 
 
+class SalesOrder(Base):
+    """訂單工作區的表頭；明細與交易在同一交易內送出，重送不重複入帳。"""
+
+    __tablename__ = "sales_order"
+    __table_args__ = (
+        one_of("status", ("draft", "effective"), "status"),
+        CheckConstraint("revision >= 1", name="revision"),
+    )
+
+    id: Mapped[str] = mapped_column(primary_key=True)
+    order_no: Mapped[str] = mapped_column(unique=True)
+    customer_id: Mapped[str] = mapped_column(ForeignKey("customer.id"), index=True)
+    ship_to_id: Mapped[str] = mapped_column(ForeignKey("customer.id"))
+    created_by: Mapped[str] = mapped_column(ForeignKey("app_user.id"))
+    shipping_date: Mapped[dt.date]
+    shipping_address: Mapped[str] = mapped_column(server_default="")
+    recipient: Mapped[str] = mapped_column(server_default="")
+    payment_term: Mapped[str]
+    purchase_no: Mapped[str] = mapped_column(server_default="")
+    note: Mapped[str] = mapped_column(server_default="")
+    status: Mapped[str] = mapped_column(server_default="draft")
+    revision: Mapped[int] = mapped_column(server_default="1")
+    amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), server_default="0")
+    # 每列保存已選的料號、數量與單價；寫入前一律經 schema 與商品主檔驗證。
+    items: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, server_default="[]")
+    sap_order_no: Mapped[str | None] = mapped_column(unique=True)
+    created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+
+
 class Promotion(Base):
     """促銷方案（CYH Sales 的「促銷方案」），一個月一期。
 
