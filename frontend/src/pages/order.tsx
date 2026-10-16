@@ -1,5 +1,3 @@
-import { CustomerSelect } from "@/components/customers/customer-select"
-import { SearchSelect } from "@/components/ui/search-select"
 import { useEffect, useState } from "react"
 import {
   Check,
@@ -24,6 +22,8 @@ import {
 } from "@/api/orders"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
+import { CustomerSelect } from "@/components/customers/customer-select"
+import { SearchSelect } from "@/components/ui/search-select"
 import { OrderProducts } from "@/components/orders/order-products"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -397,7 +397,6 @@ function OrderEditor({
               draft.shipping_date,
             ],
             ["狀態", <OrderBadge status={order.status} />],
-            ["負責業務", `${order.owner_name} · ${order.owner_id}`],
           ].map(([label, value]) => (
             <div key={String(label)} className="min-w-0">
               <dt className="text-xs text-muted-foreground">{label}</dt>

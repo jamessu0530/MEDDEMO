@@ -23,7 +23,7 @@ def test_load_timestamp_is_actual_utc_and_distinct_from_business_date(interactio
     result = reports.data(interaction_session, interaction_session.get(AppUser, "M1"), config(refresh_seconds=60))
     assert before <= result.loaded_at <= dt.datetime.now(dt.timezone.utc)
     assert result.as_of.isoformat() == "2031-04-17"
-    assert result.cards[0].total == 1350
+    assert result.cards[0].total == 2250
 
 
 @pytest.mark.parametrize("seconds", [0, 60, 300, 900])
@@ -49,8 +49,8 @@ def test_share_snapshots_settings_without_results_and_receiver_uses_own_scope(in
     assert opened.readonly and opened.shared_from.name == "M1"
     assert opened.shared_from.revision == source.revision
     assert not opened.bookmarks and opened.config.refresh_seconds == 60
-    assert reports.data(s, recipient, opened.config).cards[0].total == 650
-    assert reports.data(s, sender, source.config).cards[0].total == 1350
+    assert reports.data(s, recipient, opened.config).cards[0].total == 2250
+    assert reports.data(s, sender, source.config).cards[0].total == 2250
     assert s.get(UserReportConfig, sender.id).config == old_source
     raw = s.get(UserReportConfig, recipient.id).config
     assert "loaded_at" not in str(raw) and "selection_groups" not in str(raw)
@@ -62,8 +62,8 @@ def test_receiver_repairs_inaccessible_owner_filters_and_remains_scoped(interact
     source = library.create(s, sender, config(owner_id="S2", slicers=[{"dimension": "owner", "keys": ["S2"]}]))
     shared = library.share(s, sender, source.active_report_id, "S1", source.revision)
     received = library.open_report(s, recipient, shared["shared_report_id"])
-    assert received.config.owner_id is None and received.config.slicers == []
-    assert reports.data(s, recipient, received.config).cards[0].total == 650
+    assert received.config.owner_id == "S2" and received.config.slicers[0].keys == ["S2"]
+    assert reports.data(s, recipient, received.config).cards[0].total == 700
     assert library.snapshot(s, sender).config.owner_id == "S2"
 
 
@@ -128,7 +128,7 @@ def test_shared_export_keeps_recipient_scope(interaction_session):
     result=library.share(s,s.get(AppUser,"M1"),source.active_report_id,"S1",1)
     received=library.open_report(s,s.get(AppUser,"S1"),result["shared_report_id"])
     response=TestClient(app).post('/api/reports/export',json={"config":received.config.model_dump(mode="json"),"format":"csv","data":"details"},headers=headers(s,"S1"))
-    assert response.status_code==200 and "C1" in response.text and "C2" not in response.text and "C3" not in response.text
+    assert response.status_code==200 and "C1" in response.text and "C2" in response.text and "C3" in response.text
 
 
 def test_shared_library_limit_fails_without_overwriting_recipient(interaction_session):
@@ -155,6 +155,6 @@ def test_shared_settings_do_not_keep_access_after_recipient_changes_team(interac
     result=library.share(s,sender,source.active_report_id,"S1",1)
     recipient.manager_id="M2";recipient.org_path="TW.N.M2.S1";s.flush()
     received=library.snapshot(s,recipient,report_id=result["shared_report_id"])
-    assert received.config.owner_id is None
-    assert reports.data(s,recipient,received.config).cards[0].total==650
+    assert received.config.owner_id == "S2"
+    assert reports.data(s,recipient,received.config).cards[0].total==700
     assert "S1" not in {item.id for item in library.recipients(s,sender)}

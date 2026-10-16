@@ -105,7 +105,7 @@ def describe(session: Session, channels: list[Channel]) -> list[ChannelInfo]:
         customer.id: (customer, owner_path)
         for customer, owner_path in session.execute(
             select(Customer, AppUser.org_path)
-            .join(AppUser, AppUser.id == Customer.owner_user_id)
+            .outerjoin(AppUser, AppUser.id == Customer.owner_user_id)
             .where(Customer.id.in_(customer_ids))
         )
     }
@@ -150,8 +150,8 @@ def describe(session: Session, channels: list[Channel]) -> list[ChannelInfo]:
             customer, owner_path = customers[c.customer_id]
             place = places[customer.place_id]
             infos.append(ChannelInfo(
-                c.id, "customer", customer.name, place.unit_id, place.unit_id, by_place[place.id], False,
-                customer.id, everyone_in(place.unit_id), owner_path,
+                c.id, "customer", customer.name, place.unit_id, place.unit_id, by_place.get(place.id, by_unit[root]), False,
+                customer.id, "全公司所有人都看得到", owner_path,
             ))
     return infos
 
@@ -164,6 +164,8 @@ def _level(info: ChannelInfo) -> int:
 
 
 def can_see(user: AppUser, info: ChannelInfo) -> bool:
+    if info.kind == "customer":
+        return True
     if info.archived and info.kind == "team":
         # 主管已經不在，組員也都換到別組了，留給 IT 查。封存的文字頻道照樣看得到，只是不能發言
         return user.role == "it"
@@ -357,9 +359,9 @@ def last_message_at(session: Session, channel_ids: list[int]) -> dict[int, dt.da
 
 
 def badge_count(session: Session, user: AppUser) -> int:
-    """分頁列紅點的數字：全國、自己的區、自己的小組，加上自己負責（主管是組內業務負責）的客戶討論串。
+    """分頁列紅點的數字：全國、自己的區、自己的小組，加上共用客戶討論串。
     文字頻道跟著上層：上層算進紅點的話，底下沒封存的文字頻道也算。
-    地點頻道與別人客戶的討論串太多，只在列表上顯示未讀，不算進紅點。IT 看得到每一組，只算全國與三個區。"""
+    地點頻道只在列表上顯示未讀，不算進紅點。IT 看得到每一組，只算全國與三個區。"""
     kinds = ("national", "region") if user.role == "it" else ("national", "region", "team")
     visible = visible_channels(session, user)
     counted = {info.id for info in visible if info.kind in kinds and not info.archived}

@@ -35,3 +35,15 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- define "meddemo.configChecksum" -}}
 checksum/config: {{ include (print .Template.BasePath "/config.yaml") . | sha256sum }}
 {{- end }}
+
+{{- define "meddemo.searchEnv" -}}
+{{- if .Values.elasticsearch.enabled }}
+- name: ELASTICSEARCH_URL
+  value: http://elasticsearch:9200
+- name: ELASTICSEARCH_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: meddemo-search
+      key: password
+{{- end }}
+{{- end }}

@@ -61,6 +61,8 @@ def receivable_amount(code: str, amount: Decimal) -> Decimal:
 
 def describe(code: str) -> str:
     """「RCD2 隔月匯款，優惠 3%」；沒有優惠的寫「沒有優惠」。"""
+    if code is None:
+        return "付款條件未設定"
     term = TERMS[code]
     discount = f"優惠 {(term.discount * 100).normalize()}%" if term.discount else "沒有優惠"
     return f"{code} {term.label}，{discount}"

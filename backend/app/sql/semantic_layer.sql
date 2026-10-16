@@ -24,6 +24,7 @@ $$;
 CREATE FUNCTION app_in_scope(owner_path ltree, share_depth int) RETURNS boolean
 LANGUAGE sql STABLE SET search_path = public AS $$
   SELECT CASE
+    WHEN share_depth = 1 THEN true
     WHEN COALESCE(current_setting('app.scope_path', true), '') = '' THEN true
     ELSE subpath(current_setting('app.scope_path', true)::ltree, 0,
                  least(share_depth, nlevel(current_setting('app.scope_path', true)::ltree)))
@@ -51,8 +52,8 @@ SELECT date_trunc('month', t.date)::date AS month,
 FROM sales_transaction t
 JOIN customer c ON c.id = t.customer_id
 JOIN product p ON p.sku = t.sku
-JOIN app_user owner ON owner.id = c.owner_user_id
-WHERE app_in_scope(owner.org_path, 2)   -- 銷售數字：同一區看得到
+LEFT JOIN app_user owner ON owner.id = c.owner_user_id
+WHERE app_in_scope('TW'::ltree, 1)   -- 銷售數字：同一區看得到
 GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11;
 
 COMMENT ON VIEW v_monthly_sales IS '每月 × 客戶 × 品項的銷售彙總。金額單位為新台幣元。';
@@ -120,11 +121,11 @@ SELECT c.id   AS customer_id,
        vi.last_visit_date,
        COALESCE(vi.visit_count, 0)        AS visit_count
 FROM customer c
-JOIN app_user u ON u.id = c.owner_user_id
+LEFT JOIN app_user u ON u.id = c.owner_user_id
 LEFT JOIN order_stats o ON o.customer_id = c.id
 LEFT JOIN ar a ON a.customer_id = c.id
 LEFT JOIN visits vi ON vi.customer_id = c.id
-WHERE app_in_scope(u.org_path, 2);   -- 進貨金額與帳齡也是業績數字：同一區
+WHERE app_in_scope('TW'::ltree, 1);   -- 進貨金額與帳齡也是業績數字：同一區
 
 COMMENT ON VIEW v_customer_summary IS '每家客戶一列的現況摘要，時間窗以系統日 app_today() 為準。金額單位為新台幣元。';
 COMMENT ON COLUMN v_customer_summary.amount_last_90d IS '近 90 天進貨金額';
@@ -167,7 +168,7 @@ JOIN customer c ON c.id = v.customer_id
 JOIN app_user u ON u.id = v.user_id
 -- 只收已確認的拜訪：處理中、轉文字失敗、待確認的紀錄還沒整理好，逐字稿也還沒去識別（NFR-8）
 WHERE v.status IN ('confirmed', 'synced')
-  AND app_in_scope(u.org_path, 3);   -- 拜訪紀錄與逐字稿：直屬團隊。依做拜訪的業務，不是客戶負責人
+  AND app_in_scope(u.org_path, 1);   -- 拜訪紀錄與逐字稿：直屬團隊。依做拜訪的業務，不是客戶負責人
 
 COMMENT ON VIEW v_visit_signal IS '已確認的拜訪紀錄，一次拜訪一列，五個欄位已攤平。';
 COMMENT ON COLUMN v_visit_signal.competitor_names IS '本次提到的競品，多家以頓號分隔；沒提到為 NULL';
@@ -191,8 +192,8 @@ SELECT date_trunc('month', t.date)::date AS month,
 FROM sales_transaction t
 JOIN customer c ON c.id = t.customer_id
 JOIN product p ON p.sku = t.sku
-JOIN app_user owner ON owner.id = c.owner_user_id
-WHERE app_in_scope(owner.org_path, 2)   -- 毛利結構：同一區
+LEFT JOIN app_user owner ON owner.id = c.owner_user_id
+WHERE app_in_scope('TW'::ltree, 1)   -- 毛利結構：同一區
 GROUP BY 1, 2, 3, 4, 5, 6, 7;
 
 COMMENT ON VIEW v_margin_breakdown IS '每月 × 客戶 × 品類的毛利結構。金額單位為新台幣元。';

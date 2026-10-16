@@ -1,0 +1,104 @@
+{{- if .Values.elasticsearch.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch
+spec:
+  selector:
+    app: elasticsearch
+  ports:
+    - port: 9200
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: elasticsearch
+spec:
+  serviceName: elasticsearch
+  replicas: 1
+  selector:
+    matchLabels:
+      app: elasticsearch
+  template:
+    metadata:
+      labels:
+        app: elasticsearch
+    spec:
+      securityContext:
+        fsGroup: 1000
+      containers:
+        - name: elasticsearch
+          image: {{ .Values.elasticsearch.image | quote }}
+          resources:
+            requests:
+              memory: 512Mi
+              cpu: 100m
+            limits:
+              memory: 1Gi
+              cpu: "1"
+          env:
+            - name: discovery.type
+              value: single-node
+            - name: xpack.security.enabled
+              value: "true"
+            - name: xpack.security.http.ssl.enabled
+              value: "false"
+            - name: xpack.security.transport.ssl.enabled
+              value: "false"
+            - name: xpack.ml.enabled
+              value: "false"
+            - name: node.store.allow_mmap
+              value: "false"
+            - name: node.processors
+              value: "1"
+            - name: ES_JAVA_OPTS
+              value: -Xms512m -Xmx512m
+            - name: ELASTIC_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: meddemo-search
+                  key: password
+          ports:
+            - containerPort: 9200
+          volumeMounts:
+            - name: searchdata
+              mountPath: /usr/share/elasticsearch/data
+          readinessProbe:
+            exec:
+              command: ["bash", "-c", 'curl -fsS -u "elastic:$ELASTIC_PASSWORD" http://localhost:9200/_cluster/health >/dev/null']
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+  volumeClaimTemplates:
+    - metadata:
+        name: searchdata
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: 2Gi
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: elasticsearch-internal
+spec:
+  podSelector:
+    matchLabels:
+      app: elasticsearch
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: api
+        - podSelector:
+            matchLabels:
+              app: worker
+        - podSelector:
+            matchLabels:
+              app: search-sync
+      ports:
+        - protocol: TCP
+          port: 9200
+{{- end }}

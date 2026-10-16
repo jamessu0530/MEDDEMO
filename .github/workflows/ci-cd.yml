@@ -26,6 +26,9 @@ env:
 jobs:
   test-backend:
     runs-on: ubuntu-latest
+    env:
+      RUN_SEARCH_INTEGRATION: "1"
+      ELASTICSEARCH_PASSWORD: meddemo-test-search
     # 平常 3～4 分鐘跑完。WebSocket 的測試卡住（例如等一則永遠不會來的通知）時，不能讓部署等上預設的 6 小時
     timeout-minutes: 20
     services:
@@ -46,6 +49,23 @@ jobs:
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 5s --health-timeout 3s --health-retries 20
+      elasticsearch:
+        image: docker.elastic.co/elasticsearch/elasticsearch:9.5.5
+        env:
+          discovery.type: single-node
+          xpack.security.enabled: "true"
+          xpack.security.http.ssl.enabled: "false"
+          xpack.security.transport.ssl.enabled: "false"
+          xpack.ml.enabled: "false"
+          node.store.allow_mmap: "false"
+          node.processors: "1"
+          ES_JAVA_OPTS: -Xms512m -Xmx512m
+          ELASTIC_PASSWORD: meddemo-test-search
+        ports: ["19201:9200"]
+        options: >-
+          --memory 1g --cpus 1
+          --health-cmd "curl -fsS -u elastic:meddemo-test-search http://localhost:9200/_cluster/health >/dev/null"
+          --health-interval 10s --health-timeout 5s --health-retries 20
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -282,6 +302,14 @@ jobs:
         run: |
           # Secret 不放進 chart（跟 CARE 的 care-backend-secret 一樣），要比 chart 先建好，pod 一啟動就讀得到
           kubectl create namespace meddemo --dry-run=client -o yaml | kubectl apply -f -
+          # 專案內網搜尋的獨立密碼，只首次建立，後續部署保留。內容不輸出至日誌。
+          if ! $KC get secret meddemo-search >/dev/null 2>&1; then
+            search_secret_file=$(mktemp)
+            chmod 600 "$search_secret_file"
+            openssl rand -hex 24 | tr -d '\n' > "$search_secret_file"
+            $KC create secret generic meddemo-search --from-file=password="$search_secret_file"
+            rm -f "$search_secret_file"
+          fi
           kubectl create secret generic meddemo-secrets --namespace meddemo \
             --from-literal=POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
             --dry-run=client -o yaml | kubectl apply -f -
@@ -358,6 +386,9 @@ jobs:
             $KC wait --for=condition=complete "job/$job" --timeout=300s
             $KC logs "job/$job"
           fi
+
+      - name: 匯入公開通路並同步內網搜尋索引
+        run: $KC exec deployment/api -- python /srv/backend/scripts/sync_customer_search.py
 
       # 跟 CARE 共用同一個 Traefik：打到別人的 /health 一樣是 200（以前就被 CARE 的後端接走過），
       # 所以要看到 MEDDEMO 自己的回應才算過。剛部署完 Traefik 可能還沒換上新規則，等一下再試

@@ -25,24 +25,26 @@ def result(session, report, user="M1"):
 
 def test_canvas_selection_affects_only_target_page_and_cards(interaction_session):
     values = result(interaction_session, query(canvas_selections=[{"object_id": "customer-slicer", "keys": ["C1"]}]))
-    assert values["source"].total == values["unaffected"].total == 1350
+    assert values["source"].total == values["unaffected"].total == 2250
     assert values["target"].total == 400
 
 
 def test_cross_page_conditions_intersect_fixed_and_canvas_conditions(interaction_session):
     report = query(navigation_page="customer-page", navigation_filters=[{"dimension": "customer", "key": "C2"}])
     values = result(interaction_session, report)
-    assert values["source"].total == 1350 and values["target"].total == values["unaffected"].total == 700
+    assert values["source"].total == 2250 and values["target"].total == values["unaffected"].total == 700
     report.canvas_selections = [reports.CanvasSlicerSelection(object_id="customer-slicer", keys=["C1"])]
     values = result(interaction_session, report)
     assert values["target"].total == 0 and values["unaffected"].total == 700
 
 
-def test_cross_page_conditions_cannot_expand_account_scope(interaction_session):
-    assert result(interaction_session, query(navigation_page="customer-page", navigation_filters=[{"dimension": "customer", "key": "C3"}]))["target"].total == 0
+def test_cross_page_conditions_include_shared_data_and_reject_unknown_owners(interaction_session):
+    assert result(interaction_session, query(navigation_page="customer-page", navigation_filters=[{"dimension": "customer", "key": "C3"}]))["target"].total == 900
+    assert result(interaction_session, query(navigation_page="customer-page", navigation_filters=[{"dimension": "owner", "key": "S3"}]))["target"].total == 900
+    assert result(interaction_session, query(navigation_page="customer-page", navigation_filters=[{"dimension": "customer", "key": "missing"}]))["target"].total == 0
     with pytest.raises(reports.OwnerNotAllowed):
-        result(interaction_session, query(navigation_page="customer-page", navigation_filters=[{"dimension": "owner", "key": "S3"}]))
-    report = query(objects=[{"id": "owners", "kind": "slicer", "slicer": {"dimension": "owner"}}], canvas_selections=[{"object_id": "owners", "keys": ["S3"]}])
+        result(interaction_session, query(navigation_page="customer-page", navigation_filters=[{"dimension": "owner", "key": "missing"}]))
+    report = query(objects=[{"id": "owners", "kind": "slicer", "slicer": {"dimension": "owner"}}], canvas_selections=[{"object_id": "owners", "keys": ["missing"]}])
     with pytest.raises(reports.OwnerNotAllowed):
         result(interaction_session, report)
 
@@ -79,15 +81,18 @@ def test_design_and_exploration_bookmarks_roundtrip(interaction_session):
     assert marked.config.objects[1].text.startswith("<script>")  # Stored plain text; React escapes it.
     assert marked.config.cards[0].tooltip_page == "customer-page"
     state.exploration.navigation_filters = [reports.ReportFilter(dimension="owner", key="S3")]
+    shared = library.bookmark(interaction_session, interaction_session.get(AppUser, "M1"), id, "共用業務", state)
+    assert shared.bookmarks[-1].state.exploration.navigation_filters == state.exploration.navigation_filters
+    state.exploration.navigation_filters = [reports.ReportFilter(dimension="owner", key="missing")]
     with pytest.raises(reports.OwnerNotAllowed):
-        library.bookmark(interaction_session, interaction_session.get(AppUser, "M1"), id, "越權", state)
+        library.bookmark(interaction_session, interaction_session.get(AppUser, "M1"), id, "未知業務", state)
 
 
-def test_map_coordinates_only_include_scoped_customer_points(interaction_session):
+def test_map_coordinates_include_shared_customer_points(interaction_session):
     report = query()
     report.cards[0].visual = "map"
     values = result(interaction_session, report)["source"]
-    assert {point.key for point in values.points} == {"C1", "C2", "C4"}
+    assert {point.key for point in values.points} == {"C1", "C2", "C3", "C4"}
     assert all(point.lat is not None and point.lng is not None for point in values.points)
     assert "模擬位置" in values.note
 
@@ -97,7 +102,7 @@ def test_funnel_uses_explicit_stage_order(interaction_session):
     report.cards[0] = reports.ReportCard.model_validate(report.cards[0].model_dump() | {"visual": "funnel", "stage_order": ["C4", "C1"]})
     values = result(interaction_session, report)["source"]
     assert [point.key for point in values.points] == ["C4", "C1"]
-    assert values.total == 1350  # Complete range total remains explicit.
+    assert values.total == 2250  # Complete shared range total remains explicit.
 
 
 @pytest.mark.parametrize("visual", ["waterfall", "funnel"])

@@ -39,6 +39,7 @@ import { makePracticeOrder, PRACTICE_CUSTOMER } from "@/lib/order-practice"
 import { uiDemo } from "@/lib/ui-demo-browser"
 
 const SELECT = "h-11 min-w-0 rounded-xl border bg-card px-3 text-sm"
+
 export function OrdersPage() {
   const user = useAuth()?.user
   const demonstrating =
@@ -200,7 +201,6 @@ export function OrdersPage() {
                         "狀態",
                         "訂單金額",
                         "出貨／交易日期",
-                        "負責業務",
                         "上次修改",
                         "SAP 訂單編號",
                       ].map((label) => (
@@ -235,12 +235,6 @@ export function OrdersPage() {
                         </td>
                         <td className="px-4 py-4">
                           {formatDate(order.shipping_date)}
-                        </td>
-                        <td className="px-4 py-4">
-                          {order.owner_name}
-                          <span className="ml-1 text-xs text-muted-foreground">
-                            {order.owner_id}
-                          </span>
                         </td>
                         <td className="px-4 py-4 text-xs">
                           {order.updated_at
@@ -284,7 +278,6 @@ export function OrdersPage() {
                     </div>
                     <div className="flex items-center justify-between text-xs text-muted-foreground">
                       <span>
-                        {order.owner_name} ·{" "}
                         {order.source === "history" ? "歷史交易" : "訂單工作區"}
                       </span>
                       <ChevronRight className="size-4" />

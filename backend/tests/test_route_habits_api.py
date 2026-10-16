@@ -29,8 +29,8 @@ def test_the_list_has_today_state_and_the_form_options(client, auth):
     assert first["subject"] == {"by": "chain", "value": "康泰連鎖藥局"}
     assert first["object"] == {"by": "type", "value": "clinic"} and first["source"] == "ai"
     assert data["habits"][2]["window_time"] == "11:00"
-    assert [o["label"] for o in data["targets"]["type"]] == ["連鎖藥局", "獨立藥局", "診所"]
-    assert len(data["targets"]["customer"]) == 53
+    assert [o["label"] for o in data["targets"]["type"]] == ["連鎖藥局", "獨立藥局", "診所", "公開通路（待核對）"]
+    assert len(data["targets"]["customer"]) == 253
 
 
 def test_add_switch_off_and_delete(client, auth):

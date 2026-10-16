@@ -1,8 +1,12 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 import { Bell, ChevronRight, CircleHelp, Search } from "@/components/icons"
 import { Link } from "react-router"
 
-import { CUSTOMER_TYPE_LABEL, listCustomers, type Customer } from "@/api/customers"
+import {
+  CUSTOMER_TYPE_LABEL,
+  listCustomers,
+  type Customer,
+} from "@/api/customers"
 import { BottomNav } from "@/components/bottom-nav"
 import { Notice } from "@/components/notice"
 import { PendingUploads } from "@/components/pending-uploads"
@@ -27,20 +31,25 @@ export function CustomerPicker() {
 
   useEffect(() => {
     const controller = new AbortController()
-    listCustomers(controller.signal)
-      .then(({ customers, cached }) => setState({ status: "ready", customers, cached }))
-      .catch(() => {
-        if (!controller.signal.aborted) setState({ status: "error" })
-      })
-    return () => controller.abort()
-  }, [attempt])
+    const timer = setTimeout(
+      () =>
+        listCustomers(controller.signal, query.trim())
+          .then(({ customers, cached }) =>
+            setState({ status: "ready", customers, cached })
+          )
+          .catch(() => {
+            if (!controller.signal.aborted) setState({ status: "error" })
+          }),
+      200
+    )
+    return () => {
+      clearTimeout(timer)
+      controller.abort()
+    }
+  }, [attempt, query])
 
-  // 客戶 250 家，整份清單壓縮後約 4 KB，一次載入後在手機上篩選，打字時不必每個字都等網路
   const keyword = query.trim()
-  const visible = useMemo(
-    () => (state.status === "ready" ? state.customers.filter((c) => c.name.includes(keyword)) : []),
-    [state, keyword]
-  )
+  const visible = state.status === "ready" ? state.customers.slice(0, 100) : []
 
   function retry() {
     setState({ status: "loading" })
@@ -51,9 +60,14 @@ export function CustomerPicker() {
     <div className="flex min-h-svh flex-col">
       <header className="sticky top-0 z-10 border-b bg-background/95 px-4 pt-2 pb-3 backdrop-blur">
         <div className="-mr-2 flex items-center justify-between gap-2">
-          <p className="text-xs text-muted-foreground">中化裕民 · 業務 AI 助理</p>
+          <p className="text-xs text-muted-foreground">
+            中化裕民 · 業務 AI 助理
+          </p>
           <div className="flex items-center">
-            <Link to="/manager" className="flex h-10 items-center px-2 text-xs text-muted-foreground">
+            <Link
+              to="/manager"
+              className="flex h-10 items-center px-2 text-xs text-muted-foreground"
+            >
               主管端
             </Link>
             <button
@@ -67,7 +81,9 @@ export function CustomerPicker() {
             {/* FR-8.4：主管回覆了，這裡顯示還沒看的則數 */}
             <Link
               to="/escalations"
-              aria-label={unseen > 0 ? `主管回覆 ${unseen} 則，查看` : "轉給主管的提問"}
+              aria-label={
+                unseen > 0 ? `主管回覆 ${unseen} 則，查看` : "轉給主管的提問"
+              }
               className="relative flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
             >
               <Bell className="size-5" />
@@ -82,15 +98,18 @@ export function CustomerPicker() {
         <h1 className="text-xl font-semibold">選擇拜訪客戶</h1>
         {/* 清單只有登入者看得到的客戶，講清楚範圍，找不到某一家時才知道為什麼 */}
         {user && state.status === "ready" && (
-          <p className="mt-0.5 text-xs text-muted-foreground">{customerScopeText(user, state.customers.length)}</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {customerScopeText(user, state.customers.length)}
+          </p>
         )}
         <div className="relative mt-3">
           <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="搜尋客戶名稱"
-            aria-label="搜尋客戶名稱"
+            placeholder="搜尋名稱、地址或電話（支援錯字）"
+            aria-label="搜尋名稱、地址或電話（支援錯字）"
+            maxLength={100}
             className="h-11 bg-card pl-9"
           />
         </div>
@@ -100,7 +119,7 @@ export function CustomerPicker() {
         {unseen > 0 && (
           <Link
             to="/escalations"
-            className="mb-3 flex min-h-12 items-center gap-3 rounded-xl border-2 border-primary/30 bg-primary/10 px-4 py-2 text-sm shadow-lip-primary-soft press"
+            className="mb-3 flex min-h-12 press items-center gap-3 rounded-xl border-2 border-primary/30 bg-primary/10 px-4 py-2 text-sm shadow-lip-primary-soft"
           >
             <Bell className="size-4 shrink-0 text-primary" />
             <span className="flex-1">主管回覆了你轉過去的 {unseen} 個提問</span>
@@ -109,19 +128,31 @@ export function CustomerPicker() {
         )}
         <PendingUploads />
         {state.status === "ready" && state.cached && (
-          <p className="mb-2 text-xs text-muted-foreground">沒有網路，顯示上次載入的客戶清單。錄音會先存在手機，恢復連線自動送出。</p>
+          <p className="mb-2 text-xs text-muted-foreground">
+            沒有網路，顯示上次載入的客戶清單。錄音會先存在手機，恢復連線自動送出。
+          </p>
         )}
         {state.status === "loading" && (
-          <p className="py-10 text-center text-sm text-muted-foreground">載入客戶中…</p>
+          <p className="py-10 text-center text-sm text-muted-foreground">
+            載入客戶中…
+          </p>
         )}
         {state.status === "error" && (
-          <Notice text="連不上伺服器，客戶清單沒有載入。" action={{ label: "重新載入", onClick: retry }} />
+          <Notice
+            text="連不上伺服器，客戶清單沒有載入。"
+            action={{ label: "重新載入", onClick: retry }}
+          />
         )}
         {state.status === "ready" && visible.length === 0 && (
           <Notice
-            text={`找不到名稱包含「${keyword}」的客戶。`}
+            text={`找不到符合「${keyword}」的客戶。`}
             action={{ label: "清除搜尋", onClick: () => setQuery("") }}
           />
+        )}
+        {state.status === "ready" && state.customers.length > 100 && (
+          <p className="mb-3 text-xs text-muted-foreground">
+            先顯示前 100 筆，輸入名稱、地址或電話可縮小範圍。
+          </p>
         )}
         {visible.length > 0 && (
           <ul className="flex flex-col gap-2">
@@ -149,9 +180,17 @@ function CustomerRow({ customer }: { customer: Customer }) {
             <p className="leading-snug font-medium">{customer.name}</p>
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            {CUSTOMER_TYPE_LABEL[customer.type]} · {customer.region} ·{" "}
-            {customer.last_visit_date ? `上次拜訪 ${formatDate(customer.last_visit_date)}` : "還沒有拜訪紀錄"}
+            {CUSTOMER_TYPE_LABEL[customer.type]} ·{" "}
+            {customer.city || customer.region} {customer.area} ·{" "}
+            {customer.last_visit_date
+              ? `上次拜訪 ${formatDate(customer.last_visit_date)}`
+              : "還沒有拜訪紀錄"}
           </p>
+          {customer.address && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              {customer.address}
+            </p>
+          )}
         </div>
         <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
       </Link>

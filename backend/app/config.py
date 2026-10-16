@@ -39,6 +39,11 @@ class Settings(BaseSettings):
     redis_url: str = "redis://127.0.0.1:6379/0"
     # Alloy 專用的抓取金鑰；留空時 /metrics 回 404，不開放匿名讀取。
     metrics_token: str = ""
+    # 僅允許本機或 MEDDEMO 內網服務，不能將客戶索引送到任意外部網址。
+    elasticsearch_url: str = ""
+    elasticsearch_username: str = "elastic"
+    elasticsearch_password: str = ""
+    elasticsearch_index: str = "meddemo-customers"
 
     # 語音辨識與抽欄位的供應商。留空代表還沒設定：錄音會停在「轉文字失敗」讓業務手動輸入逐字稿，
     # 抽欄位則留白讓業務手動填，整條流程照樣走得完

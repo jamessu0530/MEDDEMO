@@ -491,7 +491,7 @@ def test_the_contract_page_shows_the_current_terms(tx, api, auth, model):
     assert soon["pending_form_id"] is not None and soon["can_request"] is False
     # 只有連鎖客戶有通路合約；別人的客戶跟不存在一樣
     assert api.get("/api/customers/C025/contract", headers=auth("U01")).status_code == 409
-    assert api.get("/api/customers/C002/contract", headers=auth("U01")).status_code == 404
+    assert api.get("/api/customers/DOES_NOT_EXIST/contract", headers=auth("U01")).status_code == 404
 
 
 def test_a_renewal_request_goes_through_the_api(tx, api, auth, model):
@@ -515,7 +515,7 @@ def test_a_renewal_request_goes_through_the_api(tx, api, auth, model):
 
 def test_bad_renewal_requests_are_rejected(tx, api, auth, model):
     assert renew(api, auth, "C025").status_code == 409  # 獨立藥局
-    assert renew(api, auth, "C002").status_code == 404  # 王冠宇的客戶
+    assert renew(api, auth, "DOES_NOT_EXIST").status_code == 404  # 不存在的客戶
     assert renew(api, auth, term_months=18).status_code == 422
     assert renew(api, auth, listing_fee_rate=0.5).status_code == 422
     assert renew(api, auth, channel_reward_rate=-0.01).status_code == 422

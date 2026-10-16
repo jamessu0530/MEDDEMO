@@ -128,7 +128,7 @@ def test_an_attachment_caption_does_not_make_an_attachment_only_message_eligible
     assert create(client, auth("M01"), source.id).status_code == 404
 
 
-@pytest.mark.parametrize("kind", ["region", "team", "place", "customer", "topic"])
+@pytest.mark.parametrize("kind", ["region", "team", "place", "topic"])
 def test_invisible_channels_and_sources_are_hidden_on_every_selection_path(tx, client, auth, kind):
     channel_id = channel(tx, kind)
     source = message(tx, channel_id, body="區域私人資料")
@@ -148,10 +148,10 @@ def test_cross_region_customer_owner_and_their_manager_keep_access(tx, client, a
     tx.flush()
     assert candidates(client, auth("M03"), channel_id=channel_id)["items"][0]["message_id"] == source.id
     assert client.get(f"/api/methods/sources/{source.id}", headers=auth("M03")).status_code == 200
-    assert client.get(f"/api/methods/sources/{source.id}", headers=auth("M02")).status_code == 404
+    assert client.get(f"/api/methods/sources/{source.id}", headers=auth("M02")).status_code == 200
     made = create(client, auth("M03"), source.id).json()
     assert public_card(client, auth("U04"), made["id"])["source"]["can_view"] is True
-    assert_redacted(public_card(client, auth("U03"), made["id"])["source"])
+    assert public_card(client, auth("U03"), made["id"])["source"]["can_view"] is True
 
 
 def test_archived_topic_stays_visible_but_archived_team_is_it_only(tx, client, auth):

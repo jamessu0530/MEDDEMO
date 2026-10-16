@@ -66,7 +66,7 @@ class StopView:
     customer_id: str
     customer_name: str
     type: str
-    grade: str
+    grade: str | None
     planned_time: str  # 已完成的是拜訪時間，其他是排出來的到達時間
     status: str  # done／next／todo
     signal: str
@@ -392,13 +392,13 @@ def add_stops(
     on_route = {r.customer_id for r in day.rows}
     wanted = list(dict.fromkeys(customer_ids))
     found = _customers(session, wanted)
-    mine = [cid for cid in wanted if cid in found and found[cid].owner_user_id == user_id]
+    mine = [cid for cid in wanted if cid in found]
     labels = today_route.labels(session, user_id, mine) if mine else {}
     added: list[str] = []
     skipped: list[Skipped] = []
     for cid in wanted:
         customer = found.get(cid)
-        if customer is None or customer.owner_user_id != user_id:
+        if customer is None:
             skipped.append(Skipped(cid, customer.name if customer else cid, "不是你的客戶"))
             continue
         if cid in day.done_ids:
@@ -482,7 +482,7 @@ def save(session: Session, user_id: str, version: int, draft: Draft, habit_sourc
 
 
 def candidates(
-    session: Session, user_id: str, order: list[str] | None = None, locked: Sequence[str] = ()
+    session: Session, user_id: str, order: list[str] | None = None, locked: Sequence[str] = (), q: str = ""
 ) -> Candidates:
     """加一站的候選：自己的客戶，草稿上已經有的、今天跑過的不列。順路的前幾家照估算的多繞分鐘數排
     （插的位置跟真的加的時候一樣，用 cheapest_insert），其他照名稱排。order、locked 是調整清單上目前
@@ -490,8 +490,14 @@ def candidates(
     itinerary = get_or_create(session, user_id)
     day = _day(session, itinerary)
     saved = {o.customer.id: o for o in _saved_open(session, day)}
-    mine = list(session.scalars(select(Customer).where(Customer.owner_user_id == day.rep.id).order_by(Customer.name)))
+    from app.services.outlet_search import customer_matches
+    query = select(Customer)
+    if q:
+        query = query.where(Customer.id.in_(customer_matches(session, q)))
+    mine = list(session.scalars(query.order_by(Customer.id.in_(saved).desc(), Customer.name).limit(100)))
     own = {c.id: c for c in mine}
+    if order:
+        own.update({c.id: c for c in session.scalars(select(Customer).where(Customer.id.in_(order)))})
     ids = [
         cid for cid in dict.fromkeys(order if order is not None else list(saved))
         if cid not in day.done_ids and (cid in saved or cid in own)
@@ -847,8 +853,8 @@ def _resolve(
         raise InvalidDraft("約的時間要選幾點到、以前或以後，再填時間")
     customers = _customers(session, ids)
     new_ids = [cid for cid in ids if cid not in by_row]
-    if any(cid not in customers or customers[cid].owner_user_id != day.rep.id for cid in new_ids):
-        raise InvalidDraft("只能排自己的客戶")
+    if any(cid not in customers for cid in new_ids):
+        raise InvalidDraft("找不到這家客戶")
     labels = today_route.labels(session, day.rep.id, new_ids) if new_ids else {}
     open_ = []
     for stop in stops:
@@ -890,8 +896,8 @@ def _inserted(
     if len(open_) >= route_planner.MAX_OPEN_STOPS:
         raise InvalidDraft(TOO_MANY)
     customer = session.get(Customer, customer_id)
-    if customer is None or customer.owner_user_id != day.rep.id:
-        raise InvalidDraft("只能排自己的客戶")
+    if customer is None:
+        raise InvalidDraft("找不到這家客戶")
     # 草稿上拿掉、又加回來的那一家：來源與理由照存著的
     row = next((r for r in day.rows if r.customer_id == customer_id), None)
     label = (row.signal, row.reason) if row else today_route.labels(session, day.rep.id, [customer_id])[customer_id]

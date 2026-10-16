@@ -27,5 +27,30 @@ services:
       timeout: 3s
       retries: 20
 
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.5.5
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "true"
+      xpack.security.http.ssl.enabled: "false"
+      xpack.security.transport.ssl.enabled: "false"
+      xpack.ml.enabled: "false"
+      node.store.allow_mmap: "false"
+      node.processors: "1"
+      ES_JAVA_OPTS: -Xms512m -Xmx512m
+      ELASTIC_PASSWORD: ${ELASTICSEARCH_PASSWORD:-meddemo-local-search}
+    mem_limit: 1g
+    cpus: 1
+    ports:
+      - "127.0.0.1:19201:9200"
+    volumes:
+      - searchdata:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -u elastic:$$ELASTIC_PASSWORD http://localhost:9200/_cluster/health >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
 volumes:
   pgdata:
+  searchdata:

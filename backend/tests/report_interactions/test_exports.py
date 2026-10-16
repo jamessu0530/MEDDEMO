@@ -15,6 +15,7 @@ from app.services import auth, report_exports as exports, reports
 
 
 def config(card=None, **patch):
+    patch.setdefault("slicers", [{"dimension": "owner", "keys": ["S1", "S2"]}])
     return reports.ReportQuery.model_validate({"name": "完整匯出驗收", "template": "manager", "period": "this_month", "cards": [{"id": "sales", "title": "銷售完整分組", "metric": "sales", "dimension": "customer", "visual": "bar", "limit": 3, **(card or {})}], **patch})
 
 
@@ -112,10 +113,10 @@ def test_export_interaction_modes_respect_fixed_filters_and_scope(interaction_se
     assert full[1].total == 1350 and subset[1].total == 650 and subset[0].total == 1350
     query.cards[1].interaction = "none"
     query.slicers = [reports.ReportSlicer(dimension="product", keys=["P1"])]
-    assert exports.tables(interaction_session, interaction_session.get(AppUser, "M1"), body(query=query, selection_scope="selected"))[1].total == 1100
-    assert table(interaction_session, body(), "S1").total == 650
+    assert exports.tables(interaction_session, interaction_session.get(AppUser, "M1"), body(query=query, selection_scope="selected"))[1].total == 2000
+    assert table(interaction_session, body(), "S1").total == 1350
     private = config(slicers=[{"dimension": "customer", "keys": ["C3"]}])
-    assert table(interaction_session, body(query=private)).total == 0
+    assert table(interaction_session, body(query=private)).total == 900
 
 
 def test_full_raw_csv_and_xlsx_keep_all_rows_types_dates_and_formula_protection(interaction_session):
@@ -227,8 +228,8 @@ def test_export_api_enforces_ownership_and_download_headers(interaction_session)
     assert response.status_code == 200 and response.content.startswith(b"\xef\xbb\xbf")
     assert "filename*=UTF-8''" in response.headers["content-disposition"] and response.headers["cache-control"] == "no-store"
     rows = list(csv.DictReader(io.StringIO(response.content.decode("utf-8-sig"))))
-    assert not any("C2" in row.get("列階層", "") or "C3" in row.get("列階層", "") for row in rows)
-    private = body(query=config(owner_id="S3"))
+    assert not any("C3" in row.get("列階層", "") for row in rows)
+    private = body(query=config(owner_id="UNKNOWN_OWNER"))
     assert client.post("/api/reports/export", headers=headers, json=private.model_dump(mode="json")).status_code == 403
     invalid = body().model_dump(mode="json"); invalid["page"] = 2
     assert client.post("/api/reports/export", headers=headers, json=invalid).status_code == 422

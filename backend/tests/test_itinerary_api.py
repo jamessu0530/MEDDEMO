@@ -268,8 +268,8 @@ def test_preview_and_save_the_list(client, auth):
 def test_a_bad_draft_is_refused(client, auth, tx):
     body = draft_body(today(client, auth))
     theirs = tx.scalars(select(Customer.id).where(Customer.owner_user_id == "U02")).first()
-    bad = client.post("/api/itinerary/today/preview", json={**body, "insert": theirs}, headers=auth())
-    assert bad.status_code == 422 and bad.json()["detail"] == "只能排自己的客戶"
+    bad = client.post("/api/itinerary/today/preview", json={**body, "insert": "NO_SUCH_CUSTOMER"}, headers=auth())
+    assert bad.status_code == 422 and bad.json()["detail"] == "找不到這家客戶"
     half = {**body, "stops": [{**body["stops"][0], "window_kind": "at"}]}
     assert client.post("/api/itinerary/today/preview", json=half, headers=auth()).status_code == 422
     assert client.post("/api/itinerary/today/preview", json=body, headers=auth("M01")).status_code == 403

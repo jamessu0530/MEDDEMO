@@ -36,7 +36,7 @@ export type FirstWeek = {
     id: string
     name: string
     type: Customer["type"]
-    grade: string
+    grade: string | null
     city: string
     amount_last_90d: number
   }[]

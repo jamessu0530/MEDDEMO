@@ -26,7 +26,7 @@ type LoadState =
   | { status: "error"; denied: string | null }
   | { status: "ready"; data: FirstWeek; course: Course }
 
-const TYPES: Customer["type"][] = ["chain", "independent", "clinic"]
+const TYPES: Customer["type"][] = ["chain", "independent", "clinic", "outlet"]
 
 function documentPath(sourceName: string) {
   return `/documents/${encodeURIComponent(sourceName)}`
@@ -257,8 +257,8 @@ function ProfileSection({ data }: { data: FirstWeek }) {
         <Row label="直屬主管" value={employee.manager_name ?? "—"} />
         {customers.total > 0 && (
           <>
-            <Row label="轄區縣市" value={employee.cities.join("、")} />
-            <Row label="名下客戶" value={`${customers.total} 家`} />
+            <Row label="通路縣市" value={employee.cities.join("、")} />
+            <Row label="共用客戶" value={`${customers.total} 家`} />
             <Row
               label="依類型"
               value={TYPES.map(
@@ -271,7 +271,7 @@ function ProfileSection({ data }: { data: FirstWeek }) {
       </dl>
       {customers.total === 0 && (
         <p className="mt-3 text-sm text-muted-foreground">
-          名下還沒有客戶，等主管分配。
+          目前還沒有客戶資料，可從客戶資料頁查看。
         </p>
       )}
     </section>
@@ -354,12 +354,12 @@ function KeyCustomers({ data }: { data: FirstWeek }) {
     <section className="flex flex-col gap-2">
       <h2 className="text-base font-semibold">先認識這五家</h2>
       <p className="text-xs text-muted-foreground">
-        先認識名下客戶的近期進貨與拜訪紀錄。
+        先認識共用客戶的近期進貨與拜訪紀錄，也可以自行搜尋其他通路。
       </p>
       {data.key_customers.length === 0 ? (
         <p className="rounded-xl bg-muted px-4 py-6 text-center text-sm text-muted-foreground">
           {data.customers.total === 0
-            ? "名下還沒有客戶，等主管分配。"
+            ? "目前還沒有客戶資料，可從客戶資料頁查看。"
             : "目前沒有可顯示的客戶。"}
         </p>
       ) : (

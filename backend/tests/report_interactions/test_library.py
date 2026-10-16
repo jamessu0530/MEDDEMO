@@ -54,7 +54,7 @@ def test_empty_canvas_can_be_saved_loaded_validated_copied_and_shared(interactio
     opened = client.post("/api/reports/library/open", headers=recipient, json={"report_id": shared_id})
     assert opened.status_code == 200 and opened.json()["config"]["cards"] == []
     assert opened.json()["readonly"] is True
-    foreign = empty | {"owner_id": "S3"}
+    foreign = empty | {"owner_id": "UNKNOWN_OWNER"}
     assert client.put(f"/api/reports/library/{report_id}", headers=headers, json={"config": foreign, "revision": 2}).status_code == 403
 
 
@@ -143,13 +143,13 @@ def test_api_ownership_scope_validation_draft_validation_and_conflict(interactio
     _, sales = client_for(interaction_session, "S1")
     assert client.post("/api/reports/library/open", headers=sales, json={"report_id": report_id}).status_code == 404
     assert client.put(f"/api/reports/library/{report_id}", headers=sales, json={"config": config().model_dump(mode="json"), "revision": 2}).status_code == 404
-    assert client.post("/api/reports/library", headers=sales, json={"config": config(owner_id="S3").model_dump(mode="json")}).status_code == 403
-    bad_bookmark = {"name": "越權", "state": state(slicers=[{"dimension": "owner", "keys": ["S3"]}]).model_dump(mode="json")}
+    assert client.post("/api/reports/library", headers=sales, json={"config": config(owner_id="UNKNOWN_OWNER").model_dump(mode="json")}).status_code == 403
+    bad_bookmark = {"name": "越權", "state": state(slicers=[{"dimension": "owner", "keys": ["UNKNOWN_OWNER"]}]).model_dump(mode="json")}
     assert client.post(f"/api/reports/library/{report_id}/bookmarks", headers=headers, json=bad_bookmark).status_code == 403
     invalid = config().model_dump(mode="json")
     invalid["cards"][0]["format"] = {"metric_colors": {"sales": "url(secret)"}}
     assert client.post("/api/reports/library/validate", headers=headers, json={"config": invalid}).status_code == 422
-    old_scope = config(owner_id="S3", slicers=[{"dimension": "owner", "keys": ["S1", "S3"]}]).model_dump(mode="json")
+    old_scope = config(owner_id="UNKNOWN_OWNER", slicers=[{"dimension": "owner", "keys": ["S1", "UNKNOWN_OWNER"]}]).model_dump(mode="json")
     validated = client.post("/api/reports/library/validate", headers=headers, json={"config": old_scope})
     assert validated.status_code == 200 and validated.json()["owner_id"] is None
     assert validated.json()["slicers"][0]["keys"] == ["S1"]

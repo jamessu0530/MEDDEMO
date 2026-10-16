@@ -171,8 +171,8 @@ def test_added_stops_go_where_they_detour_least(tx):
     _, added, skipped = service.add_stops(tx, "U01", [mine, theirs, on_route[0]])
     view = service.view(tx, itinerary)
     stop = next(s for s in view.stops if s.customer_id == mine)
-    assert len(added) == 1 and stop.source == "ask" and stop.reason
-    assert {(s.customer_id, s.reason) for s in skipped} == {(theirs, "不是你的客戶"), (on_route[0], "已經在今天的行程裡")}
+    assert len(added) == 2 and stop.source == "ask" and stop.reason
+    assert {(s.customer_id, s.reason) for s in skipped} == {(on_route[0], "已經在今天的行程裡")}
     assert view.version == 2
     # 加進來就取消暫緩，不然明天的建議照樣不排
     assert tx.get(RouteSnooze, ("U01", mine)) is None
@@ -522,8 +522,9 @@ def test_the_draft_is_checked(tx):
     before = service.view(tx, service.get_or_create(tx, "U01"))
     on_route = [s.customer_id for s in before.stops]
     [theirs] = not_on_route(tx, on_route, owner="U02")
-    with pytest.raises(service.InvalidDraft, match="只能排自己的客戶"):
-        service.preview(tx, "U01", draft_of(before), insert=theirs)
+    assert theirs in {s.customer_id for s in service.preview(tx, "U01", draft_of(before), insert=theirs).stops}
+    with pytest.raises(service.InvalidDraft, match="找不到這家客戶"):
+        service.preview(tx, "U01", draft_of(before), insert="NO_SUCH_CUSTOMER")
     with pytest.raises(service.InvalidDraft, match="已經在今天的行程裡"):
         service.preview(tx, "U01", draft_of(before), insert=on_route[1])
     extra = not_on_route(tx, on_route, limit=4)
@@ -635,7 +636,7 @@ def test_candidates_put_the_nearest_first(tx):
     found = service.candidates(tx, "U01")
     listed = [c.customer_id for c in found.nearby + found.others]
     # 示範業務 53 家（含新竹那三家），扣掉路線上的 5 家
-    assert len(listed) == len(set(listed)) == 48 and not set(listed) & set(on_route)
+    assert len(listed) == len(set(listed)) == 100 - len(on_route) and not set(listed) & set(on_route)
     assert len(found.nearby) == service.NEARBY and not found.full
     assert [c.extra_minutes for c in found.nearby] == sorted(c.extra_minutes for c in found.nearby)
     assert all(c.signal and c.after_stop is not None for c in found.nearby)
@@ -667,8 +668,7 @@ def test_with_stop_uses_the_habit_defaults_and_marks_who_added_it(tx):
     shown = {s.customer_id: s for s in service.shown(tx, itinerary, added).stops}
     assert shown[mine].source == "ai"
     [theirs] = not_on_route(tx, [], owner="U02")
-    with pytest.raises(service.InvalidDraft):
-        service.with_stop(tx, itinerary, draft, theirs)
+    assert theirs in {s.customer_id for s in service.with_stop(tx, itinerary, draft, theirs).stops}
 
 
 def test_optimized_keeps_the_rules_and_says_what_they_cost(tx):

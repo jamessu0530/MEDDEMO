@@ -254,7 +254,7 @@ def build_profile(session: Session, customer: Customer) -> Profile:
         ar_outstanding=float(summary.ar_outstanding),
         ar_max_age_days=summary.ar_max_age_days,
         ar_overdue_days=summary.ar_overdue_days,
-        payment_term=summary.payment_term,
+        payment_term=summary.payment_term or "未設定",
         last_order_date=summary.last_order_date,
         last_visit_date=local_date(visits[0].visited_at) if visits else None,
     )
@@ -287,7 +287,10 @@ def build_profile(session: Session, customer: Customer) -> Profile:
         signals.add("contract_ending")
         highlights.append(f"合約 {customer.contract_end_date:%Y/%m/%d} 到期，要開始談續約")
     if not highlights:
-        highlights.append(f"近期進貨穩定，近 90 天進貨 {_wan(stats.amount_last_90d)}")
+        if stats.last_order_date is None:
+            highlights.append("目前尚無進貨紀錄，可先確認通路與需求資料")
+        else:
+            highlights.append(f"近期進貨穩定，近 90 天進貨 {_wan(stats.amount_last_90d)}")
 
     return Profile(
         today=today,

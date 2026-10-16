@@ -16,8 +16,11 @@ def point(**filters):
 
 
 def config(**changes):
+    slicers = changes.get("slicers", [])
+    if not any(item["dimension"] == "owner" for item in slicers):
+        changes["slicers"] = [{"dimension": "owner", "keys": ["S1", "S2"]}, *slicers]
     return reports.ReportQuery.model_validate({
-        "name": "下鑽驗收", "template": "manager", "period": "custom",
+        "slicers": [{"dimension": "owner", "keys": ["S1", "S2"]}], "name": "下鑽驗收", "template": "manager", "period": "custom",
         "date_range": {"start": "2031-01-01", "end": "2031-04-17"},
         "cards": [{"id": "source", "title": "業績", "metric": "sales", "dimension": "customer", "visual": "bar", "limit": 3}],
         **changes,
@@ -157,20 +160,19 @@ def test_details_and_export_never_expand_customer_permission(interaction_session
 def test_owner_permission_checked_for_point_and_drill(interaction_session):
     report = config(cards=[{"id": "source", "title": "業務", "metric": "sales", "dimension": "owner", "visual": "bar"}])
     with pytest.raises(reports.OwnerNotAllowed):
-        rows(interaction_session, report, point=point(owner="S3"))
+        rows(interaction_session, report, point=point(owner="UNKNOWN_OWNER"))
     with pytest.raises(reports.OwnerNotAllowed):
-        rows(interaction_session, report, user="S1", point=point(owner="S2"))
+        rows(interaction_session, report, user="S1", point=point(owner="UNKNOWN_OWNER"))
     with pytest.raises(reports.OwnerNotAllowed):
-        rows(interaction_session, temporal("month", drill_filters={"source": [{"dimension": "owner", "key": "S3"}]}))
-    assert rows(interaction_session, user="S1").total == 750
+        rows(interaction_session, temporal("month", drill_filters={"source": [{"dimension": "owner", "key": "UNKNOWN_OWNER"}]}))
+    assert rows(interaction_session, user="S1").total == 1750
 
 
 def test_missing_organization_scope_has_no_detail_or_export_access(interaction_session):
-    # 防守性驗證缺少路徑的呼叫者；正式帳號資料另有組織位置約束。
     user = AppUser(id="UNPLACED", name="未分配", role="manager", region="北區", unit_id="TW.N", org_path=None)
     result = detail.details(interaction_session, user, body())
-    assert result.total_rows == result.total == 0 and result.rows == []
-    assert len(list(csv.reader(io.StringIO(detail.export_csv(interaction_session, user, body()))))) == 1
+    assert result.total_rows == 5 and result.total == 1750
+    assert len(list(csv.reader(io.StringIO(detail.export_csv(interaction_session, user, body()))))) == 6
 
 
 def test_highlight_scope_and_none_match_chart_semantics(interaction_session):
@@ -204,7 +206,7 @@ def test_visit_details_use_actual_visitor_taipei_time_and_omit_private_media(int
     assert result.rows[0].values["owner"] == "S2" and result.rows[0].values["status"] == "已確認"
     assert not {"audio_url", "transcript", "fields_final"} & result.rows[0].values.keys()
     assert rows(interaction_session, report).total_rows == 2
-    assert rows(interaction_session, report, user="S1").total_rows == 1
+    assert rows(interaction_session, report, user="S1").total_rows == 2
 
 
 def test_receivable_snapshot_includes_older_invoices_but_excludes_paid_future_and_other_team(interaction_session):
@@ -276,6 +278,6 @@ def test_details_api_authorization_csv_and_query_only_drill(interaction_session)
     assert exported.status_code == 200 and "text/csv" in exported.headers["content-type"]
     assert "attachment" in exported.headers["content-disposition"] and "O2" in exported.text and "O3" not in exported.text
     assert client.put("/api/reports/config", json=report.model_dump(mode="json"), headers=headers).status_code == 422
-    forged = body(config(cards=[{"id": "source", "title": "業務", "metric": "sales", "dimension": "owner", "visual": "bar"}]), point=point(owner="S3")).model_dump(mode="json")
+    forged = body(config(cards=[{"id": "source", "title": "業務", "metric": "sales", "dimension": "owner", "visual": "bar"}]), point=point(owner="UNKNOWN_OWNER")).model_dump(mode="json")
     assert client.post("/api/reports/details", json=forged, headers=headers).status_code == 403
     assert client.post("/api/reports/details/export", json=forged, headers=headers).status_code == 403

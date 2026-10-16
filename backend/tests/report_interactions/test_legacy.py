@@ -15,5 +15,5 @@ def test_old_report_payload_still_queries_and_defaults_to_filter(interaction_ses
     response = client.post("/api/reports/data", json=config.model_dump(mode="json"), headers=headers)
     assert response.status_code == 200
     card = response.json()["cards"][0]
-    assert card["total"] == 1350 and card["highlight"] is None
+    assert card["total"] == 2250 and card["highlight"] is None
     assert config.cards[0].interaction == "filter"

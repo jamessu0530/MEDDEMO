@@ -134,7 +134,7 @@ def customer_state(session: Session, customer: Customer, as_of: dt.date) -> dict
         "interval_change": candidate.features["interval_change"],
         "ar_age_days": float(candidate.ar_age_days),
         "competitor_recent": 1.0 if any((fields or {}).get("competitor") for fields in visits) else 0.0,
-        "grade_weight": route_model.GRADE_WEIGHT[customer.grade],
+        "grade_weight": route_model.GRADE_WEIGHT.get(customer.grade, 0.0),
         # 不是模型的特徵（不存在單上）：系統核准的擋關用
         "ar_overdue_days": float(candidate.ar_overdue_days),
     }

@@ -11,7 +11,7 @@ def config(*, formatting=None, view=None, columns=None, rows=None):
     rows = rows or ["owner", "customer"]
     columns = [] if columns is None else columns
     return reports.ReportQuery.model_validate({
-        "name": "格式驗收", "template": "manager", "period": "this_month",
+        "slicers": [{"dimension": "owner", "keys": ["S1", "S2"]}], "name": "格式驗收", "template": "manager", "period": "this_month",
         "cards": [{"id": "matrix", "title": "矩陣", "metric": "sales", "dimension": rows[0], "legend": columns[0] if columns else None,
                    "visual": "matrix", "matrix": {"rows": rows, "columns": columns, "metrics": ["sales", "net_margin", "net_margin_rate", "order_count", "avg_order_value"]},
                    "format": formatting or {}}],
@@ -57,7 +57,7 @@ def test_format_settings_persist_without_changing_data_or_permission(interaction
     assert saved.cards[0].format == body.cards[0].format
     assert reports.get_config(interaction_session, user).cards[0].format == body.cards[0].format
     assert data(interaction_session, body).model_dump() == data(interaction_session, config()).model_dump()
-    assert data(interaction_session, body, "S1").total == 650
+    assert data(interaction_session, body, "S1").total == 1350
 
 
 def test_complete_leaf_color_domains_are_stable_across_pages_and_collapse(interaction_session):

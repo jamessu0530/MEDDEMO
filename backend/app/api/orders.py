@@ -27,8 +27,8 @@ def list_orders(session: SessionDep, user: CurrentUser, q: str = Query(default="
 
 
 @router.get("/customers")
-def order_customers(session: SessionDep, user: CurrentUser):
-    return service.customers(session, user)
+def order_customers(session: SessionDep, user: CurrentUser, q: str = Query(default="", max_length=100)):
+    return service.customers(session, user, q.strip())
 
 
 @router.get("/products")

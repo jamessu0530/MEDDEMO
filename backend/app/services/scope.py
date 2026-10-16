@@ -1,20 +1,9 @@
-"""資料權限：誰看得到哪些資料。
+"""資料範圍：已登入帳號共用客戶業務資料，私人資料依帳號保存。
 
-組織是一棵樹（services/org.py），每個人有一條路徑，例如業務 U01 是 TW.N.M01.U01、
-他的主管 M01 是 TW.N.M01。
-
-可見範圍 = 把自己的路徑截到該種資料的共享層級深度，再看對方是不是在底下。
-主管的路徑比較短、截不動，所以「主管看得到屬下」不必另外寫規則，是同一個式子的結果。
-IT 坐在根節點上、路徑就是 TW，截到哪一層都是 TW，全公司看得到也動得了，也是同一個式子。
-
-數字查詢的 SQL 是模型寫的，靠提示叫它「只查自己的」擋不住，所以過濾做在資料庫：
-跟客戶有關的四個語意層 View 都用 app_in_scope() 過濾，路徑由 sql_executor 在每次查詢的交易裡設定
-（促銷的兩個 View 不分客戶，全公司共用，不過濾）。
-
-org_path 是 nullable 欄位（models.py），for_user() 解出的路徑理論上可能是 None。這跟
-「不過濾」的意思完全相反，不能共用同一個 None：只有 everything() 會把 unfiltered 設成
-True；for_user() 解不出路徑就是看不到任何東西，靠 NO_ACCESS 這個不會是任何人祖先的假
-路徑做到，can_see／users_at 不必另外判斷一次。
+客戶、業績、帳款、報價與已確認拜訪使用 ROOT，不依負責人或組織分配限制。
+個人的拜訪編輯、申請、主管收件匣與組織頻道仍使用組織樹的 SELF／TEAM／REGION。
+私人對話以實際登入 user_id 保存，未確認拜訪另由 visits API 限制建立者讀取。
+SQL 語意層的四個業務 View 同樣宣告 ROOT，測試會核對 Python 與 SQL 的深度。
 """
 
 from __future__ import annotations
@@ -39,11 +28,11 @@ SELF = 4     # TW.N.M01.U01
 # test_the_sql_views_declare_the_same_depths_as_python 會在只改一邊時失敗。
 SHARING_LEVEL = {
     "customer_basic": ROOT,     # 客戶清單：名稱、類型、區、縣市、等級、負責人
-    "sales_figures": REGION,    # 進貨金額、毛利、帳齡
-    "visit_record": TEAM,       # 讀拜訪紀錄與逐字稿
+    "sales_figures": ROOT,    # 進貨金額、毛利、帳齡
+    "visit_record": ROOT,       # 讀拜訪紀錄與逐字稿
     "visit_edit": SELF,         # 改、確認、刪除拜訪：做這次拜訪的本人（主管的路徑較短，也涵蓋在內）
-    "customer_profile": SELF,   # 客戶檔案、議價卡，以及對這家客戶做事（錄音、排進路線）
-    "quote": SELF,              # 報價與交易條件（開報價、看合約條件、送續約申請）
+    "customer_profile": ROOT,   # 共用客戶檔案、議價卡，以及錄音、排進路線
+    "quote": ROOT,              # 報價與交易條件（開報價、看合約條件、送續約申請）
     "oa_form": SELF,            # 申請單：出差單、優惠、合約
     # 頻道（services/channels.py）：全國頻道全公司；整區、地點頻道與客戶討論串整區；小組頻道到小組
     "channel_national": ROOT,
@@ -100,6 +89,8 @@ class Scope:
         return ".".join(self.path.split(".")[:level])
 
     def can_see(self, level: int, org_path: str | None) -> bool:
+        if level == ROOT:
+            return True  # 已登入者共用全國資料；私人層級仍檢查各自路徑。
         prefix = self.prefix(level)
         if prefix is None:
             return True
@@ -109,6 +100,8 @@ class Scope:
 
     def users_at(self, level: int) -> Select | None:
         """這個層級底下有哪些人。None 代表不過濾。"""
+        if level == ROOT:
+            return None
         prefix = self.prefix(level)
         if prefix is None:
             return None
@@ -121,8 +114,8 @@ class Scope:
         return true() if users is None else user_id.in_(users)
 
     def customers_at(self, level: int) -> ColumnElement[bool]:
-        """加在 where 上，依客戶負責人的位置過濾。查詢裡要有 Customer。"""
-        return self.includes(level, Customer.owner_user_id)
+        """已登入使用者共用所有客戶；level 保留供既有呼叫端相容。"""
+        return true()  # 客戶全員共用；個人記憶與私人紀錄仍用自己的 user_id。
 
     @property
     def sql_path(self) -> str:
@@ -138,5 +131,7 @@ def owner_path(session: Session, customer: Customer | None) -> str | None:
     """客戶負責人在組織樹上的位置。客戶不存在就回 None，呼叫端一律當作看不到。"""
     if customer is None:
         return None
+    if customer.owner_user_id is None:
+        return "TW"
     owner = session.get(AppUser, customer.owner_user_id)
     return owner.org_path if owner else None
