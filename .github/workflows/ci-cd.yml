@@ -148,7 +148,9 @@ jobs:
         run: uv run --project backend python data/seed/seed.py
       - name: 啟動 API
         run: |
-          uv run --project backend uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port 8000 > "$RUNNER_TEMP/k6-api.log" 2>&1 &
+          # uv run 會在 API 整段執行期間持有快取鎖，讓 setup-uv 的 post-job prune 卡住。
+          backend/.venv/bin/python -m uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port 8000 > "$RUNNER_TEMP/k6-api.log" 2>&1 &
+          echo "$!" > "$RUNNER_TEMP/k6-api.pid"
           ready=false
           for attempt in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:8000/health > /dev/null; then ready=true; break; fi
@@ -167,6 +169,12 @@ jobs:
               -e K6_EMAIL=u01@meddemo.tw -e K6_PASSWORD \
               grafana/k6:2.3.0 run --no-usage-report --summary-export="/results/$scenario.json" /scripts/api.js
           done
+      - name: 關閉壓測 API
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/k6-api.pid" ]; then
+            kill "$(cat "$RUNNER_TEMP/k6-api.pid")" 2>/dev/null || true
+          fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
