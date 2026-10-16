@@ -95,10 +95,11 @@ def _query(session: Session, user: AppUser, body: DetailsInput):
         card, config, Scope.for_user(user), start, end, today, point_filters)
     total = reports._number(session.scalar(query.with_only_columns(aggregate)))
     count = int(session.scalar(query.with_only_columns(func.count())) or 0)
-    query = query.join(AppUser, AppUser.id == owner_col)
-    customer_columns = [Customer.id.label("customer_id"), Customer.name.label("customer"), AppUser.name.label("owner")]
+    query = query.outerjoin(AppUser, AppUser.id == owner_col)
+    owner_label = func.coalesce(AppUser.__table__.c.name, reports.SHARED_OWNER_LABEL)
+    customer_columns = [Customer.id.label("customer_id"), Customer.name.label("customer"), owner_label.label("owner")]
     columns = [_col("customer", "客戶", sort_key="customer"), _col("owner", "目前負責業務", sort_key="owner")]
-    sort = {"customer": Customer.name, "owner": AppUser.name}
+    sort = {"customer": Customer.name, "owner": owner_label}
     if card.metric in reports.SALES_METRICS:
         margin = SalesTransaction.amount - SalesTransaction.cost - SalesTransaction.listing_fee - SalesTransaction.channel_reward
         query = query.join(Product, Product.sku == SalesTransaction.sku)

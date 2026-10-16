@@ -31,6 +31,8 @@ Template = Literal["sales", "manager"]
 CustomerType = Literal["chain", "independent", "clinic", "outlet"]
 TAIPEI = dt.timezone(dt.timedelta(hours=8), "Asia/Taipei")
 TYPE_LABELS = {"chain": "連鎖藥局", "independent": "獨立藥局", "clinic": "診所", "outlet": "公開通路（待核對）"}
+SHARED_OWNER = "__shared__"
+SHARED_OWNER_LABEL = "共用通路"
 STACKED = {"stacked_bar", "stacked_column", "percent_bar", "percent_column"}
 LEGEND_VISUALS = {"bar", "column", "line", "area", "matrix"} | STACKED
 SLUG_PATTERN = r"^[a-z][a-z0-9_-]*$"
@@ -670,11 +672,14 @@ def templates() -> dict[str, ReportConfig]:
 
 def owners(session: Session, user: AppUser) -> list[ReportOwner]:
     scope = Scope.for_user(user)
-    return [ReportOwner(id=id, name=name) for id, name in session.execute(
+    result = [ReportOwner(id=id, name=name) for id, name in session.execute(
         select(AppUser.id, AppUser.name)
         .where(AppUser.role == "sales", scope.includes(SHARING_LEVEL["customer_profile"], AppUser.id))
         .order_by(AppUser.name, AppUser.id)
     )]
+    if session.scalar(select(Customer.id).where(Customer.owner_user_id.is_(None)).limit(1)):
+        result.append(ReportOwner(id=SHARED_OWNER, name=SHARED_OWNER_LABEL))
+    return result
 
 
 def filter_options(session: Session, user: AppUser) -> ReportFilterOptions:
@@ -852,7 +857,7 @@ def _number(value):
 def _base_query(card: ReportCard, config: ReportConfig, scope: Scope, start: dt.date, end: dt.date, today: dt.date, extra_filters: list[ReportFilter] | None = None, calendar_offset: int = 0):
     # 所有來源都帶客戶檔案權限，不能因切換顯示模板或指標而擴大範圍。
     level = SHARING_LEVEL["customer_profile"]
-    owner_col = Customer.owner_user_id
+    owner_col = func.coalesce(Customer.__table__.c.owner_user_id, SHARED_OWNER)
     if card.metric in SALES_METRICS:
         amount = SalesTransaction.amount
         query = select().select_from(SalesTransaction).join(Customer, Customer.id == SalesTransaction.customer_id)
@@ -949,7 +954,7 @@ def _dimension_query(query, dimension: Dimension, date_col, owner_col):
     if dimension == "product":
         return query.join(Product, Product.sku == SalesTransaction.sku), Product.sku, Product.name
     if dimension == "owner":
-        return query.join(AppUser, AppUser.id == owner_col), AppUser.id, AppUser.name
+        return query.outerjoin(AppUser, AppUser.id == owner_col), owner_col, func.coalesce(AppUser.__table__.c.name, SHARED_OWNER_LABEL)
     return query, Customer.type, case(TYPE_LABELS, value=Customer.type, else_=Customer.type)
 
 
