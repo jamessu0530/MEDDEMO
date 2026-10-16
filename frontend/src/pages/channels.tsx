@@ -1,6 +1,6 @@
 import { Link, useNavigate, useParams, useSearchParams } from "react-router"
 import { useEffect, useState } from "react"
-import { Search } from "lucide-react"
+import { Search } from "@/components/icons"
 
 import { listChannels, type Channel } from "@/api/channels"
 import { BottomNav } from "@/components/bottom-nav"

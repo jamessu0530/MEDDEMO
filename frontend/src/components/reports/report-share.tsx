@@ -87,7 +87,7 @@ export function ReportShareDialog({
         <p className="text-xs leading-relaxed text-muted-foreground">
           只共享名稱、圖表、版面及固定條件；查詢結果、草稿與暫時選取不會複製。接收者以自己的資料權限重新查詢，可探索、刷新及匯出，需另存才能編輯。不會寄送通知或建立公開連結。
         </p>
-        <label className="min-w-0 space-y-2 text-xs">
+        <label className="min-w-0 space-y-2 text-sm">
           既有帳號
           <select
             aria-label="唯讀共享接收帳號"
@@ -113,7 +113,7 @@ export function ReportShareDialog({
             ))}
           </select>
         </label>
-        <p className="text-[10px] leading-relaxed text-muted-foreground">
+        <p className="text-xs leading-relaxed text-muted-foreground">
           清單限同團隊既有帳號；管理帳號依既有組織範圍提供。示範代理帳號不提供共享。
         </p>
         {error && (
@@ -128,13 +128,13 @@ export function ReportShareDialog({
         )}
         <div className="flex flex-wrap justify-end gap-2">
           <button
-            className="min-h-10 rounded-md border px-3 text-xs"
+            className="min-h-10 rounded-md border px-3 text-sm"
             onClick={onClose}
           >
             關閉
           </button>
           <button
-            className="min-h-10 rounded-md bg-primary px-3 text-xs text-primary-foreground disabled:opacity-40"
+            className="min-h-10 rounded-md bg-primary px-3 text-sm text-primary-foreground disabled:opacity-40"
             disabled={busy || !recipient || !!message}
             onClick={() => void share()}
           >

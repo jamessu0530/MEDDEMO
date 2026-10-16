@@ -786,7 +786,7 @@ def test_settings_that_cannot_go_back_only_drop_their_own_table(tx):
         "user_preference": [preference, preference | {"user_id": "XGONE001"}],
     })
     assert seed.restore_settings(tx, kept) == {
-        "user_avatar": 0, "user_preference": 1, "user_presence": 0, "user_report_config": 0, "learning_completion": 0,
+        "user_avatar": 0, "user_preference": 1, "user_presence": 0, "user_report_config": 0, "report_dataset": 0, "learning_completion": 0,
         "mascot_wardrobe": 0, "mascot_collectible": 0, "mascot_encounter": 0,
     }
     assert tx.get(models.UserPreference, "U02").text_size == "large"

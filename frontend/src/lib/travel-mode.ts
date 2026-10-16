@@ -1,4 +1,4 @@
-import { Car, Footprints, Motorbike, TrainFront, type LucideIcon } from "lucide-react"
+import { Car, Footprints, Motorbike, TrainFront, type LucideIcon } from "@/components/icons"
 
 import type { LegMode, TravelMode } from "@/api/route"
 

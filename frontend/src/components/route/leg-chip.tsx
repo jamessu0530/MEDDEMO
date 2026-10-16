@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Car, ChevronDown } from "lucide-react"
+import { Car, ChevronDown } from "@/components/icons"
 
 import { getLegOptions, type LegMode, type LegOption, type TravelMode } from "@/api/route"
 import { DriveSource } from "@/components/route/drive-source"
@@ -133,10 +133,10 @@ export function LegOptionList({
               <span className="flex min-w-0 flex-col leading-tight">
                 <span>
                   {TRAVEL_MODE_LABEL[mode]}
-                  {mode === dayMode && <span className="ml-1 text-[0.6875rem] font-normal text-muted-foreground">整天預設</span>}
+                  {mode === dayMode && <span className="ml-1 text-xs font-normal text-muted-foreground">整天預設</span>}
                 </span>
                 {option && !option.found && (
-                  <span className="text-[0.6875rem] font-normal text-muted-foreground">查不到路線，用估算</span>
+                  <span className="text-xs font-normal text-muted-foreground">查不到路線，用估算</span>
                 )}
               </span>
               <span
@@ -157,7 +157,7 @@ export function LegOptionList({
           )
         })}
       </div>
-      <p className="px-2.5 pt-1.5 text-[0.6875rem] leading-snug text-muted-foreground">
+      <p className="px-2.5 pt-1.5 text-xs leading-snug text-muted-foreground">
         {BETA_NOTE}
         {options && (
           <>

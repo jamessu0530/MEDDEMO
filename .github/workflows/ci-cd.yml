@@ -90,6 +90,70 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
 
+  k6-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      db:
+        image: pgvector/pgvector:0.8.0-pg16
+        env:
+          POSTGRES_DB: meddemo_k6
+          POSTGRES_USER: meddemo
+          POSTGRES_PASSWORD: meddemo
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U meddemo -d meddemo_k6"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+      redis:
+        image: redis:8.10.1-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      DATABASE_URL: postgresql+psycopg://meddemo:meddemo@127.0.0.1:5433/meddemo_k6
+      REDIS_URL: redis://127.0.0.1:6379/0
+      JWT_SECRET: k6-ci-only-signing-key-never-used-in-production
+      DEMO_PASSWORD: k6-ci-only-password
+      ASR_PROVIDER: ""
+      LLM_PROVIDER: ""
+      EMBEDDING_PROVIDER: ""
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.11.16"
+      - run: uv sync --project backend --locked
+      - name: 建立隔離的壓測假資料
+        run: uv run --project backend python data/seed/seed.py
+      - name: 啟動 API
+        run: |
+          uv run --project backend uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port 8000 > "$RUNNER_TEMP/k6-api.log" 2>&1 &
+          ready=false
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8000/health > /dev/null; then ready=true; break; fi
+            sleep 1
+          done
+          if [ "$ready" != true ]; then cat "$RUNNER_TEMP/k6-api.log"; exit 1; fi
+      - name: k6 公開端點與登入後查詢
+        env:
+          K6_PASSWORD: k6-ci-only-password
+        run: |
+          mkdir -p "$RUNNER_TEMP/k6-results"
+          for scenario in smoke read; do
+            docker run --rm --network host --user "$(id -u):$(id -g)" \
+              -v "$PWD/tests/k6:/scripts:ro" -v "$RUNNER_TEMP/k6-results:/results" \
+              -e BASE_URL=http://127.0.0.1:8000 -e SCENARIO="$scenario" -e VUS=2 -e DURATION=5s \
+              -e K6_EMAIL=u01@meddemo.tw -e K6_PASSWORD \
+              grafana/k6:2.3.0 run --no-usage-report --summary-export="/results/$scenario.json" /scripts/api.js
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: k6-results
+          path: ${{ runner.temp }}/k6-results/
+          if-no-files-found: ignore
+
   lint-chart:
     runs-on: ubuntu-latest
     steps:
@@ -101,9 +165,20 @@ jobs:
       - run: helm lint deploy/helm/meddemo
       # 實際渲染一次，模板寫錯在這裡就會失敗，不必等到部署
       - run: helm template meddemo deploy/helm/meddemo --namespace meddemo --set image.tag=ci > /dev/null
+      - run: helm lint deploy/helm/meddemo --set monitoring.enabled=true
+      - run: helm template meddemo deploy/helm/meddemo --namespace meddemo --set monitoring.enabled=true > /dev/null
+      - name: 驗證 Alloy 設定
+        run: |
+          helm template meddemo deploy/helm/meddemo --set monitoring.enabled=true --show-only templates/alloy.yaml \
+            | awk '/^  config.alloy: \|/ { capture=1; next } capture { sub(/^    /, ""); print }' > "$RUNNER_TEMP/config.alloy"
+          docker run --rm -v "$RUNNER_TEMP/config.alloy:/etc/alloy/config.alloy:ro" \
+            -e GRAFANA_CLOUD_PROMETHEUS_URL=https://example.grafana.net/api/prom/push \
+            -e GRAFANA_CLOUD_PROMETHEUS_USERNAME=ci -e GRAFANA_CLOUD_TOKEN=ci \
+            -e METRICS_TOKEN=ci -e POD_NAME=ci -e POD_NAMESPACE=meddemo \
+            grafana/alloy:v1.20.1 validate /etc/alloy/config.alloy
 
   build:
-    needs: [test-backend, test-frontend, typecheck-frontend, lint-chart]
+    needs: [test-backend, test-frontend, typecheck-frontend, k6-smoke, lint-chart]
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
@@ -196,10 +271,14 @@ jobs:
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           DEMO_PASSWORD: ${{ secrets.DEMO_PASSWORD }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
-          GITHUB_CLIENT_ID: ${{ secrets.GITHUB_CLIENT_ID }}
-          GITHUB_CLIENT_SECRET: ${{ secrets.GITHUB_CLIENT_SECRET }}
+          GITHUB_CLIENT_ID: ${{ secrets.OAUTH_GITHUB_CLIENT_ID }}
+          GITHUB_CLIENT_SECRET: ${{ secrets.OAUTH_GITHUB_CLIENT_SECRET }}
           FACEBOOK_APP_ID: ${{ secrets.FACEBOOK_APP_ID }}
           FACEBOOK_APP_SECRET: ${{ secrets.FACEBOOK_APP_SECRET }}
+          METRICS_TOKEN: ${{ secrets.METRICS_TOKEN }}
+          GRAFANA_CLOUD_PROMETHEUS_URL: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_URL }}
+          GRAFANA_CLOUD_PROMETHEUS_USERNAME: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USERNAME }}
+          GRAFANA_CLOUD_TOKEN: ${{ secrets.GRAFANA_CLOUD_TOKEN }}
         run: |
           # Secret 不放進 chart（跟 CARE 的 care-backend-secret 一樣），要比 chart 先建好，pod 一啟動就讀得到
           kubectl create namespace meddemo --dry-run=client -o yaml | kubectl apply -f -
@@ -220,9 +299,25 @@ jobs:
             --from-literal=GITHUB_CLIENT_ID="$GITHUB_CLIENT_ID" --from-literal=GITHUB_CLIENT_SECRET="$GITHUB_CLIENT_SECRET" \
             --from-literal=FACEBOOK_APP_ID="$FACEBOOK_APP_ID" --from-literal=FACEBOOK_APP_SECRET="$FACEBOOK_APP_SECRET" \
             --dry-run=client -o yaml | kubectl apply -f -
+          monitoring_enabled=false
+          if [ -n "$METRICS_TOKEN$GRAFANA_CLOUD_PROMETHEUS_URL$GRAFANA_CLOUD_PROMETHEUS_USERNAME$GRAFANA_CLOUD_TOKEN" ]; then
+            for key in METRICS_TOKEN GRAFANA_CLOUD_PROMETHEUS_URL GRAFANA_CLOUD_PROMETHEUS_USERNAME GRAFANA_CLOUD_TOKEN; do
+              if [ -z "${!key}" ]; then
+                echo "::error::監控設定不完整：缺少 $key"
+                exit 1
+              fi
+            done
+            kubectl create secret generic meddemo-monitoring --namespace meddemo \
+              --from-literal=METRICS_TOKEN="$METRICS_TOKEN" \
+              --from-literal=GRAFANA_CLOUD_PROMETHEUS_URL="$GRAFANA_CLOUD_PROMETHEUS_URL" \
+              --from-literal=GRAFANA_CLOUD_PROMETHEUS_USERNAME="$GRAFANA_CLOUD_PROMETHEUS_USERNAME" \
+              --from-literal=GRAFANA_CLOUD_TOKEN="$GRAFANA_CLOUD_TOKEN" \
+              --dry-run=client -o yaml | kubectl apply -f -
+            monitoring_enabled=true
+          fi
           # --wait：所有 pod 就緒才算成功。上限放寬到 10 分鐘，因為第一次部署要從 Docker Hub 下載 Postgres 與 Redis 的映像
           helm upgrade --install meddemo deploy/helm/meddemo --namespace meddemo \
-            --set image.tag="$GITHUB_SHA" --wait --timeout 10m
+            --set image.tag="$GITHUB_SHA" --set monitoring.enabled="$monitoring_enabled" --wait --timeout 10m
           # 手動觸發多半是換了金鑰；Secret 改了 pod 不會自己重讀，要重啟才生效
           if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
             $KC rollout restart deployment/api deployment/worker

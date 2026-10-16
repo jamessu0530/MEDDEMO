@@ -100,7 +100,7 @@ td .ride { display: inline-block; vertical-align: bottom; }
 .cell { border-radius: 16px; padding: 8px; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 .bg-light .cell { background: #fff; }
 .bg-dark .cell { background: #1E1E1D; }
-.cell small { font-size: 12px; color: #6E6A78; }
+.cell small { font-size: .8125rem; color: #6E6A78; }
 .bg-dark .cell small { color: #A09CAA; }
 ${css}
 </style>

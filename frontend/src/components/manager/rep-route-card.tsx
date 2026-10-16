@@ -1,4 +1,4 @@
-import { ChevronRight, CircleMinus, Clock, MapPin } from "lucide-react"
+import { ChevronRight, CircleMinus, Clock, MapPin } from "@/components/icons"
 import { Link } from "react-router"
 
 import type { RepRoute } from "@/api/team-routes"

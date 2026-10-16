@@ -25,6 +25,7 @@ const STAR = "#FFC93C"
 
 const FACE: Record<MascotState, [Eyes, Mouth]> = {
   idle: ["open", "smile"],
+  blink: ["open", "smile"],
   hi: ["happy", "open"],
   listen: ["open", "smile"],
   think: ["up", "hmm"],

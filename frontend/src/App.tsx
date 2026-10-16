@@ -8,6 +8,7 @@ import { InkOverlay, InkRoutes } from "@/components/ink-transition"
 import { Mascot } from "@/components/mascot"
 import { Notice } from "@/components/notice"
 import { Onboarding } from "@/components/onboarding"
+import { UiDemoOverlay } from "@/components/ui-demo/overlay"
 import { canManage, homePath, refreshUser, useAuth } from "@/lib/auth"
 import { uploadQueue } from "@/lib/offline-queue"
 import { clearAvatars, loadAvatars } from "@/lib/avatars"
@@ -26,7 +27,7 @@ import { ContractPage } from "@/pages/contract"
 import { CustomerPage } from "@/pages/customer"
 import { CustomerPicker } from "@/pages/customer-picker"
 import { OrdersPage } from "@/pages/orders"
-import { OrderPage } from "@/pages/order"
+import { OrderPage, PracticeOrderPage } from "@/pages/order"
 import { DocumentPage } from "@/pages/document"
 import { EscalationsPage } from "@/pages/escalations"
 import { FirstWeekPage } from "@/pages/first-week"
@@ -77,7 +78,7 @@ function NotFound() {
   return (
     <div className="flex flex-col gap-3 p-4 pt-10">
       <Mascot state="think" size={96} className="self-center" />
-      <Notice text="找不到這個頁面。" action={{ label: "回今日路線", onClick: () => navigate("/") }} />
+      <Notice text="找不到這個頁面。" action={{ label: "回首頁", onClick: () => navigate("/") }} />
     </div>
   )
 }
@@ -135,11 +136,10 @@ function RequireAuth() {
   )
 }
 
-/** 首頁：業務是今日路線；主管與 IT 沒有自己的路線，各自進主管端與組織管理 */
+/** 首頁：業務進訂單；主管與 IT 各自進主管端與組織管理 */
 function Home() {
   const session = useAuth()
-  const home = session ? homePath(session.user.role) : "/"
-  return home === "/" ? <TodayPage /> : <Navigate to={home} replace />
+  return <Navigate to={session ? homePath(session.user.role) : "/login"} replace />
 }
 
 /** 限定角色的頁面；進不去的人（舊的連結、書籤）說明一下並給回首頁的路 */
@@ -200,11 +200,13 @@ function ApplicationRoutes() {
             <Route path="/auth/google/callback" element={<OAuthCallbackPage provider="google" />} />
           </Route>
           <Route element={<RequireAuth />}>
-            {/* 首頁是今日路線；客戶清單移到 /customers，要自己挑一家時從底部分頁進去 */}
+            {/* 業務首頁是訂單；今日路線獨立放在第二個分頁 /route */}
             <Route path="/" element={<Home />} />
             <Route path="/customers" element={<CustomerPicker />} />
             <Route path="/orders" element={<OrdersPage />} />
+            <Route path="/orders/demo" element={<PracticeOrderPage />} />
             <Route path="/orders/:orderId" element={<OrderPage />} />
+            <Route path="/route" element={<TodayPage />} />
             {/* 調整今天的行程（清單）、加一站、我的排序習慣：只有業務有自己的行程，主管打開會看到後端的說明 */}
             <Route path="/route/edit" element={<RouteEditPage />} />
             <Route path="/route/edit/add" element={<RouteAddPage />} />
@@ -265,6 +267,7 @@ function ApplicationRoutes() {
         </InkRoutes>
       </div>
       <InkOverlay />
+      <UiDemoOverlay />
     </>
   )
 }

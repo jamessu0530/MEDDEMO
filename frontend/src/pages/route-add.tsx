@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Loader2, Plus, Search } from "lucide-react"
+import { Loader2, Plus, Search } from "@/components/icons"
 import { useNavigate } from "react-router"
 
 import { ApiError } from "@/api/client"
@@ -100,7 +100,7 @@ export function RouteAddPage() {
         )}
         {nearby.length > 0 && (
           <section className="flex flex-col gap-2">
-            <h2 className="text-sm font-semibold">順路的</h2>
+            <h2 className="text-base font-semibold">順路的</h2>
             <ul className="flex flex-col gap-2">
               {nearby.map((candidate) => (
                 <CandidateRow
@@ -116,7 +116,7 @@ export function RouteAddPage() {
         )}
         {others.length > 0 && (
           <section className="flex flex-col gap-2">
-            <h2 className="text-sm font-semibold">其他客戶</h2>
+            <h2 className="text-base font-semibold">其他客戶</h2>
             <ul className="flex flex-col gap-2">
               {others.map((candidate) => (
                 <CandidateRow

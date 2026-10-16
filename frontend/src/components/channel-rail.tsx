@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Archive, MapPin } from "lucide-react"
+import { Archive, MapPin } from "@/components/icons"
 
 import type { Channel } from "@/api/channels"
 import { UnreadDot } from "@/components/channels-link"
@@ -49,7 +49,7 @@ export function ChannelRail({
               className="relative flex size-12 flex-col items-center justify-center gap-0.5 rounded-2xl border-2 bg-card text-muted-foreground shadow-lip"
             >
               <Icon className="size-4" />
-              <span className="text-[0.625rem] leading-none">{item.label}</span>
+              <span className="text-xs leading-none">{item.label}</span>
               {!expanded && item.unread > 0 && <UnreadDot count={item.unread} className="absolute -right-1.5 -bottom-1.5" />}
             </button>
             {expanded && (

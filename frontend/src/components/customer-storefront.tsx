@@ -1,5 +1,5 @@
 import { lazy } from "react"
-import { ExternalLink, MapPin, Store } from "lucide-react"
+import { ExternalLink, MapPin, Store } from "@/components/icons"
 
 import { MapGate } from "@/components/map-slot"
 import { storefrontSearchUrl, type StorefrontCustomer } from "@/lib/storefront"
@@ -23,7 +23,7 @@ export function CustomerStorefront({
     >
       <div className="flex items-center justify-between gap-3 px-4 py-3">
         <div className="min-w-0">
-          <h2 className="flex items-center gap-2 text-sm font-semibold">
+          <h2 className="flex items-center gap-2 text-base font-semibold">
             <Store className="size-4 text-primary" />
             {clinic ? "診所外觀" : "藥局外觀"}
           </h2>

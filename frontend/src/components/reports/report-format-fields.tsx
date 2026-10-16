@@ -25,7 +25,7 @@ function ColorInput({
   if (draft.value !== value) setDraft({ value, text: value })
   const valid = /^#[0-9a-fA-F]{6}$/.test(draft.text)
   return (
-    <label className="block min-w-0 space-y-1 text-xs">
+    <label className="block min-w-0 space-y-1 text-sm">
       <span>{label}</span>
       <div className="flex gap-2">
         <input
@@ -65,7 +65,7 @@ function Toggle({
   onChange: (value: boolean) => void
 }) {
   return (
-    <label className="flex min-h-9 items-center justify-between gap-3 text-xs">
+    <label className="flex min-h-9 items-center justify-between gap-3 text-sm">
       <span>{label}</span>
       <input
         type="checkbox"
@@ -112,7 +112,7 @@ function Bounds({
         {percentage ? "（%）" : ""}
       </legend>
       <div className="grid grid-cols-2 gap-2">
-        <label className="space-y-1 text-xs">
+        <label className="space-y-1 text-sm">
           下限
           <input
             aria-label={`${label}下限`}
@@ -124,7 +124,7 @@ function Bounds({
             className={CONTROL}
           />
         </label>
-        <label className="space-y-1 text-xs">
+        <label className="space-y-1 text-sm">
           上限
           <input
             aria-label={`${label}上限`}
@@ -140,7 +140,7 @@ function Bounds({
       <button
         type="button"
         disabled={!valid}
-        className="min-h-9 rounded border px-2 text-xs disabled:opacity-40"
+        className="min-h-9 rounded border px-2 text-sm disabled:opacity-40"
         onClick={() => onApply(min, max)}
       >
         套用{label}
@@ -150,7 +150,7 @@ function Bounds({
           請輸入有效範圍；下限小於上限{bars ? "，資料條範圍須包含零" : ""}。
         </p>
       )}
-      <p className="text-[10px] text-muted-foreground">
+      <p className="text-xs text-muted-foreground">
         留空使用自動範圍。超界數值使用邊界色彩／長度，原值仍可查閱。
       </p>
     </fieldset>
@@ -189,7 +189,7 @@ function RuleEditor({
         {percentage ? "（%）" : ""}
       </p>
       <div className="grid grid-cols-2 gap-2">
-        <label className="space-y-1 text-xs">
+        <label className="space-y-1 text-sm">
           大於等於
           <input
             type="number"
@@ -201,7 +201,7 @@ function RuleEditor({
             className={CONTROL}
           />
         </label>
-        <label className="space-y-1 text-xs">
+        <label className="space-y-1 text-sm">
           小於
           <input
             type="number"
@@ -223,14 +223,14 @@ function RuleEditor({
         <button
           type="button"
           disabled={!valid}
-          className="min-h-9 text-xs text-primary disabled:opacity-40"
+          className="min-h-9 text-sm text-primary disabled:opacity-40"
           onClick={() => onChange({ ...rule, minimum: lower, maximum: upper })}
         >
           套用規則 {index + 1}
         </button>
         <button
           type="button"
-          className="min-h-9 text-xs text-destructive"
+          className="min-h-9 text-sm text-destructive"
           onClick={onRemove}
         >
           移除規則 {index + 1}
@@ -306,7 +306,7 @@ export function ReportFormatFields({
   const tooltip = format.tooltip ?? {}
   return (
     <div className="space-y-4 border-t pt-3">
-      <label className="block space-y-1 text-xs">
+      <label className="block space-y-1 text-sm">
         設定指標
         <select
           aria-label="格式設定指標"
@@ -323,7 +323,7 @@ export function ReportFormatFields({
       </label>
       <fieldset className="space-y-2 rounded border p-2">
         <legend className="px-1 text-xs font-medium">數值格式</legend>
-        <label className="block space-y-1 text-xs">
+        <label className="block space-y-1 text-sm">
           顯示單位
           <select
             aria-label="數值顯示單位"
@@ -342,7 +342,7 @@ export function ReportFormatFields({
               ))}
           </select>
         </label>
-        <label className="block space-y-1 text-xs">
+        <label className="block space-y-1 text-sm">
           小數位數
           <select
             aria-label="數值小數位數"
@@ -373,7 +373,7 @@ export function ReportFormatFields({
           value={number.show_unit ?? true}
           onChange={(show_unit) => updateNumber({ show_unit })}
         />
-        <p className="text-[10px] text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           僅改變顯示。Tooltip 與逐筆明細保留完整原值；各指標可分別設定。
         </p>
       </fieldset>
@@ -381,7 +381,7 @@ export function ReportFormatFields({
         <legend className="px-1 text-xs font-medium">
           條件式格式 · {METRICS[metric].label}
         </legend>
-        <label className="block space-y-1 text-xs">
+        <label className="block space-y-1 text-sm">
           色彩方式
           <select
             aria-label="條件式色彩方式"
@@ -417,7 +417,7 @@ export function ReportFormatFields({
           </select>
         </label>
         {table && (conditional.color_mode ?? "none") !== "none" && (
-          <label className="block space-y-1 text-xs">
+          <label className="block space-y-1 text-sm">
             套用位置
             <select
               aria-label="條件式色彩套用位置"
@@ -437,7 +437,7 @@ export function ReportFormatFields({
         )}
         {conditional.color_mode === "rules" && (
           <>
-            <p className="text-[10px] text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               由上往下套用第一條符合規則；下限包含、上限不包含。留空表示不限。
             </p>
             {conditional.rules?.map((rule, index) => (
@@ -465,7 +465,7 @@ export function ReportFormatFields({
             ))}
             <button
               type="button"
-              className="min-h-9 text-xs text-primary disabled:opacity-40"
+              className="min-h-9 text-sm text-primary disabled:opacity-40"
               disabled={(conditional.rules?.length ?? 0) >= 8}
               onClick={() =>
                 updateConditional({
@@ -556,14 +556,14 @@ export function ReportFormatFields({
             )}
           </>
         )}
-        <p className="text-[10px] text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           {card.visual === "matrix"
             ? "自動範圍使用完整最低層分組，換頁與收合不改變刻度。"
             : "自動範圍使用圖表顯示的分組。"}
           空值不著色、不畫資料條。條件式色彩優先於系列配色；折線依各資料點與連線終點著色。
         </p>
         {card.visual === "scatter" && (
-          <p className="text-[10px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             散佈點先套用主指標規則，未符合時使用第二指標規則。第二指標顏色也套用
             Y 軸標籤。
           </p>
@@ -616,12 +616,12 @@ export function ReportFormatFields({
         ))}
         <button
           type="button"
-          className="min-h-9 text-xs text-primary"
+          className="min-h-9 text-sm text-primary"
           onClick={() => update({ series_colors: [], metric_colors: {} })}
         >
           恢復自動配色
         </button>
-        <p className="text-[10px] text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           顏色依分組編號保存，排序或篩選後仍使用相同顏色。
         </p>
       </fieldset>
@@ -660,7 +660,7 @@ export function ReportFormatFields({
             ).map((key) => (
               <label
                 key={key}
-                className="block space-y-1 text-xs"
+                className="block space-y-1 text-sm"
                 htmlFor={`${id}-${key}`}
               >
                 {key === "x_title"
@@ -715,7 +715,7 @@ export function ReportFormatFields({
               }
             />
           ))}
-        <p className="text-[10px] text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           顯示完整分組路徑、指標名稱與原始單位；關閉 Tooltip
           仍保留鍵盤操作與明細入口。
         </p>

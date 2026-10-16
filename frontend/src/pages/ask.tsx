@@ -1,5 +1,5 @@
 import { Component, lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react"
-import { Loader2, Mic, Send } from "lucide-react"
+import { Loader2, Mic, Send } from "@/components/icons"
 
 import { type Ask, type AskMode } from "@/api/asks"
 import { askSessionFor } from "@/ask/ask-session"
@@ -13,6 +13,7 @@ import { BottomNav } from "@/components/bottom-nav"
 import { LearningAiGate } from "@/components/learning/ai-gate"
 import { CollectedMascotPlay } from "@/components/collected-mascot-play"
 import { Notice } from "@/components/notice"
+import { ContextHelp } from "@/components/context-help"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { addDraftFiles, shrinkPhoto, type DraftFile } from "@/lib/attachments"
@@ -32,7 +33,7 @@ const MODES: { kind: AskMode; label: string; placeholder: string; examples: stri
     label: "自動",
     // 手機寬度的輸入框放不到 12 個字，再長會被切掉
     placeholder: "直接問，會自動判斷",
-    examples: ["北區保健品最近三個月為什麼下滑？", "近效期的貨要多久前申請退貨？", "北區還有哪些待辦沒做完？"],
+    examples: ["我不會新增訂單，可以教我嗎？", "北區保健品最近三個月為什麼下滑？", "近效期的貨要多久前申請退貨？", "北區還有哪些待辦沒做完？"],
   },
   {
     kind: "data",
@@ -133,8 +134,7 @@ function AskContent() {
   return (
     <div className="flex min-h-svh flex-col">
       <header className="sticky top-0 z-10 border-b bg-background/95 px-4 pt-4 pb-3 backdrop-blur">
-        <p className="text-xs text-muted-foreground">先查公司資料與內部文件，查不到才參考網路公開資料（會另外標示）</p>
-        <h1 className="mt-0.5 text-lg font-semibold">問答</h1>
+        <div className="flex items-center justify-between"><h1 className="text-xl font-semibold">問答</h1><ContextHelp label="問答資料來源"><p>優先查詢公司資料與內部文件。查不到時會參考網路公開資料，並在答案中另外標示來源。</p></ContextHelp></div>
         <AskMemoryMap entries={entries} edits={asking.mapEdits} onJump={(id) => {
           requestAnimationFrame(() => {
             const element = document.getElementById(`ask-entry-${id}`)
@@ -170,7 +170,7 @@ function AskContent() {
         {entries.length === 0 && !voiceOn && (
           <div className="flex flex-col gap-2">
             <CollectedMascotPlay state="hi" size={96} className="self-center" />
-            <p className="text-sm text-muted-foreground">可以這樣問，或按右下角的麥克風用說的：</p>
+            <p className="text-sm text-muted-foreground">試試這樣問</p>
             {mode.examples.map((example) => (
               <button
                 key={example}
@@ -234,9 +234,9 @@ function AskContent() {
           {/* 數字查詢只查得到登入者看得到的客戶；規定題查的是公司文件，不分客戶，不必提。選「自動」也可能查數字，一樣要說。
               會話活著時是模型自己選工具，這行文字才對不上；連線中或掛斷後打字仍走這條路，要照樣說清楚查得到誰 */}
           {user && (kind === "data" || kind === "auto") && !session && (
-            <p className="px-1 text-[0.6875rem] text-muted-foreground">{askScopeText(user)}</p>
+            <p className="px-1 text-xs text-muted-foreground">{askScopeText(user)}</p>
           )}
-          {pickError && <p className="px-1 text-[0.6875rem] text-destructive">{pickError}</p>}
+          {pickError && <p className="px-1 text-xs text-destructive">{pickError}</p>}
           {!session && <DraftFiles files={files} onRemove={() => setFiles([])} disabled={sending} />}
           <div className="flex gap-2">
             {!session && <AttachButton onPick={pick} disabled={sending} multiple={false} />}

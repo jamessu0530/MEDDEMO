@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { CheckCircle2, ChevronRight, Lightbulb, Sparkles } from "lucide-react"
+import { CheckCircle2, ChevronRight, Lightbulb, Sparkles } from "@/components/icons"
 import { Link, useParams } from "react-router"
 
 import { ApiError } from "@/api/client"

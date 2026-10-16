@@ -6,8 +6,10 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.models import AppUser, LearningCompletion
 from app.services.first_week import newcomer
+from app.tasks import redis
 
 LESSONS = (
     {"id": "customer-v1", "title": "進門前，先認識客戶", "description": "打開客戶檔案，找出今天最該處理的事。", "skill": "客戶檔案", "minutes": 2},
@@ -18,6 +20,7 @@ LESSONS = (
 )
 LESSON_IDS = tuple(lesson["id"] for lesson in LESSONS)
 XP_PER_LESSON = 20
+DEMO_SKIP_PREFIX = "learning:demo-skip:"
 
 
 class LearningError(ValueError):
@@ -33,18 +36,46 @@ def completed_ids(session: Session, user: AppUser) -> list[str]:
 
 def course(session: Session, user: AppUser) -> dict[str, Any]:
     if user.role != "sales":
-        return {"available": False, "is_newcomer": False, "completed": [], "xp": 0, "ai_unlocked": True, "lessons": []}
+        return {
+            "available": False, "is_newcomer": False, "completed": [], "xp": 0, "ai_unlocked": True,
+            "demo_skip_available": False, "demo_skipped": False, "lessons": [],
+        }
     done = completed_ids(session, user)
     is_new = newcomer(session, user)["is_newcomer"]
+    skipped = is_new and len(done) < len(LESSONS) and demo_skipped(user)
     return {
         "available": True, "is_newcomer": is_new, "completed": done, "xp": len(done) * XP_PER_LESSON,
-        "ai_unlocked": not is_new or len(done) == len(LESSONS), "lessons": list(LESSONS),
+        "ai_unlocked": not is_new or len(done) == len(LESSONS) or skipped,
+        "demo_skip_available": settings().demo_skip_learning, "demo_skipped": skipped, "lessons": list(LESSONS),
     }
 
 
 def ai_unlocked(session: Session, user: AppUser) -> bool:
     # 在職超過 30 天的業務、主管與 IT 沿用原本權限。
-    return not newcomer(session, user)["is_newcomer"] or len(completed_ids(session, user)) == len(LESSONS)
+    return (
+        not newcomer(session, user)["is_newcomer"]
+        or len(completed_ids(session, user)) == len(LESSONS)
+        or demo_skipped(user)
+    )
+
+
+def demo_skip_key(user: AppUser) -> str:
+    # 只認這次登入；重新登入的 session_version 不同，不會沿用略過狀態。
+    return f"{DEMO_SKIP_PREFIX}{user.id}:{user.session_version}"
+
+
+def demo_skipped(user: AppUser) -> bool:
+    return settings().demo_skip_learning and bool(redis().exists(demo_skip_key(user)))
+
+
+def skip_for_demo(session: Session, user: AppUser) -> dict[str, Any]:
+    if not settings().demo_skip_learning:
+        raise LearningError("目前未開放 Demo 跳過課程，請完成新人課程。", 403)
+    if user.role != "sales":
+        raise LearningError("新人課程是給業務練習的", 403)
+    # 暫存 AI 通行狀態，不建立過關紀錄、不發 XP；到期或關閉展示設定即失效。
+    redis().set(demo_skip_key(user), "1", ex=settings().jwt_expire_hours * 3600)
+    return course(session, user)
 
 
 def validate_answer(lesson_id: str, answer: dict[str, Any]) -> None:

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { MapPin } from "lucide-react"
+import { MapPin } from "@/components/icons"
 
 import { ApiError } from "@/api/client"
 import { pauseSharing, resumeSharing, type ShareHours } from "@/api/location"
@@ -147,7 +147,7 @@ export function LocationShareView({ state, managerName, hours, busy, error, onCo
   return (
     <section data-location-share={state} className="flex flex-col gap-3">
       <div className="flex flex-col gap-1">
-        <h2 className="text-sm font-semibold">位置分享</h2>
+        <h2 className="text-base font-semibold">位置分享</h2>
         <p className="text-xs leading-relaxed text-muted-foreground">
           上班時間（{hoursLabel(hours)}）主管看得到你的位置，只存最新的一筆，不留軌跡。
         </p>

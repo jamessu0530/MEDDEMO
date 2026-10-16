@@ -14,6 +14,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, aliased
 
 from app.api.auth import ManagerUser
+from app.api.customer_priority import router as priority_router
 from app.db import get_session
 from app.models import AppUser, Customer, ManagerNotice
 from app.services import customer_profile
@@ -23,6 +24,7 @@ from app.services.scope import SHARING_LEVEL, Scope
 from app.timeutil import TAIPEI
 
 router = APIRouter(prefix="/api/manager", tags=["manager"])
+router.include_router(priority_router)
 SessionDep = Annotated[Session, Depends(get_session)]
 Rep = aliased(AppUser)
 

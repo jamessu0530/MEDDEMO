@@ -27,6 +27,9 @@ spec:
         app: api
       annotations:
         {{- include "meddemo.configChecksum" . | nindent 8 }}
+        {{- if .Values.monitoring.enabled }}
+        checksum/alloy: {{ include (print $.Template.BasePath "/alloy.yaml") . | sha256sum }}
+        {{- end }}
     spec:
       containers:
         - name: api
@@ -36,6 +39,13 @@ spec:
             {{- include "meddemo.databaseEnv" . | nindent 12 }}
             - name: REDIS_URL
               value: redis://redis:6379/0
+            {{- if .Values.monitoring.enabled }}
+            - name: METRICS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.monitoring.secretName }}
+                  key: METRICS_TOKEN
+            {{- end }}
           envFrom:
             {{- include "meddemo.aiEnvFrom" . | nindent 12 }}
           ports:
@@ -45,3 +55,47 @@ spec:
               path: /health
               port: 8000
             periodSeconds: 5
+        {{- if .Values.monitoring.enabled }}
+        - name: alloy
+          image: {{ .Values.monitoring.alloyImage | quote }}
+          args:
+            - run
+            - /etc/alloy/config.alloy
+            - --storage.path=/var/lib/alloy
+            - --server.http.listen-addr=0.0.0.0:12345
+            - --disable-reporting
+          envFrom:
+            - secretRef:
+                name: {{ .Values.monitoring.secretName }}
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          ports:
+            - name: alloy-http
+              containerPort: 12345
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: alloy-http
+          resources:
+            {{- toYaml .Values.monitoring.resources | nindent 12 }}
+          volumeMounts:
+            - name: alloy-config
+              mountPath: /etc/alloy
+              readOnly: true
+            - name: alloy-data
+              mountPath: /var/lib/alloy
+      volumes:
+        - name: alloy-config
+          configMap:
+            name: meddemo-alloy
+        - name: alloy-data
+          emptyDir:
+            sizeLimit: 256Mi
+        {{- end }}

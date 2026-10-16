@@ -1,3 +1,5 @@
+import { CustomerSelect } from "@/components/customers/customer-select"
+import { SearchSelect } from "@/components/ui/search-select"
 import { useEffect, useState } from "react"
 import {
   Check,
@@ -9,15 +11,13 @@ import {
   Save,
   Send,
   Trash2,
-} from "lucide-react"
+} from "@/components/icons"
 import { Link, useBlocker, useParams } from "react-router"
 import {
   createOrder,
   getOrder,
-  getOrderCustomers,
   saveOrder,
   submitOrder,
-  type OrderCustomer,
   type OrderDetail,
   type OrderInput,
   type OrderProduct,
@@ -46,6 +46,11 @@ import {
 } from "@/lib/orders"
 import { OrderBadge } from "@/pages/orders"
 import { cn } from "@/lib/utils"
+import {
+  makePracticeOrder,
+  PRACTICE_CUSTOMER,
+  savePracticeOrder,
+} from "@/lib/order-practice"
 
 type Tab = "items" | "related" | "activity"
 const FIELD =
@@ -98,13 +103,27 @@ export function OrderPage() {
   return <OrderEditor key={`${orderId}/${retry}`} initial={loaded.order} />
 }
 
-function OrderEditor({ initial }: { initial: OrderDetail }) {
+export function PracticeOrderPage() {
+  const [initial] = useState(makePracticeOrder)
+  return <OrderEditor initial={initial} practice />
+}
+
+function OrderEditor({
+  initial,
+  practice = false,
+}: {
+  initial: OrderDetail
+  practice?: boolean
+}) {
   const [order, setOrder] = useState(initial)
   const [draft, setDraft] = useState<OrderInput>(() => orderInput(initial))
   const [products, setProducts] = useState<
     Record<string, OrderProduct | OrderDetail["items"][number]>
   >(() => Object.fromEntries(initial.items.map((item) => [item.sku, item])))
-  const [customers, setCustomers] = useState<OrderCustomer[] | null>(null)
+  const [shipTo, setShipTo] = useState({
+    name: initial.ship_to_name,
+    address: initial.shipping_address,
+  })
   const [tab, setTab] = useState<Tab>("items")
   const [picker, setPicker] = useState(false)
   const [editingItems, setEditingItems] = useState(false)
@@ -118,24 +137,14 @@ function OrderEditor({ initial }: { initial: OrderDetail }) {
   const dirty = JSON.stringify(draft) !== JSON.stringify(orderInput(order))
   const blocker = useBlocker(
     ({ currentLocation, nextLocation }) =>
-      dirty && currentLocation.pathname !== nextLocation.pathname
+      !practice && dirty && currentLocation.pathname !== nextLocation.pathname
   )
   useEffect(() => {
-    const controller = new AbortController()
-    if (!readonly)
-      getOrderCustomers(controller.signal)
-        .then((value) => {
-          if (!controller.signal.aborted) setCustomers(value)
-        })
-        .catch(() => {})
-    return () => controller.abort()
-  }, [readonly])
-  useEffect(() => {
-    if (!dirty) return
+    if (!dirty || practice) return
     const warn = (event: BeforeUnloadEvent) => event.preventDefault()
     window.addEventListener("beforeunload", warn)
     return () => window.removeEventListener("beforeunload", warn)
-  }, [dirty])
+  }, [dirty, practice])
   function update(patch: Partial<OrderInput>) {
     setDraft((current) => ({ ...current, ...patch }))
     setError("")
@@ -152,14 +161,16 @@ function OrderEditor({ initial }: { initial: OrderDetail }) {
     setError("")
     setNotice("")
     try {
-      const saved = await saveOrder(order.id, draft, order.revision)
+      const saved = practice
+        ? savePracticeOrder(order, draft)
+        : await saveOrder(order.id, draft, order.revision)
       setOrder(saved)
       setDraft(orderInput(saved))
       setProducts((current) => ({
         ...current,
         ...Object.fromEntries(saved.items.map((item) => [item.sku, item])),
       }))
-      setNotice("草稿已儲存。")
+      setNotice(practice ? "練習草稿已保留在這個頁面。" : "草稿已儲存。")
       return saved
     } catch (err) {
       setError(err instanceof Error ? err.message : "草稿沒有儲存")
@@ -169,6 +180,10 @@ function OrderEditor({ initial }: { initial: OrderDetail }) {
     }
   }
   async function prepareSubmit() {
+    if (practice) {
+      setNotice("這是練習單。正式訂單請回訂單頁建立，核對資料後再發送至 SAP。")
+      return
+    }
     const invalid = orderError(draft)
     if (invalid) {
       setError(invalid)
@@ -200,6 +215,7 @@ function OrderEditor({ initial }: { initial: OrderDetail }) {
     if (saved) setConfirm(saved)
   }
   async function send() {
+    if (practice) return
     if (!confirm || busy) return
     setPhase("submit")
     setError("")
@@ -219,6 +235,10 @@ function OrderEditor({ initial }: { initial: OrderDetail }) {
     }
   }
   async function duplicate() {
+    if (practice) {
+      setNotice("練習單無法帶出正式訂單，請回訂單頁建立。")
+      return
+    }
     if (busy) return
     setPhase("copy")
     setError("")
@@ -272,10 +292,11 @@ function OrderEditor({ initial }: { initial: OrderDetail }) {
     key: "shipping_address" | "recipient" | "purchase_no",
     maxLength: number
   ) => (
-    <label className="min-w-0 space-y-1.5 text-xs">
+    <label className="min-w-0 space-y-1.5 text-sm">
       <span className="text-muted-foreground">{name}</span>
       <Input
         aria-label={name}
+        data-ui-demo={practice ? `practice-${key}` : undefined}
         value={draft[key]}
         maxLength={maxLength}
         disabled={readonly || busy}
@@ -287,7 +308,27 @@ function OrderEditor({ initial }: { initial: OrderDetail }) {
   )
   return (
     <div className="min-h-svh pb-8">
-      <PageHeader title="訂單明細" backTo="/orders" subtitle="SAP 展示環境" />
+      <PageHeader
+        title="訂單明細"
+        backTo="/orders"
+        subtitle={practice ? "熊熊滾操作示範" : "SAP 展示環境"}
+      />
+      {practice && (
+        <div
+          role="note"
+          className="flex flex-wrap items-center justify-between gap-2 border-b border-primary/20 bg-primary/10 px-4 py-3 text-sm text-primary lg:px-6"
+        >
+          <span>
+            <strong>練習模式</strong> · 教學資料只留在此頁，離開即可結束練習。
+          </span>
+          <Link
+            className="inline-flex min-h-10 items-center font-semibold underline underline-offset-4"
+            to="/orders"
+          >
+            結束練習，回訂單
+          </Link>
+        </div>
+      )}
       <header className="border-b bg-card p-4 lg:p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -296,7 +337,7 @@ function OrderEditor({ initial }: { initial: OrderDetail }) {
             </span>
             <div>
               <p className="text-xs text-muted-foreground">訂單</p>
-              <h1 className="text-lg font-semibold break-all">
+              <h1 className="text-xl font-semibold break-all">
                 {order.order_no}
               </h1>
             </div>
@@ -319,6 +360,7 @@ function OrderEditor({ initial }: { initial: OrderDetail }) {
               <>
                 <Button
                   variant="outline"
+                  data-ui-demo={practice ? "practice-save" : undefined}
                   disabled={busy || !dirty}
                   onClick={() => void persist()}
                 >
@@ -330,6 +372,7 @@ function OrderEditor({ initial }: { initial: OrderDetail }) {
                   儲存草稿
                 </Button>
                 <Button
+                  data-ui-demo={practice ? "practice-submit" : undefined}
                   disabled={busy || !draft.items.length}
                   onClick={() => void prepareSubmit()}
                 >
@@ -347,11 +390,7 @@ function OrderEditor({ initial }: { initial: OrderDetail }) {
         <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-4 text-sm sm:grid-cols-3 xl:grid-cols-6">
           {[
             ["客戶名稱", order.customer_name],
-            [
-              "收貨點",
-              customers?.find((customer) => customer.id === draft.ship_to_id)
-                ?.name ?? order.ship_to_name,
-            ],
+            ["收貨點", shipTo.name],
             ["訂單金額", `${orderMoney(total)} 元`],
             [
               order.source === "history" ? "交易日期" : "指定出貨日期",
@@ -462,13 +501,16 @@ function OrderEditor({ initial }: { initial: OrderDetail }) {
               {tab === "items" ? (
                 <>
                   <div className="flex flex-wrap items-center justify-between gap-2 bg-muted/30 p-4">
-                    <h2 className="text-sm font-semibold">
+                    <h2 className="text-base font-semibold">
                       訂單產品（{draft.items.length}）
                     </h2>
                     {!readonly && (
                       <div className="flex gap-2">
                         <Button
                           variant="outline"
+                          data-ui-demo={
+                            practice ? "practice-add-products" : undefined
+                          }
                           disabled={busy || draft.items.length >= 100}
                           onClick={() => setPicker(true)}
                         >
@@ -652,7 +694,7 @@ function OrderEditor({ initial }: { initial: OrderDetail }) {
                             </div>
                             {editingItems && !readonly ? (
                               <div className="grid grid-cols-2 gap-3">
-                                <label className="text-xs">
+                                <label className="text-sm">
                                   數量
                                   <input
                                     type="number"
@@ -670,7 +712,7 @@ function OrderEditor({ initial }: { initial: OrderDetail }) {
                                     }
                                   />
                                 </label>
-                                <label className="text-xs">
+                                <label className="text-sm">
                                   單價
                                   <input
                                     type="number"
@@ -735,6 +777,11 @@ function OrderEditor({ initial }: { initial: OrderDetail }) {
                   <Link
                     className="block rounded-xl border p-4 text-primary hover:bg-muted"
                     to={`/customers/${order.customer_id}`}
+                    aria-disabled={practice || undefined}
+                    tabIndex={practice ? -1 : undefined}
+                    onClick={(event) => {
+                      if (practice) event.preventDefault()
+                    }}
                     state={{ backTo: `/orders/${order.id}` }}
                   >
                     客戶資料 · {order.customer_name}
@@ -743,6 +790,11 @@ function OrderEditor({ initial }: { initial: OrderDetail }) {
                   <Link
                     className="block rounded-xl border p-4 text-primary hover:bg-muted"
                     to={`/customers/${order.customer_id}/quote`}
+                    aria-disabled={practice || undefined}
+                    tabIndex={practice ? -1 : undefined}
+                    onClick={(event) => {
+                      if (practice) event.preventDefault()
+                    }}
                   >
                     開報價／申請優惠
                     <ChevronRight className="float-right size-4" />
@@ -799,26 +851,41 @@ function OrderEditor({ initial }: { initial: OrderDetail }) {
                 <p className="mt-1">TWD 台幣</p>
               </div>
             </div>
-            <label className="block space-y-1.5 text-xs">
+            <label className="block space-y-1.5 text-sm">
               <span className="text-muted-foreground">收貨點</span>
-              <select
-                aria-label="收貨點"
-                className={FIELD}
-                value={draft.ship_to_id}
-                disabled={readonly || busy || !customers}
-                onChange={(event) => update({ ship_to_id: event.target.value })}
-              >
-                {!customers && (
-                  <option value={order.ship_to_id}>{order.ship_to_name}</option>
-                )}
-                {customers?.map((customer) => (
-                  <option key={customer.id} value={customer.id}>
-                    {customer.name}
-                  </option>
-                ))}
-              </select>
+              {practice ? (
+                <SearchSelect
+                  label="收貨點"
+                  value={draft.ship_to_id}
+                  disabled={readonly || busy}
+                  options={[
+                    {
+                      value: PRACTICE_CUSTOMER.id,
+                      label: PRACTICE_CUSTOMER.name,
+                    },
+                  ]}
+                  onValueChange={(ship_to_id) => update({ ship_to_id })}
+                />
+              ) : (
+                <CustomerSelect
+                  label="收貨點"
+                  value={draft.ship_to_id}
+                  selected={shipTo}
+                  disabled={readonly || busy}
+                  onSelect={(customer) => {
+                    setShipTo({
+                      name: customer.name,
+                      address: customer.address || "",
+                    })
+                    update({
+                      ship_to_id: customer.id,
+                      shipping_address: customer.address || "",
+                    })
+                  }}
+                />
+              )}
             </label>
-            <label className="block space-y-1.5 text-xs">
+            <label className="block space-y-1.5 text-sm">
               <span className="text-muted-foreground">
                 {order.source === "history" ? "交易日期" : "指定出貨日期"}
               </span>
@@ -836,34 +903,28 @@ function OrderEditor({ initial }: { initial: OrderDetail }) {
                 }
               />
             </label>
-            <label className="block space-y-1.5 text-xs">
+            <label className="block space-y-1.5 text-sm">
               <span className="text-muted-foreground">
                 {order.source === "history"
                   ? "付款條件（目前客戶設定）"
                   : "付款條件"}
               </span>
-              <select
-                aria-label="付款條件"
-                className={FIELD}
+              <SearchSelect
+                label="付款條件"
                 value={draft.payment_term}
                 disabled={readonly || busy}
-                onChange={(event) =>
-                  update({ payment_term: event.target.value })
-                }
-              >
-                {Object.entries(PAYMENT_TERMS).map(([code, label]) => (
-                  <option key={code} value={code}>
-                    {label}
-                  </option>
-                ))}
-              </select>
+                options={Object.entries(PAYMENT_TERMS).map(
+                  ([value, label]) => ({ value, label })
+                )}
+                onValueChange={(payment_term) => update({ payment_term })}
+              />
             </label>
             <div className="grid gap-4">
               {field("收貨點地址", "shipping_address", 240)}
               {field("收貨人姓名", "recipient", 80)}
               {field("採購單號", "purchase_no", 80)}
             </div>
-            <label className="block space-y-1.5 text-xs">
+            <label className="block space-y-1.5 text-sm">
               <span className="text-muted-foreground">訂單備註</span>
               <textarea
                 aria-label="訂單備註"
@@ -884,6 +945,7 @@ function OrderEditor({ initial }: { initial: OrderDetail }) {
       </main>
       {picker && (
         <OrderProducts
+          practice={practice}
           customerId={draft.customer_id}
           existing={draft.items}
           onAdd={add}
@@ -995,7 +1057,7 @@ function PriceBadge({
   label: string
 }) {
   return (
-    <span className="inline-flex items-center gap-1.5 text-[0.6875rem] whitespace-nowrap">
+    <span className="inline-flex items-center gap-1.5 text-xs whitespace-nowrap">
       <span
         aria-hidden
         className={cn(

@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight } from "lucide-react"
+import { ChevronDown, ChevronRight } from "@/components/icons"
 import { NativeSelect } from "@/components/ui/native-select"
 import { ReportPointComparison } from "@/components/reports/report-comparison"
 import { ReportFormattedValue } from "@/components/reports/report-formatted-value"
@@ -66,7 +66,7 @@ export function ReportMatrix({
   return (
     <div className="min-w-0 space-y-2">
       {onViewChange && (
-        <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
+        <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
           {(["rows", "columns"] as const).map((axis) => (
             <div key={axis} className="flex gap-2">
               <button
@@ -91,11 +91,11 @@ export function ReportMatrix({
           ))}
         </div>
       )}
-      <p className="text-[10px] text-muted-foreground">{data.note}</p>
+      <p className="text-xs text-muted-foreground">{data.note}</p>
       {Object.values(card.format?.conditional ?? {}).some(
         (format) => format?.data_bars
       ) && (
-        <p className="text-[10px] text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           資料條共用零軸，自動刻度使用完整最低層分組。三角記號表示超出刻度，數字仍為原值。
         </p>
       )}
@@ -234,12 +234,12 @@ export function ReportMatrix({
                     >
                       {row.label}
                       {row.has_children && row.show_values && (
-                        <span className="ml-1 text-[10px] text-muted-foreground">
+                        <span className="ml-1 text-xs text-muted-foreground">
                           小計
                         </span>
                       )}
                       {row.depth > 1 && (
-                        <span className="mt-1 block text-[10px] text-muted-foreground">
+                        <span className="mt-1 block text-xs text-muted-foreground">
                           {row.path
                             .slice(0, -1)
                             .map((entry) => entry.label)
@@ -337,7 +337,7 @@ export function ReportMatrix({
                               metric={metric}
                             />
                             {highlight && (
-                              <span className="mt-1 block text-[10px] whitespace-normal text-primary">
+                              <span className="mt-1 block text-xs whitespace-normal text-primary">
                                 選取{" "}
                                 {reportDisplayValue(
                                   card,
@@ -376,7 +376,7 @@ export function ReportMatrix({
         return (
           <div
             key={axis}
-            className="flex flex-wrap items-center justify-between gap-2 text-[11px]"
+            className="flex flex-wrap items-center justify-between gap-2 text-xs"
           >
             <span>
               {name} {total ? (page - 1) * size + 1 : 0}–
@@ -387,7 +387,7 @@ export function ReportMatrix({
                 <NativeSelect
                   aria-label={`矩陣每頁${name}數`}
                   value={size}
-                  className="h-9 w-16 rounded-md border text-xs shadow-none"
+                  className="h-9 w-16 rounded-md border text-base shadow-none"
                   onChange={(event) =>
                     onViewChange({
                       ...view,

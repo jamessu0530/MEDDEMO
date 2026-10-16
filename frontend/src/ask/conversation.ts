@@ -18,6 +18,7 @@ export type Utterance = {
   kind: "user" | "model"
   source: UtteranceSource
   text: string
+  demo?: "create-order"
   attachment?: Attachment
 }
 
@@ -44,7 +45,7 @@ export type Entry = Utterance | ToolRun
 export type Conversation = {
   getSnapshot: () => Entry[]
   subscribe: (listener: () => void) => () => void
-  addUtterance: (kind: "user" | "model", source: UtteranceSource, text?: string) => number
+  addUtterance: (kind: "user" | "model", source: UtteranceSource, text?: string, options?: Pick<Utterance, "demo">) => number
   addToolRun: (askKind: AskKind | null, question: string, state?: Partial<Pick<ToolRun, "routing" | "original">>) => number
   appendText: (id: number, chunk: string) => void
   replace: (id: number, patch: Partial<Omit<ToolRun, "id" | "kind">>) => void
@@ -76,9 +77,9 @@ export function createConversation(): Conversation {
       }
     },
 
-    addUtterance: (kind, source, text = "") => {
+    addUtterance: (kind, source, text = "", options = {}) => {
       const id = ++lastId
-      commit([...entries, { id, kind, source, text }])
+      commit([...entries, { id, kind, source, text, ...options }])
       return id
     },
 

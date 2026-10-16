@@ -4,12 +4,16 @@ import { BLEED, bleedLead, INK_DURATION, inkColors, pickEffect } from "@/ink/eff
 
 describe("pickEffect", () => {
   it("底部分頁之間是墨暈", () => {
+    expect(pickEffect("/orders", "/route")).toBe("bleed")
+    expect(pickEffect("/route/", "/orders")).toBe("bleed")
     expect(pickEffect("/", "/customers")).toBe("bleed")
     expect(pickEffect("/ask", "/promotions")).toBe("bleed")
     expect(pickEffect("/channels", "/")).toBe("bleed")
   })
 
   it("進入或返回內頁是刷痕", () => {
+    expect(pickEffect("/route", "/route/edit")).toBe("brush")
+    expect(pickEffect("/orders", "/orders/123")).toBe("brush")
     expect(pickEffect("/customers", "/customers/c-12")).toBe("brush")
     expect(pickEffect("/customers/c-12", "/customers/c-12/quote")).toBe("brush")
     expect(pickEffect("/settings", "/")).toBe("brush")

@@ -1,3 +1,4 @@
+import { ReportPageTooltip } from "@/components/reports/report-page-tooltip"
 import {
   useEffect,
   useMemo,
@@ -11,7 +12,6 @@ import {
 } from "react"
 import {
   ArrowUp,
-  ChartNoAxesCombined,
   Check,
   Download,
   Eye,
@@ -28,7 +28,7 @@ import {
   SlidersHorizontal,
   Trash2,
   X,
-} from "lucide-react"
+} from "@/components/icons"
 import { useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 
@@ -42,12 +42,41 @@ import {
   type ReportWorkspace,
 } from "@/api/reports"
 import { Notice } from "@/components/notice"
+import { ContextHelp } from "@/components/context-help"
 import { Mascot } from "@/components/mascot"
 import { PageHeader } from "@/components/page-header"
 import { ReportChart } from "@/components/reports/report-chart"
 import { ReportDocumentControls } from "@/components/reports/report-document-controls"
 import { ReportExportDialog } from "@/components/reports/report-export"
 import { ReportRefreshControls } from "@/components/reports/report-refresh"
+import { ReportDatasetLauncher } from "@/components/reports/report-datasets"
+import { ReportDataFields } from "@/components/reports/report-fields"
+import { ReportRibbon } from "@/components/reports/report-ribbon"
+import {
+  StudioVisual,
+  StudioLayers,
+  StudioObjectInspector,
+} from "@/components/reports/report-objects"
+import { ReportFilterPane } from "@/components/reports/report-filter-pane"
+import {
+  assignReportField,
+  canvasQuerySelections,
+  commitStudioLayout,
+  createDatasetObject,
+  createStudioObject,
+  pruneStudioReferences,
+  placeStudioObject,
+  safeStudioExploration,
+  studioLayoutConfig,
+  updateCanvasSelection,
+  type FieldRole,
+  type StudioAction,
+  type StudioExploration,
+  type StudioField,
+  type StudioObject,
+  type StudioSelections,
+} from "@/lib/report-studio"
+import { getDataSource, type DataSource } from "@/api/report-datasets"
 import { useReportDraft } from "@/components/reports/use-report-draft"
 import {
   applyReportBookmark,
@@ -285,6 +314,22 @@ function ReportDocument({
   const [gallery, setGallery] = useState(false)
   const [pageSettings, setPageSettings] = useState(false)
   const [filtersOpen, setFiltersOpen] = useState(false)
+  const [studioPanels, setStudioPanels] = useState({
+    data: true,
+    filters: false,
+    layers: false,
+  })
+  const [datasetEpoch, setDatasetEpoch] = useState(0)
+  const [studioSelection, setStudioSelection] = useState<string[]>([])
+  const [canvasValues, setCanvasValues] = useState<StudioSelections>({})
+  const [visibility, setVisibility] = useState<Record<string, boolean>>({})
+  const [navigation, setNavigation] = useState<{
+    page: string | null
+    filters: ReportFilter[]
+  }>({ page: null, filters: [] })
+  const [navigationStack, setNavigationStack] = useState<
+    { pageId: string; state: StudioExploration }[]
+  >([])
   const [filterScope, setFilterScope] = useState<"report" | "page">("report")
   const [selectionGroups, setSelectionGroups] = useState<
     ReportSelectionGroup[]
@@ -296,6 +341,17 @@ function ReportDocument({
   const [matrixViews, setMatrixViews] = useState<
     Record<string, ReportMatrixView>
   >({})
+  const [tooltip, setTooltip] = useState<{
+    pageId: string
+    point: ReportSelectionPoint
+  } | null>(null)
+  const tooltipTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(
+    () => () => {
+      if (tooltipTimer.current) clearTimeout(tooltipTimer.current)
+    },
+    []
+  )
   const [pointActions, setPointActions] = useState<
     Record<string, ReportPointAction>
   >({})
@@ -315,12 +371,37 @@ function ReportDocument({
     (card) => (card.page_id ?? "overview") === currentPage.id
   )
   const selected = pageCards.find((card) => card.id === selectedId) ?? null
+  const pageObjects = (config.objects ?? []).filter(
+    (object) => object.page_id === currentPage.id
+  )
+  const selectedObject =
+    pageObjects.find((object) => object.id === selectedId) ?? null
+  const activeSelection =
+    selectedId && studioSelection.includes(selectedId)
+      ? studioSelection
+      : selectedId
+        ? [selectedId]
+        : []
+  const layoutConfig = studioLayoutConfig({
+    ...config,
+    cards: config.cards.map((card) => ({
+      ...card,
+      hidden: visibility[card.id] ?? card.hidden,
+    })),
+    objects: (config.objects ?? []).map((object) => ({
+      ...object,
+      hidden: visibility[object.id] ?? object.hidden,
+    })),
+  })
   const queryConfig = useMemo(
     () => ({
       ...reportExploreQuery(config, drills, selectionGroups),
       matrix_views: matrixViews,
+      canvas_selections: canvasQuerySelections(config, canvasValues),
+      navigation_page: navigation.page,
+      navigation_filters: navigation.filters,
     }),
-    [config, drills, selectionGroups, matrixViews]
+    [config, drills, selectionGroups, matrixViews, canvasValues, navigation]
   )
   const focused = queryConfig.cards.find((card) => card.id === focusId)
   const queryKey = reportDataKey(queryConfig)
@@ -405,13 +486,27 @@ function ReportDocument({
   useEffect(() => () => saveController.current?.abort(), [])
 
   function change(next: ReportConfig) {
-    const normalized = normalizeReportConfig(next)
+    const normalized = normalizeReportConfig(pruneStudioReferences(next))
     if (reportDataKey(config) !== reportDataKey(normalized)) {
       setSelectionGroups([])
       setDrills({})
       setMatrixViews({})
     } else
       setSelectionGroups((groups) => pruneReportSelections(groups, normalized))
+    setCanvasValues((current) =>
+      Object.fromEntries(
+        Object.entries(current).filter(([id]) =>
+          normalized.objects?.some(
+            (object) => object.id === id && object.kind === "slicer"
+          )
+        )
+      )
+    )
+    if (
+      navigation.page &&
+      !reportPages(normalized).some((page) => page.id === navigation.page)
+    )
+      setNavigation({ page: null, filters: [] })
     setDraft((current) => editReportDraft(current, normalized))
     setNotice(null)
   }
@@ -521,6 +616,212 @@ function ReportDocument({
   function selectCard(id: string) {
     setSelectedId(id)
     if (!isDesktop) setMobileInspector(true)
+  }
+  function exploreSnapshot(): StudioExploration {
+    return {
+      selections: selectionGroups,
+      drills,
+      matrix_views: matrixViews,
+      canvas_values: canvasValues,
+      hidden: {
+        ...Object.fromEntries(
+          [...config.cards, ...(config.objects ?? [])].map((item) => [
+            item.id,
+            item.hidden ?? false,
+          ])
+        ),
+        ...visibility,
+      },
+      navigation_page: navigation.page,
+      navigation_filters: navigation.filters,
+    }
+  }
+  function restoreExplore(raw: StudioExploration) {
+    const state = safeStudioExploration(
+      config,
+      raw,
+      workspace.owners.map((owner) => owner.id)
+    )
+    setSelectionGroups(state.selections)
+    setDrills(state.drills)
+    setMatrixViews(state.matrix_views)
+    setCanvasValues(state.canvas_values)
+    setVisibility(state.hidden)
+    setNavigation({
+      page: state.navigation_page,
+      filters: state.navigation_filters,
+    })
+  }
+  function navigateReport(target: string, filters: ReportFilter[] = []) {
+    if (!pages.some((page) => page.id === target)) return
+    setNavigationStack((stack) =>
+      [...stack, { pageId: currentPage.id, state: exploreSnapshot() }].slice(
+        -20
+      )
+    )
+    setTooltip(null)
+    setFocusId(null)
+    setPageId(target)
+    setNavigation({ page: filters.length ? target : null, filters })
+    setSelectionGroups([])
+    setDrills({})
+    setMatrixViews({})
+    setSelectedId(null)
+    setStudioSelection([])
+  }
+  function runStudioAction(action: StudioAction) {
+    if (action.kind === "page" && action.target) navigateReport(action.target)
+    if (action.kind === "back") {
+      const previous = navigationStack.at(-1)
+      if (previous) {
+        setNavigationStack((stack) => stack.slice(0, -1))
+        setTooltip(null)
+        setPageId(previous.pageId)
+        restoreExplore(previous.state)
+        setSelectedId(null)
+      }
+    }
+    if (action.kind === "reset") {
+      setSelectionGroups([])
+      setDrills({})
+      setMatrixViews({})
+      setCanvasValues({})
+      setNavigation({ page: null, filters: [] })
+      setVisibility({})
+    }
+    if (action.kind === "toggle" && action.target) {
+      const item = [...config.cards, ...(config.objects ?? [])].find(
+        (item) => item.id === action.target
+      )
+      if (item)
+        setVisibility((current) => ({
+          ...current,
+          [item.id]: !(current[item.id] ?? item.hidden ?? false),
+        }))
+    }
+    if (action.kind === "bookmark" && action.target) {
+      setTooltip(null)
+      const bookmark = library.bookmarks.find(
+        (item) => item.id === action.target
+      )
+      if (!bookmark)
+        setNotice({
+          text: "這個書籤不在目前報表中；可另存報表後重新指定按鈕目標。",
+          error: true,
+        })
+      if (bookmark) {
+        change(
+          applyReportBookmark(
+            config,
+            bookmark.state,
+            workspace.owners.map((owner) => owner.id)
+          )
+        )
+        setPageId(bookmark.state.page_id)
+        if (bookmark.state.exploration)
+          restoreExplore(bookmark.state.exploration)
+      }
+    }
+  }
+  function addObject(value: StudioObject["kind"] | StudioObject) {
+    if ((config.objects?.length ?? 0) >= 100) {
+      setNotice({ text: "每份報表最多 100 個設計物件。", error: true })
+      return
+    }
+    const draftObject =
+      typeof value === "string"
+        ? createStudioObject(
+            value,
+            currentPage.id,
+            pageCards.length + pageObjects.length
+          )
+        : value
+    const object = placeStudioObject(config, draftObject)
+    change({
+      ...config,
+      objects: [...(config.objects ?? []), object],
+      pages: pages.map((page) =>
+        page.id === currentPage.id ? { ...page, desktop_layout: "free" } : page
+      ),
+    })
+    setSelectedId(object.id)
+    setStudioSelection([object.id])
+    setEditing(true)
+    if (!isDesktop) setMobileInspector(true)
+  }
+  function addDataset(source: DataSource, field?: StudioField) {
+    addObject(createDatasetObject(source, currentPage.id, field))
+  }
+  function assignField(field: StudioField, role?: FieldRole) {
+    if (!isDesktop) setMobileInspector(true)
+    try {
+      if (field.kind === "dataset") {
+        if (
+          selectedObject?.kind === "dataset" &&
+          selectedObject.dataset_id === field.dataset_id &&
+          selectedObject.dataset_chart
+        ) {
+          const chart = {
+            ...selectedObject.dataset_chart,
+            ...(role === "value" || (field.column.kind === "number" && !role)
+              ? {
+                  value: field.column.id,
+                  aggregation:
+                    field.column.kind === "number"
+                      ? ("sum" as const)
+                      : ("distinct" as const),
+                }
+              : { group_by: field.column.id }),
+          }
+          change({
+            ...config,
+            objects: (config.objects ?? []).map((object) =>
+              object.id === selectedObject.id
+                ? { ...object, dataset_chart: chart }
+                : object
+            ),
+          })
+        } else
+          getDataSource(field.dataset_id)
+            .then((source) => addDataset(source, field))
+            .catch(() =>
+              setNotice({ text: "無法讀取這份匯入來源。", error: true })
+            )
+        return
+      }
+      if (selected)
+        updateSelected(
+          assignReportField(
+            selected,
+            field,
+            role ?? (field.kind === "metric" ? "value" : "group")
+          )
+        )
+      else {
+        if (config.cards.length >= 24 || pageCards.length >= 12)
+          throw new Error("圖表已達目前頁面或整份報表上限。")
+        const card = normalizeCard({
+          id: `visual-${crypto.randomUUID()}`,
+          title:
+            field.kind === "metric"
+              ? METRICS[field.key].label
+              : `${DIMENSIONS[field.key]}分析`,
+          metric: field.kind === "metric" ? field.key : "sales",
+          dimension: field.kind === "dimension" ? field.key : "none",
+          visual: field.kind === "metric" ? "kpi" : "bar",
+          limit: 5,
+          page_id: currentPage.id,
+        })
+        change({ ...config, cards: [...config.cards, card] })
+        setSelectedId(card.id)
+        setStudioSelection([card.id])
+      }
+    } catch (reason) {
+      setNotice({
+        text: reason instanceof Error ? reason.message : "這個欄位無法套用",
+        error: true,
+      })
+    }
   }
   function updateSelected(patch: Partial<ReportCard>) {
     if (!selected) return
@@ -679,6 +980,18 @@ function ReportDocument({
       groups.filter((group) => group.source_id !== id)
     )
   }
+  function holdTooltip() {
+    if (tooltipTimer.current) clearTimeout(tooltipTimer.current)
+  }
+  function closeTooltipLater() {
+    holdTooltip()
+    tooltipTimer.current = setTimeout(() => setTooltip(null), 400)
+  }
+  function openTooltip(card: ReportCard, point: ReportSelectionPoint) {
+    if (editing || !card.tooltip_page) return
+    holdTooltip()
+    setTooltip({ pageId: card.tooltip_page, point })
+  }
   function pointAction(card: ReportCard): ReportPointAction {
     return resolveReportPointAction(card, pointActions[card.id])
   }
@@ -698,7 +1011,18 @@ function ReportDocument({
     const card = queryConfig.cards.find((item) => item.id === sourceId)
     if (!card) return
     const action = pointAction(card)
-    if (action === "details") openDetails(card, point)
+    if (action === "page" && card.drillthrough_page)
+      navigateReport(card.drillthrough_page, [
+        ...new Map(
+          [
+            ...navigation.filters,
+            ...(queryConfig.drill_filters?.[card.id] ?? []),
+            ...point.filters,
+          ].map((filter) => [filter.dimension, filter])
+        ).values(),
+      ])
+    else if (action === "tooltip" && card.tooltip_page) openTooltip(card, point)
+    else if (action === "details") openDetails(card, point)
     else if (action === "drill") {
       const state = drillDown(card, drills[card.id], point)
       if (state) setCardDrill(card.id, state)
@@ -799,40 +1123,22 @@ function ReportDocument({
         title="報表工作區"
         backTo={backTo}
         trailing={
-          <div className="flex items-center gap-1 pr-2">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-11"
-              aria-label="復原上一次調整"
-              disabled={readonly || !history.length}
-              onClick={undo}
-            >
-              <RotateCcw className="size-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-11"
-              aria-label="重做上一次復原"
-              disabled={readonly || !future.length}
-              onClick={redo}
-            >
-              <RotateCw className="size-4" />
-            </Button>
-            <Button
-              className="h-10 rounded-lg px-3 shadow-none"
-              onClick={() => void save()}
-              disabled={saving || !dirty}
-            >
-              {saving ? (
-                <LoaderCircle className="size-4 animate-spin" />
-              ) : (
-                <Save className="size-4" />
-              )}
-              儲存
-            </Button>
-          </div>
+          (editing || dirty) && (
+            <div className="flex items-center gap-1 pr-2">
+              <Button
+                className="h-10 rounded-lg px-3 shadow-none"
+                onClick={() => void save()}
+                disabled={saving || !dirty}
+              >
+                {saving ? (
+                  <LoaderCircle className="size-4 animate-spin" />
+                ) : (
+                  <Save className="size-4" />
+                )}
+                儲存
+              </Button>
+            </div>
+          )
         }
       />
       <div className="border-b bg-card px-3 py-3 lg:px-5">
@@ -840,6 +1146,7 @@ function ReportDocument({
           config={config}
           library={library}
           pageId={currentPage.id}
+          exploration={exploreSnapshot()}
           dirty={dirty}
           saving={saving}
           onOpen={onOpen}
@@ -859,9 +1166,11 @@ function ReportDocument({
             setSelectionGroups([])
             setDrills({})
             setMatrixViews({})
+            if (bookmark.state.exploration)
+              restoreExplore(bookmark.state.exploration)
             setSelectedId(null)
             setNotice({
-              text: `已套用篩選書籤「${bookmark.name}」。`,
+              text: `已套用檢視書籤「${bookmark.name}」。`,
               error: false,
             })
           }}
@@ -878,10 +1187,6 @@ function ReportDocument({
         )}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <p className="mb-1 flex items-center gap-1.5 text-[10px] tracking-widest text-muted-foreground">
-              <ChartNoAxesCombined className="size-3.5" />
-              我的分析報表
-            </p>
             {editing ? (
               <input
                 aria-label="報表名稱"
@@ -939,7 +1244,49 @@ function ReportDocument({
             </button>
           </div>
         </div>
-        <div className="mt-3 flex flex-wrap items-center gap-2 border-t pt-3">
+        <ReportRibbon
+          editing={editing}
+          onInsert={addObject}
+          panels={studioPanels}
+          onPanel={(key) =>
+            setStudioPanels((current) => ({ ...current, [key]: !current[key] }))
+          }
+          onAnalytics={() => {
+            setMobileInspector(true)
+            setStudioPanels((current) => ({
+              ...current,
+              layers: false,
+              filters: false,
+            }))
+          }}
+        >
+          {(editing || history.length > 0 || future.length > 0) && (
+            <>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-11"
+                aria-label="復原上一次調整"
+                disabled={readonly || !history.length}
+                onClick={undo}
+              >
+                <RotateCcw className="size-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-11"
+                aria-label="重做上一次復原"
+                disabled={readonly || !future.length}
+                onClick={redo}
+              >
+                <RotateCw className="size-4" />
+              </Button>
+            </>
+          )}
+          <ReportDatasetLauncher
+            onClose={() => setDatasetEpoch((value) => value + 1)}
+          />
           {editing && (
             <Button
               variant="outline"
@@ -965,7 +1312,7 @@ function ReportDocument({
           {editing && (
             <NativeSelect
               aria-label="套用報表範本"
-              className="h-10 max-w-36 rounded-md border text-xs shadow-none"
+              className="h-10 max-w-36 rounded-md border text-base shadow-none"
               value=""
               onChange={(event) => {
                 if (!event.target.value) return
@@ -994,13 +1341,10 @@ function ReportDocument({
             <Download className="size-4" />
             完整匯出
           </Button>
-          <span
-            className="ml-auto text-[11px] text-muted-foreground"
-            role="status"
-          >
+          <span className="ml-auto text-xs text-muted-foreground" role="status">
             {readonly ? "唯讀共享設定" : dirty ? "● 尚未儲存" : "已儲存"}
           </span>
-        </div>
+        </ReportRibbon>
         <ReportRefreshControls
           seconds={config.refresh_seconds ?? 0}
           busy={loading}
@@ -1031,7 +1375,7 @@ function ReportDocument({
                 </p>
               )}
               <div className="min-w-0 space-y-2">
-                <label className="block space-y-1 text-xs">
+                <label className="block space-y-1 text-sm">
                   篩選範圍
                   <NativeSelect
                     aria-label="篩選範圍"
@@ -1045,7 +1389,7 @@ function ReportDocument({
                     <option value="page">目前分頁：{currentPage.name}</option>
                   </NativeSelect>
                 </label>
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-xs text-muted-foreground">
                   同欄位多選取聯集；報表、分頁與單圖條件取交集。
                 </p>
                 {filterScope === "page" && asOf && (
@@ -1093,7 +1437,7 @@ function ReportDocument({
             {filtered && (
               <button
                 type="button"
-                className="min-h-10 text-left text-xs text-primary"
+                className="min-h-10 text-left text-sm text-primary"
                 onClick={() => {
                   if (filterScope === "page")
                     updateCurrentPage({
@@ -1133,31 +1477,110 @@ function ReportDocument({
 
       {draftProtection.status && (
         <p
-          className="px-3 py-2 text-[11px] text-muted-foreground lg:px-5"
+          className="px-3 py-2 text-xs text-muted-foreground lg:px-5"
           role="status"
         >
           {draftProtection.status}
         </p>
       )}
       {draftProtection.dialogs}
+      {tooltip && !editing && (
+        <ReportPageTooltip
+          config={queryConfig}
+          pageId={tooltip.pageId}
+          point={tooltip.point}
+          onClose={() => setTooltip(null)}
+          onHold={holdTooltip}
+          onLeave={closeTooltipLater}
+        />
+      )}
       <main
         className={cn(
           "grid min-w-0 pb-[calc(9rem+env(safe-area-inset-bottom))]",
-          editing && "lg:grid-cols-[minmax(0,1fr)_18rem]"
+          editing &&
+            (studioPanels.data
+              ? "lg:grid-cols-[14rem_minmax(0,1fr)_18rem]"
+              : "lg:grid-cols-[minmax(0,1fr)_18rem]")
         )}
       >
+        {editing && studioPanels.data && (
+          <aside
+            aria-label="資料欄位面板"
+            className="min-w-0 border-r bg-card p-3 lg:sticky lg:top-16 lg:max-h-[calc(100dvh-5rem)] lg:self-start lg:overflow-y-auto"
+          >
+            <details open={isDesktop}>
+              <summary className="min-h-9 text-xs font-semibold lg:hidden">
+                資料欄位（點開選取）
+              </summary>
+              <ReportDataFields
+                key={datasetEpoch}
+                onField={assignField}
+                onDataset={addDataset}
+              />
+            </details>
+          </aside>
+        )}
         <div className="min-w-0 p-3 lg:p-5">
+          {navigationStack.length > 0 && (
+            <div className="mb-3 flex flex-wrap items-center gap-2 rounded border bg-card p-2 text-xs">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => runStudioAction({ kind: "back", target: null })}
+              >
+                返回來源頁
+              </Button>
+              <span>
+                跨頁分析：
+                {navigation.filters
+                  .map(
+                    (filter) => `${DIMENSIONS[filter.dimension]} ${filter.key}`
+                  )
+                  .join(" · ") || currentPage.name}
+              </span>
+            </div>
+          )}
+          {editing && !isDesktop && (
+            <details className="mb-3 rounded border bg-card p-3">
+              <summary className="min-h-9 text-xs">篩選與圖層</summary>
+              {studioPanels.filters && asOf && (
+                <ReportFilterPane
+                  config={config}
+                  pageId={currentPage.id}
+                  cardId={selected?.id}
+                  options={filterOptions}
+                  asOf={asOf}
+                  onChange={change}
+                />
+              )}
+              <StudioLayers
+                config={config}
+                pageId={currentPage.id}
+                selected={activeSelection}
+                onSelect={(ids) => {
+                  setStudioSelection(ids)
+                  setSelectedId(ids.at(-1) ?? null)
+                }}
+                onChange={change}
+              />
+            </details>
+          )}
+
           <div
-            className="mb-3 flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted-foreground"
+            className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground"
             aria-live="polite"
           >
-            <span className="flex items-center gap-1.5">
-              <FileChartColumn className="size-3.5" />
-              {currentPage.name} ·{" "}
-              {mobileLayout
-                ? `${mobileReportCards(pageCards).length}／${pageCards.length} 個視覺效果（手機）`
-                : `${pageCards.length} 個視覺效果`}
-            </span>
+            {(editing || reportPages(config).length > 1) && (
+              <span className="flex items-center gap-1.5">
+                <FileChartColumn className="size-3.5" />
+                {currentPage.name}
+                {editing && " · "}
+                {editing &&
+                  (mobileLayout
+                    ? `${mobileReportCards(pageCards).length}／${pageCards.length} 個視覺效果（手機）`
+                    : `${pageCards.length} 個視覺效果`)}
+              </span>
+            )}
             <span>
               {ready
                 ? `${PERIODS[config.period]} · ${ready.scope_label} · 截至 ${formatDate(ready.as_of)}`
@@ -1178,11 +1601,16 @@ function ReportDocument({
                     "border-primary bg-primary/10 text-primary"
                 )}
               >
-                多選資料點：{multipleSelection ? "開啟" : "關閉"}
+                多選{multipleSelection ? "：開啟" : ""}
               </button>
-              <span className="text-muted-foreground">
-                同圖多選取聯集，不同圖條件取交集。
-              </span>
+              <ContextHelp label="圖表互動方式">
+                <p>
+                  點選資料點可聯動篩選、查看明細或下鑽日期；每張圖可以切換點選動作。
+                </p>
+                <p>
+                  開啟多選後，同一張圖的選取範圍合併，不同圖表的條件則同時套用。
+                </p>
+              </ContextHelp>
             </div>
           )}
           <div className="mb-3 space-y-2">
@@ -1224,14 +1652,14 @@ function ReportDocument({
               }
             />
             {config.period === "custom" && config.date_range && (
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 報表日期：{config.date_range.start} 至 {config.date_range.end}
               </p>
             )}
             {currentPage.date_range && (
               <button
                 type="button"
-                className="min-h-9 rounded bg-muted px-2 text-[11px]"
+                className="min-h-9 rounded bg-muted px-2 text-sm"
                 onClick={() => updateCurrentPage({ date_range: null })}
               >
                 分頁日期：{currentPage.date_range.start} 至{" "}
@@ -1290,55 +1718,84 @@ function ReportDocument({
               }}
             />
           )}
-          {!!pageCards.length && (
+          {!!(pageCards.length + pageObjects.length) && (
             <ReportLayoutCanvas
-              config={config}
+              config={layoutConfig}
               pageId={currentPage.id}
               editing={editing}
               isDesktop={isDesktop}
-              selectedId={selected?.id ?? null}
+              selectedId={selectedId}
+              selectionIds={activeSelection}
+              onSelectionChange={setStudioSelection}
               onSelect={selectCard}
-              onChange={change}
+              onChange={(next) => change(commitStudioLayout(config, next))}
               onMobileChange={setMobileLayout}
-              renderCard={(card, layout) => (
-                <CanvasVisual
-                  key={card.id}
-                  card={
-                    queryConfig.cards.find((item) => item.id === card.id) ??
-                    card
-                  }
-                  layout={layout}
-                  filterOptions={filterOptions}
-                  data={cardData(card.id)}
-                  kpiCount={
-                    pageCards.filter((item) => item.visual === "kpi").length
-                  }
-                  editing={editing}
-                  selected={layout.selected}
-                  loading={loading}
-                  selections={
-                    selectionGroups.find((group) => group.source_id === card.id)
-                      ?.points ?? []
-                  }
-                  onSelect={layout.onSelect}
-                  onFocus={() => setFocusId(card.id)}
-                  onPoint={explorePoint}
-                  matrixView={matrixViews[card.id]}
-                  onMatrixViewChange={(view) =>
-                    setMatrixViews((current) => ({
-                      ...current,
-                      [card.id]: view,
-                    }))
-                  }
-                  explore={exploreControls(
-                    queryConfig.cards.find((item) => item.id === card.id) ??
+              renderCard={(card, layout) => {
+                const object = config.objects?.find(
+                  (item) => item.id === card.id
+                )
+                return object ? (
+                  <StudioVisual
+                    key={
+                      object.kind === "dataset"
+                        ? `${object.id}/${datasetEpoch}`
+                        : object.id
+                    }
+                    object={object}
+                    editing={editing}
+                    layout={layout}
+                    filterOptions={filterOptions}
+                    values={canvasValues}
+                    onValues={(id, keys) =>
+                      setCanvasValues((current) =>
+                        updateCanvasSelection(config, current, id, keys)
+                      )
+                    }
+                    onAction={runStudioAction}
+                  />
+                ) : (
+                  <CanvasVisual
+                    key={card.id}
+                    card={
+                      queryConfig.cards.find((item) => item.id === card.id) ??
                       card
-                  )}
-                />
-              )}
+                    }
+                    layout={layout}
+                    filterOptions={filterOptions}
+                    data={cardData(card.id)}
+                    kpiCount={
+                      pageCards.filter((item) => item.visual === "kpi").length
+                    }
+                    editing={editing}
+                    selected={layout.selected}
+                    loading={loading}
+                    selections={
+                      selectionGroups.find(
+                        (group) => group.source_id === card.id
+                      )?.points ?? []
+                    }
+                    onSelect={layout.onSelect}
+                    onFocus={() => setFocusId(card.id)}
+                    onPoint={explorePoint}
+                    onHover={(point) => openTooltip(card, point)}
+                    onHoverEnd={closeTooltipLater}
+                    matrixView={matrixViews[card.id]}
+                    onMatrixViewChange={(view) =>
+                      setMatrixViews((current) => ({
+                        ...current,
+                        [card.id]: view,
+                      }))
+                    }
+                    explore={exploreControls(
+                      queryConfig.cards.find((item) => item.id === card.id) ??
+                        card
+                    )}
+                  />
+                )
+              }}
             />
           )}
-          {!pageCards.length && (
+          {!(pageCards.length + pageObjects.length) && (
             <div className="flex min-h-64 flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed bg-card/50 text-center">
               <FileChartColumn className="size-9 text-muted-foreground/50" />
               <p className="text-sm font-medium">這一頁還沒有視覺效果</p>
@@ -1370,7 +1827,10 @@ function ReportDocument({
                 onClick={() => {
                   setPageId(page.id)
                   setSelectedId(null)
+                  setStudioSelection([])
                   setSelectionGroups([])
+                  setNavigation({ page: null, filters: [] })
+                  setNavigationStack([])
                 }}
                 className={cn(
                   "min-h-11 shrink-0 border-t-2 border-transparent px-4 text-xs",
@@ -1404,11 +1864,8 @@ function ReportDocument({
               </>
             )}
           </div>
-          <p className="mt-2 text-[10px] text-muted-foreground">
-            {editing
-              ? "最多 5 頁，每頁 12 個視覺效果。"
-              : "每張圖可選擇點選聯動、日期下鑽或逐筆明細。"}{" "}
-            · 金額以新台幣計
+          <p className="mt-2 text-xs text-muted-foreground">
+            {editing && "最多 5 頁，每頁 12 個圖表。 · "}金額：新台幣
           </p>
         </div>
         {editing && isDesktop && (
@@ -1416,7 +1873,59 @@ function ReportDocument({
             aria-label="視覺效果設定面板"
             className="sticky top-16 max-h-[calc(100dvh-5rem)] self-start overflow-y-auto border-l bg-card p-3 pb-24"
           >
-            <ReportInspector {...inspectorProps} />
+            {studioPanels.filters && asOf && (
+              <div className="mb-4 border-b pb-4">
+                <ReportFilterPane
+                  config={config}
+                  pageId={currentPage.id}
+                  cardId={selected?.id}
+                  options={filterOptions}
+                  asOf={asOf}
+                  onChange={change}
+                />
+              </div>
+            )}
+            {studioPanels.layers && (
+              <div className="mb-4 border-b pb-4">
+                <StudioLayers
+                  config={config}
+                  pageId={currentPage.id}
+                  selected={activeSelection}
+                  onSelect={(ids) => {
+                    setStudioSelection(ids)
+                    setSelectedId(ids.at(-1) ?? null)
+                  }}
+                  onChange={change}
+                />
+              </div>
+            )}
+            {selectedObject ? (
+              <StudioObjectInspector
+                key={`${selectedObject.id}/${datasetEpoch}`}
+                object={selectedObject}
+                config={config}
+                bookmarks={library.bookmarks}
+                onChange={(next) =>
+                  change({
+                    ...config,
+                    objects: (config.objects ?? []).map((item) =>
+                      item.id === next.id ? next : item
+                    ),
+                  })
+                }
+                onDelete={() => {
+                  change({
+                    ...config,
+                    objects: (config.objects ?? []).filter(
+                      (item) => item.id !== selectedObject.id
+                    ),
+                  })
+                  setSelectedId(null)
+                }}
+              />
+            ) : (
+              <ReportInspector {...inspectorProps} />
+            )}
           </aside>
         )}
       </main>
@@ -1430,11 +1939,15 @@ function ReportDocument({
         >
           <DialogHeader className="flex-row items-center justify-between border-b px-4 py-2">
             <div>
-              <DialogTitle className="text-sm">編輯圖表</DialogTitle>
+              <DialogTitle className="text-sm">
+                {selectedObject ? "編輯畫布物件" : "編輯圖表"}
+              </DialogTitle>
               <DialogDescription className="text-xs">
-                {selected
-                  ? `正在編輯：${selected.title}`
-                  : "選擇圖表建立你的報表"}
+                {selectedObject
+                  ? `正在編輯：${selectedObject.title}`
+                  : selected
+                    ? `正在編輯：${selected.title}`
+                    : "選擇圖表建立你的報表"}
               </DialogDescription>
             </div>
             <Button
@@ -1447,7 +1960,33 @@ function ReportDocument({
             </Button>
           </DialogHeader>
           <div className="overflow-y-auto overscroll-contain p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-            <ReportInspector {...inspectorProps} hideHeading />
+            {selectedObject ? (
+              <StudioObjectInspector
+                key={`${selectedObject.id}/${datasetEpoch}`}
+                object={selectedObject}
+                config={config}
+                bookmarks={library.bookmarks}
+                onChange={(next) =>
+                  change({
+                    ...config,
+                    objects: (config.objects ?? []).map((item) =>
+                      item.id === next.id ? next : item
+                    ),
+                  })
+                }
+                onDelete={() => {
+                  change({
+                    ...config,
+                    objects: (config.objects ?? []).filter(
+                      (item) => item.id !== selectedObject.id
+                    ),
+                  })
+                  setSelectedId(null)
+                }}
+              />
+            ) : (
+              <ReportInspector {...inspectorProps} />
+            )}
           </div>
         </DialogContent>
       </Dialog>
@@ -1456,7 +1995,7 @@ function ReportDocument({
           <DialogHeader>
             <DialogTitle>新增視覺效果</DialogTitle>
             <DialogDescription>
-              16 種呈現方式，選擇後可再配置資料與格式。
+              多種呈現方式，選擇後可再配置資料與格式。
             </DialogDescription>
           </DialogHeader>
           <ReportVisualGallery onSelect={addVisual} />
@@ -1470,7 +2009,7 @@ function ReportDocument({
               替目前分頁命名，或把圖表移至其他頁。
             </DialogDescription>
           </DialogHeader>
-          <label className="space-y-2 text-xs">
+          <label className="space-y-2 text-sm">
             分頁名稱
             <input
               aria-label="分頁名稱"
@@ -1508,6 +2047,16 @@ function ReportDocument({
             <Trash2 className="size-4" />
             移除分頁，圖表移至其他頁
           </Button>
+          <label className="flex min-h-10 items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={currentPage.tooltip ?? false}
+              onChange={(event) =>
+                updateCurrentPage({ tooltip: event.target.checked })
+              }
+            />
+            允許作為其他圖表的提示頁
+          </label>
           <Button
             className="rounded-md shadow-none"
             onClick={() => setPageSettings(false)}
@@ -1550,9 +2099,13 @@ function ReportDocument({
                 pointActionLabel={
                   pointAction(focused) === "drill"
                     ? "下鑽"
-                    : pointAction(focused) === "details"
-                      ? "查看逐筆明細"
-                      : "篩選"
+                    : pointAction(focused) === "page"
+                      ? "跨頁分析"
+                      : pointAction(focused) === "tooltip"
+                        ? "查看提示頁"
+                        : pointAction(focused) === "details"
+                          ? "查看逐筆明細"
+                          : "篩選"
                 }
                 onSelectData={
                   editing
@@ -1673,6 +2226,8 @@ function CanvasVisual({
   onSelect,
   onFocus,
   onPoint,
+  onHover,
+  onHoverEnd,
   explore,
   matrixView,
   onMatrixViewChange,
@@ -1689,6 +2244,8 @@ function CanvasVisual({
   onSelect: ReportLayoutRender["onSelect"]
   onFocus: () => void
   onPoint: (sourceId: string, point: ReportSelectionPoint) => void
+  onHover?: (point: ReportSelectionPoint) => void
+  onHoverEnd?: () => void
   matrixView?: ReportMatrixView
   onMatrixViewChange: (view: ReportMatrixView) => void
   explore: Omit<
@@ -1704,7 +2261,10 @@ function CanvasVisual({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: card.id, disabled: !editing || layout.customMove })
+  } = useSortable({
+    id: card.id,
+    disabled: !editing || layout.customMove || card.locked,
+  })
   const kpiSpan =
     kpiCount <= 2
       ? "col-span-1 lg:col-span-6"
@@ -1779,18 +2339,18 @@ function CanvasVisual({
               {card.title}
             </button>
           ) : (
-            <h3 className="text-sm leading-snug font-semibold wrap-break-word">
+            <h3 className="text-base leading-snug font-semibold wrap-break-word">
               {card.title}
             </h3>
           )}
           {card.visual === "kpi" ? (
             card.title !== METRICS[card.metric].label && (
-              <p className="mt-1 text-[10px] text-muted-foreground">
+              <p className="mt-1 text-xs text-muted-foreground">
                 {METRICS[card.metric].label}
               </p>
             )
           ) : (
-            <p className="mt-1 text-[10px] text-muted-foreground">
+            <p className="mt-1 text-xs text-muted-foreground">
               {METRICS[card.metric].label} · {DIMENSIONS[card.dimension]}
               {card.legend ? ` / ${DIMENSIONS[card.legend]}` : ""}
             </p>
@@ -1826,7 +2386,7 @@ function CanvasVisual({
               scope="單圖"
             />
             {card.date_range && (
-              <p className="text-[10px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 單圖日期：{card.date_range.start} 至 {card.date_range.end}
               </p>
             )}
@@ -1849,6 +2409,8 @@ function CanvasVisual({
               <ReportChart
                 card={card}
                 data={data}
+                onHoverData={editing ? undefined : onHover}
+                onHoverEnd={onHoverEnd}
                 onSelectData={
                   editing ? undefined : (point) => onPoint(card.id, point)
                 }
@@ -1858,9 +2420,13 @@ function CanvasVisual({
                 pointActionLabel={
                   explore.action === "drill"
                     ? "下鑽"
-                    : explore.action === "details"
-                      ? "查看逐筆明細"
-                      : "篩選"
+                    : explore.action === "page"
+                      ? "跨頁分析"
+                      : explore.action === "tooltip"
+                        ? "查看提示頁"
+                        : explore.action === "details"
+                          ? "查看逐筆明細"
+                          : "篩選"
                 }
               />
             </ReportRenderFrame>
@@ -1876,7 +2442,7 @@ function CanvasVisual({
           )}
         </div>
         {data?.note && (
-          <p className="mt-3 border-t pt-2 text-[10px] leading-relaxed text-muted-foreground">
+          <p className="mt-3 border-t pt-2 text-xs leading-relaxed text-muted-foreground">
             {data.note}
           </p>
         )}
@@ -2157,14 +2723,14 @@ function AiReportDock({
             )}
           </button>
         </form>
-        <p
-          role="status"
-          className="mt-1.5 text-center text-[0.6875rem] text-muted-foreground"
-        >
-          {busy
-            ? "正在理解你的需求，原報表保留中…"
-            : "AI 幫你調整重點，報表由你決定"}
-        </p>
+        {busy && (
+          <p
+            role="status"
+            className="mt-1.5 text-center text-xs text-muted-foreground"
+          >
+            正在理解你的需求，原報表保留中…
+          </p>
+        )}
       </div>
     </div>
   )

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Check, Loader2 } from "lucide-react"
+import { Check, Loader2 } from "@/components/icons"
 
 import type { PresenceStatus } from "@/api/presence"
 import { Button } from "@/components/ui/button"
@@ -139,13 +139,13 @@ export function MyStatusSection() {
   if (!user) return null
   return (
     <section className="flex flex-col gap-3">
-      <h2 className="text-sm font-semibold">狀態</h2>
+      <h2 className="text-base font-semibold">狀態</h2>
       <div className="flex items-center gap-3 rounded-2xl border-2 bg-card p-4 shadow-lip">
         <UserAvatar id={user.id} name={user.name} status={status} size="lg" />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium">{label}</p>
           <p className="text-xs leading-relaxed text-muted-foreground">
-            {choice ? "手動選的，改回自動請按「重設狀態」。" : "自動：有在用就是有空，閒置或切到背景就是離開。"}
+            {choice ? "手動設定中" : "使用中顯示有空，閒置或背景顯示離開。"}
           </p>
         </div>
         <Button variant="outline" className="h-11 shrink-0 px-4" onClick={() => setOpen(true)}>
@@ -153,7 +153,7 @@ export function MyStatusSection() {
         </Button>
       </div>
       <p className="px-1 text-xs leading-relaxed text-muted-foreground">
-        全公司的帳號都看得到你的狀態。選「顯示為離線」，別人看到的你是離線，你照常可以用。
+        狀態對全公司顯示；設為離線仍可使用系統。
       </p>
       <StatusPicker open={open} onOpenChange={setOpen} />
     </section>

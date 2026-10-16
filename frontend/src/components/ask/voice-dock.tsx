@@ -1,5 +1,5 @@
 import { useEffect } from "react"
-import { Hand, Loader2, Mic, PhoneOff, Volume2, VolumeX } from "lucide-react"
+import { Hand, Loader2, Mic, PhoneOff, Volume2, VolumeX } from "@/components/icons"
 
 import type { Conversation } from "@/ask/conversation"
 import { Mascot } from "@/components/mascot"

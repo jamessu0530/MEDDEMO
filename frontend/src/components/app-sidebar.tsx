@@ -1,9 +1,10 @@
-import { Moon, Settings, Sun } from "lucide-react"
+import { Moon, Settings, Sun } from "@/components/icons"
 import { Link, useLocation } from "react-router"
 
+import { CompanyLogo } from "@/components/company-logo"
 import { MyStatusButton } from "@/components/my-status"
 import { SidebarNav } from "@/components/sidebar-nav"
-import type { AuthUser } from "@/lib/auth"
+import { homePath, type AuthUser } from "@/lib/auth"
 import { useChannelUnread } from "@/lib/channel-unread"
 import { usePendingOa, useUnseenNotices } from "@/lib/manager-counts"
 import { useUnseenReplies } from "@/lib/manager-replies"
@@ -28,7 +29,7 @@ function SalesSidebar({ user }: { user: AuthUser }) {
   const { items } = useUploadQueue()
   const channels = useChannelUnread()
   const replies = useUnseenReplies()
-  // FR-4.3：手機裡還有沒送出的錄音，跟底部分頁列一樣掛在「客戶」上
+  // FR-4.3：手機裡還有沒送出的錄音，跟底部分頁列一樣掛在訂單首頁上
   const uploads = items.filter((item) => item.state === "pending").length
   return <Sidebar user={user} counts={{ uploads, channels, replies }} />
 }
@@ -45,6 +46,10 @@ function Sidebar({ user, counts }: { user: AuthUser; counts: Counts }) {
   const { pathname, search } = useLocation()
   return (
     <aside className="fixed inset-y-0 left-0 z-30 hidden w-56 flex-col gap-1 overflow-y-auto border-r bg-card px-3 pt-3 pb-4 lg:flex">
+      <Link to={homePath(user.role)} aria-label="中化裕民業務 AI 助理首頁" className="mb-2 flex flex-col items-start gap-2 rounded-lg px-2 py-3 hover:bg-muted">
+        <CompanyLogo className="w-36" />
+        <span className="text-xs text-muted-foreground">中化裕民 · 業務 AI 助理</span>
+      </Link>
       <div className="mb-2 flex items-center gap-2 border-b px-1 pb-3">
         <MyStatusButton className="size-10" />
         {/* 跟首頁頁首的名字連到同一個地方：業務是個人頁，主管與 IT 是帳號設定 */}

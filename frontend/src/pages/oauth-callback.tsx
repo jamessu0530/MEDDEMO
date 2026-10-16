@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { Loader2 } from "lucide-react"
+import { Loader2 } from "@/components/icons"
 import { Link, useNavigate } from "react-router"
 
 import { linkProvider, oauthLogin, type OAuthCredential } from "@/api/auth"

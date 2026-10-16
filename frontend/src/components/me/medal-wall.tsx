@@ -3,6 +3,7 @@ import { Link } from "react-router"
 
 import type { Medal } from "@/api/me"
 import { FlatMedal } from "@/components/me/flat-medal"
+import { ContextHelp } from "@/components/context-help"
 import "@/components/me/medal-wall.css"
 import type { MedalScene } from "@/components/me/medal-scene"
 import {
@@ -111,9 +112,7 @@ export function MedalWall({ medals, userId }: { medals: Medal[]; userId: string 
           if (!row.length) return null
           return (
             <div key={kind}>
-              <p className="mt-5 mb-2 text-sm font-medium">
-                {MEDAL_KIND_LABEL[kind]} · {row[0]?.have ?? 0} {MEDAL_UNIT[kind]}
-              </p>
+              <div className="mt-4 mb-2 flex items-center justify-between gap-2"><h3 className="text-base font-medium">{MEDAL_KIND_LABEL[kind]} · {row[0]?.have ?? 0} {MEDAL_UNIT[kind]}</h3><ContextHelp label={`${MEDAL_KIND_LABEL[kind]}達成條件`}>{row.map((medal) => <p key={medalId(medal)}><b>{TIER_NAME[medal.tier]}：</b>{medalCondition(medal)}</p>)}</ContextHelp></div>
               <div className={cn("grid gap-1.5", row.length === 1 ? "grid-cols-1" : "grid-cols-3")}>
                 {row.map((m) => {
                   const progress = medalProgress(m)
@@ -133,14 +132,13 @@ export function MedalWall({ medals, userId }: { medals: Medal[]; userId: string 
                         <FlatMedal medal={m} />
                       </span>
                     </button>
-                    <p className="text-xs font-semibold leading-relaxed">{medalName(m)}</p>
-                    <span className="text-[11px] text-muted-foreground">{TIER_NAME[m.tier]}</span>
-                    <p className="text-[11px] leading-relaxed text-muted-foreground">{medalCondition(m)}</p>
+                    <p className="text-sm font-semibold leading-relaxed">{medalName(m)}</p>
+                    <span className="text-xs text-muted-foreground">{TIER_NAME[m.tier]}</span>
                     <div role="progressbar" aria-label={`${medalName(m)}的達成進度`} aria-valuenow={progress.completed} aria-valuemin={0} aria-valuemax={progress.total} className="mt-auto h-1.5 w-full overflow-hidden rounded-full bg-muted">
                       <span className="block h-full rounded-full bg-primary transition-[width]" style={{ width: `${progress.percent}%` }} />
                     </div>
-                    <p className="text-[11px] tabular-nums">{progress.completed} / {progress.total} {MEDAL_UNIT[m.kind]}</p>
-                    <span className="text-[11px] text-muted-foreground">{medalStatus(m)}</span>
+                    <p className="text-xs tabular-nums">{progress.completed} / {progress.total} {MEDAL_UNIT[m.kind]}</p>
+                    <span className="text-xs text-muted-foreground">{medalStatus(m)}</span>
                     {isProductMedal(m.kind) && <Link to={medalAction(m)} className="flex min-h-11 items-center text-xs font-medium text-primary">{m.unlocked_on ? "複習這關" : "去練習"}</Link>}
                   </div>
                 })}

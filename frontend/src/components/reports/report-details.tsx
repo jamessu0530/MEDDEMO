@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { Download, LoaderCircle } from "lucide-react"
+import { Download, LoaderCircle } from "@/components/icons"
 import {
   downloadReportDetails,
   downloadReportFile,
@@ -160,7 +160,7 @@ export function ReportDetailsDialog({
           </DialogDescription>
         </DialogHeader>
         {hasHighlight && (
-          <label className="space-y-1 text-xs">
+          <label className="space-y-1 text-sm">
             醒目提示明細範圍
             <NativeSelect
               aria-label="醒目提示明細範圍"
@@ -178,13 +178,13 @@ export function ReportDetailsDialog({
           </label>
         )}
         <div className="grid min-w-0 grid-cols-2 items-end gap-2 sm:flex sm:flex-wrap">
-          <label className="col-span-2 min-w-0 space-y-1 text-xs sm:flex-1">
+          <label className="col-span-2 min-w-0 space-y-1 text-sm sm:flex-1">
             排序欄位
             <NativeSelect
               aria-label="明細排序欄位"
               value={sortBy}
               disabled={!columns.length || exporting}
-              className="h-10 rounded-md border text-xs shadow-none"
+              className="h-10 rounded-md border text-base shadow-none"
               onChange={(event) => {
                 setSortBy(event.target.value as typeof sortBy)
                 setPage(1)
@@ -200,13 +200,13 @@ export function ReportDetailsDialog({
                 ))}
             </NativeSelect>
           </label>
-          <label className="space-y-1 text-xs">
+          <label className="space-y-1 text-sm">
             順序
             <NativeSelect
               aria-label="明細排序順序"
               disabled={exporting}
               value={direction}
-              className="h-10 rounded-md border text-xs shadow-none"
+              className="h-10 rounded-md border text-base shadow-none"
               onChange={(event) => {
                 setDirection(event.target.value as typeof direction)
                 setPage(1)
@@ -332,7 +332,7 @@ export function ReportDetailsDialog({
               aria-label="明細每頁筆數"
               disabled={exporting}
               value={pageSize}
-              className="h-10 w-20 rounded-md border text-xs shadow-none"
+              className="h-10 w-20 rounded-md border text-base shadow-none"
               onChange={(event) => {
                 setPageSize(Number(event.target.value))
                 setPage(1)

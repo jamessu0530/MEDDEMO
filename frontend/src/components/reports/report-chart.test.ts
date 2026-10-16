@@ -293,16 +293,19 @@ describe("Power BI 圖表呈現", () => {
       scatter: "<circle",
       table: "<table",
       matrix: "連鎖藥局",
+      waterfall: "累積瀑布圖",
+      funnel: "相鄰階段比例",
+      map: "有效座標",
     }
     expect(html).toContain(shape[visual])
   })
 
-  it("圖表選單有 16 個不同圖示", () => {
+  it("圖表選單有 19 個不同圖示", () => {
     const icons = visuals.map((visual) =>
       renderToStaticMarkup(createElement(ReportVisualIcon, { visual }))
     )
-    expect(icons).toHaveLength(16)
-    expect(new Set(icons).size).toBe(16)
+    expect(icons).toHaveLength(19)
+    expect(new Set(icons).size).toBe(19)
   })
 
   it("堆疊圖使用每個真實系列的數值，百分比以各分類合計計算", () => {

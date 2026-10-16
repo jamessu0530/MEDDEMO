@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { NotebookPen, Search, SendHorizontal, Store } from "lucide-react"
+import { NotebookPen, Search, SendHorizontal, Store } from "@/components/icons"
 import { Link, useLocation, useParams, useSearchParams } from "react-router"
 
 import { ApiError } from "@/api/client"
@@ -595,7 +595,7 @@ export function ChannelConversation({
         ) : (
           <>
             <div className="flex items-center justify-between gap-2 pb-1">
-              <p className="text-[0.6875rem] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 {channel.audience}
               </p>
               <Button
@@ -689,7 +689,7 @@ export function ChannelConversation({
           aria-label="記憶看板"
           className="flex w-72 shrink-0 flex-col gap-3 overflow-y-auto border-l px-4 py-4"
         >
-          <h3 className="text-sm font-semibold">記憶看板</h3>
+          <h3 className="text-base font-semibold">記憶看板</h3>
           <ChannelBoard
             channel={channel}
             onJump={(messageId) => void jumpTo(messageId)}
@@ -792,7 +792,7 @@ function MessageBubble({
       replyTo && (replyTo.mine ? " · 回覆你" : ` · 回覆 ${replyTo.author_name}`)
     const bubble = (
       <div className="rounded-xl bg-muted px-3 py-2 text-sm">
-        <p className="text-[0.6875rem] text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           {message.kind === "ai" ? "熊熊滾" : "風險通報"}
           {replied} · {formatDateTime(message.created_at)}
         </p>
@@ -834,7 +834,7 @@ function MessageBubble({
         message.mine && "items-end"
       )}
     >
-      <p className="px-1 text-[0.6875rem] text-muted-foreground">
+      <p className="px-1 text-xs text-muted-foreground">
         {message.mine ? "" : `${message.author_name} · `}
         {formatDateTime(message.created_at)}
         {onDelete && (
@@ -873,7 +873,7 @@ function MessageBubble({
         <button
           type="button"
           onClick={() => onSaveMethod(message)}
-          className="flex min-h-11 items-center gap-1.5 self-start px-2 text-xs text-primary underline-offset-2 hover:underline"
+          className="flex min-h-11 items-center gap-1.5 self-start px-2 text-sm text-primary underline-offset-2 hover:underline"
         >
           <NotebookPen className="size-3.5" />
           存成方法卡

@@ -36,6 +36,12 @@ const paths: Record<ReportVisual, string[]> = {
     "M6 16l14-12",
   ],
   table: ["M3 4h18v16H3z", "M3 9h18M3 14h18M9 4v16M15 4v16"],
+  waterfall: [
+    "M3 3v18h18",
+    "M4 15h4v6H4zM9 10h4v5H9zM14 10h4v4h-4zM19 7h3v14h-3z",
+  ],
+  funnel: ["M3 4h18l-4 5H7zM7 11h10l-3 5h-4zM10 18h4v3h-4z"],
+  map: ["M3 5l6-2 6 2 6-2v16l-6 2-6-2-6 2zM9 3v16M15 5v16"],
   matrix: [
     "M3 3h18v18H3z",
     "M3 8h18M3 14h18M8 3v18M14 3v18M16.5 17.5h2M17.5 16.5v2",
@@ -51,6 +57,7 @@ export function ReportVisualIcon({
 }) {
   return (
     <svg
+      data-icon-motion="chart"
       viewBox="0 0 24 24"
       className={className}
       fill="none"

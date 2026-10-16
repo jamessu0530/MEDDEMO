@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react"
-import { CheckCircle2, Circle } from "lucide-react"
+import { CheckCircle2, Circle } from "@/components/icons"
 import { useNavigate } from "react-router"
 
 import { ApiError } from "@/api/client"
@@ -208,7 +208,7 @@ function EmptyTab({
       {items.map((item) => (
         <li key={item.id} className="rounded-xl border-2 bg-card px-4 py-3 shadow-lip">
           <p className="text-sm">{item.filename}</p>
-          <p className="mt-1 text-[0.6875rem] text-muted-foreground">
+          <p className="mt-1 text-xs text-muted-foreground">
             {item.uploaded_by} · {formatDateTime(item.created_at)}
           </p>
         </li>
@@ -252,7 +252,7 @@ function ActivityTab({ form }: { form: OaFormDetail }) {
         <li key={item.id} className="flex gap-3">
           <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-primary" />
           <div>
-            <p className="text-[0.6875rem] text-muted-foreground">{formatDateTime(item.created_at)}</p>
+            <p className="text-xs text-muted-foreground">{formatDateTime(item.created_at)}</p>
             <p className="text-sm font-medium">{item.detail}</p>
             <p className="text-xs text-muted-foreground">
               {/* 系統核准的那一筆沒有單位，不留一個多出來的「·」 */}

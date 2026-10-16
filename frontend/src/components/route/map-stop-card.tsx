@@ -1,4 +1,4 @@
-import { Navigation } from "lucide-react"
+import { Navigation } from "@/components/icons"
 
 import { SIGNAL_LABEL, type MapStop, type RouteStop, type TravelMode } from "@/api/route"
 import { DriveSource } from "@/components/route/drive-source"
@@ -68,7 +68,7 @@ export function MapStopCard({
           </p>
         )}
         {(legMode === "scooter" || legMode === "walk") && !legEstimated && (
-          <p className="mt-0.5 text-[0.6875rem] text-muted-foreground">
+          <p className="mt-0.5 text-xs text-muted-foreground">
             {legMode === "walk" ? "Google 的走路路線是測試版，可能少了部分步道" : "Google 的機車路線是測試版，可能少了部分小路"}
           </p>
         )}

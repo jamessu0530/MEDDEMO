@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react"
-import { ArrowUpFromLine, Check, Pencil } from "lucide-react"
+import { ArrowUpFromLine, Check, Pencil } from "@/components/icons"
 
 import { ApiError } from "@/api/client"
 import type { Channel } from "@/api/channels"
 import { deleteMemory, editMemory, getBoard, withdrawMemory, type Board, type MemoryCategory, type OwnItem } from "@/api/memory"
 import { AttachmentThumbs } from "@/components/attachments/attachment-thumbs"
-import { Mascot } from "@/components/mascot"
+import { ContextHelp } from "@/components/context-help"
 import { Notice } from "@/components/notice"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -67,10 +67,7 @@ export function ChannelBoard({ channel, onJump }: { channel: Channel; onJump: (m
   const { own, below } = state.board
   return (
     <div className="flex flex-col gap-4">
-      <p className="flex items-center gap-2 text-xs text-muted-foreground">
-        <Mascot size={24} bust className="shrink-0 rounded-full bg-accent" />
-        熊熊滾會在大家發言兩分鐘後整理重點，對其他組有用的會往上傳。
-      </p>
+      <div className="flex items-center justify-between"><h2 className="text-base font-semibold">頻道重點</h2><ContextHelp label="看板整理方式"><p>熊熊會在發言兩分鐘後整理重點，對其他組有用的內容會往上層看板彙整。</p></ContextHelp></div>
       {error && <p className="text-sm text-destructive">{error}</p>}
       <section className="flex flex-col gap-2">
         {own.length === 0 && (
@@ -91,13 +88,13 @@ export function ChannelBoard({ channel, onJump }: { channel: Channel; onJump: (m
       </section>
       {below.length > 0 && (
         <section className="flex flex-col gap-3">
-          <h2 className="text-sm font-semibold">來自下層</h2>
+          <h2 className="text-base font-semibold">來自下層</h2>
           {below.map((group) => (
             <div key={group.channel_id} className="flex flex-col gap-2">
               <p className="text-xs font-medium text-muted-foreground">{group.channel_name}</p>
               {group.items.map((item) => (
                 <article key={item.id} className="rounded-xl border bg-card p-3">
-                  <p className="text-[0.6875rem] text-muted-foreground">
+                  <p className="text-xs text-muted-foreground">
                     {CATEGORY_LABEL[item.category]}
                     {item.category === "todo" && item.status === "done" && " · 已完成"}
                     {item.category === "todo" && item.status === "open" && item.due_date && ` · ${dueText(item.due_date, today).text}`}
@@ -166,7 +163,7 @@ function OwnCard({
           </button>
         )}
         <div className="min-w-0 flex-1">
-          <p className="text-[0.6875rem] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             {CATEGORY_LABEL[item.category]}
             {due && <span className={cn(due.overdue && "font-medium text-destructive")}> · {due.text}</span>}
             {" · "}
@@ -182,7 +179,7 @@ function OwnCard({
           </button>
           <AttachmentThumbs attachments={item.attachments} raised={item.shared && !item.withdrawn ? item.shared_attachment_ids : []} />
           {item.shared && !item.withdrawn && (
-            <div className="mt-2 flex items-start gap-2 rounded-lg bg-primary/10 px-2.5 py-1.5 text-[0.6875rem] text-primary">
+            <div className="mt-2 flex items-start gap-2 rounded-lg bg-primary/10 px-2.5 py-1.5 text-xs text-primary">
               <ArrowUpFromLine className="mt-0.5 size-3.5 shrink-0" />
               <p className="min-w-0 flex-1">已往上傳：{item.shared_text}</p>
               {!readOnly && (
@@ -192,7 +189,7 @@ function OwnCard({
               )}
             </div>
           )}
-          {item.withdrawn && <p className="mt-2 text-[0.6875rem] text-muted-foreground">已撤回往上傳</p>}
+          {item.withdrawn && <p className="mt-2 text-xs text-muted-foreground">已撤回往上傳</p>}
         </div>
         {!readOnly && (
           <Button variant="ghost" size="icon" className="size-9 shrink-0" aria-label="修改這條重點" onClick={onEdit}>

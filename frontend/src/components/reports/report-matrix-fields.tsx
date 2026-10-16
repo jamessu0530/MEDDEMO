@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, Plus, X } from "lucide-react"
+import { ArrowDown, ArrowUp, Plus, X } from "@/components/icons"
 import { NativeSelect } from "@/components/ui/native-select"
 import {
   DIMENSIONS,
@@ -50,7 +50,7 @@ export function ReportMatrixFields({
                 <NativeSelect
                   aria-label={`${name}階層 ${index + 1}`}
                   value={dimension}
-                  className="h-10 flex-1 rounded-md border text-xs shadow-none"
+                  className="h-10 flex-1 rounded-md border text-base shadow-none"
                   onChange={(event) =>
                     update({
                       [axis]: options[axis].map((entry, at) =>
@@ -110,7 +110,7 @@ export function ReportMatrixFields({
             ))}
             <button
               type="button"
-              className="flex min-h-9 items-center gap-1 text-xs text-primary disabled:opacity-40"
+              className="flex min-h-9 items-center gap-1 text-sm text-primary disabled:opacity-40"
               disabled={!available.length || options[axis].length >= 3}
               onClick={() =>
                 update({ [axis]: [...options[axis], available[0]] })
@@ -129,7 +129,7 @@ export function ReportMatrixFields({
         {metrics.map((metric) => (
           <label
             key={metric}
-            className="flex min-h-9 items-center gap-2 text-xs"
+            className="flex min-h-9 items-center gap-2 text-sm"
           >
             <input
               type="checkbox"
@@ -151,7 +151,7 @@ export function ReportMatrixFields({
         ))}
       </fieldset>
       {(["show_subtotals", "show_grand_total"] as const).map((key) => (
-        <label key={key} className="flex min-h-9 items-center gap-2 text-xs">
+        <label key={key} className="flex min-h-9 items-center gap-2 text-sm">
           <input
             type="checkbox"
             className="size-4 accent-primary"
@@ -162,14 +162,14 @@ export function ReportMatrixFields({
         </label>
       ))}
       {(["row_expand_depth", "column_expand_depth"] as const).map((key) => (
-        <label key={key} className="block space-y-1 text-xs">
+        <label key={key} className="block space-y-1 text-sm">
           {key.startsWith("row") ? "預設列展開層數" : "預設欄展開層數"}
           <NativeSelect
             aria-label={
               key.startsWith("row") ? "預設列展開層數" : "預設欄展開層數"
             }
             value={options[key]}
-            className="h-10 rounded-md border text-xs shadow-none"
+            className="h-10 rounded-md border text-base shadow-none"
             onChange={(event) => update({ [key]: Number(event.target.value) })}
           >
             {[1, 2, 3].map((depth) => (
@@ -180,8 +180,8 @@ export function ReportMatrixFields({
           </NativeSelect>
         </label>
       ))}
-      <p className="text-[11px] text-muted-foreground">
-        每個軸最多三層；小計與總計直接聚合資料，畫面可展開與分頁。客戶及應收為目前快照。
+      <p className="text-xs text-muted-foreground">
+        每軸最多三層。客戶及應收使用目前快照。
       </p>
     </div>
   )

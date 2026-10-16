@@ -48,6 +48,9 @@ ACCOUNT_DISABLED = "這個帳號已停用，請洽 IT"
 # 決賽評審用自己的 Google 登入，要能馬上試完整流程（9/16 James 決定）
 EXTERNAL_ACCOUNT_ACTS_AS = "U01"
 
+# 切換使用現有示範人物及其組織範圍，不修改登入者或示範人物的角色、密碼與 sessionVersion。
+DEMO_ROLE_USERS = {"sales": "U01", "manager": "M01", "it": "A01"}
+
 # 沒設定 JWT_SECRET 時，這支程式自己產生一把；重開之後大家要重新登入。
 # 不給寫死的預設值：預設值一旦進了公開的 repo，等於誰都能自己簽一張通行證
 _fallback_secret = secrets.token_urlsafe(48)
@@ -75,9 +78,11 @@ def verify_password(plain: str, hashed: str | None) -> bool:
         return False
 
 
-def create_token(user: AppUser) -> str:
-    expire = dt.datetime.now(dt.UTC) + dt.timedelta(hours=settings().jwt_expire_hours)
+def create_token(user: AppUser, *, demo_role: str | None = None, expires_at: int | None = None) -> str:
+    expire = expires_at if expires_at is not None else dt.datetime.now(dt.UTC) + dt.timedelta(hours=settings().jwt_expire_hours)
     payload = {"sub": user.id, "sv": user.session_version, "exp": expire}
+    if demo_role is not None:
+        payload["demo_role"] = demo_role
     return jwt.encode(payload, _secret(), algorithm=ALGORITHM)
 
 
@@ -119,13 +124,17 @@ def start_session(session: Session, user: AppUser) -> str:
     return create_token(user)
 
 
-def user_from_token(session: Session, token: str) -> AppUser:
+def token_claims(token: str) -> dict:
     try:
-        claims = jwt.decode(token, _secret(), algorithms=[ALGORITHM])
+        return jwt.decode(token, _secret(), algorithms=[ALGORITHM], options={"require": ["sub", "sv", "exp"]})
     except jwt.ExpiredSignatureError:
         raise AuthError(TOKEN_EXPIRED) from None
     except jwt.PyJWTError:
         raise AuthError(TOKEN_EXPIRED) from None
+
+
+def user_from_token(session: Session, token: str, *, demo: bool = True) -> AppUser:
+    claims = token_claims(token)
     user = session.get(AppUser, claims.get("sub"))
     if user is None:
         raise AuthError(TOKEN_EXPIRED)
@@ -134,6 +143,13 @@ def user_from_token(session: Session, token: str) -> AppUser:
         raise AuthError(ACCOUNT_DISABLED)
     if int(claims.get("sv", -1)) != user.session_version:
         raise AuthError(SESSION_SUPERSEDED)
+    role = claims.get("demo_role")
+    if demo and settings().demo_role_switch and role is not None:
+        target_id = DEMO_ROLE_USERS.get(role) if isinstance(role, str) else None
+        target = session.get(AppUser, target_id) if target_id else None
+        if target is None or target.deactivated_at is not None or target.role != role:
+            raise AuthError("這個示範身分目前無法使用，請重新登入或洽 IT")
+        return target
     return user
 
 

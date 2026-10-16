@@ -1,4 +1,4 @@
-import { ChevronLeft } from "lucide-react"
+import { ChevronLeft } from "@/components/icons"
 import { Link, useNavigate } from "react-router"
 
 /*
@@ -32,7 +32,7 @@ export function PrivacyPage() {
         >
           <ChevronLeft className="size-5" />
         </button>
-        <h1 className="text-base font-semibold">隱私權政策</h1>
+        <h1 className="text-xl font-semibold">隱私權政策</h1>
       </header>
 
       <main className="flex flex-col gap-6 px-4 pt-4 pb-12">

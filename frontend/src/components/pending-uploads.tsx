@@ -1,4 +1,4 @@
-import { Loader2 } from "lucide-react"
+import { Loader2 } from "@/components/icons"
 import { Link } from "react-router"
 
 import { Button } from "@/components/ui/button"

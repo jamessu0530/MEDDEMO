@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react"
-import { ChevronRight, Loader2, LogOut } from "lucide-react"
+import { ChevronRight, Loader2, LogOut } from "@/components/icons"
 import { Link, useLocation, useNavigate } from "react-router"
 
 import {
@@ -20,6 +20,7 @@ import { LocationShareSection } from "@/components/route/location-share"
 import { TravelModeIcon } from "@/components/route/travel-mode-icon"
 import { FacebookButton, NotReadyButton, RedirectButton } from "@/components/oauth-buttons"
 import { PageHeader } from "@/components/page-header"
+import { ContextHelp } from "@/components/context-help"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -64,7 +65,7 @@ function SkinPicker() {
   const skin = useSkin()
   return (
     <section className="flex flex-col gap-3">
-      <h2 className="text-sm font-semibold">配色</h2>
+      <h2 className="text-base font-semibold">配色</h2>
       <div role="radiogroup" aria-label="配色" className="grid grid-cols-2 gap-2">
         {SKINS.map(({ id, label, swatch }) => (
           <button
@@ -100,7 +101,7 @@ function TextSizePicker() {
   const size = useTextSize()
   return (
     <section className="flex flex-col gap-3">
-      <h2 className="text-sm font-semibold">字體大小</h2>
+      <h2 className="text-base font-semibold">字體大小</h2>
       <div role="radiogroup" aria-label="字體大小" className="grid grid-cols-3 gap-2">
         {TEXT_SIZES.map(({ id, label, sample }) => (
           <button
@@ -160,11 +161,8 @@ function TravelModePicker({ userId }: { userId: string }) {
   return (
     <section className="flex flex-col gap-3">
       <div className="flex flex-col gap-1">
-        <h2 className="text-sm font-semibold">交通方式</h2>
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          行程的時間、排順路與地圖上的路線都照它算。換了之後今天的順序不動，要照新的方式排順路，到調整行程按「幫我排順一點」。
-        </p>
-        <p className="text-xs leading-relaxed text-muted-foreground">這是整天的預設；每一段可以在首頁的路線上另外選。</p>
+        <div className="flex items-center justify-between"><h2 className="text-base font-semibold">預設交通方式</h2><ContextHelp label="交通方式如何套用"><p>路段時間、地圖路線與排順路會依交通方式計算；個別路段也可以另外調整。</p><p>想重新排序，請到「調整行程」選擇「幫我排順一點」。</p></ContextHelp></div>
+        <p className="text-sm text-muted-foreground">變更後不會重新排列今天的行程。</p>
       </div>
       <div role="radiogroup" aria-label="交通方式" className="grid grid-cols-3 gap-2">
         {TRAVEL_MODES.map((option) => (
@@ -336,9 +334,9 @@ function LinkedAccounts({ user, providers }: { user: AuthUser; providers: OAuthP
   return (
     <section className="flex flex-col gap-3">
       <div>
-        <h2 className="text-sm font-semibold">綁定的登入方式</h2>
+        <h2 className="text-base font-semibold">綁定的登入方式</h2>
         <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-          綁定之後，登入頁可以直接用這些帳號登入；Email 密碼一樣可以用。
+          可用以下帳號登入。
         </p>
       </div>
 
@@ -541,6 +539,17 @@ export function SettingsPage() {
     }
   }
 
+  if (user.demo?.role) {
+    return (
+      <div className="flex min-h-svh flex-col">
+        <PageHeader title="帳號設定" backTo={homePath(user.role)} />
+        <section className="m-4 rounded-2xl border-2 bg-card p-4 text-sm leading-relaxed shadow-lip">
+          目前正在展示{ROLE_LABEL[user.role]}「{user.name}」。請先在上方按「回原帳號」，再修改{user.demo.account.name}的帳號設定。
+        </section>
+      </div>
+    )
+  }
+
   return (
     <div className="flex min-h-svh flex-col">
       <PageHeader title="帳號設定" backTo={homePath(user.role)} />
@@ -616,12 +625,12 @@ export function SettingsPage() {
 
         {user.has_password === false ? (
           <section className="flex flex-col gap-1">
-            <h2 className="text-sm font-semibold">密碼</h2>
+            <h2 className="text-base font-semibold">密碼</h2>
             <p className="text-sm leading-relaxed text-muted-foreground">這個帳號用第三方登入，沒有密碼。</p>
           </section>
         ) : (
         <section className="flex flex-col gap-3">
-          <h2 className="text-sm font-semibold">改密碼</h2>
+          <h2 className="text-base font-semibold">改密碼</h2>
           <form className="flex flex-col gap-4" onSubmit={submit}>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="current-password">目前的密碼</Label>

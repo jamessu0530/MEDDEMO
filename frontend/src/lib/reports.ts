@@ -1,3 +1,5 @@
+import type { StudioObject, ReportAnalytics } from "@/lib/report-studio"
+
 export type ReportMetric =
   | "sales"
   | "net_margin"
@@ -27,6 +29,8 @@ export const PART_WHOLE_VISUALS: ReportVisual[] = [
   "pie",
   "donut",
   "treemap",
+  "waterfall",
+  "funnel",
 ]
 export type ReportComparisonMode = "none" | "previous_month" | "previous_year"
 export type ReportComparisonValue = {
@@ -99,6 +103,9 @@ export type ReportVisual =
   | "scatter"
   | "table"
   | "matrix"
+  | "waterfall"
+  | "funnel"
+  | "map"
 export type ReportPeriod =
   "this_month" | "last_month" | "quarter" | "six_months" | "year" | "custom"
 export type ReportFilter = {
@@ -128,6 +135,9 @@ export type ReportQuery = ReportConfig & {
   selection_groups?: ReportSelectionGroup[]
   drill_filters?: Record<string, ReportFilter[]>
   matrix_views?: Record<string, ReportMatrixView>
+  canvas_selections?: { object_id: string; keys: string[] }[]
+  navigation_page?: string | null
+  navigation_filters?: ReportFilter[]
 }
 export type ReportMatrixOptions = {
   rows: ReportFilter["dimension"][]
@@ -188,6 +198,7 @@ export type ReportPage = {
   slicers?: ReportSlicer[]
   date_range?: ReportDateRange | null
   desktop_layout?: "flow" | "free"
+  tooltip?: boolean
 }
 export type ReportDesktopLayout = { x: number; y: number; w: number; h: number }
 export type ReportMobileLayout = {
@@ -222,6 +233,14 @@ export type ReportCard = {
   format?: ReportFormat
   desktop_layout?: ReportDesktopLayout | null
   mobile_layout?: ReportMobileLayout | null
+  layer?: number
+  hidden?: boolean
+  locked?: boolean
+  group_id?: string | null
+  drillthrough_page?: string | null
+  tooltip_page?: string | null
+  analytics?: ReportAnalytics
+  stage_order?: string[]
 }
 export type ReportFormatDomain = {
   minimum: number | null
@@ -296,9 +315,12 @@ export type ReportConfig = {
   filters?: ReportFilter[]
   slicers?: ReportSlicer[]
   date_range?: ReportDateRange | null
+  objects?: StudioObject[]
 }
 export type OwnerOption = { id: string; name: string }
 export type ReportPoint = {
+  lat?: number | null
+  lng?: number | null
   key: string
   label: string
   value: number | null
@@ -307,6 +329,11 @@ export type ReportPoint = {
   comparison?: ReportComparisonValue | null
 }
 export type CardData = {
+  analysis?: {
+    trend: { key: string; label: string; value: number }[]
+    forecast: { key: string; label: string; value: number }[]
+    note: string
+  } | null
   id: string
   total: number | null
   row_count?: number
@@ -386,6 +413,9 @@ export const VISUALS: Record<ReportVisual, string> = {
   scatter: "散佈圖",
   table: "彙總表",
   matrix: "矩陣",
+  waterfall: "瀑布圖",
+  funnel: "漏斗圖",
+  map: "客戶地圖",
 }
 export const REPORT_COLORS = [
   "#6455c7",
@@ -409,6 +439,7 @@ export const VISUAL_GROUPS: { label: string; visuals: ReportVisual[] }[] = [
   },
   { label: "趨勢與關係", visuals: ["line", "area", "combo", "scatter"] },
   { label: "占比", visuals: ["pie", "donut", "treemap"] },
+  { label: "階段與地理", visuals: ["waterfall", "funnel", "map"] },
   { label: "摘要與明細", visuals: ["kpi", "table", "matrix"] },
 ]
 export const PERIODS: Record<ReportPeriod, string> = {
@@ -556,6 +587,17 @@ export function normalizeCard(card: ReportCard): ReportCard {
     next.slicers = next.slicers.filter((filter) =>
       allowed.includes(filter.dimension)
     )
+  if (next.visual === "map") next.dimension = "customer"
+  if (
+    next.analytics &&
+    (!["line", "area", "combo"].includes(next.visual) || next.legend)
+  )
+    next.analytics = { trend_line: false, forecast_periods: 0 }
+  if (
+    next.analytics?.forecast_periods &&
+    !["sales", "net_margin", "visits"].includes(next.metric)
+  )
+    next.analytics = { ...next.analytics, forecast_periods: 0 }
   return next
 }
 
@@ -696,6 +738,16 @@ function slicerDataKey(slicers: ReportSlicer[]) {
 
 export function reportDataKey(config: ReportQuery): string {
   return JSON.stringify({
+    canvas_selections: config.canvas_selections ?? [],
+    canvas_slicers: (config.objects ?? [])
+      .filter((object) => object.slicer)
+      .map((object) => ({
+        id: object.id,
+        page_id: object.page_id,
+        slicer: object.slicer,
+      })),
+    navigation_page: config.navigation_page ?? null,
+    navigation_filters: config.navigation_filters ?? [],
     period: config.period,
     date_range: config.period === "custom" ? config.date_range : null,
     owner_id: config.owner_id,
@@ -737,10 +789,33 @@ export function reportDataKey(config: ReportQuery): string {
           date_range,
           comparison,
           matrix,
+          analytics,
+          stage_order,
         }) => ({
           id,
           metric,
           matrix_visual: visual === "matrix",
+          map_visual: visual === "map",
+          waterfall_visual: visual === "waterfall",
+          navigation_target:
+            !!config.navigation_page &&
+            config.navigation_page === (page_id ?? "overview"),
+          canvas_context: (config.objects ?? [])
+            .filter(
+              (object) =>
+                object.slicer &&
+                (object.slicer.pages.length
+                  ? object.slicer.pages
+                  : [object.page_id]
+                ).includes(page_id ?? "overview") &&
+                (!object.slicer.cards.length ||
+                  object.slicer.cards.includes(id))
+            )
+            .map((object) => object.id)
+            .sort(),
+          funnel_visual: visual === "funnel",
+          analytics: analytics ?? { trend_line: false, forecast_periods: 0 },
+          stage_order: visual === "funnel" ? (stage_order ?? []) : [],
           dimension,
           limit,
           legend: legend ?? null,

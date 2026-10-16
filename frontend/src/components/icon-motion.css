@@ -1,0 +1,210 @@
+/* Articulated SVG motion: each icon has a small, complete action.
+   Controllers set data-icon-playing so short taps and pointer exits never cut it off.
+   The components layer keeps existing loading spinners and rotation utilities intact. */
+@layer components {
+  :where(svg.lucide, svg[data-icon-motion]) {
+    overflow: visible;
+    transform-box: view-box;
+    transform-origin: center;
+  }
+  .living-icon [data-part] {
+    transform-box: view-box;
+    transform-origin: 12px 12px;
+  }
+  .living-icon [data-decor] { opacity: 0; }
+
+  /* New page, keyboard, pointer and touch all use the same authored sequence. */
+  :where(nav [aria-current="page"]) .living-icon:not([data-icon-motion="off"]):not([class*="animate-"]) [data-part],
+  .living-icon[data-icon-playing="true"] [data-part] {
+    animation: var(--part-motion, none) var(--part-duration, 1100ms) cubic-bezier(.22,.7,.25,1) both;
+    animation-delay: calc(var(--part-index, 0) * 50ms);
+  }
+  :where(svg.lucide, svg[data-icon-motion])[data-icon-playing="true"]:not(.living-icon) > * {
+    stroke-dasharray: var(--stroke-length, 100);
+    animation: ink-draw 900ms cubic-bezier(.25,.6,.3,1) both;
+  }
+  :where(svg.lucide, svg[data-icon-motion])[data-icon-playing="true"]:not(.living-icon) > :nth-child(even) {
+    animation-delay: 100ms;
+  }
+
+  /* Calendar: hold the binding, turn the sheet, then reveal the new dates. */
+  [data-part="calendar-sheet"] { --part-motion: sheet-turn; transform-origin: 12px 5px; }
+  [data-part="calendar-rings"] { --part-motion: binding-lift; }
+  [data-part="calendar-day"] { --part-motion: date-arrive; transform-box: fill-box; transform-origin: center; }
+  [data-part="calendar-curl"] { --part-motion: page-curl; }
+  [data-part="list-check"] { --part-motion: ink-draw; stroke-dasharray: var(--stroke-length, 8); }
+  [data-part="list-line"] { --part-motion: written-line; stroke-dasharray: var(--stroke-length, 6); }
+  [data-part="person-front"] { --part-motion: person-greet; transform-origin: 9px 21px; }
+  [data-part="person-back"] { --part-motion: person-reply; transform-origin: 18px 21px; }
+  [data-part="greeting"] { --part-motion: greeting-rays; }
+
+  /* Chat: type three dots, then let the second bubble answer. */
+  [data-part="bubble-front"] { --part-motion: chat-send; transform-origin: 3px 14px; }
+  [data-part="bubble-reply"] { --part-motion: chat-reply; transform-origin: 21px 21px; }
+  [data-part="typing-dot"] { --part-motion: typing-dot; transform-box: fill-box; transform-origin: center; }
+  [data-part="reply-line"] { --part-motion: reply-ink; stroke-dasharray: var(--stroke-length, 6); }
+  [data-part="question"] { --part-motion: ask-think; }
+  [data-part="answer"] { --part-motion: answer-draw; stroke-dasharray: var(--stroke-length, 10); }
+
+  /* Capsule: the two real halves separate; medicine spills into the gap. */
+  [data-part="capsule-top"] { --part-motion: capsule-open-top; }
+  [data-part="capsule-bottom"] { --part-motion: capsule-open-bottom; }
+  [data-part="medicine"] { --part-motion: medicine-scatter; transform-box: fill-box; transform-origin: center; }
+  [data-part="bell-shell"] { --part-motion: bell-ring; transform-origin: 12px 3px; }
+  [data-part="bell-clapper"] { --part-motion: clapper-ring; transform-origin: 12px 17px; }
+  [data-part="bell-sound"] { --part-motion: ring-waves; }
+  [data-part="book-left"] { --part-motion: book-open-left; }
+  [data-part="book-right"] { --part-motion: book-open-right; }
+  [data-part="book-ink"] { --part-motion: book-write; stroke-dasharray: var(--stroke-length, 12); }
+  [data-part="chart-bar"] { --part-motion: bar-build; transform-origin: 12px 21px; }
+  [data-part="chart-trend"] { --part-motion: trend-draw; stroke-dasharray: var(--stroke-length, 35); }
+  [data-part="gear"] { --part-motion: gear-engage; }
+  [data-part="gear-core"] { --part-motion: gear-core; }
+  [data-part="search-lens"] { --part-motion: lens-search; }
+  [data-part="lens-glint"] { --part-motion: lens-glint; stroke-dasharray: var(--stroke-length, 8); }
+
+  /* Plane: fold, launch off-canvas, then return along the flight path. */
+  [data-part="paper-plane"] { --part-motion: plane-flight; }
+  [data-part="plane-fold"] { --part-motion: plane-fold; }
+  [data-part="flight-trail"] { --part-motion: flight-trail; stroke-dasharray: var(--stroke-length, 8); }
+  [data-part="mic-capsule"] { --part-motion: microphone-talk; transform-origin: 12px 14px; }
+  [data-part="mic-waves"] { --part-motion: microphone-waves; }
+  [data-part="download-arrow"] { --part-motion: download-drop; }
+  [data-part="download-tray"] { --part-motion: tray-catch; }
+  [data-part="upload-arrow"] { --part-motion: upload-launch; }
+  [data-part="eyelid"] { --part-motion: eye-blink; }
+  [data-part="pupil"] { --part-motion: eye-look; }
+  [data-part="pin"] { --part-motion: pin-land; transform-origin: 12px 22px; }
+  [data-part="pin-ripple"] { --part-motion: location-ripple; transform-origin: 12px 22px; }
+  [data-part="paper-corner"] { --part-motion: corner-fold; transform-origin: 14px 8px; }
+  [data-part="written-line"] { --part-motion: written-line; stroke-dasharray: var(--stroke-length, 8); }
+  [data-part="sun-rays"] { --part-motion: sunshine-rays; }
+  [data-part="sun-core"] { --part-motion: sunshine-core; }
+  [data-part="moon"] { --part-motion: moon-rock; }
+  [data-part="moon-star"] { --part-motion: moon-twinkle; }
+  [data-part="heart-outline"] { --part-motion: heartbeat; }
+  [data-part="heart-fill"] { --part-motion: heart-warm; }
+  [data-part="box-lid"] { --part-motion: unbox; transform-origin: 3px 7px; }
+  [data-part="box-surprise"] { --part-motion: unbox-surprise; }
+  [data-part="trash-lid"] { --part-motion: lid-open; transform-origin: 5px 6px; }
+  [data-part="trash-bin"] { --part-motion: bin-catch; transform-origin: 12px 22px; }
+  [data-part="flag-cloth"] { --part-motion: flag-billow; transform-origin: 4px 10px; }
+  [data-part="clock-minute"] { --part-motion: clock-tick; }
+  [data-part="clock-hour"] { --part-motion: hour-tick; }
+
+  /* Only unread bells repeat, with a long pause between short rings. */
+  .living-icon[data-icon-attention="true"]:not([data-icon-playing]) [data-part="bell-shell"] {
+    animation: unread-ring 7s ease-in-out infinite;
+  }
+  .living-icon[data-icon-attention="true"]:not([data-icon-playing]) [data-part="bell-clapper"] {
+    animation: unread-clapper 7s ease-in-out infinite;
+  }
+  /* A one-frame reset makes repeated clicks restart even on the current nav item. */
+  :where(svg.lucide, svg[data-icon-motion])[data-icon-playing="reset"],
+  :where(svg.lucide, svg[data-icon-motion])[data-icon-playing="reset"] * {
+    animation: none !important;
+  }
+  :where(button:disabled, [aria-disabled="true"]) .living-icon [data-part] {
+    animation: none;
+  }
+}
+
+@keyframes ink-draw {
+  0%, 10% { stroke-dashoffset: var(--stroke-length, 100); }
+  80%, 100% { stroke-dashoffset: 0; }
+}
+@keyframes sheet-turn {
+  0%, 100% { transform: perspective(80px) rotateX(0); opacity: 1; }
+  28% { transform: perspective(80px) rotateX(-72deg); opacity: .2; }
+  29% { transform: perspective(80px) rotateX(65deg); opacity: .2; }
+  65% { transform: perspective(80px) rotateX(-7deg); opacity: 1; }
+}
+@keyframes binding-lift { 0%, 100% { transform: translateY(0); } 28% { transform: translateY(-1.2px); } }
+@keyframes date-arrive {
+  0%, 25% { opacity: 0; transform: scale(.2); }
+  65% { opacity: 1; transform: scale(1.6); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes page-curl { 0%, 15%, 65%, 100% { opacity: 0; } 27% { opacity: .65; transform: translateY(-3px); } }
+@keyframes written-line { 0%, 28% { stroke-dashoffset: var(--stroke-length, 12); } 85%, 100% { stroke-dashoffset: 0; } }
+@keyframes person-greet { 0%, 100% { transform: rotate(0); } 30% { transform: rotate(-9deg) translateY(-1px); } 65% { transform: rotate(4deg); } }
+@keyframes person-reply { 0%, 22%, 100% { transform: rotate(0); } 48% { transform: rotate(10deg) translateY(-1px); } 72% { transform: rotate(-4deg); } }
+@keyframes greeting-rays { 0%, 25%, 85%, 100% { opacity: 0; } 45%, 60% { opacity: 1; } }
+@keyframes chat-send {
+  0%, 100% { transform: translate(0,0) scale(1); }
+  18% { transform: translate(-1px,1px) scale(.92); }
+  48% { transform: translate(0,-1px) scale(1.03); }
+  75% { transform: translate(0,0) scale(1); }
+}
+@keyframes chat-reply {
+  0%, 25% { transform: translate(3px,3px) scale(.75); opacity: .15; }
+  65% { transform: translate(-.5px,-.5px) scale(1.05); opacity: 1; }
+  100% { transform: translate(0,0) scale(1); opacity: 1; }
+}
+@keyframes typing-dot {
+  0%, 12%, 65%, 100% { opacity: 0; transform: translateY(0); }
+  27% { opacity: 1; transform: translateY(-1px); }
+  42% { opacity: 1; transform: translateY(0); }
+}
+@keyframes reply-ink { 0%, 45%, 100% { opacity: 0; stroke-dashoffset: var(--stroke-length, 6); } 65%, 83% { opacity: 1; stroke-dashoffset: 0; } }
+@keyframes ask-think { 0%, 100% { opacity: 1; transform: rotate(0); } 24% { transform: rotate(-16deg); } 40%, 78% { opacity: 0; transform: rotate(12deg) scale(.5); } }
+@keyframes answer-draw { 0%, 35%, 100% { opacity: 0; stroke-dashoffset: var(--stroke-length, 10); } 55%, 78% { opacity: 1; stroke-dashoffset: 0; } 88% { opacity: 0; stroke-dashoffset: 0; } }
+@keyframes capsule-open-top { 0%, 100% { transform: translateY(0); } 22% { transform: translateY(.7px); } 42%, 68% { transform: translateY(-3px); } 88% { transform: translateY(.5px); } }
+@keyframes capsule-open-bottom { 0%, 100% { transform: translateY(0); } 22% { transform: translateY(-.7px); } 42%, 68% { transform: translateY(3px); } 88% { transform: translateY(-.5px); } }
+@keyframes medicine-scatter {
+  0%, 28%, 87%, 100% { opacity: 0; transform: translate(0,0) scale(0); }
+  45% { opacity: 1; transform: translate(calc((var(--part-index, 1) - 1) * 1px), -1px) scale(1.2); }
+  68% { opacity: 1; transform: translate(calc((var(--part-index, 1) - 1) * 2px), 2px) scale(.7); }
+}
+@keyframes bell-ring { 0%, 100% { transform: rotate(0); } 15% { transform: rotate(-25deg); } 30% { transform: rotate(22deg); } 45% { transform: rotate(-15deg); } 60% { transform: rotate(10deg); } 78% { transform: rotate(-4deg); } }
+@keyframes clapper-ring { 0%, 100% { transform: rotate(0); } 19% { transform: rotate(22deg); } 34% { transform: rotate(-20deg); } 49% { transform: rotate(14deg); } 65% { transform: rotate(-8deg); } 81% { transform: rotate(3deg); } }
+@keyframes ring-waves { 0%, 8%, 78%, 100% { opacity: 0; } 20%, 45% { opacity: .8; } 30%, 60% { opacity: .2; } }
+@keyframes book-open-left { 0%, 100% { transform: perspective(60px) rotateY(0); } 30% { transform: perspective(60px) rotateY(-62deg); } 65% { transform: perspective(60px) rotateY(8deg); } }
+@keyframes book-open-right { 0%, 100% { transform: perspective(60px) rotateY(0); } 30% { transform: perspective(60px) rotateY(62deg); } 65% { transform: perspective(60px) rotateY(-8deg); } }
+@keyframes book-write { 0%, 35% { stroke-dashoffset: var(--stroke-length, 12); opacity: .2; } 85%, 100% { stroke-dashoffset: 0; opacity: 1; } }
+@keyframes bar-build { 0%, 12% { transform: scaleY(.15); } 60% { transform: scaleY(1.18); } 80% { transform: scaleY(.96); } 100% { transform: scaleY(1); } }
+@keyframes trend-draw { 0%, 25% { stroke-dashoffset: var(--stroke-length, 35); } 90%, 100% { stroke-dashoffset: 0; } }
+@keyframes gear-engage { 0% { transform: rotate(0); } 60% { transform: rotate(390deg); } 82% { transform: rotate(350deg); } 100% { transform: rotate(360deg); } }
+@keyframes gear-core { 0%, 100% { transform: scale(1); } 35% { transform: scale(.65); } 65% { transform: scale(1.12); } }
+@keyframes lens-search { 0%, 100% { transform: translate(0,0); } 25% { transform: translate(-2px,-1px) rotate(-8deg); } 55% { transform: translate(2px,1px) rotate(5deg); } 80% { transform: translate(-.5px,0); } }
+@keyframes lens-glint { 0%, 12%, 85%, 100% { opacity: 0; stroke-dashoffset: var(--stroke-length, 8); } 45%, 65% { opacity: .8; stroke-dashoffset: 0; } }
+@keyframes plane-flight {
+  0%, 100% { transform: translate(0,0) scale(1); opacity: 1; }
+  18% { transform: translate(-2px,2px) scale(.9); opacity: 1; }
+  42% { transform: translate(15px,-15px) scale(.6); opacity: 0; }
+  43%, 58% { transform: translate(-12px,12px) scale(.65); opacity: 0; }
+  85% { transform: translate(1px,-1px) scale(1.03); opacity: 1; }
+}
+@keyframes plane-fold { 0%, 100% { transform: scaleX(1); } 18%, 35% { transform: scaleX(.72); } 85% { transform: scaleX(1.05); } }
+@keyframes flight-trail { 0%, 18%, 75%, 100% { opacity: 0; stroke-dashoffset: var(--stroke-length, 8); } 30% { opacity: .8; stroke-dashoffset: 0; } 55% { opacity: 0; stroke-dashoffset: calc(var(--stroke-length, 8) * -1); } }
+@keyframes microphone-talk { 0%, 100% { transform: scaleY(1); } 20%, 55% { transform: scaleY(.8); } 35%, 72% { transform: scaleY(1.08); } }
+@keyframes microphone-waves { 0%, 100% { opacity: 0; transform: scaleX(.8); } 25%, 62% { opacity: .8; transform: scaleX(1); } 42%, 80% { opacity: .2; transform: scaleX(1.15); } }
+@keyframes download-drop { 0%, 100% { transform: translateY(0); opacity: 1; } 20% { transform: translateY(-2px); opacity: 1; } 48% { transform: translateY(8px); opacity: 0; } 49% { transform: translateY(-7px); opacity: 0; } 78% { transform: translateY(.5px); opacity: 1; } }
+@keyframes tray-catch { 0%, 35%, 100% { transform: translateY(0); } 54% { transform: translateY(2px); } 75% { transform: translateY(-.5px); } }
+@keyframes upload-launch { 0%, 100% { transform: translateY(0); opacity: 1; } 20% { transform: translateY(2px); opacity: 1; } 48% { transform: translateY(-8px); opacity: 0; } 49% { transform: translateY(7px); opacity: 0; } 78% { transform: translateY(-.5px); opacity: 1; } }
+@keyframes eye-blink { 0%, 12%, 48%, 100% { transform: scaleY(1); } 28% { transform: scaleY(.08); } 62% { transform: scaleY(1.08); } }
+@keyframes eye-look { 0%, 40%, 100% { transform: translateX(0); } 62%, 78% { transform: translateX(2px); } }
+@keyframes pin-land { 0%, 100% { transform: translateY(0) scale(1); } 28% { transform: translateY(-4px) scale(.96,1.04); } 58% { transform: translateY(0) scale(1.12,.88); } 78% { transform: translateY(-1px) scale(.97,1.03); } }
+@keyframes location-ripple { 0%, 30%, 100% { opacity: 0; transform: scale(.3); } 58% { opacity: .6; transform: scale(.8); } 90% { opacity: 0; transform: scale(1.7); } }
+@keyframes corner-fold { 0%, 100% { transform: scaleX(1); } 28% { transform: scaleX(.15); } 65% { transform: scaleX(1.1); } }
+@keyframes sunshine-rays { 0% { transform: rotate(-45deg) scale(.6); opacity: .1; } 65% { transform: rotate(8deg) scale(1.15); opacity: 1; } 100% { transform: rotate(0) scale(1); opacity: 1; } }
+@keyframes sunshine-core { 0%, 100% { transform: scale(1); } 30% { transform: scale(.75); } 68% { transform: scale(1.12); } }
+@keyframes moon-rock { 0%, 100% { transform: rotate(0); } 38% { transform: rotate(-18deg); } 72% { transform: rotate(6deg); } }
+@keyframes moon-twinkle { 0%, 12%, 100% { opacity: 0; transform: scale(.5); } 40% { opacity: 1; transform: scale(1.15); } 75% { opacity: .6; transform: scale(.9); } }
+@keyframes heartbeat { 0%, 100% { transform: scale(1); } 22%, 55% { transform: scale(1.12); } 38%, 75% { transform: scale(.95); } }
+@keyframes heart-warm { 0%, 100% { opacity: 0; } 22%, 55% { opacity: .85; } 38%, 75% { opacity: .3; } }
+@keyframes unbox { 0%, 100% { transform: translateY(0) rotate(0); } 32%, 58% { transform: translateY(-4px) rotate(-12deg); } 82% { transform: translateY(.5px) rotate(2deg); } }
+@keyframes unbox-surprise { 0%, 18%, 100% { opacity: 0; transform: translateY(3px) scale(.3); } 48% { opacity: 1; transform: translateY(-5px) scale(1.1); } 78% { opacity: 0; transform: translateY(-7px) scale(.6); } }
+@keyframes lid-open { 0%, 100% { transform: rotate(0) translateY(0); } 32%, 55% { transform: rotate(-25deg) translateY(-3px); } 80% { transform: rotate(4deg) translateY(0); } }
+@keyframes bin-catch { 0%, 100% { transform: rotate(0); } 32% { transform: rotate(4deg); } 65% { transform: rotate(-3deg); } }
+@keyframes flag-billow { 0%, 100% { transform: skewY(0) scaleX(1); } 25% { transform: skewY(-7deg) scaleX(.85); } 55% { transform: skewY(5deg) scaleX(1.04); } 80% { transform: skewY(-2deg) scaleX(.97); } }
+@keyframes clock-tick { 0% { transform: rotate(0); } 75% { transform: rotate(375deg); } 100% { transform: rotate(360deg); } }
+@keyframes hour-tick { 0%, 100% { transform: rotate(0); } 75% { transform: rotate(28deg); } }
+@keyframes unread-ring { 0%, 7%, 30%, 100% { transform: rotate(0); } 11%, 19% { transform: rotate(-18deg); } 15%, 23% { transform: rotate(15deg); } 27% { transform: rotate(-5deg); } }
+@keyframes unread-clapper { 0%, 8%, 31%, 100% { transform: rotate(0); } 12%, 20% { transform: rotate(16deg); } 16%, 24% { transform: rotate(-13deg); } 28% { transform: rotate(4deg); } }
+
+/* Preserve stateful arrow rotations and layout transforms when motion is reduced. */
+@media (prefers-reduced-motion: reduce) {
+  :where(svg.lucide, svg[data-icon-motion]),
+  :where(svg.lucide, svg[data-icon-motion]) * { animation: none !important; }
+}

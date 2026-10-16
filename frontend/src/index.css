@@ -3,9 +3,18 @@
 @import "shadcn/tailwind.css";
 /* 粉圓體（jf open 粉圓，SIL OFL 1.1）：只有 400 一個字重，按字切成 111 塊，用到哪些字才下載哪幾塊 */
 @import "@fontsource/huninn/400.css";
+@import "./components/icon-motion.css";
 
 /* 元件裡的 dark: 樣式跟著深色配色走（<html data-skin="dark">，lib/skin.ts） */
 @custom-variant dark (&:where([data-skin="dark"], [data-skin="dark"] *));
+
+/* 資訊層級：正文 16px、次要內容 15px、少量註記 13px；rem 保留帳號的大字設定。 */
+@theme {
+    --text-xs: .8125rem;
+    --text-xs--line-height: 1.25rem;
+    --text-sm: .9375rem;
+    --text-sm--line-height: 1.5rem;
+}
 
 @theme inline {
     /* 粉圓體：中英文都是圓的（英文是 Varela Round），跟 Duolingo 那種圓圓厚厚的按鈕搭。還沒下載完或沒網路時先用手機內建的黑體 */
@@ -169,7 +178,7 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-base leading-relaxed text-foreground;
   }
   html {
     @apply font-sans;

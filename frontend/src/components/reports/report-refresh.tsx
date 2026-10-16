@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react"
-import { LoaderCircle, RefreshCw } from "lucide-react"
+import { LoaderCircle, RefreshCw } from "@/components/icons"
 import {
   reportLoadedTime,
   reportRefreshDue,
@@ -21,6 +21,10 @@ export function ReportRefreshControls({
   onChange: (seconds: RefreshSeconds) => void
   onRefresh: () => void
 }) {
+  const fullLoadedTime = reportLoadedTime(loadedAt)
+  const loadedTime = loadedAt && Number.isFinite(Date.parse(loadedAt))
+    ? new Intl.DateTimeFormat("zh-TW", { timeZone: "Asia/Taipei", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(loadedAt))
+    : fullLoadedTime
   const current = useRef({ busy, onRefresh })
   const lastAttempt = useRef(0)
   useEffect(() => {
@@ -60,7 +64,7 @@ export function ReportRefreshControls({
     >
       <button
         type="button"
-        className="flex min-h-10 items-center gap-1.5 rounded-md border bg-background px-3 text-xs disabled:opacity-40"
+        className="flex min-h-10 items-center gap-1.5 rounded-md border bg-background px-3 text-sm disabled:opacity-40"
         disabled={busy}
         onClick={onRefresh}
       >
@@ -71,7 +75,7 @@ export function ReportRefreshControls({
         )}{" "}
         {busy ? "正在刷新" : "刷新資料"}
       </button>
-      <label className="flex min-w-0 items-center gap-2 text-xs">
+      <label className="flex min-w-0 items-center gap-2 text-sm">
         自動刷新
         <select
           className="h-10 min-w-0 rounded-md border bg-background px-2"
@@ -88,12 +92,11 @@ export function ReportRefreshControls({
         </select>
       </label>
       <p
-        className="min-w-0 flex-[1_1_19rem] text-[10px] leading-relaxed text-muted-foreground"
+        className="min-w-0 flex-[1_1_19rem] text-xs leading-relaxed text-muted-foreground"
         role="status"
+        title={`${fullLoadedTime}（台北時間）。${seconds > 0 ? "自動刷新僅在本頁開啟、前景且連線時執行。" : ""}`}
       >
-        資料基準日 {asOf ?? "載入中"} · 上次成功載入{" "}
-        {reportLoadedTime(loadedAt)}（台北時間）。
-        {seconds > 0 && "自動刷新僅在本頁開啟、前景且連線時執行。"}
+        資料截至 {asOf ?? "載入中"} · 更新 {loadedTime}
       </p>
     </div>
   )

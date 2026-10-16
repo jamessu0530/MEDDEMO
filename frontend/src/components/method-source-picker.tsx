@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { ArrowLeft, LoaderCircle, Search } from "lucide-react"
+import { ArrowLeft, LoaderCircle, Search } from "@/components/icons"
 
 import {
   listMethodSources,

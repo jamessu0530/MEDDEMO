@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { CloudOff, Loader2, Mic, X } from "lucide-react"
+import { CloudOff, Loader2, Mic, X } from "@/components/icons"
 import { useNavigate, useParams } from "react-router"
 
 import { ApiError } from "@/api/client"
@@ -346,7 +346,7 @@ export function RecordVisit() {
           <SavedOnPhone
             offline={phase.offline}
             reason={phase.reason}
-            onContinue={() => navigate("/")}
+            onContinue={() => navigate("/route")}
           />
         )}
 

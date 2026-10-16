@@ -1,4 +1,4 @@
-import { MessagesSquare } from "lucide-react"
+import { MessagesSquare } from "@/components/icons"
 import { Link } from "react-router"
 
 import { useChannelUnread } from "@/lib/channel-unread"
@@ -24,7 +24,7 @@ export function UnreadDot({ count, className }: { count: number; className?: str
   return (
     <span
       className={cn(
-        "flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[0.625rem] font-semibold text-white",
+        "flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-xs font-semibold text-white",
         className
       )}
     >

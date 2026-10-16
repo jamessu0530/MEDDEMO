@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { CalendarDays, MessageCircleQuestion, Mic, type LucideIcon } from "lucide-react"
+import { ClipboardList, MessageCircleQuestion, Mic, type LucideIcon } from "@/components/icons"
 import { useLocation } from "react-router"
 
 import { Mascot } from "@/components/mascot"
@@ -12,10 +12,10 @@ import { cn } from "@/lib/utils"
 // mascot：這一步熊熊滾做什麼動作（打招呼、聽你說、想答案），跟這一步在講的事對得上
 const STEPS: { icon: LucideIcon; mascot: MascotState; title: string; body: string }[] = [
   {
-    icon: CalendarDays,
+    icon: ClipboardList,
     mascot: "hi",
-    title: "打開就是今日路線",
-    body: "首頁照時間排好今天跑哪幾家，每一站都寫了為什麼排這家。點一站進客戶檔案，最上面是「進門前三分鐘」：進貨間隔、帳齡、答應過的事和競品；每一家都有依下一個節慶準備的談判卡。最上面「需立即處理」那張卡排錯了，按暫緩或誤判，下次就少排。",
+    title: "打開先看訂單，拜訪切到路線",
+    body: "首頁可以查詢訂單、追蹤狀態和新增訂單。要出門拜訪時，點「路線」查看今天跑哪幾家、每一站的原因，也能切換地圖和調整行程。點一站進客戶檔案，就能看進貨間隔、帳齡、答應過的事和談判卡。",
   },
   {
     icon: Mic,

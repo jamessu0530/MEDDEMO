@@ -3,9 +3,11 @@ import type { Medal } from "@/api/me"
 import type { LatLng, TeamLeg } from "@/api/team-routes"
 
 // 每一站為什麼被排進來。後端 today_route.SIGNAL_LABEL 有同一組，改了要一起改
-export type RouteSignal = "commitment" | "ar" | "interval" | "order" | "contract" | "visit" | "opportunity" | "routine"
+export type RouteSignal = "commitment" | "ar" | "interval" | "order" | "contract" | "visit" | "opportunity" | "routine" | "priority" | "manager_priority"
 
 export const SIGNAL_LABEL: Record<RouteSignal, string> = {
+  priority: "經營策略",
+  manager_priority: "主管指定",
   commitment: "承諾逾期",
   ar: "帳款",
   interval: "間隔拉長",

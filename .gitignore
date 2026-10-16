@@ -10,6 +10,15 @@ __pycache__/
 /output/
 # 同步軟體產生的舊版副本，正式比較頁使用 viewer.js。
 /design/medals/gallery/viewer 2.js
+# 同步軟體產生的編號舊副本保留在本機，避免舊程式與測試進入正式建置。
+/frontend/public/product-photos/* [0-9].*
+/backend/app/services/product_catalog [0-9].py
+/backend/scripts/fetch_product_photos [0-9].py
+/backend/scripts/match_verified_product_photos [0-9].py
+/frontend/src/api/orders [0-9].ts
+/frontend/src/components/reports/report-filters.test [0-9].ts
+/frontend/src/lib/product-photos [0-9].ts
+/frontend/src/lib/product-photos.test [0-9].ts
 # 測試語料的真人錄音屬於個資（NFR-8），不進 git
 data/eval/audio/
 # 從 Salesforce 產品清單整頁複製下來的原始檔（含庫存），只給 data/seed/import_products.py 轉檔用

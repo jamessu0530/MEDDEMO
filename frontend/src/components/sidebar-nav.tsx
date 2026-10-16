@@ -24,13 +24,14 @@ export function SidebarNav({
       <Link
         key={item.to}
         to={item.to}
+        data-ui-demo={item.to === "/orders" ? "orders-nav" : undefined}
         aria-current={active ? "page" : undefined}
         className={cn(
           SIDEBAR_ITEM,
           active ? "bg-primary text-primary-foreground shadow-lip-primary" : "text-muted-foreground hover:bg-muted"
         )}
       >
-        <Icon className="size-5 shrink-0" />
+        <Icon data-icon-attention={item.badge === "replies" && count > 0 ? "true" : undefined} className="size-5 shrink-0" />
         <span className="min-w-0 flex-1 truncate">{item.label}</span>
         {count > 0 && <UnreadDot count={count} />}
       </Link>

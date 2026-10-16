@@ -9,6 +9,8 @@ AI 助理的吉祥物：一隻紫色、站著的小熊，叫「熊熊滾」。AI
 2026-10-14 加上四個日常小動作，造型沿用沒有手的熊熊滾：[翻滾、打盹、伸懶腰、害羞的互動預覽](assets/2026-10-14-mascot-motions.html)。
 預覽直接由 App 的元件和 CSS 產生，更新後執行 `npm --prefix frontend run mascot-sheet` 重建。
 
+2026-10-16 加上 `blink`「眨眨眼」：輕輕點頭、連眨兩下後再睜眼，已放進日常動作預覽；衣櫃的立體熊熊會自然眨眼，不顯示動作按鈕。立體模型屁股後側的小星號與自然眨眼詳見[衣櫃設計](2026-10-14-mascot-wardrobe-design.md)。
+
 同日加上「戳戳彩蛋」：`MascotPlay` 沿用沒有手的造型，連續戳六下先抖動、再噗地炸成兩隻小熊，按「合回一隻」重置。
 兩次點擊間隔達 1.4 秒就重新計數。支援鍵盤按鈕操作與系統的減少動態效果；出現在問答頁還沒有對話時的熊熊及互動預覽。
 
@@ -53,6 +55,7 @@ AI 助理的吉祥物：一隻紫色、站著的小熊，叫「熊熊滾」。AI
 | 狀態 | `state` | 動作 | 眼睛／嘴 |
 |---|---|---|---|
 | 待機 | `idle` | 呼吸；連眨兩下；右耳抖一下；左右張望 | 張開／微笑 |
+| 眨眨眼 | `blink` | 立即連眨兩下，輕輕點頭，再張開眼睛 | 張開與瞇眼交替／微笑 |
 | 打招呼 | `hi` | 左右探頭加小跳，兩隻耳朵輪流擺 | 笑到瞇起來／張嘴 |
 | 聆聽 | `listen` | 歪頭；右耳豎起來變大；聲波從右邊進來 | 張開／微笑 |
 | 思考 | `think` | 身體慢慢左右晃；三顆想法泡泡依序冒出來 | 往右上看／小圓嘴 |
@@ -92,7 +95,7 @@ AI 助理的吉祥物：一隻紫色、站著的小熊，叫「熊熊滾」。AI
 `frontend/src/components/mascot.tsx`：
 
 ```tsx
-type MascotState = "idle" | "hi" | "listen" | "think" | "talk" | "wait" | "yay" | "ride" | "roll" | "sleep" | "stretch" | "shy"
+type MascotState = "idle" | "hi" | "listen" | "think" | "talk" | "wait" | "yay" | "ride" | "blink" | "roll" | "sleep" | "stretch" | "shy"
 
 <Mascot state="think" size={28} bust />
 <Mascot state="wait" size={140} label="正在整理拜訪紀錄" />

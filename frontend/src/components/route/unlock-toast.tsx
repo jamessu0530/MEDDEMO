@@ -1,5 +1,5 @@
 import { useEffect, useEffectEvent } from "react"
-import { ChevronRight, Medal as MedalIcon } from "lucide-react"
+import { ChevronRight, Medal as MedalIcon } from "@/components/icons"
 import { Link } from "react-router"
 
 import type { Medal } from "@/api/me"

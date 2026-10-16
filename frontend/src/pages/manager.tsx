@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react"
-import { ChartNoAxesCombined, ChevronRight, Network, Settings, TriangleAlert } from "lucide-react"
+import { ChartNoAxesCombined, ChevronRight, Network, Settings, TriangleAlert } from "@/components/icons"
 import { Link, useNavigate, useSearchParams } from "react-router"
 
 import { listEscalations, replyEscalation, type Escalation } from "@/api/escalations"
@@ -10,6 +10,7 @@ import { AttachmentGallery } from "@/components/attachments/attachment-gallery"
 import { ChannelsLink } from "@/components/channels-link"
 import { ListRow, MasterDetail } from "@/components/manager/master-detail"
 import { RoutesPanel } from "@/components/manager/routes-panel"
+import { CustomerPriorityPanel } from "@/components/manager/customer-priority-panel"
 import { MethodCardForm } from "@/components/method-card-form"
 import { MethodSourceDisplay } from "@/components/method-source-display"
 import { Notice } from "@/components/notice"
@@ -31,18 +32,19 @@ import { useIsDesktop } from "@/lib/use-media-query"
 import { cn } from "@/lib/utils"
 import type { CustomerLocationState } from "@/pages/customer"
 
-// 主管端的分頁：團隊今天的行程（預設）、業務轉來的提問、拜訪提到競品或客訴的風險通報、簽核、自己寫的方法卡。
+// 主管端的分頁：團隊行程（預設）、客戶策略、提問、風險通報、簽核、方法卡。
 // 記在網址上，從客戶檔案回來還停在同一頁
-const VIEWS = ["routes", "asks", "notices", "oa", "methods"] as const
+const VIEWS = ["routes", "priority", "asks", "notices", "oa", "methods"] as const
 type View = (typeof VIEWS)[number]
 const VIEW_TITLE: Record<View, string> = {
   routes: "團隊行程",
+  priority: "客戶策略",
   asks: "待回覆的提問",
   notices: "風險通報",
   oa: "OA 簽核",
   methods: "方法卡",
 }
-const VIEW_TAB: Record<View, string> = { routes: "行程", asks: "提問", notices: "風險通報", oa: "簽核", methods: "方法卡" }
+const VIEW_TAB: Record<View, string> = { routes: "行程", priority: "客戶策略", asks: "提問", notices: "風險通報", oa: "簽核", methods: "方法卡" }
 type Tab = "open" | "answered"
 type LoadState = { status: "loading" } | { status: "error" } | { status: "ready"; items: Escalation[] }
 type NoticeState = { status: "loading" } | { status: "error" } | { status: "ready"; items: ManagerNotice[] }
@@ -111,7 +113,7 @@ export function ManagerPage() {
           </div>
         }
       />
-      <div className="flex border-b bg-background px-2 lg:hidden" role="tablist">
+      <div className="flex overflow-x-auto border-b bg-background px-2 lg:hidden" role="tablist">
         {VIEWS.map((value) => (
           <button
             key={value}
@@ -120,7 +122,7 @@ export function ManagerPage() {
             aria-selected={view === value}
             onClick={() => switchView(value)}
             className={cn(
-              "-mb-px flex h-11 min-w-0 flex-1 items-center justify-center gap-1 border-b-2 text-[0.8125rem] whitespace-nowrap",
+              "-mb-px flex h-11 min-w-16 flex-1 shrink-0 items-center justify-center gap-1 border-b-2 px-1 text-[0.8125rem] whitespace-nowrap",
               view === value ? "border-primary font-medium text-primary" : "border-transparent text-muted-foreground"
             )}
           >
@@ -128,7 +130,7 @@ export function ManagerPage() {
             {value === "notices" && noticeCount > 0 && (
               <span
                 aria-label={`未讀 ${noticeCount} 則`}
-                className="flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[0.625rem] font-semibold text-white"
+                className="flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-xs font-semibold text-white"
               >
                 {noticeCount}
               </span>
@@ -136,7 +138,7 @@ export function ManagerPage() {
             {value === "oa" && oaCount > 0 && (
               <span
                 aria-label={`待簽 ${oaCount} 張`}
-                className="flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[0.625rem] font-semibold text-white"
+                className="flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-xs font-semibold text-white"
               >
                 {oaCount}
               </span>
@@ -158,6 +160,8 @@ export function ManagerPage() {
         </Link>
         {view === "routes" ? (
           <RoutesPanel />
+        ) : view === "priority" ? (
+          <CustomerPriorityPanel />
         ) : view === "asks" ? (
           <EscalationsPanel />
         ) : view === "notices" ? (
@@ -265,7 +269,7 @@ function EscalationsPanel() {
 function EscalationArticle({ item, onReplied }: { item: Escalation; onReplied: (item: Escalation) => void }) {
   return (
     <article className="rounded-2xl border-2 bg-card p-4 shadow-lip">
-      <p className="text-[0.6875rem] text-muted-foreground">
+      <p className="text-xs text-muted-foreground">
         {formatDateTime(item.created_at)} · {item.kind === "data" ? "數字查詢" : "知識查詢"} · 單號 #{item.id}
       </p>
       <p className="mt-1.5 text-sm font-medium">{item.question}</p>
@@ -279,11 +283,11 @@ function EscalationArticle({ item, onReplied }: { item: Escalation; onReplied: (
         <ReplyForm item={item} onReplied={onReplied} />
       ) : (
         <div className="mt-3 rounded-xl bg-primary/10 px-3 py-2.5">
-          <p className="text-[0.6875rem] font-semibold text-primary">
+          <p className="text-xs font-semibold text-primary">
             {item.answered_by} · {item.answered_at && formatDateTime(item.answered_at)}
           </p>
           <p className="mt-1 text-sm leading-relaxed whitespace-pre-line">{item.answer}</p>
-          <p className="mt-1.5 text-[0.6875rem] text-muted-foreground">
+          <p className="mt-1.5 text-xs text-muted-foreground">
             {item.seen_at ? `業務 ${formatDateTime(item.seen_at)} 看過` : "業務還沒看"}
           </p>
         </div>
@@ -309,7 +313,7 @@ function EscalationSplit({
     <MasterDetail
       list={items.map((item) => (
         <ListRow key={item.id} selected={item.id === selected?.id} onSelect={() => onSelect(item.id)}>
-          <span className="text-[0.6875rem] text-muted-foreground">
+          <span className="text-xs text-muted-foreground">
             {formatDateTime(item.created_at)} · {item.kind === "data" ? "數字查詢" : "知識查詢"}
           </span>
           <span className="line-clamp-2 text-sm font-medium">{item.question}</span>
@@ -431,7 +435,7 @@ function NoticeSplit({
     <MasterDetail
       list={items.map((item) => (
         <ListRow key={item.id} selected={item.id === selected?.id} onSelect={() => onSelect(item.id)}>
-          <span className="flex items-center justify-between gap-2 text-[0.6875rem] text-muted-foreground">
+          <span className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
             <span className="min-w-0 truncate">
               {formatDateTime(item.created_at)} · 業務 {item.rep_name}
             </span>
@@ -468,11 +472,11 @@ function NoticeCard({ item, onSeen }: { item: ManagerNotice; onSeen: (item: Mana
   return (
     <article className={cn("rounded-2xl border-2 bg-card p-4 shadow-lip", unseen && "border-destructive/40")}>
       <div className="flex items-center justify-between gap-2">
-        <p className="min-w-0 text-[0.6875rem] text-muted-foreground">
+        <p className="min-w-0 text-xs text-muted-foreground">
           {formatDateTime(item.created_at)} · 業務 {item.rep_name}
         </p>
         {unseen && (
-          <span className="shrink-0 rounded-md bg-destructive/10 px-2 py-0.5 text-[0.6875rem] text-destructive">未讀</span>
+          <span className="shrink-0 rounded-md bg-destructive/10 px-2 py-0.5 text-xs text-destructive">未讀</span>
         )}
       </div>
       {/* 回來時停在風險通報，不是提問；電腦版選中的那一張記在 ?item=，一起帶回去（手機不看 item） */}
@@ -503,7 +507,7 @@ function NoticeCard({ item, onSeen }: { item: ManagerNotice; onSeen: (item: Mana
           知道了
         </Button>
       ) : (
-        item.seen_at && <p className="mt-2 text-[0.6875rem] text-muted-foreground">{formatDateTime(item.seen_at)} 看過</p>
+        item.seen_at && <p className="mt-2 text-xs text-muted-foreground">{formatDateTime(item.seen_at)} 看過</p>
       )}
     </article>
   )
@@ -620,7 +624,7 @@ function OaInboxSummary({ item }: { item: OaFormItem }) {
         {item.form_no} · {item.applicant_name}
         {item.kind !== "trip" && ` · ${item.customer_name}`}
       </p>
-      <p className="mt-1 text-[0.6875rem] text-muted-foreground">{oaDateText(item)}</p>
+      <p className="mt-1 text-xs text-muted-foreground">{oaDateText(item)}</p>
       {item.model && <OaModelNote model={item.model} className="mt-2" />}
     </>
   )
@@ -636,7 +640,7 @@ function AutoApprovedSummary({ item }: { item: OaFormItem }) {
           <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{formatProbability(item.model.probability)}</span>
         )}
       </div>
-      <p className="mt-1 text-[0.6875rem] text-muted-foreground">
+      <p className="mt-1 text-xs text-muted-foreground">
         {item.form_no} · {item.applicant_name} · {item.customer_name} · {oaDateText(item)}
       </p>
     </>
@@ -839,7 +843,7 @@ function MyMethodCard({
         採用 <span className="font-semibold tabular-nums">{card.adopted}</span> 次 · 沒幫上{" "}
         <span className="font-semibold tabular-nums">{card.not_helped}</span> 次
       </p>
-      <p className="mt-1 text-[0.6875rem] text-muted-foreground">
+      <p className="mt-1 text-xs text-muted-foreground">
         {card.source ? `整理上架：${card.author_name}` : card.author_name} · {formatDateTime(card.updated_at)} 更新
       </p>
       <MethodSourceDisplay source={card.source} className="mt-3" />

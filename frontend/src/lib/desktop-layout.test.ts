@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest"
 import { desktopSamePage, pageWidth, trimPath } from "@/lib/desktop-layout"
 
 describe("pageWidth", () => {
-  it("自己排成兩欄以上的六種頁是寬版", () => {
-    for (const path of ["/", "/channels", "/channels/12", "/manager", "/reports", "/mascots", "/customers/C0123", "/customers/C0123/quote"]) {
+  it("訂單首頁、路線與自己排成兩欄以上的頁是寬版", () => {
+    for (const path of ["/", "/orders", "/orders/123", "/route", "/channels", "/channels/12", "/manager", "/reports", "/mascots", "/customers/C0123", "/customers/C0123/quote"]) {
       expect(pageWidth(path), path).toBe("wide")
     }
   })
@@ -25,6 +25,9 @@ describe("pageWidth", () => {
     for (const path of [
       "/ask",
       "/customers",
+      "/route/edit",
+      "/route/edit/add",
+      "/route/habits",
       "/channels/search",
       "/channels/12/threads",
       "/customers/C0123/negotiation",

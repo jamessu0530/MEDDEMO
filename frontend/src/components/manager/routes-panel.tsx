@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react"
-import { ChevronLeft, ChevronRight, MapPin } from "lucide-react"
+import { ChevronLeft, ChevronRight, MapPin } from "@/components/icons"
 import { Link, useNavigate, useSearchParams } from "react-router"
 
 import { ApiError } from "@/api/client"
@@ -214,11 +214,11 @@ function RepDetail({ userId }: { userId: string }) {
         {route.location.text}
       </p>
       <section className="flex flex-col gap-1.5 rounded-2xl border-2 bg-card p-4 shadow-lip">
-        <h2 className="text-sm font-semibold">跟系統早上的建議比</h2>
+        <h2 className="text-base font-semibold">跟系統早上的建議比</h2>
         <Changes route={route} />
       </section>
       <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-semibold">今天的行程</h2>
+        <h2 className="text-base font-semibold">今天的行程</h2>
         <ol className="flex flex-col gap-2">
           {route.stops.map((stop) => (
             <StopRow key={stop.customer_id} stop={stop} backTo={backTo} />
@@ -289,14 +289,14 @@ function StopRow({ stop, backTo }: { stop: TeamStop; backTo: string }) {
             {done ? `${stop.planned_time} 完成` : `${stop.planned_time} 到 · 停 ${stop.duration_minutes} 分`}
           </span>
           <span className="mt-1 flex flex-wrap gap-1 empty:hidden">
-            {window && <span className="rounded-md bg-muted px-1.5 py-0.5 text-[0.6875rem]">{window}</span>}
+            {window && <span className="rounded-md bg-muted px-1.5 py-0.5 text-xs">{window}</span>}
             {!done && stop.late_minutes > 0 && (
-              <span className="rounded-md bg-destructive/10 px-1.5 py-0.5 text-[0.6875rem] text-destructive">
+              <span className="rounded-md bg-destructive/10 px-1.5 py-0.5 text-xs text-destructive">
                 會晚到 {stop.late_minutes} 分
               </span>
             )}
             {stop.source !== "model" && (
-              <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[0.6875rem] text-primary">
+              <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-xs text-primary">
                 {SOURCE_LABEL[stop.source]}
               </span>
             )}

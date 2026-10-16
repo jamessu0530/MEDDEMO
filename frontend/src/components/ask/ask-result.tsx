@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { CalendarPlus, Check, ChevronDown } from "lucide-react"
+import { CalendarPlus, Check, ChevronDown } from "@/components/icons"
 import { Link } from "react-router"
 
 import { escalateAsk, isFinished, type Ask, type MemoryFile, type TraceItem } from "@/api/asks"
@@ -165,7 +165,7 @@ function PinToRoute({ customers }: { customers: Ask["customers"] }) {
             {item.customer_name}沒加進去：{item.reason}
           </span>
         ))}
-        <Link to="/" className="flex min-h-11 items-center font-medium underline underline-offset-4">
+        <Link to="/route" className="flex min-h-11 items-center font-medium underline underline-offset-4">
           去今日路線
         </Link>
       </div>
@@ -269,7 +269,7 @@ export function TracePanel({ trace, live }: { trace: TraceItem[]; live: boolean 
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="flex h-9 w-full items-center gap-1 text-xs text-muted-foreground"
+        className="flex h-9 w-full items-center gap-1 text-sm text-muted-foreground"
       >
         查詢過程（{trace.length} 步{live ? "，進行中" : ""}）
         <ChevronDown className={cn("size-3.5 transition-transform", open && "rotate-180")} />
@@ -284,7 +284,7 @@ export function TracePanel({ trace, live }: { trace: TraceItem[]; live: boolean 
                   `（${item.step === "sql" ? `${item.row_count} 列` : item.step === "web" ? `${item.row_count} 頁` : `${item.row_count} 段`}）`}
               </p>
               {item.search_query && <p className="mt-1 text-muted-foreground">檢索字句：{item.search_query}</p>}
-              {item.sql && <pre className="mt-1 overflow-x-auto font-mono text-[0.6875rem] whitespace-pre-wrap text-muted-foreground">{item.sql.trim()}</pre>}
+              {item.sql && <pre className="mt-1 overflow-x-auto font-mono text-xs whitespace-pre-wrap text-muted-foreground">{item.sql.trim()}</pre>}
               <p className="mt-1 text-muted-foreground">{item.decision}</p>
             </li>
           ))}

@@ -25,7 +25,7 @@ export function CatalogPage() {
   return (
     <div>
       <section hidden={view !== "products"} aria-label="商品型錄">
-        <ProductsPanel navigation={navigation} />
+        <ProductsPanel navigation={navigation} active={view === "products"} />
       </section>
       <section hidden={view !== "promotions"} aria-label="促銷方案">
         <PromotionsPanel navigation={navigation} />

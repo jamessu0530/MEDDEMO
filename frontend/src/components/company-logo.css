@@ -1,0 +1,13 @@
+@layer components {
+  /* Only the login entrance opts in. Navigation, hover, touch and focus stay still. */
+  @media (prefers-reduced-motion: no-preference) {
+    .company-logo--intro {
+      animation: company-logo-enter 550ms ease-out 1;
+    }
+  }
+}
+
+@keyframes company-logo-enter {
+  from { opacity: .65; }
+  to { opacity: 1; }
+}

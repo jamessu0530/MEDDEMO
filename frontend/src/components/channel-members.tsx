@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Users } from "lucide-react"
+import { Users } from "@/components/icons"
 
 import { removeAvatar } from "@/api/avatars"
 import { listMembers, type ChannelMember } from "@/api/channels"
@@ -47,7 +47,7 @@ function RemovePhoto({ userId }: { userId: string }) {
       type="button"
       disabled={busy}
       onClick={() => (confirming ? void remove() : setConfirming(true))}
-      className="min-h-11 shrink-0 px-1 text-xs text-destructive underline-offset-2 hover:underline disabled:opacity-60"
+      className="min-h-11 shrink-0 px-1 text-sm text-destructive underline-offset-2 hover:underline disabled:opacity-60"
     >
       {failed ? "沒有移除，再按一次" : confirming ? "確定移除照片" : "移除照片"}
     </button>

@@ -17,6 +17,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app import realtime
+from app.config import settings
 from app.db import get_session
 from app.models import AppUser, SapQuotationDraft, UserIdentity, UserLocation
 from app.services import auth, oauth, presence
@@ -38,6 +39,16 @@ class ActingAs(BaseModel):
     name: str
 
 
+class DemoAccess(BaseModel):
+    account: ActingAs
+    role: Literal["sales", "manager", "it"] | None
+
+
+class DemoRoleRequest(BaseModel):
+    # null 表示回到登入者自己的帳號。
+    role: Literal["sales", "manager", "it"] | None
+
+
 class UserPublic(BaseModel):
     id: str
     name: str
@@ -51,6 +62,7 @@ class UserPublic(BaseModel):
     acting_as: ActingAs | None = None
     # 自己開的帳號才能改名字；公司帳號的名字是公司資料，畫面上不給改
     can_rename: bool = False
+    demo: DemoAccess | None = None
 
 
 class RegisterRequest(BaseModel):
@@ -79,7 +91,8 @@ class AuthResponse(BaseModel):
     user: UserPublic
 
 
-def _public(session: Session, user: AppUser) -> UserPublic:
+def _public(session: Session, user: AppUser, account: AppUser | None = None) -> UserPublic:
+    account = account if account is not None else user
     identities = session.scalars(
         select(UserIdentity).where(UserIdentity.user_id == user.id).order_by(UserIdentity.provider)
     )
@@ -90,6 +103,10 @@ def _public(session: Session, user: AppUser) -> UserPublic:
         linked=[LinkedIdentity(provider=i.provider, email=i.email, linked_at=i.created_at) for i in identities],
         acting_as=ActingAs(id=acting.id, name=acting.name) if acting else None,
         can_rename=_is_self_service(user),
+        demo=DemoAccess(
+            account=ActingAs(id=account.id, name=account.name),
+            role=user.role if user.id != account.id else None,
+        ) if settings().demo_role_switch else None,
     )
 
 
@@ -116,6 +133,22 @@ def current_user(
 
 
 CurrentUser = Annotated[AppUser, Depends(current_user)]
+
+
+def current_account(
+    session: SessionDep,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
+) -> AppUser:
+    """帳號管理永遠操作真正登入的人，不能改到示範人物的密碼、綁定或登入版號。"""
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        raise _unauthorized("請先登入")
+    try:
+        return auth.user_from_token(session, credentials.credentials, demo=False)
+    except auth.AuthError as exc:
+        raise _unauthorized(str(exc)) from None
+
+
+CurrentAccount = Annotated[AppUser, Depends(current_account)]
 
 
 # 進得了主管端的角色。IT 看得到也動得了全公司，主管端也不例外
@@ -189,12 +222,29 @@ def login(session: SessionDep, body: LoginRequest):
 
 
 @router.get("/me", response_model=UserPublic)
-def me(session: SessionDep, user: CurrentUser):
-    return _public(session, user)
+def me(session: SessionDep, user: CurrentUser, account: CurrentAccount):
+    return _public(session, user, account)
+
+
+@router.post("/demo-role", response_model=AuthResponse)
+def switch_demo_role(
+    session: SessionDep, account: CurrentAccount, body: DemoRoleRequest,
+    credentials: Annotated[HTTPAuthorizationCredentials, Depends(_bearer)],
+):
+    if not settings().demo_role_switch:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Demo 身分切換未開放")
+    # 維持原登入的版號與到期時間；切換不登入示範帳號，也不延長原登入期限。
+    claims = auth.token_claims(credentials.credentials)
+    token = auth.create_token(account, demo_role=body.role, expires_at=claims["exp"])
+    try:
+        user = auth.user_from_token(session, token)
+    except auth.AuthError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from None
+    return AuthResponse(token=token, user=_public(session, user, account))
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-def logout(session: SessionDep, user: CurrentUser):
+def logout(session: SessionDep, user: CurrentAccount):
     auth.logout(session, user)
     # 登出立刻變離線，不等連線斷掉 5 分鐘
     presence.sign_out(session, user)
@@ -203,7 +253,7 @@ def logout(session: SessionDep, user: CurrentUser):
 
 
 @router.patch("/me/profile", response_model=UserPublic)
-def update_profile(session: SessionDep, user: CurrentUser, body: ProfileUpdate):
+def update_profile(session: SessionDep, user: CurrentAccount, effective: CurrentUser, body: ProfileUpdate):
     """改名字（照 flutterproject4 的 PATCH /me/profile）。"""
     if not _is_self_service(user):
         # 自己開的帳號看的都是林昱辰的客戶，公司帳號改了名字，所有人畫面上的示範業務都會跟著變
@@ -215,11 +265,11 @@ def update_profile(session: SessionDep, user: CurrentUser, body: ProfileUpdate):
     user.updated_at = func.now()
     session.commit()
     session.refresh(user)
-    return _public(session, user)
+    return _public(session, effective, user)
 
 
 @router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
-def delete_account(session: SessionDep, user: CurrentUser):
+def delete_account(session: SessionDep, user: CurrentAccount):
     """刪除自己的帳號（隱私權政策 /privacy 寫的刪除方式）。公司帳號不能自己刪，要由 IT 停用。
 
     一起刪掉：帳號、綁定的第三方身分、自己的提問與轉給主管的提問、自己在頻道發的訊息與已讀位置、在線狀態、大頭貼、配色與字體大小的設定、
@@ -245,7 +295,7 @@ def delete_account(session: SessionDep, user: CurrentUser):
 
 
 @router.post("/change-password", response_model=AuthResponse)
-def change_password(session: SessionDep, user: CurrentUser, body: ChangePasswordRequest):
+def change_password(session: SessionDep, user: CurrentAccount, body: ChangePasswordRequest):
     try:
         token = auth.change_password(session, user, body.current_password, body.new_password)
     except auth.AuthError as exc:
@@ -365,7 +415,7 @@ def oauth_login(session: SessionDep, provider: Provider, body: OAuthCredential):
 
 
 @router.post("/oauth/{provider}/link", response_model=UserPublic)
-def oauth_link(session: SessionDep, user: CurrentUser, provider: Provider, body: OAuthCredential):
+def oauth_link(session: SessionDep, user: CurrentAccount, effective: CurrentUser, provider: Provider, body: OAuthCredential):
     identity = _verify(provider, body, rejected_status=status.HTTP_400_BAD_REQUEST)
     label = oauth.PROVIDER_LABEL[provider]
     existing = session.scalar(
@@ -389,11 +439,11 @@ def oauth_link(session: SessionDep, user: CurrentUser, provider: Provider, body:
     except IntegrityError:  # 兩個人同時綁同一個第三方帳號
         session.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"這個 {label} 帳號已經綁在別的帳號上了") from None
-    return _public(session, user)
+    return _public(session, effective, user)
 
 
 @router.delete("/oauth/{provider}", response_model=UserPublic)
-def oauth_unlink(session: SessionDep, user: CurrentUser, provider: Provider):
+def oauth_unlink(session: SessionDep, user: CurrentAccount, effective: CurrentUser, provider: Provider):
     mine = session.scalar(
         select(UserIdentity).where(UserIdentity.user_id == user.id, UserIdentity.provider == provider)
     )
@@ -410,5 +460,5 @@ def oauth_unlink(session: SessionDep, user: CurrentUser, provider: Provider):
             )
         session.delete(mine)
         session.commit()
-    return _public(session, user)
+    return _public(session, effective, user)
 

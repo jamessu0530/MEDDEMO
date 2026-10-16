@@ -20,8 +20,8 @@ export function MascotsPage() {
     })
     return () => controller.abort()
   }, [attempt])
-  return <div className="min-h-svh"><PageHeader title="熊熊滾收藏與換裝" backTo={user?.role === "sales" ? "/me" : "/settings"} /><main className="mx-auto max-w-6xl px-4 pt-5 pb-10 lg:px-6">
-    {error ? <Notice text={error} action={{ label: "再試一次", onClick: () => { setError(""); setAttempt((value) => value + 1) } }} /> : !collection ? <p className="py-10 text-center text-sm text-muted-foreground">打開熊熊滾的衣櫃中…</p> : <MascotWardrobe collection={collection} onEquip={async (look, asAvatar) => {
+  return <div className="min-h-svh"><PageHeader title="熊熊衣櫃" backTo={user?.role === "sales" ? "/me" : "/settings"} /><main className="mx-auto max-w-6xl px-4 pt-5 pb-10 lg:px-6">
+    {error ? <Notice text={error} action={{ label: "再試一次", onClick: () => { setError(""); setAttempt((value) => value + 1) } }} /> : !collection ? <p className="py-10 text-center text-sm text-muted-foreground">打開熊熊滾的衣櫃中…</p> : <MascotWardrobe showHeading={false} collection={collection} onEquip={async (look, asAvatar) => {
       const next = await equipMascot(look, asAvatar)
       setCollection(next)
       if (user) avatars.updateMascot(user.id, next.use_as_avatar ? next.equipped : null)

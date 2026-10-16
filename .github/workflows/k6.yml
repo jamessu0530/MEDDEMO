@@ -1,0 +1,77 @@
+name: k6 load test
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: Target HTTPS origin (use a dedicated account for read)
+        type: string
+        default: https://meddemo.jamessu2016.com
+        required: true
+      scenario:
+        description: smoke checks public endpoints; read checks authenticated queries
+        type: choice
+        options: [smoke, read]
+        default: smoke
+      vus:
+        description: Concurrent virtual users (1–100)
+        type: string
+        default: "1"
+      duration:
+        description: Test duration (for example 10s or 1m)
+        type: string
+        default: 10s
+      cloud:
+        description: Stream local execution results to Grafana Cloud k6
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: k6-manual
+  cancel-in-progress: false
+
+jobs:
+  load-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      BASE_URL: ${{ inputs.base_url }}
+      SCENARIO: ${{ inputs.scenario }}
+      VUS: ${{ inputs.vus }}
+      DURATION: ${{ inputs.duration }}
+      ALLOW_REMOTE: "true"
+      STREAM_CLOUD: ${{ inputs.cloud }}
+      K6_TOKEN: ${{ secrets.K6_TOKEN }}
+      K6_EMAIL: ${{ secrets.K6_EMAIL }}
+      K6_PASSWORD: ${{ secrets.K6_PASSWORD }}
+      K6_CLOUD_TOKEN: ${{ secrets.K6_CLOUD_TOKEN }}
+      K6_CLOUD_STACK_ID: ${{ vars.K6_CLOUD_STACK_ID }}
+      K6_CLOUD_PROJECT_ID: ${{ vars.K6_CLOUD_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run k6
+        run: |
+          mkdir -p "$RUNNER_TEMP/k6-results"
+          args=(run --no-usage-report)
+          if [ "$STREAM_CLOUD" = true ]; then
+            if [ -z "$K6_CLOUD_TOKEN" ] || [ -z "$K6_CLOUD_STACK_ID" ]; then
+              echo "::error::Cloud results require K6_CLOUD_TOKEN and K6_CLOUD_STACK_ID"
+              exit 1
+            fi
+            args=(cloud run --local-execution --include-system-env-vars --no-archive-upload --no-cloud-logs --no-cloud-secrets --no-usage-report)
+          fi
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -v "$PWD/tests/k6:/scripts:ro" -v "$RUNNER_TEMP/k6-results:/results" \
+            -e BASE_URL -e SCENARIO -e VUS -e DURATION -e ALLOW_REMOTE \
+            -e K6_TOKEN -e K6_EMAIL -e K6_PASSWORD \
+            -e K6_CLOUD_TOKEN -e K6_CLOUD_STACK_ID -e K6_CLOUD_PROJECT_ID \
+            grafana/k6:2.3.0 "${args[@]}" --summary-export=/results/summary.json /scripts/api.js
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: k6-manual-results
+          path: ${{ runner.temp }}/k6-results/
+          if-no-files-found: ignore

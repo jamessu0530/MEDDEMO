@@ -17,7 +17,6 @@ export function Preview() {
     try { localStorage.setItem(KEY, JSON.stringify(next)) } catch { /* 無痕模式仍可試玩 */ }
   }
   return <>
-    <aside className="preview-toolbar"><b>互動示範</b><span>正式 App 的收藏會存到登入帳號；這裡只儲存這份預覽。</span><div>{MASCOT_OUTFITS.filter((item) => item.city).map((item) => <button key={item.id} type="button" onClick={() => save({ ...collection, outfits: collection.outfits.map((outfit) => outfit.id === item.id ? { ...outfit, owned: true, unlocked_at: new Date().toISOString() } : outfit) })}>模擬到 {item.city}</button>)}<button type="button" onClick={() => { localStorage.removeItem(KEY); setCollection(initial()) }}>重置示範收藏</button></div></aside>
     <MascotWardrobe collection={collection} onEquip={async (look, avatar) => {
       if (!canWear(collection, look)) throw new Error("這款還沒收藏")
       save({ ...collection, equipped: look, use_as_avatar: avatar })

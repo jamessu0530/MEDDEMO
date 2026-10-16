@@ -123,7 +123,7 @@ describe("指標呈現", () => {
         onSelect: () => undefined,
       })
     )
-    expect(gallery.match(/disabled=""/g)).toHaveLength(7)
+    expect(gallery.match(/disabled=""/g)).toHaveLength(9)
     expect(gallery).toContain("不能直接相加")
     const inspector = renderToStaticMarkup(
       createElement(ReportInspector, {

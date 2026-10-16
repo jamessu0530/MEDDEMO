@@ -21,10 +21,10 @@ export function labelSide(offset: number): "left" | "right" {
   return offset > 0 ? "left" : "right"
 }
 
-/** 理由的顏色：商機是唯一的好消息（綠），例行是平常（灰），其他都是要注意的事（紅） */
+/** 商機用綠色，例行與經營策略用中性色，風險訊號用警示色。 */
 export function signalTone(signal: RouteSignal): "good" | "alert" | "plain" {
   if (signal === "opportunity") return "good"
-  if (signal === "routine") return "plain"
+  if (signal === "routine" || signal === "priority" || signal === "manager_priority") return "plain"
   return "alert"
 }
 

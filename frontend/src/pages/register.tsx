@@ -1,8 +1,9 @@
 import { useState, type FormEvent } from "react"
-import { Eye, EyeOff, Loader2 } from "lucide-react"
+import { Eye, EyeOff, Loader2 } from "@/components/icons"
 import { Link, Navigate, useLocation, useNavigate } from "react-router"
 
 import { register } from "@/api/auth"
+import { CompanyLogo } from "@/components/company-logo"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -56,6 +57,7 @@ export function RegisterPage() {
   return (
     <div className="flex min-h-svh flex-col justify-center px-6 py-10">
       <header className="mb-8">
+        <CompanyLogo className="mb-3 w-40" />
         <p className="text-xs text-muted-foreground">中化裕民 · 業務 AI 助理</p>
         <h1 className="mt-1 text-2xl font-semibold">建立帳號</h1>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
@@ -75,7 +77,7 @@ export function RegisterPage() {
             onChange={(event) => setName(event.target.value)}
             className="h-12 px-3 text-base"
           />
-          <p className="text-xs text-muted-foreground">2～32 個字，之後可以在帳號設定改。</p>
+          <p className="text-xs text-muted-foreground">2～32 個字</p>
         </div>
 
         <div className="flex flex-col gap-1.5">

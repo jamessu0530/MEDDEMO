@@ -2,8 +2,10 @@ import * as THREE from "three"
 import { SVGLoader, type StrokeStyle } from "three/examples/jsm/loaders/SVGLoader.js"
 
 import { mascotPalette } from "@/lib/mascot-collection"
+import { mascotEyeOpenness } from "@/lib/mascot-blink"
+import { createMascotRearMark } from "@/components/mascot-3d-details"
 
-export type MascotMotion = "idle" | "spin" | "roll" | "sleep" | "stretch"
+export type MascotMotion = "idle" | "blink" | "spin" | "roll" | "sleep" | "stretch"
 export type MascotSceneState = { svg: SVGSVGElement; color: string; motion: MascotMotion; motionId: number; split: boolean; foundColor: string | null; taps: number }
 export type MascotScene = { sync(state: MascotSceneState): void; destroy(): void }
 
@@ -26,18 +28,21 @@ function figure(svg: string, color: string) {
   const art = new THREE.Group()
   art.scale.setScalar(.01)
   art.position.set(-1.2, 2.15, -.35)
+  const eyes = new THREE.Group()
+  eyes.name = "mascot-blink-eyes"
+  art.add(eyes)
   const paths = new SVGLoader().parse(svg).paths
   paths.forEach((path, index) => {
     const node = path.userData?.node as SVGElement
     if (node.closest(".mascot-shadow")) return
-    const body = node.parentElement?.classList.contains("mascot-body") ?? false
+    const body = (node.parentElement?.classList.contains("mascot-body") ?? false) && !node.hasAttribute("data-cape")
     const ear = node.closest(".mascot-ear-l, .mascot-ear-r")
     const cape = node.hasAttribute("data-cape")
     const costume = node.closest("[data-costume]")
     const rawFill = node.getAttribute("fill")
     const swatch = rawFill && rawFill !== "none" ? rawFill : node.getAttribute("stroke")
     const tint = swatch === palette.base ? "base" : swatch === palette.light ? "light" : swatch === palette.ink ? "ink" : null
-    const front = cape ? -5 : body ? 0 : ear ? (tint === "light" ? 62 : 5) : 77 + index * .12
+    const front = cape ? -12 : body ? 0 : ear ? (tint === "light" ? 62 : 5) : 77 + index * .12
     const depth = body ? 68 : ear && tint === "base" ? 54 : costume ? 9 : 3
     const fill = SVGLoader.createFillMaterial(path)
     const stroke = SVGLoader.createStrokeMaterial(path)
@@ -61,7 +66,9 @@ function figure(svg: string, color: string) {
       mesh.userData.tint = tint
       mesh.castShadow = true
       mesh.receiveShadow = true
-      art.add(mesh)
+      const eye = node.closest('.mascot-eyes[data-eyes="open"], .mascot-eyes[data-eyes="up"]')
+      if (eye) eyes.add(mesh)
+      else art.add(mesh)
     }
     if (fill) {
       for (const shape of path.toShapes()) add(new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: true, bevelSegments: 3, steps: 1, bevelSize: body ? 5 : ear ? 2.5 : 1.1, bevelThickness: body ? 5 : 1.2, curveSegments: 20 }), fill)
@@ -75,6 +82,17 @@ function figure(svg: string, color: string) {
       stroke.dispose()
     }
   })
+  if (eyes.children.length) {
+    // 以兩眼中心為縮放軸；直接縮放整個 art 會把眼睛拉離臉部。
+    eyes.updateWorldMatrix(true, true)
+    const center = new THREE.Box3().setFromObject(eyes).getCenter(new THREE.Vector3())
+    eyes.worldToLocal(center)
+    for (const eye of eyes.children) eye.position.sub(center)
+    eyes.position.copy(center)
+  }
+  const rearMark = createMascotRearMark(palette.ink, 7, 1.25)
+  rearMark.position.set(120, -188, -7)
+  art.add(rearMark)
   const pivot = new THREE.Group()
   pivot.position.y = .95
   art.position.y -= .95
@@ -130,6 +148,8 @@ export function createMascotScene({ canvas, host, onDragEnd, onContextLost }: { 
   let motionStart = performance.now(), burstStart = 0, yaw = .12, pitch = 0, visible = true, dirty = true
   let dragging: { x: number; y: number; startX: number; startY: number; moved: boolean } | null = null
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)")
+  const motionPreferenceChanged = () => { dirty = true }
+  reduced.addEventListener("change", motionPreferenceChanged)
   function resize() {
     const width = host.clientWidth, height = host.clientHeight
     renderer.setSize(width, height, false)
@@ -155,12 +175,16 @@ export function createMascotScene({ canvas, host, onDragEnd, onContextLost }: { 
     if (!current || !source || !visible || document.hidden || (reduced.matches && !dirty)) return
     const time = performance.now(), elapsed = (time - motionStart) / 1000
     const t = reduced.matches ? 0 : elapsed
+    for (const [index, model] of [source, left, right].entries()) {
+      const eyes = model?.getObjectByName("mascot-blink-eyes")
+      if (eyes) eyes.scale.y = reduced.matches ? 1 : mascotEyeOpenness(t + (index === 2 ? .6 : 0), current.motion === "blink")
+    }
     source.visible = !current.split || (!reduced.matches && time - burstStart < 260)
     source.position.set(0, 0, 0); source.scale.set(1, 1, 1)
     source.rotation.set(pitch, yaw, Math.sin(t * 1.8) * .022)
     source.children[0].rotation.z = 0
     if (!current.split) {
-      if (current.motion === "idle") source.scale.y = 1 + Math.sin(t * 2) * .018
+      if (current.motion === "idle" || current.motion === "blink") source.scale.y = 1 + Math.sin(t * 2) * .018
       if (current.motion === "spin") source.rotation.y += Math.PI * 2 * THREE.MathUtils.smoothstep(t, 0, 1.8)
       if (current.motion === "roll" && t < 2.4) {
         const progress = THREE.MathUtils.smoothstep(t, .25, 2.1)
@@ -207,6 +231,7 @@ export function createMascotScene({ canvas, host, onDragEnd, onContextLost }: { 
     },
     destroy() {
       renderer.setAnimationLoop(null); observer.disconnect(); visibility.disconnect()
+      reduced.removeEventListener("change", motionPreferenceChanged)
       canvas.removeEventListener("pointerdown", down); canvas.removeEventListener("pointermove", move)
       canvas.removeEventListener("pointerup", up); canvas.removeEventListener("pointercancel", up); canvas.removeEventListener("webglcontextlost", lost)
       release(scene); renderer.dispose(); renderer.forceContextLoss()

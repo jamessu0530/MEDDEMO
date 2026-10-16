@@ -2,8 +2,8 @@
 .mascot-play-button { display: block; padding: 0; border: 0; border-radius: 20px; background: transparent; cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 .mascot-play-button:focus-visible, .mascot-play-reset:focus-visible { outline: 3px solid #9b51e0; outline-offset: 4px; }
 .mascot-play-button:disabled { cursor: default; }
-.mascot-play-message { font-size: 11px; line-height: 1.6; color: #8950bf; text-align: center; }
-.mascot-play-reset { padding: 6px 12px; border: 1px solid #dcc4f3; border-radius: 99px; color: #8950bf; background: #f5edfc; font: inherit; font-size: 12px; cursor: pointer; }
+.mascot-play-message { font-size: .8125rem; line-height: 1.6; color: #8950bf; text-align: center; }
+.mascot-play-reset { padding: 6px 12px; border: 1px solid #dcc4f3; border-radius: 99px; color: #8950bf; background: #f5edfc; font: inherit; font-size: .8125rem; cursor: pointer; }
 .mascot-play-nudge, .mascot-play-single { transform-box: fill-box; transform-origin: 50% 70%; }
 .mascot-play:not([data-taps="0"]):not([data-split="true"]) .mascot-play-nudge { animation: mascot-play-nudge .3s ease-out; }
 @keyframes mascot-play-nudge { 0%, 100% { transform: scale(1) rotate(0deg); } 30% { transform: scale(1.07, .92) rotate(-5deg); } 65% { transform: scale(.98, 1.025) rotate(3deg); } }

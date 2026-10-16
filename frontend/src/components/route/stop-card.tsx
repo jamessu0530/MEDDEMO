@@ -12,7 +12,7 @@ import {
   StickyNote,
   Undo2,
   type LucideIcon,
-} from "lucide-react"
+} from "@/components/icons"
 
 import { SIGNAL_LABEL, type Precedence, type RouteStop } from "@/api/route"
 import { Button } from "@/components/ui/button"
@@ -215,7 +215,7 @@ function Tags({ stop, names, precedences }: { stop: RouteStop; names: Record<str
         <span
           key={key}
           className={cn(
-            "flex max-w-full items-center gap-0.5 rounded-md bg-muted px-1.5 py-0.5 text-[0.6875rem] text-muted-foreground",
+            "flex max-w-full items-center gap-0.5 rounded-md bg-muted px-1.5 py-0.5 text-xs text-muted-foreground",
             className
           )}
         >

@@ -1,5 +1,5 @@
 import { useRef, useState, type FormEvent, type ReactNode } from "react"
-import { MessageSquareQuote, X } from "lucide-react"
+import { MessageSquareQuote, X } from "@/components/icons"
 
 import { CUSTOMER_TYPE_LABEL } from "@/api/customers"
 import {
@@ -217,7 +217,7 @@ function MethodCardDraft({
                   />
                 ) : (
                   <p className="text-xs leading-relaxed text-muted-foreground">
-                    可從任何你看得到的頻道選取原文，再整理成全公司可用的方法卡。
+                    選取頻道原文作為來源。
                   </p>
                 )}
                 <div className="flex flex-wrap gap-2">

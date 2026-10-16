@@ -1,5 +1,5 @@
 import { Link } from "react-router"
-import { ArrowUpRight, MessageSquareQuote } from "lucide-react"
+import { ArrowUpRight, MessageSquareQuote } from "@/components/icons"
 
 import type { MethodCard } from "@/api/methods"
 import { formatTaipeiDateTime } from "@/lib/format"
@@ -38,7 +38,7 @@ export function MethodSourceDisplay({
         </span>
       </p>
       {createdAt && (
-        <p className="mt-1 text-[11px] text-muted-foreground">
+        <p className="mt-1 text-xs text-muted-foreground">
           <time dateTime={source.created_at}>{createdAt}</time>
         </p>
       )}

@@ -63,8 +63,10 @@ TABLES = [
 KEPT_SETTINGS = {
     "user_avatar": models.UserAvatar,
     "user_preference": models.UserPreference,
+    "product_browse_profile": models.ProductBrowseProfile,
     "user_presence": models.UserPresence,
     "user_report_config": models.UserReportConfig,
+    "report_dataset": models.ReportDataset,
     "learning_completion": models.LearningCompletion,
     "mascot_wardrobe": models.MascotWardrobe,
     "mascot_collectible": models.MascotCollectible,

@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react"
-import { FileText, Search } from "lucide-react"
+import { FileText, Search } from "@/components/icons"
 import { useLocation, useNavigate, useSearchParams } from "react-router"
 
 import { ApiError } from "@/api/client"
@@ -89,7 +89,7 @@ export function ChannelSearchPage() {
       </form>
       <main className="flex-1 px-4 py-4">
         {state.status === "idle" && (
-          <p className="py-10 text-center text-sm text-muted-foreground">打字找，或按迴紋針附一張照片，找長得像的照片。</p>
+          <p className="py-10 text-center text-sm text-muted-foreground">搜尋訊息，或附上照片找相似圖片。</p>
         )}
         {state.status === "loading" && <p className="py-10 text-center text-sm text-muted-foreground">找找看…</p>}
         {state.status === "error" && <Notice text={state.message} action={{ label: "再試一次", onClick: () => void submit() }} />}
@@ -111,11 +111,11 @@ export function ChannelSearchPage() {
                   )}
                   <span className="flex flex-col gap-0.5 px-2.5 py-2">
                     <span className="truncate text-xs font-medium">{hit.channel_name}</span>
-                    <span className="truncate text-[0.6875rem] text-muted-foreground">
+                    <span className="truncate text-xs text-muted-foreground">
                       {hit.author_name ?? "熊熊滾"} · {formatDateTime(hit.created_at)}
                     </span>
                     {(hit.caption || hit.shared_text) && (
-                      <span className="line-clamp-1 text-[0.6875rem] text-muted-foreground">{hit.reachable ? hit.caption : hit.shared_text}</span>
+                      <span className="line-clamp-1 text-xs text-muted-foreground">{hit.reachable ? hit.caption : hit.shared_text}</span>
                     )}
                   </span>
                 </button>

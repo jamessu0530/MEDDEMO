@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { CheckCircle2, ChevronRight, GraduationCap, Lightbulb } from "lucide-react"
+import { CheckCircle2, ChevronRight, GraduationCap, Lightbulb } from "@/components/icons"
 import { Link, useParams } from "react-router"
 import { ApiError } from "@/api/client"
 import type { Medal } from "@/api/me"
@@ -30,9 +30,9 @@ function ProductCourses() {
     return () => controller.abort()
   }, [attempt])
   return <div className="flex min-h-svh flex-col">
-    <PageHeader title="品類成就" subtitle="學會辨識，再把成就帶回來" backTo="/me" />
+    <PageHeader title="品類成就" backTo="/me" />
     <main className="flex flex-col gap-5 px-4 pt-4 pb-10">
-      <p className="text-sm leading-relaxed text-muted-foreground">每個品類有三關：品類辨識、規格核對、情境練習。每關全部答對，依序解鎖銅、銀、金牌。</p>
+      <p className="text-sm leading-relaxed text-muted-foreground">每關全部答對，依序解鎖銅、銀、金牌。</p>
       {error && <Notice text={error} action={{ label: "再試一次", onClick: () => { setError(null); setAttempt(n => n + 1) } }} />}
       {!courses && !error && <p className="py-8 text-sm text-muted-foreground">載入品類練習中…</p>}
       {courses?.map(course => <section key={course.kind} className="rounded-3xl border bg-card p-4">
@@ -93,8 +93,8 @@ function LessonContent({ kind, tier }: { kind: string; tier: string }) {
         <Button asChild className="h-12"><Link to={lesson.tier < 3 ? `/learning/products/${kind}/${lesson.tier + 1}` : "/me"}>{lesson.tier < 3 ? "繼續下一關" : "回個人頁看成就"}<ChevronRight /></Link></Button>
         <Button asChild variant="outline" className="h-12"><Link to="/me">回個人頁看進度</Link></Button>
       </div> : <>
-        <div className="rounded-2xl bg-primary/5 p-4"><h2 className="flex items-center gap-2 text-sm font-semibold"><GraduationCap className="size-4" />{lesson.title}</h2><p className="mt-2 text-xs leading-relaxed text-muted-foreground">達成條件：{lesson.condition}</p></div>
-        <section aria-label="商品型錄參考" className="rounded-2xl border bg-card p-4"><h2 className="mb-3 text-sm font-semibold">先看商品型錄</h2><div className="flex flex-col gap-3">{lesson.reference.map(p => <div key={p.sku} className="rounded-xl bg-muted/50 p-3">
+        <div className="rounded-2xl bg-primary/5 p-4"><h2 className="flex items-center gap-2 text-base font-semibold"><GraduationCap className="size-4" />{lesson.title}</h2><p className="mt-2 text-xs leading-relaxed text-muted-foreground">達成條件：{lesson.condition}</p></div>
+        <section aria-label="商品型錄參考" className="rounded-2xl border bg-card p-4"><h2 className="mb-3 text-base font-semibold">先看商品型錄</h2><div className="flex flex-col gap-3">{lesson.reference.map(p => <div key={p.sku} className="rounded-xl bg-muted/50 p-3">
           <p className="text-sm font-medium">{p.name}</p><p className="mt-1 text-xs text-muted-foreground">料號 {p.sku} · {p.category}</p><p className="mt-1 text-xs">規格：{p.spec || "型錄未提供"} · 基礎單位：{p.unit}</p>
         </div>)}</div><p className="mt-3 text-xs text-muted-foreground">依目前型錄核對品項、規格與單位。</p></section>
         <form onSubmit={e => { e.preventDefault(); void submit() }} className="flex flex-col gap-5">

@@ -1,17 +1,15 @@
 import { useEffect, useRef, useState, type CSSProperties, type Ref } from "react"
 import {
-  Bell,
   BookOpenText,
   CalendarDays,
   ChartNoAxesCombined,
   ChevronRight,
-  FileText,
   Flag,
   Loader2,
   Map as MapIcon,
   Route,
   TriangleAlert,
-} from "lucide-react"
+} from "@/components/icons"
 import { Link, useNavigate, useSearchParams } from "react-router"
 
 import { ApiError } from "@/api/client"
@@ -31,20 +29,18 @@ import { getVehicles, sendRides } from "@/api/vehicles"
 import { BottomNav } from "@/components/bottom-nav"
 import { Mascot } from "@/components/mascot"
 import { Notice } from "@/components/notice"
-import { MyStatusButton } from "@/components/my-status"
 import { RoutePath } from "@/components/route-path"
+import { SalesToolbar } from "@/components/sales-toolbar"
 import { EditRouteLink, SkippedHabitsNote } from "@/components/route/home-extras"
 import { HomeAsk } from "@/components/route/home-ask"
 import { HomeMapPanel } from "@/components/route/home-map-panel"
 import { LocationConsent } from "@/components/route/location-share"
 import { UnlockToast } from "@/components/route/unlock-toast"
-import { SkinToggle } from "@/components/skin-toggle"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { useAuth } from "@/lib/auth"
 import { formatDate, formatDayLabel } from "@/lib/format"
 import { inOrder } from "@/lib/in-order"
 import { useHomeSplitLayout } from "@/lib/home-layout"
-import { useUnseenReplies } from "@/lib/manager-replies"
 import { ridesOf, type Leg } from "@/lib/rides"
 import { applyProgress } from "@/lib/route-progress"
 import { TRAVEL_MODE_LABEL } from "@/lib/travel-mode"
@@ -64,7 +60,7 @@ type LoadState =
   | { status: "ready"; route: TodayRoute; cached: boolean }
 
 /**
- * 今日路線（首頁）：一天要跑哪幾家、順序、以及每一家為什麼被排進來。
+ * 今日路線（/route）：一天要跑哪幾家、順序、以及每一家為什麼被排進來。
  * 版面照 Duolingo 的主畫面（docs/superpowers/specs/2026-10-01-duolingo-home-design.md）：
  * 頂部是圖示加數字的狀態列和紫色橫幅，路線是一顆顆蛇行往下的圓鈕（components/route-path.tsx）。
  * 最上面是「需立即處理」，業務按三顆鈕給回饋（插入下一站／暫緩／誤判），
@@ -91,7 +87,6 @@ export function TodayPage() {
   const flushedRides = useRef(false)
   // 點站的 arrive 回來的順序不一定：只套用比上次套用過的還新的（lib/in-order.ts）
   const [arrivals] = useState(inOrder)
-  const unseen = useUnseenReplies()
   // 座騎圖鑑收集了幾台（路線最底下的入口）：拿不到就是 null，入口只寫名字
   const [collected, setCollected] = useState<{ ridden: number; total: number } | null>(null)
   const [collectedTick, setCollectedTick] = useState(0)
@@ -289,52 +284,15 @@ export function TodayPage() {
       } as CSSProperties}
     >
       <header ref={headerRef} className="sticky top-0 z-10 bg-background/95 px-4 pt-2 pb-3 backdrop-blur lg:px-6">
-        <div className="-mr-2 flex items-center justify-between gap-2 lg:hidden">
-          {/* 自己的頭像：點了換狀態（有空、忙碌、顯示為離線…）；點名字進個人頁（右上角齒輪再進帳號設定） */}
-          <div className="flex min-w-0 items-center gap-1.5">
-            <MyStatusButton className="size-9" />
-            <Link to="/me" className="flex h-11 min-w-0 items-center gap-1 text-xs text-muted-foreground">
-              {/* 名字自己一行、區與示範說明另一行：右邊還有狀態列，放大字體時接在一起整句會被截到只剩一兩個字 */}
-              <span className="flex min-w-0 flex-col leading-tight">
-                <span className="truncate">{user.name}</span>
-                <span className="truncate">
-                  {user.region}
-                  {user.acting_as && ` · 示範：${user.acting_as.name}的客戶`}
-                </span>
-              </span>
-              <ChevronRight className="size-3.5 shrink-0" />
-            </Link>
-          </div>
-          {/* 像 Duolingo 的狀態列：圖示加數字。進度只是顯示，其他三顆可以按。
-              按鈕用固定的 40px，不跟著放大字體變大，不然左邊的名字會被擠到只剩一個字 */}
-          <div className="flex shrink-0 items-center">
-            {/* 今天沒排拜訪就不顯示 0/0 */}
-            {route && route.total > 0 && (
-              <span className="flex h-[40px] items-center gap-1 px-1.5 text-sm font-semibold tabular-nums">
-                <Flag className="size-5 fill-primary text-primary" />
-                <span className="sr-only">今日進度</span>
-                {route.done}/{route.total}
-              </span>
-            )}
-            {/* FR-8.4：主管回覆了，顯示還沒看的則數 */}
-            <Link
-              to="/escalations"
-              aria-label={unseen > 0 ? `主管回覆 ${unseen} 則，查看` : "轉給主管的提問"}
-              className="flex h-[40px] min-w-[40px] items-center justify-center gap-1 rounded-lg px-1.5 hover:bg-muted"
-            >
-              <Bell className={cn("size-5", unseen > 0 ? "fill-warning text-warning" : "text-muted-foreground")} />
-              {unseen > 0 && <span className="text-sm font-semibold text-warning tabular-nums">{unseen}</span>}
-            </Link>
-            <Link
-              to="/oa/forms"
-              aria-label="我的申請單"
-              className="flex size-[40px] items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
-            >
-              <FileText className="size-5" />
-            </Link>
-            <SkinToggle className="size-[40px]" />
-          </div>
-        </div>
+        <SalesToolbar user={user}>
+          {route && route.total > 0 && (
+            <span className="flex h-[40px] items-center gap-1 px-1.5 text-sm font-semibold tabular-nums">
+              <Flag className="size-5 fill-primary text-primary" />
+              <span className="sr-only">今日進度</span>
+              {route.done}/{route.total}
+            </span>
+          )}
+        </SalesToolbar>
         {/* 像 Duolingo 的單元橫幅；右邊的「指南」換成方法卡：主管教的做法，出門前或進門前翻一下 */}
         <div className="mt-1 flex items-stretch overflow-hidden rounded-2xl bg-primary text-primary-foreground lg:mt-0 shadow-lip-primary">
           <div className="min-w-0 flex-1 px-4 py-2.5">
@@ -354,7 +312,7 @@ export function TodayPage() {
                 {route.total > 0 && route.travel_mode && ` · ${TRAVEL_MODE_LABEL[route.travel_mode]}`}
               </p>
             )}
-            <h1 className="text-lg leading-snug font-semibold">今日路線</h1>
+            <h1 className="text-xl leading-snug font-semibold">今日路線</h1>
           </div>
           {/* 電腦版頁首第一列收起來了，今日進度放在橫幅右邊 */}
           {route && route.total > 0 && (
@@ -367,7 +325,7 @@ export function TodayPage() {
           {state.status === "ready" && !state.cached && <EditRouteLink />}
           <Link
             to="/methods"
-            className="flex w-16 shrink-0 flex-col items-center justify-center gap-0.5 border-l-2 border-black/15 text-[0.6875rem] font-semibold active:bg-black/10"
+            className="flex w-16 shrink-0 flex-col items-center justify-center gap-0.5 border-l-2 border-black/15 text-xs font-semibold active:bg-black/10"
           >
             <BookOpenText className="size-5" />
             方法卡
@@ -438,7 +396,7 @@ export function TodayPage() {
           >
             <div className="min-h-0 overflow-hidden">
               <article className="mb-2 flex flex-col gap-2 rounded-2xl border-2 border-destructive/30 bg-destructive/10 p-4 shadow-lip-destructive-soft">
-                <span className="flex items-center gap-1 self-start rounded-md bg-destructive px-2 py-1 text-[0.6875rem] font-semibold text-white">
+                <span className="flex items-center gap-1 self-start rounded-md bg-destructive px-2 py-1 text-xs font-semibold text-white">
                   <TriangleAlert className="size-3" />
                   需立即處理 · {card.urgent.headline}
                 </span>

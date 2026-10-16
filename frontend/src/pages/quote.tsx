@@ -251,7 +251,7 @@ export function QuotePage() {
                     <button
                       type="button"
                       onClick={() => setQuantities((current) => ({ ...current, [item.sku]: String(item.usual_qty) }))}
-                      className="mt-1 -ml-2 flex min-h-11 items-center rounded-lg px-2 text-xs text-primary active:bg-muted"
+                      className="mt-1 -ml-2 flex min-h-11 items-center rounded-lg px-2 text-sm text-primary active:bg-muted"
                     >
                       填入常進數量 {item.usual_qty} {item.unit}
                     </button>
@@ -353,7 +353,7 @@ function PromotionSection({ promotion, packCounts, quantities, notes, onPackChan
   return (
     <section className="flex flex-col gap-2 pt-2">
       <div className="flex items-baseline justify-between gap-3">
-        <h2 className="text-sm font-semibold">這一期的促銷</h2>
+        <h2 className="text-base font-semibold">這一期的促銷</h2>
         <span className="min-w-0 truncate text-xs text-muted-foreground">{promotion.name}</span>
       </div>
       {promotion.pm_note && (
@@ -365,7 +365,7 @@ function PromotionSection({ promotion, packCounts, quantities, notes, onPackChan
       )}
       {groupBy(promotion.products, (p) => p.group_name).map(([group, products]) => (
         <div key={group} className="flex flex-col gap-2">
-          <h3 className="pt-1 text-xs font-medium text-muted-foreground">{group}</h3>
+          <h3 className="pt-1 text-sm font-medium text-muted-foreground">{group}</h3>
           {products.map((product) => {
             const qty = parseQty(quantities[product.sku])
             return (

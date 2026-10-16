@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { ChevronDown, ThumbsDown, ThumbsUp } from "lucide-react"
+import { ChevronDown, ThumbsDown, ThumbsUp } from "@/components/icons"
 
 import {
   customerTypeLabel,
@@ -77,7 +77,7 @@ export function MethodCardItem({
             </Badge>
           ))}
         </span>
-        <span className="text-[0.6875rem] text-muted-foreground">
+        <span className="text-xs text-muted-foreground">
           整理者 {card.author_name} · 採用{" "}
           <span className="tabular-nums">{card.adopted}</span> 次
         </span>

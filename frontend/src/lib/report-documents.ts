@@ -1,3 +1,4 @@
+import type { StudioExploration } from "@/lib/report-studio"
 import {
   normalizeReportConfig,
   reportPages,
@@ -16,6 +17,7 @@ export type ReportFixedFilters = {
   date_range: ReportDateRange | null
 }
 export type ReportBookmarkState = ReportFixedFilters & {
+  exploration?: StudioExploration | null
   period: ReportPeriod
   owner_id: string | null
   customer_type: ReportConfig["customer_type"]
@@ -106,10 +108,12 @@ function fixedFilters(
 }
 export function captureReportBookmark(
   config: ReportConfig,
-  pageId: string
+  pageId: string,
+  exploration?: StudioExploration
 ): ReportBookmarkState {
   return {
     ...fixedFilters(config),
+    ...(exploration ? { exploration } : {}),
     period: config.period,
     owner_id: config.owner_id,
     customer_type: config.customer_type,

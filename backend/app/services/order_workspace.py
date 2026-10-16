@@ -14,6 +14,7 @@ from app.models import AppUser, Customer, PAYMENT_TERM_CODES, Product, SalesOrde
 from app.pricing import supply_price
 from app.services import customer_profile, orders, writeback
 from app.services.scope import SHARING_LEVEL, Scope
+from app.services.product_catalog import visible_catalog_products
 
 CENT = Decimal("0.01")
 TAIPEI = dt.timezone(dt.timedelta(hours=8))
@@ -283,7 +284,7 @@ def list_orders(session: Session, user: AppUser, q="", status="all", page=1, pag
 
 def catalog(session: Session, user: AppUser, customer_id: str, q="", page=1):
     target = customer(session, user, customer_id)
-    query = select(Product)
+    query = select(Product).where(visible_catalog_products())
     if q:
         pattern = "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
         query = query.where(Product.name.ilike(pattern, escape="\\") | Product.sku.ilike(pattern, escape="\\") | Product.category.ilike(pattern, escape="\\"))

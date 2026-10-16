@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from app.api.auth import CurrentUser
+from app.api.report_datasets import router as dataset_router
 from app.config import NotConfigured
 from app.db import get_session
 from app.llm import LLMOutputError
@@ -22,6 +23,7 @@ from app.services import report_exports
 from app.services.reports import Adjustment, ReportConfig, ReportData, ReportFilterOptions, ReportOwner, ReportQuery
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
+router.include_router(dataset_router)
 SessionDep = Annotated[Session, Depends(get_session)]
 log = logging.getLogger(__name__)
 

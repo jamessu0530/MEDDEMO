@@ -1,5 +1,5 @@
 import type { ReactNode } from "react"
-import { ChevronLeft } from "lucide-react"
+import { ChevronLeft } from "@/components/icons"
 import { Link } from "react-router"
 
 type PageHeaderProps = {
@@ -29,7 +29,7 @@ export function PageHeader({ title, subtitle, backTo, leading, trailing }: PageH
         ))}
       <div className="min-w-0 flex-1 pr-3">
         {subtitle && <p className="truncate text-xs text-muted-foreground">{subtitle}</p>}
-        <h1 className="truncate text-base font-semibold">{title}</h1>
+        <h1 className="truncate text-xl font-semibold">{title}</h1>
       </div>
       {trailing}
     </header>

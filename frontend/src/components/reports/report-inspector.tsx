@@ -1,3 +1,4 @@
+import { ReportAnalysisFields } from "@/components/reports/report-analysis-fields"
 import { useId, useState, type ReactNode } from "react"
 import {
   ArrowDown,
@@ -7,9 +8,10 @@ import {
   SlidersHorizontal,
   Trash2,
   X,
-} from "lucide-react"
+} from "@/components/icons"
 
 import { ReportVisualIcon } from "@/components/reports/report-visual-icon"
+import { ReportFieldWells } from "@/components/reports/report-fields"
 import { ReportMatrixFields } from "@/components/reports/report-matrix-fields"
 import { ReportFormatFields } from "@/components/reports/report-format-fields"
 import { ReportLayoutFields } from "@/components/reports/report-layout-fields"
@@ -69,7 +71,7 @@ type ReportInspectorProps = {
 const CONTROL =
   "h-10 w-full min-w-0 rounded-md border border-border bg-background px-2.5 text-sm outline-none transition-colors focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 disabled:cursor-not-allowed disabled:bg-muted/40 disabled:text-muted-foreground"
 const ACTION =
-  "flex min-h-10 items-center justify-center gap-1.5 rounded-md border border-border px-2 text-xs transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-40"
+  "flex min-h-10 items-center justify-center gap-1.5 rounded-md border border-border px-2 text-sm transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-40"
 const METRIC_KEYS = Object.keys(METRICS) as ReportMetric[]
 const VISUAL_KEYS = Object.keys(VISUALS) as ReportVisual[]
 const TREND_VISUALS: ReportVisual[] = ["line", "area", "combo"]
@@ -157,7 +159,7 @@ export function ReportVisualGallery({
             disabled={Boolean(reason)}
             onClick={() => onSelect(visual)}
             className={cn(
-              "relative flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-md border px-1 py-1.5 text-[0.625rem] leading-tight transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-35",
+              "relative flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-md border px-1 py-1.5 text-xs leading-tight transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-35",
               selected
                 ? "border-primary bg-primary/8 text-primary"
                 : "border-transparent text-muted-foreground hover:border-border hover:bg-muted"
@@ -195,15 +197,13 @@ function Field({
     <div className="min-w-0 space-y-1.5">
       <label
         htmlFor={htmlFor}
-        className="block text-xs font-medium text-foreground"
+        className="block text-sm font-medium text-foreground"
       >
         {label}
       </label>
       {children}
       {help && (
-        <p className="text-[0.6875rem] leading-relaxed text-muted-foreground">
-          {help}
-        </p>
+        <p className="text-xs leading-relaxed text-muted-foreground">{help}</p>
       )}
     </div>
   )
@@ -289,7 +289,7 @@ function TargetInput({
         }}
       />
       {invalid && (
-        <p id={`${id}-error`} className="text-[0.6875rem] text-destructive">
+        <p id={`${id}-error`} className="text-xs text-destructive">
           請輸入大於 0、最多一兆的目標值。
         </p>
       )}
@@ -363,7 +363,7 @@ export function ReportInspector({
     <div className="flex min-w-0 flex-col text-foreground">
       {!hideHeading && (
         <div className="flex min-h-14 items-center justify-between gap-2 border-b border-border px-4">
-          <h2 className="flex items-center gap-2 text-sm font-semibold">
+          <h2 className="flex items-center gap-2 text-base font-semibold">
             <SlidersHorizontal
               className="size-4 text-muted-foreground"
               aria-hidden="true"
@@ -389,7 +389,7 @@ export function ReportInspector({
               <p className="truncate text-xs font-medium" title={card.title}>
                 {card.title || METRICS[card.metric].label}
               </p>
-              <p className="mt-1 text-[0.6875rem] text-muted-foreground">
+              <p className="mt-1 text-xs text-muted-foreground">
                 正在編輯所選圖表，變更立即顯示。
               </p>
             </div>
@@ -452,6 +452,7 @@ export function ReportInspector({
           >
             {tab === "build" && (
               <>
+                <ReportFieldWells card={card} onChange={onChange} />
                 <div>
                   <p className="mb-2 text-xs font-medium">圖表類型</p>
                   <ReportVisualGallery
@@ -461,13 +462,13 @@ export function ReportInspector({
                   />
                   {(card.metric === "overdue" ||
                     card.metric === "customers") && (
-                    <p className="mt-2 text-[0.6875rem] leading-relaxed text-muted-foreground">
+                    <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
                       逾期帳款與客戶數為目前快照，請使用比較、占比或明細圖表。
                     </p>
                   )}
                 </div>
                 <div className="space-y-3 border-t border-border pt-4">
-                  <h3 className="text-xs font-semibold">資料欄位</h3>
+                  <h3 className="text-sm font-semibold">資料欄位</h3>
                   <Field
                     label={
                       card.visual === "scatter"
@@ -497,7 +498,7 @@ export function ReportInspector({
                     </select>
                   </Field>
                   {METRICS[card.metric].definition && (
-                    <p className="text-[11px] leading-relaxed text-muted-foreground">
+                    <p className="text-xs leading-relaxed text-muted-foreground">
                       {METRICS[card.metric].definition}
                     </p>
                   )}
@@ -686,6 +687,14 @@ export function ReportInspector({
                 </div>
               </>
             )}
+            {tab === "build" && (
+              <ReportAnalysisFields
+                card={card}
+                config={config}
+                options={filterOptions ?? emptyFilterOptions()}
+                onChange={onChange}
+              />
+            )}
             {tab === "format" && (
               <>
                 <Field label="圖表標題" htmlFor={`${id}-title`}>
@@ -746,7 +755,7 @@ export function ReportInspector({
                     ))}
                   </div>
                   <label
-                    className="flex min-h-10 items-center gap-3 text-xs"
+                    className="flex min-h-10 items-center gap-3 text-sm"
                     htmlFor={`${id}-color`}
                   >
                     <input
@@ -861,7 +870,7 @@ export function ReportInspector({
             {tab === "filters" && (
               <>
                 <div className="space-y-3">
-                  <h3 className="text-xs font-semibold">套用至這個視覺效果</h3>
+                  <h3 className="text-sm font-semibold">套用至這個視覺效果</h3>
                   <Field
                     label="接收其他圖表的聯動"
                     htmlFor={`${id}-interaction`}
@@ -931,7 +940,7 @@ export function ReportInspector({
                   card.date_range ? (
                     <button
                       type="button"
-                      className="min-h-10 text-left text-xs text-primary"
+                      className="min-h-10 text-left text-sm text-primary"
                       onClick={() =>
                         onChange({ filters: [], slicers: [], date_range: null })
                       }
@@ -939,13 +948,13 @@ export function ReportInspector({
                       清除此圖表的篩選
                     </button>
                   ) : null}
-                  <p className="text-[0.6875rem] leading-relaxed text-muted-foreground">
+                  <p className="text-xs leading-relaxed text-muted-foreground">
                     圖表篩選會與報表篩選同時生效。
                   </p>
                 </div>
                 <div className="space-y-2 border-t border-border pt-4">
-                  <h3 className="text-xs font-semibold">整份報表的篩選</h3>
-                  <p className="text-[11px] text-muted-foreground">
+                  <h3 className="text-sm font-semibold">整份報表的篩選</h3>
+                  <p className="text-xs text-muted-foreground">
                     期間：{PERIODS[config.period]}
                     {config.period === "custom" && config.date_range
                       ? ` · ${config.date_range.start} 至 ${config.date_range.end}`
@@ -982,11 +991,11 @@ export function ReportInspector({
                     filters={pages.find((page) => page.id === pageId)?.filters}
                   />
                   {pages.find((page) => page.id === pageId)?.date_range && (
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="text-xs text-muted-foreground">
                       目前分頁另設日期，與報表及單圖日期取交集。
                     </p>
                   )}
-                  <p className="text-[0.6875rem] leading-relaxed text-muted-foreground">
+                  <p className="text-xs leading-relaxed text-muted-foreground">
                     整份報表的條件可在畫布上方的篩選列調整。
                   </p>
                 </div>
@@ -1034,12 +1043,10 @@ export function ReportInspector({
       ) : (
         <div className="space-y-4 p-4">
           <p className="text-xs leading-relaxed text-muted-foreground">
-            選取畫布上的圖表來編輯，或選擇下方類型新增圖表。
+            選取圖表以編輯，或新增圖表。
           </p>
           <ReportVisualGallery onSelect={onAdd} />
-          <p className="text-[0.6875rem] text-muted-foreground">
-            每頁最多 12 個圖表，可在不同頁面安排閱讀重點。
-          </p>
+          <p className="text-xs text-muted-foreground">每頁最多 12 個圖表。</p>
         </div>
       )}
     </div>

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react"
-import { ChevronDown, Search } from "lucide-react"
+import { ChevronDown, Search } from "@/components/icons"
 
 import {
   listPromotions,
@@ -7,6 +7,7 @@ import {
   type PromotionItem,
 } from "@/api/promotions"
 import { Notice } from "@/components/notice"
+import { ContextHelp } from "@/components/context-help"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -143,10 +144,7 @@ export function PromotionsPanel({ navigation }: { navigation: ReactNode }) {
   return (
     <div className="flex min-h-svh flex-col">
       <header className="sticky top-0 z-10 border-b bg-background/95 px-4 pt-4 pb-3 backdrop-blur">
-        <p className="text-xs text-muted-foreground">
-          每月一期，品項的搭贈與整張訂單的活動
-        </p>
-        <h1 className="mt-0.5 text-lg font-semibold">商品與促銷</h1>
+        <h1 className="mt-0.5 text-xl font-semibold">商品與促銷</h1>
         {navigation}
         {promotions.length > 1 && (
           <div className="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 pb-1.5">
@@ -219,7 +217,7 @@ export function PromotionsPanel({ navigation }: { navigation: ReactNode }) {
               className="mt-4 rounded-xl border-2 bg-card p-3 shadow-lip"
             >
               <div className="mb-3 flex items-center justify-between gap-3">
-                <h2 className="text-sm font-semibold">篩選促銷</h2>
+                <h2 className="text-base font-semibold">篩選促銷</h2>
                 {hasFilters && (
                   <Button variant="ghost" onClick={clearFilters}>
                     清除篩選
@@ -348,7 +346,7 @@ export function PromotionsPanel({ navigation }: { navigation: ReactNode }) {
 
             {sections.length > 0 && (
               <section className="mt-4">
-                <h2 className="mb-2 text-sm font-semibold">整張訂單的活動</h2>
+                <h2 className="mb-2 text-base font-semibold">整張訂單的活動</h2>
                 <div className="divide-y rounded-xl border-2 bg-card shadow-lip">
                   {sections.map((section, index) => (
                     <details
@@ -369,14 +367,11 @@ export function PromotionsPanel({ navigation }: { navigation: ReactNode }) {
             )}
 
             {groups.length > 0 && (
-              <p className="mt-5 text-xs text-muted-foreground">
-                一口是一個購買單位。平均每個＝每口售價 ÷
-                買加送的數量；折扣是相較原出貨價省下的比例，另外加贈的其他品項與滿額贈不算在內。
-              </p>
+              <div className="mt-4 flex items-center justify-between"><h2 className="text-base font-semibold">促銷品項</h2><ContextHelp label="促銷價格計算方式"><p>一口是一個購買單位。平均每個＝每口售價 ÷ 買加送的數量。</p><p>折扣以原出貨價計算；另外加贈的其他品項與滿額贈不列入平均單價。</p></ContextHelp></div>
             )}
             {groups.map((group) => (
               <section key={group.name} className="mt-4">
-                <h2 className="mb-2 flex items-baseline justify-between text-sm font-semibold">
+                <h2 className="mb-2 flex items-baseline justify-between text-base font-semibold">
                   {group.name}
                   <span className="text-xs font-normal text-muted-foreground">
                     {group.items.length} 項
@@ -408,7 +403,7 @@ function FilterField({
   children: ReactNode
 }) {
   return (
-    <label className="flex min-w-0 flex-col gap-1.5 text-xs text-muted-foreground">
+    <label className="flex min-w-0 flex-col gap-1.5 text-sm text-muted-foreground">
       {label}
       {children}
     </label>
@@ -440,19 +435,19 @@ function ItemRow({
       <p className="mt-1 text-xs text-muted-foreground">{item.deal}</p>
       <dl className="mt-3 grid grid-cols-3 gap-2 border-t pt-2 text-center">
         <div>
-          <dt className="text-[0.6875rem] text-muted-foreground">每口</dt>
+          <dt className="text-xs text-muted-foreground">每口</dt>
           <dd className="text-sm font-medium tabular-nums">
             {formatMoney(item.deal_price)}
           </dd>
         </div>
         <div>
-          <dt className="text-[0.6875rem] text-muted-foreground">平均每個</dt>
+          <dt className="text-xs text-muted-foreground">平均每個</dt>
           <dd className="text-sm font-medium tabular-nums">
             {formatUnitPrice(item.unit_deal_price)}
           </dd>
         </div>
         <div>
-          <dt className="text-[0.6875rem] text-muted-foreground">
+          <dt className="text-xs text-muted-foreground">
             比出貨價 {formatMoney(item.ship_price)}
           </dt>
           <dd className="text-sm font-medium text-primary tabular-nums">

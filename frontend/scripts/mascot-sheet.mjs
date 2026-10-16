@@ -10,6 +10,7 @@ const out = path.resolve(root, "../docs/superpowers/specs/assets/2026-10-14-masc
 // SSR 和瀏覽器 bundle 用同一個 JSX runtime，避免先開 SSR server 把 JSX 轉成 development 版本。
 process.env.NODE_ENV = "production"
 const motions = [
+  { state: "blink", name: "眨眨眼", hint: "眨兩下，偷偷看著你", description: "輕輕點頭、連眨兩下眼睛，再張開眼睛看著你。" },
   { state: "roll", name: "翻滾", hint: "縮一下，咕嚕轉一圈", description: "先縮一下蓄力，咕嚕轉一整圈，落地時軟軟地回彈。" },
   { state: "sleep", name: "打盹", hint: "閉上眼睛，慢慢呼吸", description: "耳朵放鬆，身體縮成軟軟的一團，睡眠符號輕輕往上飄。" },
   { state: "stretch", name: "伸懶腰", hint: "拉高身體，打個哈欠", description: "閉著眼睛把身體拉長，耳朵向外張開，再慢慢放鬆。" },
@@ -69,6 +70,7 @@ ${css}
     .controls button { border: 1px solid #e9e0f2; border-radius: 12px; background: #fff; color: #705582; padding: 10px 16px; font-size: 13px; }
     .controls .primary { background: #9b51e0; color: #fff; border-color: #9b51e0; }
     .choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .motion:first-child { grid-column: 1 / -1; }
     .motion { display: flex; flex-direction: column; align-items: center; justify-content: center; border: 2px solid transparent; border-radius: 24px; background: #fff; color: #2b1b47; padding: 16px 10px 20px; transition: border-color .18s, background .18s; }
     .motion:hover { background: #fbf7ff; border-color: #dcc4f3; }
     .motion.selected { border-color: #9b51e0; background: #f5edfc; }
@@ -97,12 +99,12 @@ ${css}
 </head>
 <body>
 <main>
-  <header><span class="eyebrow">熊熊滾 · 日常小動作</span><h1>熊熊滾被戳太多次，會怎樣？</h1><p class="intro">連續戳大熊熊六下，牠會「噗！」炸成兩隻。也可以點選卡片，看看四種日常小動作。</p></header>
+  <header><span class="eyebrow">熊熊滾 · 日常小動作</span><h1>熊熊滾，眨眨眼。</h1><p class="intro">點選卡片，看看五種日常小動作。連續戳大熊熊六下，牠還會「噗！」炸成兩隻。</p></header>
   <div class="layout">
     <section class="stage" aria-label="動畫預覽">
       <div class="stage-top"><span class="tag">動作預覽</span><div class="views" role="group" aria-label="檢視方式"><button type="button" data-view="full" aria-pressed="true">全身</button><button type="button" data-view="bust" aria-pressed="false">頭像</button></div></div>
-      <div class="hero" id="hero">${bear("roll")}</div>
-      <div class="caption" aria-live="polite"><h2 id="name">翻滾</h2><p class="description" id="description">${motions[0].description}</p></div>
+      <div class="hero" id="hero">${bear("blink")}</div>
+      <div class="caption" aria-live="polite"><h2 id="name">眨眨眼</h2><p class="description" id="description">${motions[0].description}</p></div>
       <div class="controls"><button class="primary" type="button" id="pause" aria-pressed="false">暫停動畫</button><button type="button" id="replay">重播這個動作</button></div>
       <p class="footnote motion-note">目前依照系統的「減少動態效果」設定，顯示靜態表情。</p>
     </section>

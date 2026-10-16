@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react"
-import { ChevronRight, Inbox, RotateCcw, Settings, UserPlus, Users } from "lucide-react"
+import { ChevronRight, Inbox, RotateCcw, Settings, UserPlus, Users } from "@/components/icons"
 import { Link, useNavigate } from "react-router"
 
 import {
@@ -139,9 +139,9 @@ export function AdminPage() {
         </div>
 
         <div className="rounded-2xl border-2 bg-card p-4 shadow-lip">
-          <h2 className="text-sm font-semibold">示範業務的今日行程</h2>
+          <h2 className="text-base font-semibold">示範業務的今日行程</h2>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-            評審用第三方登入看的都是示範業務的行程，大家共用一份：按過的暫緩、插入下一站、加進去的站、改過的排序習慣都會留著。換一批評審前重置，回到系統早上的建議與一開始的排序習慣。
+            展示帳號共用示範行程。重置後會還原行程與排序習慣。
           </p>
           {!resetConfirming ? (
             <Button
@@ -188,7 +188,7 @@ export function AdminPage() {
         </div>
 
         <p className="text-xs leading-relaxed text-muted-foreground">
-          改組織馬上生效：誰看得到誰的資料、風險通報與申請單（出差單、優惠、合約）送給誰，都跟著這棵樹走。
+          組織異動會立即調整資料權限、風險通報與申請單的簽核對象。
         </p>
 
         {flash && (
@@ -287,7 +287,7 @@ function OrgTree({
   return (
     <>
       <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-semibold">全國</h2>
+        <h2 className="text-base font-semibold">全國</h2>
         <div className="rounded-2xl border-2 bg-card shadow-lip">
           {it.map((person) => (
             <div
@@ -302,7 +302,7 @@ function OrgTree({
                   </span>
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  IT · 全公司看得到也動得了，帳號不在這裡改
+                  IT · 全公司管理權限
                 </p>
               </div>
             </div>
@@ -315,7 +315,7 @@ function OrgTree({
         )
         return (
           <section key={region.id} className="flex flex-col gap-2">
-            <h2 className="text-sm font-semibold">{region.name}</h2>
+            <h2 className="text-base font-semibold">{region.name}</h2>
             {managers.length === 0 && (
               <p className="text-xs text-muted-foreground">
                 這一區還沒有主管。
@@ -390,7 +390,7 @@ function PersonRow({
 function ChangeLog({ chart }: { chart: OrgChart }) {
   return (
     <section className="flex flex-col gap-2">
-      <h2 className="text-sm font-semibold">異動紀錄</h2>
+      <h2 className="text-base font-semibold">異動紀錄</h2>
       {chart.log.length === 0 ? (
         <p className="text-xs text-muted-foreground">還沒有異動。</p>
       ) : (
@@ -398,7 +398,7 @@ function ChangeLog({ chart }: { chart: OrgChart }) {
           {chart.log.map((entry) => (
             <li key={entry.id} className="px-4 py-2.5">
               <p className="text-sm leading-relaxed">{entry.detail}</p>
-              <p className="mt-0.5 text-[0.6875rem] text-muted-foreground">
+              <p className="mt-0.5 text-xs text-muted-foreground">
                 {formatDateTime(entry.created_at)} · {entry.actor_name}
               </p>
             </li>

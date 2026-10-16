@@ -20,7 +20,7 @@ import {
   rectSortingStrategy,
   sortableKeyboardCoordinates,
 } from "@dnd-kit/sortable"
-import { ArrowDown, ArrowUp, MoveDiagonal2 } from "lucide-react"
+import { ArrowDown, ArrowUp, MoveDiagonal2 } from "@/components/icons"
 import {
   desktopReportRects,
   mobileReportCards,
@@ -86,6 +86,8 @@ export function ReportLayoutCanvas({
   onChange,
   renderCard,
   onMobileChange,
+  selectionIds,
+  onSelectionChange,
 }: {
   config: ReportConfig
   pageId: string
@@ -95,6 +97,8 @@ export function ReportLayoutCanvas({
   onSelect: (id: string) => void
   onChange: (config: ReportConfig) => void
   onMobileChange: (value: boolean) => void
+  selectionIds?: string[]
+  onSelectionChange?: (ids: string[]) => void
   renderCard: (card: ReportCard, layout: ReportLayoutRender) => ReactNode
 }) {
   const [mobilePreview, setMobilePreview] = useState(false)
@@ -113,6 +117,8 @@ export function ReportLayoutCanvas({
         onChange,
         renderCard,
         mobile,
+        selectionIds,
+        onSelectionChange,
       }}
       onPreviewChange={setMobilePreview}
     />
@@ -130,6 +136,8 @@ function ReportLayoutBoard({
   renderCard,
   mobile,
   onPreviewChange,
+  selectionIds,
+  onSelectionChange,
 }: {
   config: ReportConfig
   pageId: string
@@ -141,6 +149,8 @@ function ReportLayoutBoard({
   renderCard: (card: ReportCard, layout: ReportLayoutRender) => ReactNode
   mobile: boolean
   onPreviewChange: (value: boolean) => void
+  selectionIds?: string[]
+  onSelectionChange?: (ids: string[]) => void
 }) {
   const cards = config.cards.filter(
     (card) => (card.page_id ?? "overview") === pageId
@@ -167,14 +177,17 @@ function ReportLayoutBoard({
     latest: DesktopRects
   } | null>(null)
   const rects = preview ?? baseRects
-  const selectedIds = [
-    ...new Set([
-      ...(selectedId && cards.some((card) => card.id === selectedId)
-        ? [selectedId]
-        : []),
-      ...extraIds.filter((id) => cards.some((card) => card.id === id)),
-    ]),
-  ]
+  const selectedIds =
+    selectionIds && selectedId && selectionIds.includes(selectedId)
+      ? selectionIds.filter((id) => cards.some((card) => card.id === id))
+      : [
+          ...new Set([
+            ...(selectedId && cards.some((card) => card.id === selectedId)
+              ? [selectedId]
+              : []),
+            ...extraIds.filter((id) => cards.some((card) => card.id === id)),
+          ]),
+        ]
   const selected = new Set(selectedIds)
   const canvasHeight =
     Math.max(24, ...Object.values(rects).map((rect) => rect.y + rect.h)) +
@@ -183,7 +196,9 @@ function ReportLayoutBoard({
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
-  const ordered = mobile ? mobileReportCards(cards) : cards
+  const ordered = (mobile ? mobileReportCards(cards) : cards).filter(
+    (card) => editing || !card.hidden
+  )
   function cancel() {
     gesture.current = null
     setPreview(null)
@@ -201,6 +216,23 @@ function ReportLayoutBoard({
     return () => window.removeEventListener("keydown", escape)
   }, [editing, free])
   function select(id: string, event?: MouseEvent) {
+    if (onSelectionChange) {
+      const card = cards.find((item) => item.id === id)
+      const group = card?.group_id
+      const members = group
+        ? cards.filter((item) => item.group_id === group).map((item) => item.id)
+        : [id]
+      const multiple =
+        event && (event.shiftKey || event.ctrlKey || event.metaKey)
+      const next = multiple
+        ? selected.has(id)
+          ? selectedIds.filter((item) => !members.includes(item))
+          : [...new Set([...selectedIds, ...members])]
+        : members
+      onSelectionChange(next)
+      onSelect(next.includes(id) ? id : (next[0] ?? ""))
+      return
+    }
     if (
       free &&
       event &&
@@ -219,6 +251,9 @@ function ReportLayoutBoard({
     }
   }
   function commit(next: DesktopRects) {
+    for (const card of cards)
+      if (card.locked && baseRects[card.id])
+        next = { ...next, [card.id]: baseRects[card.id] }
     onChange(setDesktopReportRects(config, pageId, next))
     setPreview(null)
   }
@@ -227,13 +262,19 @@ function ReportLayoutBoard({
     card: ReportCard,
     mode: "move" | "resize"
   ) {
-    if (event.button !== 0 || !editing || !free) return
+    if (event.button !== 0 || !editing || !free || card.locked) return
     event.preventDefault()
     const width = board.current?.getBoundingClientRect().width ?? 0
     if (!width) return
     const ids =
       mode === "move" && selected.has(card.id)
-        ? [card.id, ...selectedIds.filter((id) => id !== card.id)]
+        ? [
+            card.id,
+            ...selectedIds.filter(
+              (id) =>
+                id !== card.id && !cards.find((item) => item.id === id)?.locked
+            ),
+          ]
         : [card.id]
     if (!selected.has(card.id)) {
       setExtraIds([])
@@ -293,6 +334,7 @@ function ReportLayoutBoard({
     if (
       !editing ||
       !free ||
+      card.locked ||
       !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)
     )
       return
@@ -303,7 +345,13 @@ function ReportLayoutBoard({
     const dy =
       event.key === "ArrowDown" ? step : event.key === "ArrowUp" ? -step : 0
     const ids = selected.has(card.id)
-      ? [card.id, ...selectedIds.filter((id) => id !== card.id)]
+      ? [
+          card.id,
+          ...selectedIds.filter(
+            (id) =>
+              id !== card.id && !cards.find((item) => item.id === id)?.locked
+          ),
+        ]
       : [card.id]
     const next =
       mode === "move"
@@ -388,7 +436,7 @@ function ReportLayoutBoard({
             )}
             {free && (
               <>
-                <label className="flex min-h-9 items-center gap-1.5 text-xs">
+                <label className="flex min-h-9 items-center gap-1.5 text-sm">
                   <input
                     type="checkbox"
                     checked={grid}
@@ -396,7 +444,7 @@ function ReportLayoutBoard({
                   />
                   顯示格線
                 </label>
-                <label className="flex min-h-9 items-center gap-1.5 text-xs">
+                <label className="flex min-h-9 items-center gap-1.5 text-sm">
                   <input
                     type="checkbox"
                     checked={snap}
@@ -414,66 +462,71 @@ function ReportLayoutBoard({
               </>
             )}
           </div>
-          {free && (
-            <div
-              className="flex flex-wrap items-center gap-1.5"
-              role="group"
-              aria-label="圖表對齊與分布"
-            >
-              <span className="mr-1 text-xs text-muted-foreground">
-                已選 {selectedIds.length} 張
-              </span>
-              {(Object.keys(alignmentLabels) as ReportAlignment[]).map(
-                (alignment) => (
-                  <button
-                    key={alignment}
-                    type="button"
-                    className={CONTROL}
-                    disabled={!selectedIds.length}
-                    onClick={() =>
-                      commit(
-                        alignDesktopRects(
-                          baseRects,
-                          selectedIds,
-                          alignment,
-                          canvasHeight - (editing ? 4 : 0)
+          <details open={selectedIds.length > 1}>
+            <summary className="min-h-9 cursor-pointer py-2 text-xs font-medium">
+              對齊、等距與操作說明（已選 {selectedIds.length}）
+            </summary>
+            {free && (
+              <div
+                className="flex flex-wrap items-center gap-1.5"
+                role="group"
+                aria-label="圖表對齊與分布"
+              >
+                <span className="mr-1 text-xs text-muted-foreground">
+                  已選 {selectedIds.length} 張
+                </span>
+                {(Object.keys(alignmentLabels) as ReportAlignment[]).map(
+                  (alignment) => (
+                    <button
+                      key={alignment}
+                      type="button"
+                      className={CONTROL}
+                      disabled={!selectedIds.length}
+                      onClick={() =>
+                        commit(
+                          alignDesktopRects(
+                            baseRects,
+                            selectedIds,
+                            alignment,
+                            canvasHeight - (editing ? 4 : 0)
+                          )
                         )
-                      )
-                    }
-                  >
-                    {alignmentLabels[alignment]}
-                  </button>
-                )
-              )}
-              <button
-                type="button"
-                className={CONTROL}
-                disabled={selectedIds.length < 3}
-                onClick={() =>
-                  commit(distributeDesktopRects(baseRects, selectedIds, "x"))
-                }
-              >
-                水平等距
-              </button>
-              <button
-                type="button"
-                className={CONTROL}
-                disabled={selectedIds.length < 3}
-                onClick={() =>
-                  commit(distributeDesktopRects(baseRects, selectedIds, "y"))
-                }
-              >
-                垂直等距
-              </button>
-            </div>
-          )}
-          <p className="text-[11px] leading-relaxed text-muted-foreground">
-            {mobile
-              ? "手機順序、尺寸與隱藏狀態獨立儲存。拖曳把手或使用清單的上下移動；隱藏圖表可從清單恢復。"
-              : free
-                ? "拖曳把手移動、右下角調整尺寸；方向鍵微調，Shift 加速，Esc 取消拖曳。Shift／Ctrl／⌘ 點標題可多選；單張對齊畫布，多張對齊選取範圍。"
-                : "原有格線會依寬度自動排列。切換自由位置後，可拖曳、縮放與對齊。"}
-          </p>
+                      }
+                    >
+                      {alignmentLabels[alignment]}
+                    </button>
+                  )
+                )}
+                <button
+                  type="button"
+                  className={CONTROL}
+                  disabled={selectedIds.length < 3}
+                  onClick={() =>
+                    commit(distributeDesktopRects(baseRects, selectedIds, "x"))
+                  }
+                >
+                  水平等距
+                </button>
+                <button
+                  type="button"
+                  className={CONTROL}
+                  disabled={selectedIds.length < 3}
+                  onClick={() =>
+                    commit(distributeDesktopRects(baseRects, selectedIds, "y"))
+                  }
+                >
+                  垂直等距
+                </button>
+              </div>
+            )}
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              {mobile
+                ? "手機順序、尺寸與隱藏狀態獨立儲存。拖曳把手或使用清單的上下移動；隱藏圖表可從清單恢復。"
+                : free
+                  ? "拖曳把手移動、右下角調整尺寸；方向鍵微調，Shift 加速，Esc 取消拖曳。Shift／Ctrl／⌘ 點標題可多選；單張對齊畫布，多張對齊選取範圍。"
+                  : "原有格線會依寬度自動排列。切換自由位置後，可拖曳、縮放與對齊。"}
+            </p>
+          </details>
           <details>
             <summary className="cursor-pointer py-1 text-xs font-medium">
               版面清單（{cards.length} 張）
@@ -521,7 +574,7 @@ function ReportLayoutBoard({
                         >
                           <ArrowDown className="size-3.5" />
                         </button>
-                        <label className="flex min-h-9 shrink-0 items-center gap-1 px-1 text-xs">
+                        <label className="flex min-h-9 shrink-0 items-center gap-1 px-1 text-sm">
                           <input
                             type="checkbox"
                             aria-label={`手機顯示：${card.title}`}
@@ -612,10 +665,10 @@ function ReportLayoutBoard({
                     padding: 4,
                     zIndex:
                       preview && selected.has(card.id)
-                        ? 30
+                        ? 2000
                         : selected.has(card.id) && editing
-                          ? 20
-                          : undefined,
+                          ? 1500
+                          : (card.layer ?? 0),
                   }
                 : undefined
               return (
@@ -647,7 +700,7 @@ function ReportLayoutBoard({
                       selected: selected.has(card.id),
                       onSelect: (event) => select(card.id, event),
                       moveHandle:
-                        free && editing
+                        free && editing && !card.locked
                           ? {
                               onPointerDown: (event) =>
                                 start(event, card, "move"),
@@ -661,7 +714,7 @@ function ReportLayoutBoard({
                           : undefined,
                     }}
                   />
-                  {free && editing && (
+                  {free && editing && !card.locked && (
                     <button
                       type="button"
                       onPointerDown={(event) => start(event, card, "resize")}

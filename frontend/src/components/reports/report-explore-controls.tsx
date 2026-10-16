@@ -1,4 +1,4 @@
-import { ArrowUp, List } from "lucide-react"
+import { ArrowUp, List } from "@/components/icons"
 import { NativeSelect } from "@/components/ui/native-select"
 import {
   canExploreDates,
@@ -37,12 +37,12 @@ export function ReportExploreControls({
   const date = canExploreDates(card)
   return (
     <div className="mb-3 min-w-0 space-y-2 border-b pb-2">
-      <div className="flex min-w-0 flex-wrap items-center gap-2 text-[11px]">
+      <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs">
         {date && (
           <NativeSelect
             aria-label={`日期層級：${card.title}`}
             value={card.dimension}
-            className="h-9 w-20 rounded-md border px-2 text-xs shadow-none"
+            className="h-9 w-20 rounded-md border px-2 text-base shadow-none"
             onChange={(event) =>
               onGrain(event.target.value as ReportDateDimension)
             }
@@ -58,12 +58,16 @@ export function ReportExploreControls({
           <NativeSelect
             aria-label={`點選動作：${card.title}`}
             value={action}
-            className="h-9 w-32 rounded-md border px-2 text-xs shadow-none"
+            className="h-9 w-32 rounded-md border px-2 text-base shadow-none"
             onChange={(event) =>
               onAction(event.target.value as ReportPointAction)
             }
           >
             <option value="filter">點選：聯動篩選</option>
+            {card.drillthrough_page && (
+              <option value="page">點選：跨頁分析</option>
+            )}
+            {card.tooltip_page && <option value="tooltip">點選：提示頁</option>}
             <option value="details">點選：逐筆明細</option>
             {date && nextDateDimension(card.dimension) && (
               <option value="drill">點選：日期下鑽</option>
@@ -81,7 +85,7 @@ export function ReportExploreControls({
         </button>
       </div>
       {!!state?.steps.length && (
-        <div className="flex flex-wrap items-center gap-1 text-[11px]">
+        <div className="flex flex-wrap items-center gap-1 text-xs">
           <button
             type="button"
             className="min-h-8 rounded px-2 text-primary hover:bg-muted"

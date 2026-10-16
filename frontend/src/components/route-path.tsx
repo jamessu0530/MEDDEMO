@@ -1,5 +1,5 @@
 import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react"
-import { Building2, Check, Flag } from "lucide-react"
+import { Building2, Check, Flag } from "@/components/icons"
 import { Link } from "react-router"
 
 import { getBrief, type Brief } from "@/api/notes"
@@ -312,7 +312,7 @@ export function RoutePath({
         {/* 還沒走的段只要有一段是 Google 算的就標出處（Google 的使用條款，不翻譯） */}
         {/* 同一點到同一點的段（兩站同座標、沒有辦公室起點的第一段）0 公里、不是 Google 算的，不算 */}
         {stops.some((stop) => stop.status !== "done" && !stop.travel_estimated && (stop.travel_km ?? 0) > 0) && (
-          <p className="font-[Roboto,sans-serif] text-[0.6875rem] text-muted-foreground">Google Maps</p>
+          <p className="font-[Roboto,sans-serif] text-xs text-muted-foreground">Google Maps</p>
         )}
         {finished && !riding && <FinishBear />}
         <Link to="/rides" className="text-xs font-semibold text-primary">
@@ -453,7 +453,7 @@ function StopLabel({ stop, offset }: { stop: RouteStop; offset: number }) {
     : { left: `calc(50% + ${offset + HALF_NODE + LABEL_GAP}px)`, right: 0 }
   return (
     <div aria-hidden className={cn("absolute top-1 text-xs leading-snug", left && "text-right")} style={style}>
-      <p className={cn("line-clamp-2 text-[0.8125rem] font-semibold", done && "text-muted-foreground")}>{stop.customer_name}</p>
+      <p className={cn("line-clamp-2 text-sm font-semibold", done && "text-muted-foreground")}>{stop.customer_name}</p>
       <p className="mt-0.5 text-muted-foreground">
         {done ? (
           stop.visit_id || !stop.arrived_at ? (

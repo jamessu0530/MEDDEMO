@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { ChevronDown, ChevronRight, EllipsisVertical, Hash, Images, MessagesSquare, NotebookText, Plus, type LucideIcon } from "lucide-react"
+import { ChevronDown, ChevronRight, EllipsisVertical, Hash, Images, MessagesSquare, NotebookText, Plus, type LucideIcon } from "@/components/icons"
 import { Link } from "react-router"
 
 import { listThreads, type Channel } from "@/api/channels"
@@ -128,7 +128,7 @@ function TopicSection({
   return (
     <section className="flex flex-col gap-1">
       <div className="flex min-h-9 items-center justify-between px-1">
-        <h3 className="text-xs font-semibold text-muted-foreground">文字頻道</h3>
+        <h3 className="text-sm font-semibold text-muted-foreground">文字頻道</h3>
         {canCreate && (
           <Button variant="ghost" size="sm" className="h-9 gap-1 px-2 text-xs text-primary" onClick={onCreate}>
             <Plus className="size-4" />
@@ -174,9 +174,9 @@ function TopicRow({ topic, back, selected, onManage }: { topic: Channel; back: s
         <div className="min-w-0 flex-1">
           <p className={cn("flex items-center gap-2 text-sm", topic.unread > 0 && !topic.archived && "font-semibold", topic.archived && "text-muted-foreground")}>
             <span className="truncate">{topic.name}</span>
-            {topic.archived && <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[0.625rem]">已封存</span>}
+            {topic.archived && <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-xs">已封存</span>}
           </p>
-          {detail.length > 0 && <p className="text-[0.6875rem] text-muted-foreground">{detail.join(" · ")}</p>}
+          {detail.length > 0 && <p className="text-xs text-muted-foreground">{detail.join(" · ")}</p>}
         </div>
         {topic.unread > 0 && !topic.archived && <UnreadDot count={topic.unread} />}
       </Link>
@@ -213,7 +213,7 @@ function ThreadSection({ place, back, refreshKey, openId }: { place: Channel; ba
 
   return (
     <section className="flex flex-col gap-1">
-      <h3 className="px-1 text-xs font-semibold text-muted-foreground">客戶討論串</h3>
+      <h3 className="px-1 text-sm font-semibold text-muted-foreground">客戶討論串</h3>
       {state.status === "loading" && <p className="py-4 text-center text-sm text-muted-foreground">載入中…</p>}
       {state.status === "error" && <Notice text="連不上伺服器，討論串沒有載入。" />}
       {state.status === "ready" && state.threads.length === 0 && (

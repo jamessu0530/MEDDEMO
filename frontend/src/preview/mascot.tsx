@@ -8,7 +8,7 @@ const hero = document.getElementById("hero")!
 const main = document.querySelector("main")!
 const pause = document.getElementById("pause")!
 const root = createRoot(hero)
-let state: MascotState = "roll"
+let state: MascotState = "blink"
 let view = "full"
 let replay = 0
 

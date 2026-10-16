@@ -63,7 +63,7 @@ export function ReportFormattedValue({
               ? undefined
               : "資料條超出刻度範圍，數值仍為原值"
           }
-          className={`pointer-events-none absolute top-0 -translate-y-1/2 text-[8px] ${value != null && value < 0 ? "left-0" : "right-0"}`}
+          className={`pointer-events-none absolute top-0 -translate-y-1/2 text-xs ${value != null && value < 0 ? "left-0" : "right-0"}`}
         >
           {value != null && value < 0 ? "◀" : "▶"}
         </span>

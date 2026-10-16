@@ -13,6 +13,7 @@ import { createConversation, type Conversation, type ToolRun } from "@/ask/conve
 import { createMapEditsStore, type MapEditsStore } from "@/ask/memory-map-edits"
 import { runAsk } from "@/ask/run-ask"
 import { onAuthChange, readUser } from "@/lib/auth"
+import { wantsOrderDemo } from "@/lib/ui-demo"
 
 export type AskSession = {
   conversation: Conversation
@@ -93,6 +94,10 @@ function create(userId: string): NonNullable<typeof current> {
       if (busy) return
       const earlier = earlierTurns(conversation)
       const utteranceId = conversation.addUtterance("user", "typed", question)
+      if (mode === "auto" && !file && wantsOrderDemo(question)) {
+        conversation.addUtterance("model", "typed", "要不要我操作給你看？", { demo: "create-order" })
+        return
+      }
       // 自己指定了種類、前面也沒有答完的題目：沒有東西要整理，直接查
       if (mode !== "auto" && earlier.length === 0) {
         const entryId = conversation.addToolRun(mode, question)

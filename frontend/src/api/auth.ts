@@ -1,5 +1,5 @@
 import { jsonBody, request } from "@/api/client"
-import { signOut, type AuthUser, type Session } from "@/lib/auth"
+import { signOut, type AuthUser, type Role, type Session } from "@/lib/auth"
 
 /** Email 密碼登入；Email 不存在或密碼錯誤時後端回 401，訊息是寫給業務看的中文 */
 export function login(email: string, password: string) {
@@ -19,6 +19,11 @@ export function updateProfile(name: string) {
 /** 這組 token 現在代表誰。過期或在別的裝置登入過會回 401（由 api/client.ts 統一處理） */
 export function fetchMe(signal?: AbortSignal) {
   return request<AuthUser>("/api/auth/me", { signal })
+}
+
+/** 每個登入帳號都能切換示範身分；null 回到自己的帳號。 */
+export function switchDemoRole(role: Role | null) {
+  return request<Session>("/api/auth/demo-role", jsonBody("POST", { role }))
 }
 
 /**

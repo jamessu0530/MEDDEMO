@@ -27,7 +27,7 @@ def config(**patch):
     {"desktop_layout": {"x": 0, "y": float("inf"), "w": 12, "h": 20}},
     {"desktop_layout": {"x": True, "y": 0, "w": 12, "h": 20}},
     {"desktop_layout": {"x": 0, "y": 0, "w": 12, "h": 20, "css": "arbitrary"}},
-    {"mobile_layout": {"order": 24, "height": 20}},
+    {"mobile_layout": {"order": 124, "height": 20}},
     {"mobile_layout": {"order": -1, "height": 20}},
     {"mobile_layout": {"order": True, "height": 20}},
     {"mobile_layout": {"order": 0, "height": 8.5}},

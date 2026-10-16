@@ -1,5 +1,5 @@
 import { useRef, useState, type ChangeEvent } from "react"
-import { Loader2 } from "lucide-react"
+import { Loader2 } from "@/components/icons"
 import { Link } from "react-router"
 
 import { removeMyAvatar, uploadAvatar } from "@/api/avatars"
@@ -55,13 +55,11 @@ export function ProfilePhotoSection() {
 
   return (
     <section className="flex flex-col gap-3">
-      <h2 className="text-sm font-semibold">大頭貼</h2>
+      <h2 className="text-base font-semibold">大頭貼</h2>
       <div className="flex items-center gap-4 rounded-2xl border-2 bg-card p-4 shadow-lip">
         <UserAvatar id={user.id} name={user.name} size="lg" className="size-16" />
         <div className="flex min-w-0 flex-1 flex-col gap-2">
-          <p className="text-xs leading-relaxed text-muted-foreground">
-            {mascot ? "目前使用熊熊滾頭像，也可以換回自己的照片。" : url ? "全公司的帳號都看得到這張照片。" : "可以上傳照片，或用收藏的熊熊滾當頭像。"}
-          </p>
+          {(url || mascot) && <p className="text-xs leading-relaxed text-muted-foreground">頭像對全公司顯示。</p>}
           <div className="flex gap-2">
             <Button variant="outline" className="h-11 flex-1" disabled={busy !== null} onClick={() => input.current?.click()}>
               {busy === "upload" ? <Loader2 className="size-5 animate-spin" /> : url ? "換照片" : "上傳照片"}
@@ -76,7 +74,7 @@ export function ProfilePhotoSection() {
         {/* image/*：手機上可以選拍照或相簿 */}
         <input ref={input} type="file" accept="image/*" className="hidden" onChange={(event) => void pick(event)} />
       </div>
-      <Link to="/mascots" className="inline-flex min-h-11 items-center justify-center rounded-xl border-2 bg-accent px-4 text-sm font-medium text-primary">熊熊滾收藏與換裝</Link>
+      <Link to="/mascots" className="inline-flex min-h-11 items-center justify-center rounded-xl border-2 bg-accent px-4 text-sm font-medium text-primary">熊熊衣櫃</Link>
       {progress !== null && (
         <div
           className="h-1 overflow-hidden rounded-full bg-muted"
@@ -93,7 +91,7 @@ export function ProfilePhotoSection() {
         </p>
       )}
       <p className="px-1 text-xs leading-relaxed text-muted-foreground">
-        照片會從中間裁成正方形，並清掉裡面的拍攝地點、手機型號等資訊。
+        照片會裁成正方形，並移除拍攝資訊。
       </p>
     </section>
   )

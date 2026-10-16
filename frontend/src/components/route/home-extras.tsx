@@ -1,4 +1,4 @@
-import { Pencil } from "lucide-react"
+import { Pencil } from "@/components/icons"
 import { Link } from "react-router"
 
 import type { TodayRoute } from "@/api/route"
@@ -15,7 +15,7 @@ export function EditRouteLink() {
     <Link
       to="/route/edit"
       onClick={() => routeDraft.clear()}
-      className="flex w-16 shrink-0 flex-col items-center justify-center gap-0.5 border-l-2 border-black/15 text-[0.6875rem] font-semibold active:bg-black/10"
+      className="flex w-16 shrink-0 flex-col items-center justify-center gap-0.5 border-l-2 border-black/15 text-xs font-semibold active:bg-black/10"
     >
       <Pencil className="size-5" />
       調整

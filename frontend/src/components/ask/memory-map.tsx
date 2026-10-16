@@ -18,7 +18,7 @@ import {
   X,
   ZoomIn,
   ZoomOut,
-} from "lucide-react"
+} from "@/components/icons"
 import { Link } from "react-router"
 
 import type { AskKind } from "@/api/asks"
@@ -89,7 +89,7 @@ export function AskMemoryMap({
           <p className="truncate text-xs font-medium">
             {current?.label || "把查過的問題串起來"}
           </p>
-          <p className="mt-0.5 truncate text-[0.6875rem] text-muted-foreground">
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">
             {current
               ? `${current.meta} · ${graph.total} 題查詢`
               : "問題、文件與頻道記憶的關聯"}
@@ -98,7 +98,7 @@ export function AskMemoryMap({
         <DialogTrigger asChild>
           <Button variant="outline" size="sm" className="shrink-0 gap-1.5">
             記憶地圖
-            <span className="text-[0.625rem] text-muted-foreground">3D</span>
+            <span className="text-xs text-muted-foreground">3D</span>
           </Button>
         </DialogTrigger>
       </div>
@@ -264,7 +264,7 @@ function MapExplorer({
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="找問題或資料…"
-            className="h-9 w-36 min-w-0 bg-transparent text-xs outline-none"
+            className="h-9 w-36 min-w-0 bg-transparent text-base outline-none"
           />
         </label>
       </div>
@@ -455,7 +455,7 @@ function MapExplorer({
                 />
               ) : (
                 <>
-                  <p className="text-[0.6875rem] font-medium text-primary">
+                  <p className="text-xs font-medium text-primary">
                     {MAP_KIND_LABEL[selected.kind]} · {selected.meta}
                   </p>
                   <h2 className="mt-2 text-base leading-relaxed font-semibold break-words">
@@ -511,7 +511,7 @@ function MapExplorer({
               )}
               {relations.length > 0 && (
                 <div className="memory-map-relations mt-5 border-t pt-4">
-                  <h3 className="mb-2 text-xs font-medium">
+                  <h3 className="mb-2 text-sm font-medium">
                     {relations.length} 個關聯
                   </h3>
                   <div className="flex flex-col gap-1">
@@ -520,7 +520,7 @@ function MapExplorer({
                         type="button"
                         key={`${node.id}:${label}`}
                         onClick={() => setPicked(node.id)}
-                        className="flex min-h-10 items-center gap-2 rounded-lg px-2 py-2 text-left text-xs hover:bg-muted"
+                        className="flex min-h-10 items-center gap-2 rounded-lg px-2 py-2 text-left text-sm hover:bg-muted"
                       >
                         <i
                           className="size-2 shrink-0 rounded-full"
@@ -529,7 +529,7 @@ function MapExplorer({
                         <span className="min-w-0 flex-1 truncate">
                           {node.label}
                         </span>
-                        <span className="shrink-0 text-[0.625rem] text-muted-foreground">
+                        <span className="shrink-0 text-xs text-muted-foreground">
                           {label}
                         </span>
                       </button>
@@ -561,7 +561,7 @@ function MapExplorer({
                       : "hover:bg-muted"
                   )}
                 >
-                  <span className="mr-2 text-[0.625rem] text-muted-foreground">
+                  <span className="mr-2 text-xs text-muted-foreground">
                     {MAP_KIND_LABEL[node.kind]}
                   </span>
                   {node.label}
@@ -587,7 +587,7 @@ function MapExplorer({
           </button>
         </div>
       )}
-      <div className="memory-map-footer border-t px-4 py-3 text-[0.6875rem] text-muted-foreground">
+      <div className="memory-map-footer border-t px-4 py-3 text-xs text-muted-foreground">
         <p>
           {graph.total > graph.shown ? `顯示最近 ${graph.shown} 題。` : ""}
           地圖與筆記保留於這段對話 · 重新整理會清空

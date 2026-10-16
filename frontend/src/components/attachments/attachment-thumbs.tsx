@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { ArrowUp, FileText } from "lucide-react"
+import { ArrowUp, FileText } from "@/components/icons"
 
 import type { Attachment } from "@/api/attachments"
 import { ImageViewer } from "@/components/attachments/image-viewer"
@@ -30,7 +30,7 @@ export function AttachmentThumbs({ attachments, raised = [] }: { attachments: At
               className="relative flex size-14 flex-col items-center justify-center rounded-lg border bg-muted px-1"
             >
               <FileText className="size-5 text-destructive" />
-              <span className="w-full truncate text-center text-[0.5625rem] text-muted-foreground">{attachment.filename}</span>
+              <span className="w-full truncate text-center text-xs text-muted-foreground">{attachment.filename}</span>
               {badge}
             </a>
           )

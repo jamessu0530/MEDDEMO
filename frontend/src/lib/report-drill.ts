@@ -14,7 +14,7 @@ export type ReportDrillState = {
   steps: { dimension: ReportDateDimension; point: ReportSelectionPoint }[]
 }
 export type ReportDrills = Record<string, ReportDrillState>
-export type ReportPointAction = "filter" | "details" | "drill"
+export type ReportPointAction = "filter" | "details" | "drill" | "page" | "tooltip"
 
 export function isDateDimension(value: string): value is ReportDateDimension {
   return DATE_DIMENSIONS.includes(value as ReportDateDimension)

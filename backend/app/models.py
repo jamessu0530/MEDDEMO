@@ -1043,6 +1043,16 @@ class UserPreference(Base):
     updated_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
 
 
+class ProductBrowseProfile(Base):
+    """商品瀏覽的個人累計訊號，屬於實際登入帳號；只保存商品、有效停留與展開次數。"""
+
+    __tablename__ = "product_browse_profile"
+    user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), primary_key=True)
+    signals: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    recent_events: Mapped[list[str]] = mapped_column(default=list)
+    updated_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+
+
 class MascotWardrobe(Base):
     """熊熊滾的穿搭與頭像選擇跟著登入帳號；縣市進度可來自代理路線，收藏仍是自己的。"""
 
@@ -1092,6 +1102,27 @@ class UserReportConfig(Base):
 
     user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), primary_key=True)
     config: Mapped[dict[str, Any]]
+    updated_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+
+
+class ReportDataset(Base):
+    """帳號私有的檔案資料來源；原始資料保留，清理與合併不寫入營運資料表。"""
+
+    __tablename__ = "report_dataset"
+
+    id: Mapped[str] = mapped_column(String(48), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    revision: Mapped[int] = mapped_column(default=1)
+    origin: Mapped[dict[str, Any]]
+    columns: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
+    source: Mapped[dict[str, Any]] = mapped_column(JSONB, deferred=True)
+    rows: Mapped[list[list[Any]]] = mapped_column(JSONB, deferred=True)
+    content: Mapped[bytes | None] = mapped_column(LargeBinary, deferred=True)
+    recipe: Mapped[dict[str, Any]]
+    charts: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+    row_count: Mapped[int]
+    created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
 
 

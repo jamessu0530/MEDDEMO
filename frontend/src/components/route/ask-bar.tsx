@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react"
-import { Mic, SendHorizontal, Square } from "lucide-react"
+import { Mic, SendHorizontal, Square } from "@/components/icons"
 
 import { Mascot } from "@/components/mascot"
 import { Button } from "@/components/ui/button"
@@ -14,13 +14,16 @@ type AskBarProps = {
   // 回 true（拿到對照卡）才清空輸入框
   onAsk: (question: string) => Promise<boolean>
   className?: string
+  placeholder?: string
+  inputLabel?: string
+  maxLength?: number
 }
 
 /**
  * 跟熊熊滾說要怎麼排的輸入列（首頁與調整清單的底部）。右邊麥克風用錄拜訪的即時轉文字（voice/live-transcription.ts），
  * 講完再按一次，文字留在輸入框裡，業務看過再按送出。只有業務看得到。
  */
-export function AskBar({ busy, error, onAsk, className }: AskBarProps) {
+export function AskBar({ busy, error, onAsk, className, placeholder = "跟熊熊滾說要怎麼排…", inputLabel = "跟熊熊滾說要怎麼排", maxLength = 300 }: AskBarProps) {
   const [text, setText] = useState("")
   const [listening, setListening] = useState(false)
   const [micError, setMicError] = useState<string | null>(null)
@@ -92,10 +95,10 @@ export function AskBar({ busy, error, onAsk, className }: AskBarProps) {
         <div className="flex gap-2">
           <Input
             value={text}
-            maxLength={300}
+            maxLength={maxLength}
             onChange={(event) => setText(event.target.value)}
-            placeholder="跟熊熊滾說要怎麼排…"
-            aria-label="跟熊熊滾說要怎麼排"
+            placeholder={placeholder}
+            aria-label={inputLabel}
             className="h-12 bg-card"
           />
           <Button

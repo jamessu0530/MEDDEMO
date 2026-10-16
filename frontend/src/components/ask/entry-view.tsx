@@ -5,6 +5,8 @@ import type { Entry, ToolRun } from "@/ask/conversation"
 import { AskAnswer, TracePanel } from "@/components/ask/ask-result"
 import { AttachmentGallery } from "@/components/attachments/attachment-gallery"
 import { Mascot } from "@/components/mascot"
+import { UiDemoOffer } from "@/components/ui-demo/offer"
+import { wantsOrderDemo } from "@/lib/ui-demo"
 
 const TOOL_LABEL = { data: "查數字", knowledge: "查規定", memory: "查頻道" }
 // 請業務選要查哪一種時，每個按鈕下面的一句說明：查得到什麼
@@ -23,14 +25,18 @@ type EntryViewProps = {
 
 export function EntryView({ entry, ...actions }: EntryViewProps) {
   if (entry.kind === "tool") return <ToolCard run={entry} {...actions} />
+  if (entry.kind === "model" && entry.demo === "create-order") return <UiDemoOffer />
   if (entry.kind === "user") {
     // 語音那句是 Gemini 另外做的語音轉文字，常有同音錯字；打字的是業務原文，不必標
     return (
+      <>
       <div className="ml-10 flex flex-col items-end gap-1 self-end">
         <p className="rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-sm text-primary-foreground">{entry.text}</p>
         {entry.attachment && <AttachmentGallery attachments={[entry.attachment]} className="w-56 max-w-full items-end" />}
-        {entry.source === "voice" && <p className="text-[0.6875rem] text-muted-foreground">語音辨識，僅供參考</p>}
+        {entry.source === "voice" && <p className="text-xs text-muted-foreground">語音辨識，僅供參考</p>}
       </div>
+      {entry.source === "voice" && wantsOrderDemo(entry.text) && <UiDemoOffer />}
+      </>
     )
   }
   return (
@@ -51,7 +57,7 @@ function ToolCard({ run, onAskChange, onChoose, onAskAsTyped, busy }: Omit<Entry
       </p>
       {/* 改寫可能誤會意思：讓業務看得到實際查的是哪一句、是從哪一句補出來的 */}
       {run.original && (
-        <p className="-mt-1 mb-2 text-[0.6875rem] text-muted-foreground">接著前面的對話，把「{run.original}」補成完整的問題</p>
+        <p className="-mt-1 mb-2 text-xs text-muted-foreground">接著前面的對話，把「{run.original}」補成完整的問題</p>
       )}
       {run.routing ? (
         <p className="flex items-center gap-2 text-sm text-muted-foreground">

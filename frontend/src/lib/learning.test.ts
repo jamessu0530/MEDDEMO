@@ -8,6 +8,8 @@ const course: Course = {
   completed: [],
   xp: 0,
   ai_unlocked: false,
+  demo_skip_available: false,
+  demo_skipped: false,
   lessons: ["customer-v1", "product-v1", "route-v1"].map((id) => ({
     id,
     title: id,

@@ -1,8 +1,9 @@
 import { useState, type FormEvent } from "react"
-import { Eye, EyeOff, Loader2 } from "lucide-react"
+import { Eye, EyeOff, Loader2 } from "@/components/icons"
 import { Link, Navigate, useLocation, useNavigate } from "react-router"
 
 import { login, oauthLogin, type OAuthCredential } from "@/api/auth"
+import { CompanyLogo } from "@/components/company-logo"
 import { Mascot } from "@/components/mascot"
 import { FacebookButton, NotReadyButton, RedirectButton } from "@/components/oauth-buttons"
 import { Button } from "@/components/ui/button"
@@ -12,7 +13,7 @@ import { playInk } from "@/ink/ink"
 import { homePath, readSignedOutReason, signIn, useAuth, type Session } from "@/lib/auth"
 import { useProviders } from "@/lib/oauth"
 
-/** 登入成功後要去哪一頁：業務是今日路線，主管是主管端 */
+/** 登入成功後要去哪一頁：業務是訂單，主管是主管端 */
 
 /**
  * 登入頁（FR-12）：Email 加密碼，或第三方帳號。還沒有帳號的到 /register 建立。
@@ -90,10 +91,14 @@ export function LoginPage() {
   return (
     <div className="flex min-h-svh flex-col justify-center px-6 py-10">
       <header className="mb-8">
-        <Mascot state="hi" size={96} className="mb-3 -ml-3" />
-        <p className="text-xs text-muted-foreground">中化裕民</p>
+        <div className="mb-3 flex items-center justify-between gap-4">
+          <div>
+            <CompanyLogo intro className="w-40" />
+            <p className="mt-2 text-xs text-muted-foreground">中化裕民</p>
+          </div>
+          <Mascot state="hi" size={96} className="shrink-0" />
+        </div>
         <h1 className="mt-1 text-2xl font-semibold">業務 AI 助理</h1>
-        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">用 Email 或第三方帳號登入。</p>
       </header>
 
       {!error && !oauthError && signedOut && (
@@ -235,7 +240,7 @@ export function LoginPage() {
             </p>
           )}
           <p className="text-xs leading-relaxed text-muted-foreground">
-            第一次用第三方帳號登入會自動開一個業務帳號，先看示範業務的客戶與路線。
+            首次登入會建立帳號，使用示範客戶與路線。
           </p>
         </section>
       )}
@@ -246,7 +251,7 @@ export function LoginPage() {
           建立帳號
         </Link>
       </p>
-      <p className="text-xs leading-relaxed text-muted-foreground">這個版本沒有寄信重設密碼：忘記密碼的話，公司帳號找主管重設，自己建立的帳號請重新建立一個。</p>
+      <details className="text-sm text-muted-foreground"><summary className="inline-flex min-h-11 cursor-pointer items-center">忘記密碼？</summary><p className="mb-3 leading-relaxed">公司帳號請聯絡主管重設。自行建立的帳號目前需重新註冊。</p></details>
       <Link to="/privacy" className="mt-2 inline-flex min-h-11 items-center self-start text-xs text-muted-foreground underline underline-offset-2">
         隱私權政策
       </Link>

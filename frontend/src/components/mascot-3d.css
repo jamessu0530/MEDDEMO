@@ -7,12 +7,9 @@
 .mascot-3d-touch canvas.ready { opacity: 1; }
 .mascot-3d-source.hidden-source { position: absolute; visibility: hidden; pointer-events: none; }
 .mascot-3d-flat-twins { display: flex; align-items: center; justify-content: center; }
-.mascot-3d-status { font-size: 11px; color: #8950bf; text-align: center; line-height: 1.6; margin: 0; min-height: 18px; }
-.mascot-3d-motions { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 5px; }
-.mascot-3d-motions button { min-height: 34px; background: #ffffffad; border: 1px solid #e4d5ef; border-radius: 9px; padding: 6px 9px; color: #7b668b; font-size: 10px; }
-.mascot-3d-motions button[aria-pressed="true"] { background: #9b51e0; border-color: #9b51e0; color: #fff; }
+.mascot-3d-status { font-size: .8125rem; color: #8950bf; text-align: center; line-height: 1.6; margin: 0; min-height: 18px; }
 .wardrobe-view-toggle { display: flex; gap: 3px; background: #f5f0fa; padding: 3px; border-radius: 99px; }
-.wardrobe-stage-top .wardrobe-view-toggle button { font-size: 11px; padding: 6px 10px; border-radius: 99px; }
+.wardrobe-stage-top .wardrobe-view-toggle button { font-size: .8125rem; padding: 6px 10px; border-radius: 99px; }
 .wardrobe-view-toggle button[aria-pressed="true"] { background: #fff; color: #8950bf; box-shadow: 0 2px 5px #2b1b4712; }
 .wardrobe-stage-top > button { max-width: 100px; }
 @media (max-width: 760px) { .mascot-3d-host { height: 260px; } }

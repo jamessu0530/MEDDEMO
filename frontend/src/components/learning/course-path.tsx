@@ -11,10 +11,11 @@ import {
   Sparkles,
   Trophy,
   type LucideIcon,
-} from "lucide-react"
+} from "@/components/icons"
 import { Link } from "react-router"
 
 import type { Course } from "@/api/learning"
+import { DemoLearningSkip } from "@/components/learning/demo-skip"
 import { Mascot } from "@/components/mascot"
 import { Button } from "@/components/ui/button"
 import { lessonState, nextLesson } from "@/lib/learning"
@@ -28,7 +29,13 @@ const ICONS: LucideIcon[] = [
   MessageCircleQuestion,
 ]
 
-export function CoursePath({ course }: { course: Course }) {
+export function CoursePath({
+  course,
+  onCourseChange,
+}: {
+  course: Course
+  onCourseChange: (course: Course) => void
+}) {
   const next = nextLesson(course)
   const finished = !next
   return (
@@ -86,6 +93,11 @@ export function CoursePath({ course }: { course: Course }) {
               <ChevronRight />
             </Link>
           </Button>
+        )}
+        {!course.ai_unlocked && course.demo_skip_available && (
+          <div className="mt-4 flex justify-center">
+            <DemoLearningSkip onSkipped={onCourseChange} />
+          </div>
         )}
       </div>
 
@@ -176,7 +188,11 @@ export function CoursePath({ course }: { course: Course }) {
         )}
         <div>
           <h3 className="font-semibold">
-            {course.ai_unlocked ? "AI 問答已解鎖" : "通關獎勵：AI 問答"}
+            {course.demo_skipped
+              ? "Demo · AI 問答已開啟"
+              : course.ai_unlocked
+                ? "AI 問答已解鎖"
+                : "通關獎勵：AI 問答"}
           </h3>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
             {course.ai_unlocked

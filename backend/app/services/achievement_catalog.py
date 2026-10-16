@@ -35,7 +35,7 @@ def medal_details(kind: str, tier: int, need: int) -> dict:
     target = "家不同藥局" if kind == "stores" else "個不同縣市"
     return {
         "title": MEDAL_NAMES[kind][tier - 1],
-        "condition": f"在首頁點選路線上的站，累積到訪 {need} {target}。",
+        "condition": f"在今日路線點選站點，累積到訪 {need} {target}。",
         "unit": unit,
-        "action_path": "/",
+        "action_path": "/route",
     }

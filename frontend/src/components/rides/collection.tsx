@@ -42,7 +42,7 @@ export function RideCollection({ vehicles }: { vehicles: Vehicles }) {
       </p>
       {RIDE_CITIES.map((city) => (
         <section key={city} aria-label={city}>
-          <h2 className="mb-2 text-sm font-semibold">
+          <h2 className="mb-2 text-base font-semibold">
             {city}
             <span className="ml-2 text-xs font-normal text-muted-foreground">特產：{SPECIALTY[city]}</span>
           </h2>

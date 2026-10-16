@@ -42,7 +42,7 @@ export function ReportLayoutFields({
       </p>
       {mobile ? (
         <>
-          <label className="flex min-h-10 items-center gap-2 text-xs">
+          <label className="flex min-h-10 items-center gap-2 text-sm">
             <input
               type="checkbox"
               aria-label="在手機顯示此圖表"
@@ -55,7 +55,7 @@ export function ReportLayoutFields({
             />
             在手機顯示此圖表
           </label>
-          <label className="block space-y-1.5 text-xs">
+          <label className="block space-y-1.5 text-sm">
             <span>手機圖表寬度</span>
             <select
               className={CONTROL}
@@ -83,14 +83,14 @@ export function ReportLayoutFields({
           />
           <button
             type="button"
-            className="min-h-10 w-full rounded-md border px-2 text-xs"
+            className="min-h-10 w-full rounded-md border px-2 text-sm"
             disabled={!card.mobile_layout}
             onClick={() => onChange({ mobile_layout: null })}
           >
             還原此圖表的手機預設
           </button>
-          <p className="text-[11px] leading-relaxed text-muted-foreground">
-            排列、寬高與顯示只套用手機。圖表被隱藏後，可從「版面清單」重新選取。預設排列沿用桌機順序；獨立調整後會分開保存。
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            僅套用手機版。隱藏的圖表可從「版面清單」選取；調整後與桌機分開保存。
           </p>
         </>
       ) : free ? (
@@ -101,7 +101,7 @@ export function ReportLayoutFields({
         />
       ) : (
         <div className="grid grid-cols-2 gap-3">
-          <label className="block space-y-1.5 text-xs">
+          <label className="block space-y-1.5 text-sm">
             <span>圖表寬度</span>
             <select
               className={CONTROL}
@@ -117,7 +117,7 @@ export function ReportLayoutFields({
               <option value="full">全寬</option>
             </select>
           </label>
-          <label className="block space-y-1.5 text-xs">
+          <label className="block space-y-1.5 text-sm">
             <span>圖表高度</span>
             <select
               className={CONTROL}
@@ -151,7 +151,7 @@ function MobileHeight({
     draft !== "" && Number.isInteger(parsed) && parsed >= 8 && parsed <= 60
   return (
     <div className="space-y-2">
-      <label className="block space-y-1.5 text-xs">
+      <label className="block space-y-1.5 text-sm">
         <span>手機圖表高度（格）</span>
         <input
           className={CONTROL}
@@ -164,7 +164,7 @@ function MobileHeight({
           onChange={(event) => setDraft(event.target.value)}
         />
       </label>
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-xs text-muted-foreground">
         每格 {REPORT_ROW}px，8–60 格。
         {valid && `目前 ${parsed * REPORT_ROW}px。`}
         內容較長時可在圖表內捲動或放大檢視。
@@ -176,7 +176,7 @@ function MobileHeight({
       )}
       <button
         type="button"
-        className="min-h-10 w-full rounded-md border px-2 text-xs disabled:opacity-40"
+        className="min-h-10 w-full rounded-md border px-2 text-sm disabled:opacity-40"
         disabled={!valid}
         onClick={() => onChange(parsed)}
       >
@@ -214,7 +214,7 @@ function DesktopFields({
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-3">
         {fields.map((field) => (
-          <label key={field.key} className="block space-y-1.5 text-xs">
+          <label key={field.key} className="block space-y-1.5 text-sm">
             <span>{field.label}（格）</span>
             <input
               className={CONTROL}
@@ -241,13 +241,13 @@ function DesktopFields({
       )}
       <button
         type="button"
-        className="min-h-10 w-full rounded-md border px-2 text-xs disabled:opacity-40"
+        className="min-h-10 w-full rounded-md border px-2 text-sm disabled:opacity-40"
         disabled={!valid}
         onClick={() => onChange(parsed)}
       >
         套用桌機位置與尺寸
       </button>
-      <p className="text-[11px] leading-relaxed text-muted-foreground">
+      <p className="text-xs leading-relaxed text-muted-foreground">
         畫布寬 24 格；每列 {REPORT_ROW}
         px。拖曳右下角可調整寬高，關閉吸附後可微調至 0.1
         格。較長內容可捲動或放大檢視。

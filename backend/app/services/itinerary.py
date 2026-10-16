@@ -732,7 +732,15 @@ def _lock(session: Session, itinerary: Itinerary) -> None:
         raise VersionConflict
 
 
-def _create(session: Session, rep: AppUser, today: dt.date) -> Itinerary:
+def rebuild_priority(session: Session, itinerary: Itinerary, rep: AppUser) -> Itinerary:
+    """主管明確套用策略，且呼叫端已鎖定、核對版本並確認行程未開始／未手動修改。"""
+    for model in (ItineraryLeg, ItineraryPrecedence, ItineraryStop):
+        session.execute(delete(model).where(model.itinerary_id == itinerary.id))
+    _touch(itinerary)
+    return _create(session, rep, itinerary.date, existing=itinerary)
+
+
+def _create(session: Session, rep: AppUser, today: dt.date, existing: Itinerary | None = None) -> Itinerary:
     picked = today_route.pick(session, rep.id, today_route.load_feedback(session, rep.id, today))
     items = {item["candidate"].customer_id: item for item in picked.picked}
     customers = _customers(session, list(items))
@@ -757,12 +765,15 @@ def _create(session: Session, rep: AppUser, today: dt.date) -> Itinerary:
     # 只剩鎖也排不出來（不會發生）就照模型挑的順序
     order = [s.customer_id for s in result.slots] if isinstance(result, route_planner.Schedule) else list(items)
     by_id = {o.customer.id: o for o in open_}
-    itinerary = Itinerary(
-        user_id=rep.id, date=today,
-        suggested=[{"customer_id": cid, "signal": items[cid]["signal"], "reason": items[cid]["reason"]} for cid in order],
-        urgent=dataclasses.asdict(picked.urgent) if picked.urgent else None,
-        skipped_habit_ids=skipped, skip_reasons=reasons,
-    )
+    itinerary = existing if existing is not None else Itinerary(user_id=rep.id, date=today)
+    itinerary.suggested = [
+        {"customer_id": cid, "signal": items[cid]["signal"], "reason": items[cid]["reason"]} for cid in order
+    ]
+    itinerary.urgent = dataclasses.asdict(picked.urgent) if picked.urgent else None
+    itinerary.skipped_habit_ids = skipped
+    # 保留生成版本的 JSON 中繼資料，即使所有客戶都暫緩、沒有任何站也能辨認。
+    # _reasons 只讀被跳過的習慣編號，這個保留欄位不會成為畫面上的習慣理由。
+    itinerary.skip_reasons = {**reasons, **({"_priority_generated_version": itinerary.version} if existing is not None else {})}
     session.add(itinerary)
     session.flush()
     session.add_all([_row(itinerary, n, by_id[cid]) for n, cid in enumerate(order)])

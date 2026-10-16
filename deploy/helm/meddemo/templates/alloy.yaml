@@ -1,0 +1,43 @@
+{{- if .Values.monitoring.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: meddemo-alloy
+  labels:
+    {{- include "meddemo.labels" . | nindent 4 }}
+data:
+  config.alloy: |
+    logging {
+      level = "warn"
+    }
+
+    prometheus.scrape "api" {
+      targets = [{
+        __address__ = "127.0.0.1:8000",
+        instance = sys.env("POD_NAME"),
+        namespace = sys.env("POD_NAMESPACE"),
+        service = "meddemo-api",
+        environment = {{ .Values.monitoring.environment | quote }},
+      }]
+      job_name = "meddemo/api"
+      scrape_interval = "30s"
+      scrape_timeout = "10s"
+      bearer_token = sys.env("METRICS_TOKEN")
+      forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+    }
+
+    prometheus.remote_write "grafana_cloud" {
+      endpoint {
+        url = sys.env("GRAFANA_CLOUD_PROMETHEUS_URL")
+        basic_auth {
+          username = sys.env("GRAFANA_CLOUD_PROMETHEUS_USERNAME")
+          password = sys.env("GRAFANA_CLOUD_TOKEN")
+        }
+      }
+      wal {
+        truncate_frequency = "15m"
+        min_keepalive_time = "5m"
+        max_keepalive_time = "1h"
+      }
+    }
+{{- end }}

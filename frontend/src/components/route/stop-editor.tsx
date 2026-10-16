@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Trash2, X } from "lucide-react"
+import { Trash2, X } from "@/components/icons"
 
 import type { DraftStop, Precedence, WindowKind } from "@/api/route"
 import { Switch } from "@/components/route/switch"
@@ -76,7 +76,7 @@ export function StopEditor({
   return (
     <div className="flex flex-col gap-4">
       <section className="flex flex-col gap-2">
-        <h3 className="text-xs font-semibold text-muted-foreground">約的時間</h3>
+        <h3 className="text-sm font-semibold text-muted-foreground">約的時間</h3>
         <div role="radiogroup" aria-label="約的時間" className="grid grid-cols-4 gap-1 rounded-xl bg-muted p-1">
           {WINDOWS.map(({ kind, label }) => (
             <button
@@ -103,7 +103,7 @@ export function StopEditor({
       </section>
 
       <section className="flex flex-col gap-2">
-        <h3 className="text-xs font-semibold text-muted-foreground">停留</h3>
+        <h3 className="text-sm font-semibold text-muted-foreground">停留</h3>
         <div className="flex flex-wrap items-center gap-1.5">
           {STAYS.map((minutes) => (
             <button
@@ -136,7 +136,7 @@ export function StopEditor({
       </section>
 
       <section className="flex flex-col gap-2">
-        <h3 className="text-xs font-semibold text-muted-foreground">先後</h3>
+        <h3 className="text-sm font-semibold text-muted-foreground">先後</h3>
         {precedences.length > 0 && (
           <ul className="flex flex-col gap-1">
             {precedences.map((p) => {
@@ -189,7 +189,7 @@ export function StopEditor({
       </section>
 
       <section className="flex flex-col gap-2">
-        <h3 className="text-xs font-semibold text-muted-foreground">備註</h3>
+        <h3 className="text-sm font-semibold text-muted-foreground">備註</h3>
         <Textarea
           rows={2}
           maxLength={200}

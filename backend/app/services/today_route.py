@@ -39,6 +39,8 @@ PERSONAL_STEP = 0.1
 PERSONAL_LIMIT = 5
 
 SIGNAL_LABEL = {
+    "priority": "經營策略",
+    "manager_priority": "主管指定",
     "commitment": "承諾逾期",
     "opportunity": "商機",
     "ar": "帳款逾期",
@@ -275,6 +277,13 @@ def labels(session: Session, owner_id: str, customer_ids: list[str]) -> dict[str
     """業務自己加進行程的幾家，用跟模型挑的同一套說法寫 (訊號, 理由)。只能問這位業務自己的客戶；
     一次算好幾家，客戶的特徵、承諾與商機各只查一次。"""
     today = customer_profile.app_today(session)
+    from app.services import customer_priority
+    rep = session.get(AppUser, owner_id)
+    configured = customer_priority.for_rep(session, rep, today) if rep else None
+    if configured is not None:
+        wanted = set(customer_ids)
+        return {row["customer_id"]: ("manager_priority" if row["priority"] else "priority", row["reason"])
+                for row in configured[1] if row["customer_id"] in wanted}
     wanted = set(customer_ids)
     overdue = _overdue_commitments(session, owner_id, today)
     opportunities = _opportunities(session, owner_id, today)
@@ -314,6 +323,19 @@ def pick(session: Session, user_id: str, feedback: Feedback | None = None) -> Pi
 
     done = done_visits(session, user_id, today)
     done_ids = {c.id for _, c in done}
+    from app.services import customer_priority
+    configured = customer_priority.for_rep(session, rep, today)
+    if configured is not None:
+        strategy, ranked = configured
+        # 策略啟用後只依明示的交易指標與主管指定挑客戶，不混入舊的風險硬排或隱藏加權。
+        candidates = {c.customer_id: c for c in route_model.candidates(session, today, owner_id=user_id)}
+        picked = [
+            {"candidate": candidates[row["customer_id"]], "signal": "manager_priority" if row["priority"] else "priority",
+             "reason": row["reason"], "score": row["score"], "forced": row["priority"]}
+            for row in ranked if row["customer_id"] in candidates and row["customer_id"] not in done_ids
+            and feedback.snoozed.get(row["customer_id"], today) <= today
+        ][:max(0, strategy.daily_limit - len(done))]
+        return Pick(today=today, rep=rep, done=done, picked=picked, urgent=None)
     overdue = _overdue_commitments(session, user_id, today)
     opportunities = _opportunities(session, user_id, today)
     model = route_model.load_model()

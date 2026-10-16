@@ -1,0 +1,32 @@
+// Keep Lucide's public API. The explicit exports supply articulated artwork;
+// every other icon keeps its original vector and receives the shared stroke animation.
+export * from "lucide-react"
+export {
+  Bell,
+  BookOpen,
+  BookOpenText,
+  Calendar,
+  CalendarDays,
+  ChartNoAxesCombined,
+  ClipboardList,
+  Clock,
+  Download,
+  Eye,
+  FileText,
+  Flag,
+  Heart,
+  MapPin,
+  MessageCircleQuestion,
+  MessagesSquare,
+  Mic,
+  Moon,
+  Package,
+  Pill,
+  Search,
+  Send,
+  Settings,
+  Sun,
+  Trash2,
+  Upload,
+  Users,
+} from "./signature-icons"

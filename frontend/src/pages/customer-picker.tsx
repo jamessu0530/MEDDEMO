@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
-import { Bell, ChevronRight, CircleHelp, Search } from "lucide-react"
+import { Bell, ChevronRight, CircleHelp, Search } from "@/components/icons"
 import { Link } from "react-router"
 
 import { CUSTOMER_TYPE_LABEL, listCustomers, type Customer } from "@/api/customers"
@@ -72,14 +72,14 @@ export function CustomerPicker() {
             >
               <Bell className="size-5" />
               {unseen > 0 && (
-                <span className="absolute top-1 right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[0.625rem] font-semibold text-white">
+                <span className="absolute top-1 right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-xs font-semibold text-white">
                   {unseen}
                 </span>
               )}
             </Link>
           </div>
         </div>
-        <h1 className="text-lg font-semibold">選擇拜訪客戶</h1>
+        <h1 className="text-xl font-semibold">選擇拜訪客戶</h1>
         {/* 清單只有登入者看得到的客戶，講清楚範圍，找不到某一家時才知道為什麼 */}
         {user && state.status === "ready" && (
           <p className="mt-0.5 text-xs text-muted-foreground">{customerScopeText(user, state.customers.length)}</p>
@@ -141,6 +141,7 @@ function CustomerRow({ customer }: { customer: Customer }) {
     <li>
       <Link
         to={`/customers/${customer.id}`}
+        state={{ backTo: "/customers" }}
         className="flex items-center gap-2 rounded-xl border-2 bg-card py-3 pr-2 pl-4 shadow-lip press"
       >
         <div className="min-w-0 flex-1">

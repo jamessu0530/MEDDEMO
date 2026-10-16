@@ -70,7 +70,7 @@ export default function RouteMap({ config, routes, removed = [], onFail }: Props
               {/* 被拿掉的站：紅色虛線圈加「（拿掉）」 */}
               <span className="flex flex-col items-center">
                 <span className="size-6 rounded-full border-2 border-dashed border-destructive bg-background/70" />
-                <span className="mt-0.5 rounded bg-background/90 px-1 text-[0.625rem] font-semibold text-destructive">
+                <span className="mt-0.5 rounded bg-background/90 px-1 text-xs font-semibold text-destructive">
                   （拿掉）
                 </span>
               </span>
@@ -133,7 +133,7 @@ function RouteLayer({ route, onSelect }: { route: RepRoute; onSelect: (stop: Tea
             anchorTop="-50%"
           >
             <span
-              className="flex size-6 items-center justify-center rounded-full border-2 text-[0.6875rem] font-bold tabular-nums shadow-sm"
+              className="flex size-6 items-center justify-center rounded-full border-2 text-xs font-bold tabular-nums shadow-sm"
               style={
                 done
                   ? { background: `var(${colorVar})`, borderColor: `var(${colorVar})`, color: "var(--background)" }

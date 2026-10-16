@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { Download, LoaderCircle } from "lucide-react"
+import { Download, LoaderCircle } from "@/components/icons"
 import { downloadReportFile, type ReportExportInput } from "@/api/reports"
 import { Button } from "@/components/ui/button"
 import {
@@ -110,12 +110,17 @@ export function ReportExportDialog({
         <DialogHeader>
           <DialogTitle>完整匯出報表</DialogTitle>
           <DialogDescription>
-            直接匯出目前權限與有效條件內的完整資料，不受畫面前 N
-            筆、其他系列或矩陣分頁限制。
+            匯出目前篩選與權限範圍內的全部資料，包含其他頁碼。
           </DialogDescription>
         </DialogHeader>
+        {!!config.objects?.length && (
+          <p className="rounded border bg-muted/30 p-2 text-xs text-muted-foreground">
+            此處匯出系統業務圖表的實際資料。畫布文字、圖片與操作元件不包含在資料檔案；匯入來源請從「資料匯入」匯出
+            CSV。預測值只供畫面情境參考。
+          </p>
+        )}
         <div className="grid min-w-0 grid-cols-2 gap-3">
-          <label className="min-w-0 space-y-1.5 text-xs">
+          <label className="min-w-0 space-y-1.5 text-sm">
             <span>檔案格式</span>
             <select
               className={INPUT}
@@ -136,7 +141,7 @@ export function ReportExportDialog({
               <option value="pdf">整份報表 PDF</option>
             </select>
           </label>
-          <label className="min-w-0 space-y-1.5 text-xs">
+          <label className="min-w-0 space-y-1.5 text-sm">
             <span>資料內容</span>
             <select
               className={INPUT}
@@ -150,7 +155,7 @@ export function ReportExportDialog({
             </select>
           </label>
         </div>
-        <label className="min-w-0 space-y-1.5 text-xs">
+        <label className="min-w-0 space-y-1.5 text-sm">
           <span>匯出範圍</span>
           <select
             className={INPUT}
@@ -169,7 +174,7 @@ export function ReportExportDialog({
           </select>
         </label>
         {scope === "card" && (
-          <label className="min-w-0 space-y-1.5 text-xs">
+          <label className="min-w-0 space-y-1.5 text-sm">
             <span>選擇圖表</span>
             <select
               className={INPUT}
@@ -192,7 +197,7 @@ export function ReportExportDialog({
           </label>
         )}
         {highlight && (
-          <label className="space-y-1.5 text-xs">
+          <label className="space-y-1.5 text-sm">
             <span>醒目提示資料</span>
             <select
               className={INPUT}

@@ -1,4 +1,4 @@
-import { BadgePercent, Pill } from "lucide-react"
+import { BadgePercent, Pill } from "@/components/icons"
 import { cn } from "@/lib/utils"
 
 export type CatalogView = "products" | "promotions"

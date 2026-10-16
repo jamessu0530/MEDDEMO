@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, useSyncExternalStore } from "react"
 import {
   ChevronLeft,
   ChevronRight,
@@ -6,13 +6,11 @@ import {
   LoaderCircle,
   Plus,
   RotateCw,
-  Search,
   Users,
-} from "lucide-react"
+} from "@/components/icons"
 import { Link, useNavigate } from "react-router"
 import {
   createOrder,
-  getOrderCustomers,
   getOrders,
   type OrderCustomer,
   type OrderList,
@@ -21,8 +19,11 @@ import { BottomNav } from "@/components/bottom-nav"
 import { Mascot } from "@/components/mascot"
 import { Notice } from "@/components/notice"
 import { PendingUploads } from "@/components/pending-uploads"
+import { SalesToolbar } from "@/components/sales-toolbar"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import { SearchField } from "@/components/ui/search-field"
+import { SearchSelect } from "@/components/ui/search-select"
+import { CustomerSelect } from "@/components/customers/customer-select"
 import {
   Dialog,
   DialogContent,
@@ -31,11 +32,19 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog"
 import { formatDate, formatTaipeiDateTime } from "@/lib/format"
-import { ORDER_STATUS, orderMoney } from "@/lib/orders"
+import { useAuth } from "@/lib/auth"
+import { ORDER_STATUS, PAYMENT_TERMS, orderMoney } from "@/lib/orders"
 import { cn } from "@/lib/utils"
+import { makePracticeOrder, PRACTICE_CUSTOMER } from "@/lib/order-practice"
+import { uiDemo } from "@/lib/ui-demo-browser"
 
 const SELECT = "h-11 min-w-0 rounded-xl border bg-card px-3 text-sm"
 export function OrdersPage() {
+  const user = useAuth()?.user
+  const demonstrating =
+    useSyncExternalStore(uiDemo.subscribe, uiDemo.getSnapshot).status ===
+    "running"
+  const [practice, setPractice] = useState(false)
   const [query, setQuery] = useState("")
   const [status, setStatus] = useState("all")
   const [sort, setSort] = useState("updated_desc")
@@ -70,13 +79,17 @@ export function OrdersPage() {
   return (
     <div className="min-h-svh pb-24 lg:pb-8">
       <header className="border-b bg-card px-4 py-5 lg:px-6">
+        {user?.role === "sales" && (
+          <div className="mb-3 lg:hidden">
+            <SalesToolbar user={user} />
+          </div>
+        )}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <span className="flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
               <ClipboardList className="size-6" />
             </span>
             <div>
-              <p className="text-xs text-muted-foreground">業務工作區</p>
               <h1 className="text-xl font-semibold">訂單</h1>
             </div>
           </div>
@@ -87,15 +100,19 @@ export function OrdersPage() {
                 客戶資料
               </Link>
             </Button>
-            <Button disabled={!result} onClick={() => setCreating(true)}>
+            <Button
+              data-ui-demo="new-order"
+              disabled={!result && !demonstrating}
+              onClick={() => {
+                setPractice(demonstrating)
+                setCreating(true)
+              }}
+            >
               <Plus className="size-4" />
               新增訂單
             </Button>
           </div>
         </div>
-        <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
-          查看成交紀錄、建立訂單草稿，再安排出貨。SAP 使用展示服務。
-        </p>
       </header>
       <main className="space-y-4 p-4 lg:p-6">
         <PendingUploads />
@@ -121,46 +138,45 @@ export function OrdersPage() {
             </Button>
           </div>
           <div className="flex flex-wrap gap-2 border-b p-4">
-            <div className="relative min-w-48 flex-1">
-              <Search className="absolute top-3 left-3 size-4 text-muted-foreground" />
-              <Input
-                aria-label="搜尋訂單"
-                placeholder="搜尋訂單編號、客戶名稱或 SAP 單號"
-                value={query}
-                maxLength={100}
-                onChange={(event) => {
-                  setQuery(event.target.value)
-                  setPage(1)
-                }}
-                className="h-11 pl-9"
-              />
-            </div>
-            <select
-              aria-label="訂單狀態"
-              className={SELECT}
+            <SearchField
+              containerClassName="min-w-48 flex-1"
+              aria-label="搜尋訂單"
+              placeholder="搜尋訂單編號、客戶名稱或 SAP 單號"
+              value={query}
+              onValueChange={(value) => {
+                setQuery(value)
+                setPage(1)
+              }}
+              loading={busy}
+            />
+            <SearchSelect
+              label="訂單狀態"
+              className="w-full sm:w-40"
               value={status}
-              onChange={(event) => {
-                setStatus(event.target.value)
+              options={[
+                { value: "all", label: "全部狀態" },
+                { value: "draft", label: "草稿" },
+                { value: "effective", label: "生效" },
+              ]}
+              onValueChange={(value) => {
+                setStatus(value)
                 setPage(1)
               }}
-            >
-              <option value="all">全部狀態</option>
-              <option value="draft">草稿</option>
-              <option value="effective">生效</option>
-            </select>
-            <select
-              aria-label="訂單排序"
-              className={SELECT}
+            />
+            <SearchSelect
+              label="訂單排序"
+              className="w-full sm:w-64"
               value={sort}
-              onChange={(event) => {
-                setSort(event.target.value)
+              options={[
+                { value: "updated_desc", label: "最近更新" },
+                { value: "shipping_desc", label: "出貨／交易日期由新到舊" },
+                { value: "amount_desc", label: "訂單金額由高到低" },
+              ]}
+              onValueChange={(value) => {
+                setSort(value)
                 setPage(1)
               }}
-            >
-              <option value="updated_desc">最近更新</option>
-              <option value="shipping_desc">出貨／交易日期由新到舊</option>
-              <option value="amount_desc">訂單金額由高到低</option>
-            </select>
+            />
           </div>
           {error ? (
             <div className="p-4">
@@ -204,7 +220,7 @@ export function OrdersPage() {
                           >
                             {order.order_no}
                           </Link>
-                          <p className="mt-1 text-[0.6875rem] text-muted-foreground">
+                          <p className="mt-1 text-xs text-muted-foreground">
                             {order.source === "history"
                               ? "歷史交易"
                               : "訂單工作區"}
@@ -333,9 +349,10 @@ export function OrdersPage() {
         </section>
       </main>
       <BottomNav />
-      {creating && result && (
+      {creating && (
         <CreateOrderDialog
-          asOf={result.as_of}
+          asOf={result?.as_of ?? makePracticeOrder().as_of}
+          practice={practice}
           onClose={() => setCreating(false)}
         />
       )}
@@ -359,36 +376,26 @@ export function OrderBadge({ status }: { status: "draft" | "effective" }) {
 }
 
 function CreateOrderDialog({
+  practice,
   asOf,
   onClose,
 }: {
   asOf: string
+  practice: boolean
   onClose: () => void
 }) {
   const navigate = useNavigate()
-  const [customers, setCustomers] = useState<OrderCustomer[] | null>(null)
-  const [customerId, setCustomerId] = useState("")
+  const [customer, setCustomer] = useState<OrderCustomer | null>(null)
+  const [paymentTerm, setPaymentTerm] = useState("")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
-  const [retry, setRetry] = useState(0)
-  useEffect(() => {
-    const controller = new AbortController()
-    getOrderCustomers(controller.signal)
-      .then((value) => {
-        if (!controller.signal.aborted) {
-          setCustomers(value)
-          setError("")
-        }
-      })
-      .catch((err) => {
-        if (!controller.signal.aborted)
-          setError(err instanceof Error ? err.message : "客戶沒有載入")
-      })
-    return () => controller.abort()
-  }, [retry])
   async function create() {
-    const selected = customers?.find((customer) => customer.id === customerId)
+    const selected = customer
     if (!selected || busy) return
+    if (practice) {
+      navigate("/orders/demo")
+      return
+    }
     setBusy(true)
     setError("")
     try {
@@ -396,8 +403,8 @@ function CreateOrderDialog({
         customer_id: selected.id,
         ship_to_id: selected.id,
         shipping_date: asOf,
-        payment_term: selected.payment_term,
-        shipping_address: "",
+        payment_term: paymentTerm,
+        shipping_address: selected.address || "",
         recipient: "",
         purchase_no: "",
         note: "",
@@ -415,46 +422,71 @@ function CreateOrderDialog({
         <DialogHeader>
           <DialogTitle>新增訂單</DialogTitle>
           <DialogDescription>
-            先選擇客戶建立草稿，之後再加入產品與出貨資料。
+            {practice
+              ? "練習模式：使用教學資料，接著示範加入產品與出貨資料。"
+              : "先選擇客戶建立草稿，之後再加入產品與出貨資料。"}
           </DialogDescription>
         </DialogHeader>
-        <label className="space-y-2 text-sm">
-          <span>客戶名稱</span>
-          <select
-            aria-label="新訂單客戶"
-            className={`${SELECT} w-full`}
-            value={customerId}
-            onChange={(event) => setCustomerId(event.target.value)}
-            disabled={busy || !customers}
-          >
-            <option value="">{customers ? "請選擇客戶" : "載入客戶中…"}</option>
-            {customers?.map((customer) => (
-              <option key={customer.id} value={customer.id}>
-                {customer.name} · {customer.owner_name}
+        <div className="space-y-2 text-sm">
+          <p>客戶名稱</p>
+          {practice ? (
+            <select
+              aria-label="新訂單客戶"
+              data-ui-demo="practice-customer"
+              className={`${SELECT} w-full`}
+              value={customer?.id ?? ""}
+              onChange={(event) => {
+                setCustomer(event.target.value ? PRACTICE_CUSTOMER : null)
+                setPaymentTerm(PRACTICE_CUSTOMER.payment_term || "RCD1")
+              }}
+            >
+              <option value="">請選擇客戶</option>
+              <option value={PRACTICE_CUSTOMER.id}>
+                {PRACTICE_CUSTOMER.name}
               </option>
-            ))}
-          </select>
-        </label>
-        {customers?.length === 0 && (
-          <p className="text-sm text-muted-foreground">
-            目前沒有可建立訂單的客戶，請確認負責範圍。
-          </p>
-        )}
+            </select>
+          ) : (
+            <CustomerSelect
+              label="新訂單客戶"
+              value={customer?.id ?? ""}
+              selected={customer ?? undefined}
+              disabled={busy}
+              onSelect={(value) => {
+                setCustomer(value)
+                setPaymentTerm(value.payment_term || "")
+                setError("")
+              }}
+            />
+          )}
+        </div>
+        <div className="space-y-2 text-sm">
+          <p>付款條件</p>
+          <SearchSelect
+            label="新訂單付款條件"
+            value={paymentTerm}
+            placeholder="請選擇本次訂單的付款條件"
+            disabled={busy || !customer}
+            options={Object.entries(PAYMENT_TERMS).map(([value, label]) => ({
+              value,
+              label,
+            }))}
+            onValueChange={setPaymentTerm}
+          />
+        </div>
         {error && (
-          <div role="alert" className="text-sm text-destructive">
+          <p role="alert" className="text-sm text-destructive">
             {error}
-            {!customers && (
-              <Button variant="ghost" onClick={() => setRetry((n) => n + 1)}>
-                重新載入客戶
-              </Button>
-            )}
-          </div>
+          </p>
         )}
         <div className="flex justify-end gap-2">
           <Button variant="outline" disabled={busy} onClick={onClose}>
             取消
           </Button>
-          <Button disabled={busy || !customerId} onClick={() => void create()}>
+          <Button
+            data-ui-demo={practice ? "practice-create" : undefined}
+            disabled={busy || !customer || !paymentTerm}
+            onClick={() => void create()}
+          >
             {busy && <LoaderCircle className="size-4 animate-spin" />}建立草稿
           </Button>
         </div>

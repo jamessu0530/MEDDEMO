@@ -46,6 +46,8 @@ os.environ["REDIS_URL"] = os.environ.get("TEST_REDIS_URL", "redis://127.0.0.1:63
 os.environ["ASR_PROVIDER"] = ""
 os.environ["LLM_PROVIDER"] = ""
 os.environ["EMBEDDING_PROVIDER"] = ""
+# 一般權限測試維持正式模式；需要展示切換的測試用 env fixture 明確開啟。
+os.environ["DEMO_ROLE_SWITCH"] = "false"
 # 金鑰也清掉：測試裡用 env fixture 改選 Gemini 時，才不會拿到 backend/.env 的真金鑰。
 # 語音問答沒有供應商開關，找得到金鑰就會啟用；Gemini SDK 還會自己去找 GEMINI_API_KEY、GOOGLE_API_KEY
 for key in (

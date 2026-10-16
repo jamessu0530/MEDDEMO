@@ -1,10 +1,11 @@
 import { useEffect, useState, type ReactNode } from "react"
-import { ChevronRight, LockKeyhole } from "lucide-react"
+import { ChevronRight, LockKeyhole } from "@/components/icons"
 import { Link } from "react-router"
 
 import { ApiError } from "@/api/client"
 import { getCourse, type Course } from "@/api/learning"
 import { BottomNav } from "@/components/bottom-nav"
+import { DemoLearningSkip } from "@/components/learning/demo-skip"
 import { Mascot } from "@/components/mascot"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
@@ -77,6 +78,9 @@ function SalesGate({ children }: { children: ReactNode }) {
                 <ChevronRight />
               </Link>
             </Button>
+            {course.demo_skip_available && (
+              <DemoLearningSkip onSkipped={setCourse} />
+            )}
           </>
         )}
       </main>

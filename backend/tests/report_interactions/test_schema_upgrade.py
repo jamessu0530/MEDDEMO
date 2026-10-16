@@ -3,7 +3,7 @@ from sqlalchemy import func, inspect, select
 
 from app.db import schema_version
 from app.models import AppSetting, LearningCompletion, SalesTransaction, UserReportConfig
-from scripts.upgrade_schema import FROM_VERSION, PREVIOUS_VERSION, TO_VERSION, upgrade
+from scripts.upgrade_schema import FROM_VERSION, PREVIOUS_VERSION, ORDERS_VERSION, REPORTS_VERSION, TO_VERSION, upgrade
 
 
 def test_additive_upgrade_preserves_transactions_reports_and_existing_progress(interaction_session):
@@ -24,11 +24,14 @@ def test_additive_upgrade_preserves_transactions_reports_and_existing_progress(i
     assert s.get(LearningCompletion, ("S1", "customer-v1")) is not None
 
 
-def test_current_deployed_schema_can_upgrade_without_reseeding(interaction_session):
+@pytest.mark.parametrize("version", [PREVIOUS_VERSION, ORDERS_VERSION, REPORTS_VERSION])
+def test_current_deployed_schema_can_upgrade_without_reseeding(interaction_session, version):
     s = interaction_session
-    s.add(AppSetting(key="schema_version", value=PREVIOUS_VERSION)); s.flush()
+    s.add(AppSetting(key="schema_version", value=version)); s.flush()
     assert "既有資料保留" in upgrade(s.connection())
     assert "sales_order" in inspect(s.connection()).get_table_names()
+    assert "report_dataset" in inspect(s.connection()).get_table_names()
+    assert "product_browse_profile" in inspect(s.connection()).get_table_names()
     assert s.scalar(select(func.count()).select_from(SalesTransaction)) == 6
 
 

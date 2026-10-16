@@ -53,7 +53,7 @@ def test_format_settings_persist_without_changing_data_or_permission(interaction
              "metric_colors": {"sales": "#223344"}, "axes": {"show_y": False, "show_titles": True, "x_title": "業務"}, "tooltip": {"show_rows": False}}
     body = config(formatting=style)
     user = interaction_session.get(AppUser, "M1")
-    saved = reports.save_config(interaction_session, user, reports.ReportConfig.model_validate(body.model_dump(exclude={"selection_groups", "drill_filters", "matrix_views"})))
+    saved = reports.save_config(interaction_session, user, reports.ReportConfig.model_validate(body.model_dump(exclude={"selection_groups", "drill_filters", "matrix_views", "canvas_selections", "navigation_page", "navigation_filters"})))
     assert saved.cards[0].format == body.cards[0].format
     assert reports.get_config(interaction_session, user).cards[0].format == body.cards[0].format
     assert data(interaction_session, body).model_dump() == data(interaction_session, config()).model_dump()

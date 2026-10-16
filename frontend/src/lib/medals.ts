@@ -23,13 +23,13 @@ export function medalCondition(m: Medal): string {
   if (m.condition) return m.condition
   return isProductMedal(m.kind)
     ? `依序通過${MEDAL_KIND_LABEL[m.kind]}前 ${m.need} 關，每關全部答對。`
-    : `在首頁累積到訪 ${m.need} ${m.kind === "stores" ? "家不同藥局" : "個不同縣市"}。`
+    : `在今日路線累積到訪 ${m.need} ${m.kind === "stores" ? "家不同藥局" : "個不同縣市"}。`
 }
 export function medalProgress(m: Medal) {
   const completed = Math.max(0, Math.min(m.need, m.have))
   return { completed, total: m.need, percent: Math.min(100, Math.round(completed / Math.max(1, m.need) * 100)) }
 }
-export const medalAction = (m: Medal) => m.action_path || (isProductMedal(m.kind) ? `/learning/products/${m.kind}/${m.tier}` : "/")
+export const medalAction = (m: Medal) => m.action_path || (isProductMedal(m.kind) ? `/learning/products/${m.kind}/${m.tier}` : "/route")
 export const TIER_NAME = { 1: "銅牌", 2: "銀牌", 3: "金牌" } as const
 const COUNT = ["", "一", "兩", "三", "四", "五", "六"]
 

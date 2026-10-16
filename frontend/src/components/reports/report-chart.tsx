@@ -1,5 +1,10 @@
+import {
+  AnalysisChart,
+  StageChart,
+  ReportMap,
+} from "@/components/reports/report-advanced"
 import type { KeyboardEvent, ReactNode } from "react"
-import { BarChart3, ChevronDown } from "lucide-react"
+import { BarChart3, ChevronDown } from "@/components/icons"
 import { ReportMatrix } from "@/components/reports/report-matrix"
 import { ReportFormattedValue } from "@/components/reports/report-formatted-value"
 import {
@@ -53,6 +58,8 @@ type ChartProps = {
     key: string,
     label: string
   ) => void
+  onHoverData?: (point: ReportSelectionPoint) => void
+  onHoverEnd?: () => void
   selectedKey?: string
   onSelectData?: (point: ReportSelectionPoint) => void
   pointActionLabel?: string
@@ -161,7 +168,7 @@ function Total({
   const exact = exactValue(total, card.metric)
   return (
     <div className={large ? "py-2" : "mb-3"}>
-      <p className="mb-1 text-[11px] text-muted-foreground">
+      <p className="mb-1 text-xs text-muted-foreground">
         {NON_ADDITIVE_METRICS.includes(card.metric)
           ? "所選範圍"
           : "所選範圍合計"}
@@ -189,7 +196,7 @@ function Total({
         {formatted}
       </p>
       {formatted !== exact && !card.format?.numbers?.[card.metric] && (
-        <p className="mt-1 text-[11px] break-words text-muted-foreground tabular-nums">
+        <p className="mt-1 text-xs break-words text-muted-foreground tabular-nums">
           {exact}
         </p>
       )}
@@ -308,6 +315,25 @@ function selectPoint(
   else props.onSelectPoint?.(props.card.dimension, point.key, point.label)
 }
 
+function hoverInteraction(
+  props: ChartProps,
+  point: ReportPoint,
+  series?: { key: string; label: string }
+) {
+  return {
+    onMouseEnter: () => {
+      if (series?.key !== "__other__")
+        props.onHoverData?.(chartSelection(props.card, point, series))
+    },
+    onMouseLeave: props.onHoverEnd,
+    onFocus: () => {
+      if (series?.key !== "__other__")
+        props.onHoverData?.(chartSelection(props.card, point, series))
+    },
+    onBlur: props.onHoverEnd,
+  }
+}
+
 function svgInteraction(
   props: ChartProps,
   point: ReportPoint,
@@ -326,6 +352,12 @@ function svgInteraction(
     "aria-label": `${chartSelection(props.card, point, series).label}：${exactValue(series ? seriesValue(props.data, point, series.key) : (point as ReportPoint & { missing?: boolean }).missing ? null : point.value, props.card.metric)}，點選${props.pointActionLabel ?? "篩選"}`,
     "aria-pressed": pointSelected(props, point, series),
     onClick: select,
+    onMouseEnter: () =>
+      props.onHoverData?.(chartSelection(props.card, point, series)),
+    onMouseLeave: props.onHoverEnd,
+    onFocus: () =>
+      props.onHoverData?.(chartSelection(props.card, point, series)),
+    onBlur: props.onHoverEnd,
     onKeyDown: (event: KeyboardEvent<SVGGElement>) => {
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault()
@@ -406,6 +438,7 @@ function ValueTable(props: ChartProps & { matrix?: boolean }) {
                     type="button"
                     className="min-h-11 w-full text-left text-primary underline-offset-2 focus-visible:underline"
                     aria-pressed={pointSelected(props, point)}
+                    {...hoverInteraction(props, point)}
                     onClick={() => selectPoint(props, point)}
                   >
                     {point.label}
@@ -453,6 +486,7 @@ function ValueTable(props: ChartProps & { matrix?: boolean }) {
                           point,
                           series[column]
                         )}
+                        {...hoverInteraction(props, point, series[column])}
                         onClick={() =>
                           selectPoint(props, point, series[column])
                         }
@@ -476,7 +510,7 @@ function ValueTable(props: ChartProps & { matrix?: boolean }) {
                       </span>
                     )}
                     {data.highlight && (
-                      <span className="block text-[10px] text-primary">
+                      <span className="block text-xs text-primary">
                         選取{" "}
                         {reportDisplayValue(
                           card,
@@ -521,7 +555,7 @@ function ValueTable(props: ChartProps & { matrix?: boolean }) {
                     metric={card.metric}
                   />
                   {data.highlight && (
-                    <span className="block text-[10px] text-primary">
+                    <span className="block text-xs text-primary">
                       選取{" "}
                       {reportDisplayValue(
                         card,
@@ -602,7 +636,7 @@ function Legend({
   if (card.show_legend === false || items.length < 2) return null
   return (
     <ul
-      className="flex flex-wrap gap-x-3 gap-y-1.5 text-[11px] text-muted-foreground"
+      className="flex flex-wrap gap-x-3 gap-y-1.5 text-xs text-muted-foreground"
       aria-label="圖例"
     >
       {items.map((item, index) => (
@@ -665,6 +699,7 @@ function BarChart(props: PlotProps) {
                     }
                     className="min-h-8 min-w-0 rounded text-left break-words text-primary"
                     aria-pressed={pointSelected(props, point)}
+                    {...hoverInteraction(props, point)}
                     onClick={() => selectPoint(props, point)}
                   >
                     {point.label}
@@ -726,10 +761,15 @@ function BarChart(props: PlotProps) {
                           point,
                           series[segment.series]
                         )}
+                        {...hoverInteraction(
+                          props,
+                          point,
+                          series[segment.series]
+                        )}
                         onClick={() =>
                           selectPoint(props, point, series[segment.series])
                         }
-                        className="absolute inset-y-0 flex items-center justify-center overflow-hidden text-[10px] font-medium text-white focus-visible:z-30 focus-visible:outline-2 focus-visible:outline-ring"
+                        className="absolute inset-y-0 flex items-center justify-center overflow-hidden text-sm font-medium text-white focus-visible:z-30 focus-visible:outline-2 focus-visible:outline-ring"
                         style={{
                           left: `${left}%`,
                           width: `${width}%`,
@@ -783,7 +823,7 @@ function BarChart(props: PlotProps) {
                       return (
                         <span
                           key={item.key}
-                          className="block text-[10px] text-muted-foreground"
+                          className="block text-xs text-muted-foreground"
                         >
                           {item.label}：無法計算
                         </span>
@@ -800,6 +840,7 @@ function BarChart(props: PlotProps) {
                         }
                         aria-label={`${chartSelection(card, point, item).label}：${exactValue(value, card.metric)}，點選${props.pointActionLabel ?? "篩選"}`}
                         aria-pressed={pointSelected(props, point, item)}
+                        {...hoverInteraction(props, point, item)}
                         onClick={() => selectPoint(props, point, item)}
                         className={`relative block w-full overflow-hidden rounded-sm bg-muted/40 focus-visible:outline-2 focus-visible:outline-ring ${card.height === "compact" ? "h-5" : card.height === "tall" ? "h-8" : "h-6"}`}
                         style={{
@@ -896,7 +937,7 @@ function BarChart(props: PlotProps) {
       />
       <Legend card={card} colors={colors} items={series} />
       {percentage && (
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           每個分類合計為 100%；合計為 0 的分類顯示 0%。
         </p>
       )}
@@ -1112,7 +1153,7 @@ function BarAxisLabels({
     <div className="space-y-1">
       {settings?.show_x !== false && (
         <div
-          className="relative h-5 text-[9px] text-muted-foreground"
+          className="relative h-5 text-xs text-muted-foreground"
           data-axis="x"
         >
           {axisTicks(minimum, maximum, card.metric, percentage).map(
@@ -1145,7 +1186,7 @@ function BarAxisLabels({
         </div>
       )}
       {settings?.show_titles && (
-        <p className="text-[10px] text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           X 軸：{settings.x_title || METRICS[card.metric].label} · Y 軸：
           {settings.y_title || DIMENSIONS[card.dimension]}
         </p>
@@ -1408,7 +1449,7 @@ function ColumnChart(props: PlotProps) {
       </svg>
       <Legend card={card} colors={colors} items={series} />
       {percentage && (
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           各分類合計為 100%；零合計分類顯示 0%。
         </p>
       )}
@@ -1852,7 +1893,7 @@ function ShareChart(props: PlotProps) {
       )}
       <Legend card={card} colors={colors} items={data.points} />
       {sum > 0 && (
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           占比以圖中分類合計計算；上方合計包含完整範圍。
         </p>
       )}
@@ -2079,7 +2120,7 @@ function ComboChart(props: PlotProps) {
         )}
         <AxisTitles card={card} frame={frame} secondary={secondary} />
       </svg>
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-xs text-muted-foreground">
         左軸：{METRICS[card.metric].label} · 右軸：{METRICS[secondary].label}
         （獨立刻度）
       </p>
@@ -2252,11 +2293,11 @@ function ScatterChart(props: PlotProps) {
         ))}
         <AxisTitles card={card} frame={frame} secondary={secondary} scatter />
       </svg>
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-xs text-muted-foreground">
         橫軸：{METRICS[card.metric].label} · 縱軸：{METRICS[secondary].label}
       </p>
       {points.length !== data.points.length && (
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           {data.points.length - points.length} 個分類沒有第二指標，未繪製散點。
         </p>
       )}
@@ -2277,16 +2318,16 @@ function HighlightSummary(props: ChartProps) {
         {NON_ADDITIVE_METRICS.includes(props.card.metric) ? "指標" : "合計"}：
         {reportDisplayValue(props.card, highlight.total, props.card.metric)}
       </p>
-      <p className="mt-1 text-[11px] text-muted-foreground">
+      <p className="mt-1 text-xs text-muted-foreground">
         圖表保留完整範圍；淡色分類沒有聯動資料，數值明細同時列出選取數值。
       </p>
       {props.card.metric === "net_margin" && (
-        <p className="mt-1 text-[11px] text-muted-foreground">
+        <p className="mt-1 text-xs text-muted-foreground">
           淨毛利的正負數值可能互相抵銷，請以明細的實際選取數值比較。
         </p>
       )}
       {NON_ADDITIVE_METRICS.includes(props.card.metric) && (
-        <p className="mt-1 text-[11px] text-muted-foreground">
+        <p className="mt-1 text-xs text-muted-foreground">
           選取值以子集重新計算，比率與平均值可大於完整範圍；請以實際數值比較。
         </p>
       )}
@@ -2404,6 +2445,39 @@ export function ReportChart(props: ChartProps) {
     chart = <BarChart {...plot} />
   else if (["column", "stacked_column", "percent_column"].includes(card.visual))
     chart = <ColumnChart {...plot} />
+  else if (["waterfall", "funnel"].includes(card.visual))
+    chart = (
+      <StageChart
+        card={card}
+        data={data}
+        onSelect={props.onSelectData}
+        onHover={props.onHoverData}
+        onLeave={props.onHoverEnd}
+      />
+    )
+  else if (card.visual === "map")
+    chart = (
+      <ReportMap
+        card={card}
+        data={data}
+        onSelect={props.onSelectData}
+        onHover={props.onHoverData}
+        onLeave={props.onHoverEnd}
+      />
+    )
+  else if (
+    data.analysis &&
+    (card.analytics?.trend_line || card.analytics?.forecast_periods)
+  )
+    chart = (
+      <AnalysisChart
+        card={card}
+        data={data}
+        onSelect={props.onSelectData}
+        onHover={props.onHoverData}
+        onLeave={props.onHoverEnd}
+      />
+    )
   else if (card.visual === "line" || card.visual === "area")
     chart = <TrendChart {...plot} />
   else if (share) chart = <ShareChart {...plot} />
@@ -2421,7 +2495,7 @@ export function ReportChart(props: ChartProps) {
         data.series?.some((series) =>
           series.points.some((point) => point.value == null)
         )) && (
-        <p role="status" className="text-[11px] text-muted-foreground">
+        <p role="status" className="text-xs text-muted-foreground">
           無法計算的資料點保留在分組彙總，趨勢圖在該處留空。
         </p>
       )}
@@ -2431,7 +2505,7 @@ export function ReportChart(props: ChartProps) {
         !percentage &&
         !share &&
         !["table", "matrix", "scatter"].includes(card.visual) && (
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             虛線目標：{reportDisplayValue(card, card.target, card.metric)}
           </p>
         )}

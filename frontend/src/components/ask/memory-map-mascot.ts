@@ -1,4 +1,6 @@
 import * as THREE from "three"
+import { createMascotRearMark } from "@/components/mascot-3d-details"
+import { mascotEyeOpenness } from "@/lib/mascot-blink"
 
 /** The existing bear silhouette, with a rounded volume and a face attached to its front. */
 export function createMapMascot(id: string) {
@@ -47,6 +49,9 @@ export function createMapMascot(id: string) {
   })
   bodyGeometry.translate(0, 0, -0.36)
   group.add(new THREE.Mesh(bodyGeometry, purple))
+  const rearMark = createMascotRearMark("#2b1b47", .098, .0175)
+  rearMark.position.set(0, y(188), -.52)
+  group.add(rearMark)
   const sphere = new THREE.SphereGeometry(1, 24, 16)
   function ball(
     material: THREE.Material,
@@ -119,6 +124,10 @@ export function createMapMascot(id: string) {
   return {
     group,
     bounds,
+    animate(seconds: number, reducedMotion: boolean) {
+      const openness = reducedMotion ? 1 : mascotEyeOpenness(seconds)
+      for (const eye of eyes) eye.scale.y = .134 * openness
+    },
     setThinking(thinking: boolean) {
       smile.visible = !thinking
       thinkingMouth.visible = thinking

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { AdvancedMarker, APIProvider, ColorScheme, Map, Polyline, useMap } from "@vis.gl/react-google-maps"
-import { Check, Loader2, LocateFixed } from "lucide-react"
+import { Check, Loader2, LocateFixed } from "@/components/icons"
 
 import type { MapsConfig } from "@/api/maps"
 import type { MapStop, RouteStop, TodayMap, TravelMode } from "@/api/route"

@@ -12,7 +12,7 @@ import {
 } from "@dnd-kit/core"
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
-import { Loader2, Plus, Repeat, WandSparkles } from "lucide-react"
+import { Loader2, Plus, Repeat, WandSparkles } from "@/components/icons"
 import { Link, useNavigate } from "react-router"
 
 import { ApiError } from "@/api/client"
@@ -154,7 +154,7 @@ export function RouteEditPage() {
   function cancel() {
     routeDraft.clear()
     // 用 replace：不留在瀏覽紀錄裡，不然從首頁按上一頁會回到調整頁
-    navigate("/", { replace: true })
+    navigate("/route", { replace: true })
   }
 
   const cancelButton = (
@@ -313,7 +313,7 @@ export function RouteEditPage() {
         return
       }
       routeDraft.clear()
-      navigate("/", { replace: true })
+      navigate("/route", { replace: true })
     } catch (error) {
       setSaving(false)
       setAfterSave(null)
@@ -523,8 +523,8 @@ export function RouteEditPage() {
         <Dialog open onOpenChange={(visible) => !visible && dismissUnsaved()}>
           <DialogContent showCloseButton={false}>
             <DialogHeader>
-              <DialogTitle>剛才的調整還沒存，要先存起來再請熊熊滾排嗎？</DialogTitle>
-              <DialogDescription>熊熊滾是照存著的行程排的；不先存的話，剛才的調整它看不到。</DialogDescription>
+              <DialogTitle>先儲存調整再排順路？</DialogTitle>
+              <DialogDescription>排序會使用已儲存的行程。請先儲存目前的調整。</DialogDescription>
             </DialogHeader>
             <DialogFooter>
               <Button variant="outline" className="h-11" onClick={dismissUnsaved}>

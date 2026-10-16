@@ -30,6 +30,8 @@ class Course(BaseModel):
     completed: list[str]
     xp: int
     ai_unlocked: bool
+    demo_skip_available: bool
+    demo_skipped: bool
     lessons: list[Lesson]
 
 
@@ -46,6 +48,14 @@ def get_course(session: SessionDep, user: CurrentUser):
 def complete_lesson(session: SessionDep, user: CurrentUser, lesson_id: str, body: Submission):
     try:
         return learning.complete(session, user, lesson_id, body.answer)
+    except learning.LearningError as exc:
+        raise HTTPException(exc.status, str(exc)) from None
+
+
+@router.post("/course/demo-skip", response_model=Course)
+def skip_course_for_demo(session: SessionDep, user: CurrentUser):
+    try:
+        return learning.skip_for_demo(session, user)
     except learning.LearningError as exc:
         raise HTTPException(exc.status, str(exc)) from None
 

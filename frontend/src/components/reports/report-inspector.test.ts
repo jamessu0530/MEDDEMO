@@ -68,9 +68,9 @@ function action(html: string, label: string) {
 }
 
 describe("ReportInspector", () => {
-  it("圖表庫提供全部 16 種具有名稱的視覺效果", () => {
+  it("圖表庫提供全部 19 種具有名稱的視覺效果", () => {
     const html = gallery()
-    expect(html.match(/<button\b/g)).toHaveLength(16)
+    expect(html.match(/<button\b/g)).toHaveLength(19)
     for (const label of Object.values(VISUALS))
       expect(html).toContain(`aria-label="${label}"`)
     expect(html).not.toContain("disabled=")

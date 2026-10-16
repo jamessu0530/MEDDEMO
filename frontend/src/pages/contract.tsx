@@ -5,6 +5,7 @@ import { ApiError } from "@/api/client"
 import { createContractRequest, getContract, getCustomer, type Contract, type Customer } from "@/api/customers"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
+import { ContextHelp } from "@/components/context-help"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -127,13 +128,12 @@ export function ContractPage() {
         {contract && (
           <>
             <section className="rounded-2xl border-2 bg-card px-4 py-3 shadow-lip">
-              <p className="text-sm font-semibold">目前的條件</p>
+              <div className="flex items-center justify-between"><h2 className="text-base font-semibold">目前條件</h2><ContextHelp label="費率計算方式"><p>依近 90 天交易計算，上架費率與通路獎勵率分別為該項費用除以進貨金額。</p></ContextHelp></div>
               <dl className="mt-2 grid grid-cols-3 gap-2 text-center">
                 <Term label="到期日" value={contract.contract_end_date?.replaceAll("-", "/") ?? "—"} warn={contract.ending_soon} />
                 <Term label="上架費率" value={formatRate(contract.listing_fee_rate)} />
                 <Term label="通路獎勵" value={formatRate(contract.channel_reward_rate)} />
               </dl>
-              <p className="mt-2 text-[0.6875rem] text-muted-foreground">費率是近 90 天交易的上架費、通路獎勵除以進貨金額，跟談判卡的毛利結構同一個算法。</p>
             </section>
 
             {contract.pending_form_id ? (
@@ -199,7 +199,7 @@ export function ContractPage() {
 function Term({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
   return (
     <div>
-      <dt className="text-[0.6875rem] text-muted-foreground">{label}</dt>
+      <dt className="text-xs text-muted-foreground">{label}</dt>
       <dd className={cn("text-sm font-semibold tabular-nums", warn && "text-warning")}>{value}</dd>
     </div>
   )

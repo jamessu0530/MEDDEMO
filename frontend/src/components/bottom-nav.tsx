@@ -1,11 +1,11 @@
 import { useLayoutEffect, useRef } from "react"
 import {
-  CalendarDays,
   ClipboardList,
   MessageCircleQuestion,
   MessagesSquare,
   Pill,
-} from "lucide-react"
+  Route,
+} from "@/components/icons"
 import { NavLink, useLocation } from "react-router"
 
 import { UnreadDot } from "@/components/channels-link"
@@ -14,8 +14,8 @@ import { useUploadQueue } from "@/lib/offline-queue"
 import { cn } from "@/lib/utils"
 
 const TABS = [
-  { to: "/", label: "今日", icon: CalendarDays },
   { to: "/orders", label: "訂單", icon: ClipboardList },
+  { to: "/route", label: "路線", icon: Route },
   { to: "/channels", label: "頻道", icon: MessagesSquare },
   { to: "/ask", label: "問答", icon: MessageCircleQuestion },
   { to: "/products", label: "商品", icon: Pill },
@@ -40,7 +40,7 @@ export function BottomNav() {
   const linkRefs = useRef<(HTMLAnchorElement | null)[]>([])
   // 第一次畫的時候記下從哪一格來；開發模式的 StrictMode 會把 effect 跑兩次，第二次也要從同一格滑
   const fromRef = useRef(lastIndex)
-  // FR-4.3：手機裡還有沒送出的錄音，今日分頁上顯示筆數
+  // FR-4.3：手機裡還有沒送出的錄音，訂單首頁顯示筆數，進去可看待送出清單
   const pending = items.filter((item) => item.state === "pending").length
   const path = pathname.length > 1 && pathname.endsWith("/") ? pathname.slice(0, -1) : pathname
   const active = TABS.findIndex((tab) => tab.to === path)
@@ -87,10 +87,11 @@ export function BottomNav() {
               linkRefs.current[index] = link
             }}
             to={to}
+            data-ui-demo={to === "/orders" ? "orders-nav" : undefined}
             end
             className={({ isActive }) =>
               cn(
-                "relative flex h-[2.875rem] min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-full text-[0.72rem] font-semibold transition-colors",
+                "relative flex h-[2.875rem] min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-full text-xs font-semibold transition-colors",
                 GLIDE,
                 isActive ? "text-primary-foreground" : "text-muted-foreground"
               )
@@ -98,10 +99,10 @@ export function BottomNav() {
           >
             <span className="relative">
               <Icon className="size-5" />
-              {to === "/" && pending > 0 && (
+              {to === "/orders" && pending > 0 && (
                 <span
                   aria-label={`待送出 ${pending} 筆`}
-                  className="absolute -top-1.5 -right-2.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[0.625rem] font-semibold text-white"
+                  className="absolute -top-1.5 -right-2.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-xs font-semibold text-white"
                 >
                   {pending}
                 </span>

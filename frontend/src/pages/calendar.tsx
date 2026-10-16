@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react"
+import { ChevronLeft, ChevronRight, Plus } from "@/components/icons"
 import { Link } from "react-router"
 
 import { listCustomers, type Customer } from "@/api/customers"

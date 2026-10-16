@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { CircleAlert, RotateCw, TriangleAlert } from "lucide-react"
+import { CircleAlert, RotateCw, TriangleAlert } from "@/components/icons"
 import { useNavigate } from "react-router"
 
 import { remainingStops } from "@/api/route"
@@ -117,7 +117,7 @@ export function ResultView({ visit, onChange }: { visit: Visit; onChange: (visit
           查看出差單
         </Button>
       )}
-      <Button className="h-12 text-base" onClick={() => navigate("/")}>
+      <Button className="h-12 text-base" onClick={() => navigate("/route")}>
         回今日路線{remaining !== null && remaining > 0 ? ` · 還有 ${remaining} 站` : ""}
       </Button>
       <Button variant="outline" className="h-12 text-base" onClick={() => navigate("/customers")}>

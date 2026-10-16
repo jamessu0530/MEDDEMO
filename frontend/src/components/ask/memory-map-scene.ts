@@ -294,6 +294,7 @@ export function createMemoryMapScene(
         ([a], [b]) => priority(b) - priority(a)
       )
       for (const [id, object] of ordered) {
+        object.mascot?.animate(time / 1000, motion.matches)
         const related = !selected || connected.has(id)
         const active = id === graph.activeId
         const mascot = object.node.kind === "root"

@@ -12,7 +12,7 @@ export const INK_DURATION: Record<InkEffect, number> = {
 }
 
 // 底部分頁列的頁面，含舊促銷入口（components/bottom-nav.tsx）
-const TABS = new Set(["/", "/customers", "/channels", "/ask", "/products", "/promotions"])
+const TABS = new Set(["/", "/orders", "/route", "/customers", "/channels", "/ask", "/products", "/promotions"])
 // 還沒登入時看得到的頁面；進出這幾頁就是登入、登出
 const AUTH = new Set(["/login", "/register", "/auth/github/callback"])
 

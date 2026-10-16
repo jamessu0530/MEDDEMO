@@ -1,4 +1,4 @@
-import { TriangleAlert } from "lucide-react"
+import { TriangleAlert } from "@/components/icons"
 
 import { cn } from "@/lib/utils"
 

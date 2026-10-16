@@ -38,6 +38,18 @@ afterEach(() => {
 })
 
 describe("askSessionFor", () => {
+  it("自動模式遇到操作求助，先提出示範邀請，不啟動後端查詢或自動操作", async () => {
+    signIn({ token: "t", user: user("U01") })
+    const session = askSessionFor("U01")
+    await session.ask("auto", "我不會新增訂單，可以教我嗎？")
+    expect(session.conversation.getSnapshot()).toMatchObject([
+      { kind: "user", text: "我不會新增訂單，可以教我嗎？" },
+      { kind: "model", demo: "create-order" },
+    ])
+    expect(api.routeAsk).not.toHaveBeenCalled()
+    expect(api.createAsk).not.toHaveBeenCalled()
+    expect(session.isBusy()).toBe(false)
+  })
   it("地圖編輯切頁保留，換帳號不沿用另一人的名稱、筆記或刪除紀錄", () => {
     signIn({ token: "t", user: user("U01") })
     const first = askSessionFor("U01")

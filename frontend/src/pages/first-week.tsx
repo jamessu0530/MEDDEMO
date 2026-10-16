@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { ChevronRight, FileText, GraduationCap } from "lucide-react"
+import { ChevronRight, FileText, GraduationCap } from "@/components/icons"
 import { Link, useNavigate } from "react-router"
 
 import { ApiError } from "@/api/client"
@@ -114,7 +114,19 @@ export function FirstWeekPage() {
         )}
         {data && (
           <>
-            {state.status === "ready" && <CoursePath course={state.course} />}
+            {state.status === "ready" && (
+              <CoursePath
+                course={state.course}
+                onCourseChange={(course) => {
+                  setState((current) =>
+                    current.status === "ready"
+                      ? { ...current, course }
+                      : current
+                  )
+                  navigate("/ask")
+                }}
+              />
+            )}
             <details className="group rounded-2xl border-2 bg-card shadow-lip">
               <summary className="cursor-pointer px-4 py-4 text-sm font-semibold">
                 我的轄區、產品與第一週參考資料
@@ -127,7 +139,7 @@ export function FirstWeekPage() {
                 {/* 還沒有掛「新人必看」的方法卡就不顯示這一區 */}
                 {data.methods.length > 0 && (
                   <section className="flex flex-col gap-2">
-                    <h2 className="text-sm font-semibold">主管教的做法</h2>
+                    <h2 className="text-base font-semibold">主管教的做法</h2>
                     <p className="text-xs text-muted-foreground">
                       主管標了「新人必看」的方法卡裡，最多人說有幫上的三張。
                     </p>
@@ -151,14 +163,14 @@ export function FirstWeekPage() {
 
                 <section className="flex flex-col gap-2">
                   <div className="flex items-baseline justify-between gap-3">
-                    <h2 className="text-sm font-semibold">第一週每天做什麼</h2>
+                    <h2 className="text-base font-semibold">第一週每天做什麼</h2>
                   </div>
                   {data.days.map((day) => (
                     <article
                       key={day.day}
                       className="rounded-2xl border-2 bg-card shadow-lip"
                     >
-                      <h3 className="border-b px-4 py-2.5 text-sm font-medium">
+                      <h3 className="border-b px-4 py-2.5 text-base font-medium">
                         第 {day.day} 天 · {day.title}
                       </h3>
                       <ul className="divide-y">
@@ -175,7 +187,7 @@ export function FirstWeekPage() {
 
                 {data.documents.length > 0 && (
                   <section className="flex flex-col gap-2">
-                    <h2 className="text-sm font-semibold">必讀文件</h2>
+                    <h2 className="text-base font-semibold">必讀文件</h2>
                     <ul className="divide-y rounded-2xl border-2 bg-card shadow-lip">
                       {data.documents.map((doc) => (
                         <li key={doc.source_name}>
@@ -217,9 +229,9 @@ function ProfileSection({ data }: { data: FirstWeek }) {
   return (
     <section className="rounded-2xl border-2 bg-card p-4 shadow-lip">
       <div className="flex items-baseline justify-between gap-3">
-        <h2 className="text-sm font-semibold">你的資料</h2>
+        <h2 className="text-base font-semibold">你的資料</h2>
         {employee.employee_no && (
-          <span className="text-[0.6875rem] text-muted-foreground">
+          <span className="text-xs text-muted-foreground">
             來自 SAP 人員主檔
           </span>
         )}
@@ -270,7 +282,7 @@ function ProfileSection({ data }: { data: FirstWeek }) {
 function ProductLines({ data }: { data: FirstWeek }) {
   return (
     <section className="flex flex-col gap-2">
-      <h2 className="text-sm font-semibold">你賣什麼</h2>
+      <h2 className="text-base font-semibold">你賣什麼</h2>
       <p className="text-xs text-muted-foreground">
         每條產品線列{data.employee.region}近 90 天進貨金額最高的三個品項。
       </p>
@@ -307,7 +319,7 @@ function ProductLines({ data }: { data: FirstWeek }) {
                     )}
                   </div>
                   <div className="shrink-0 text-right">
-                    <p className="text-[0.6875rem] text-muted-foreground">
+                    <p className="text-xs text-muted-foreground">
                       建議售價
                     </p>
                     <p className="text-sm font-medium tabular-nums">
@@ -340,7 +352,7 @@ function ProductLines({ data }: { data: FirstWeek }) {
 function KeyCustomers({ data }: { data: FirstWeek }) {
   return (
     <section className="flex flex-col gap-2">
-      <h2 className="text-sm font-semibold">先認識這五家</h2>
+      <h2 className="text-base font-semibold">先認識這五家</h2>
       <p className="text-xs text-muted-foreground">
         先認識名下客戶的近期進貨與拜訪紀錄。
       </p>
@@ -432,9 +444,11 @@ export function FirstWeekEntry({ userId }: { userId: string }) {
       <GraduationCap className="size-5 shrink-0 text-primary" />
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium">
-          {card.ai_unlocked
-            ? "新人課程完成 · AI 問答已解鎖"
-            : "新人闖關 · 完成後解鎖 AI 問答"}
+          {card.demo_skipped
+            ? "Demo · AI 問答已開啟，可繼續新人課程"
+            : card.ai_unlocked
+              ? "新人課程完成 · AI 問答已解鎖"
+              : "新人闖關 · 完成後解鎖 AI 問答"}
         </p>
         <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
           完成 {card.completed.length}／{card.lessons.length} 關 · {card.xp} XP

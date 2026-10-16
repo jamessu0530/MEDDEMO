@@ -1,4 +1,4 @@
-import { MessageSquareQuote, Package, Swords } from "lucide-react"
+import { MessageSquareQuote, Package, Swords } from "@/components/icons"
 
 import type { Note } from "@/api/notes"
 import { NOTE_KIND_LABEL, noteDate } from "@/lib/calendar"

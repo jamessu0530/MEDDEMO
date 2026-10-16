@@ -15,7 +15,7 @@ import {
 } from "@/lib/report-documents"
 import type { ReportConfig } from "@/lib/reports"
 
-const ACTION = "min-h-10 rounded-md border px-3 text-xs disabled:opacity-40"
+const ACTION = "min-h-10 rounded-md border px-3 text-sm disabled:opacity-40"
 
 export function useReportDraft({
   accountId,

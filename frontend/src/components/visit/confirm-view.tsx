@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react"
-import { ChevronDown, Pencil } from "lucide-react"
+import { ChevronDown, Pencil } from "@/components/icons"
 import { useNavigate } from "react-router"
 
 import { confirmVisit, discardVisit, type FieldKey, type Visit } from "@/api/visits"
@@ -166,7 +166,7 @@ function markSources(transcript: string, sources: Visit["sources"]) {
     parts.push(
       <mark key={mark.key} className="rounded bg-accent px-0.5 text-foreground">
         {transcript.slice(mark.start, mark.end)}
-        <sup className="ml-0.5 text-[0.625rem] font-medium text-primary">{FIELD_LABEL[mark.key]}</sup>
+        <sup className="ml-0.5 text-xs font-medium text-primary">{FIELD_LABEL[mark.key]}</sup>
       </mark>
     )
     cursor = mark.end

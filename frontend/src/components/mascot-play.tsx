@@ -78,9 +78,9 @@ export function MascotPlay({ state = "idle", size = 96, bust = false, className,
           )}
         </svg>
       </button>
-      <span className="mascot-play-message" role="status">
-        {pending ? "看看遇到哪隻熊熊…" : found && found.color_id !== "classic" ? `${found.newly_collected ? "新收藏！" : "又遇到"}${mascotPalette(found.color_id).name}` : taps.split ? "噗！變成兩隻了。" : taps.count >= 4 ? "熊熊滾快忍不住了…" : "戳戳熊熊滾"}
-      </span>
+      {(pending || found || taps.count >= 4 || taps.split) && <span className="mascot-play-message" role="status">
+        {pending ? "看看遇到哪隻熊熊…" : found && found.color_id !== "classic" ? `${found.newly_collected ? "新收藏！" : "又遇到"}${mascotPalette(found.color_id).name}` : taps.split ? "噗！變成兩隻了。" : "熊熊滾快忍不住了…"}
+      </span>}
       {error && <><span role="alert" className="mascot-play-message">{error}</span><button className="mascot-play-reset" type="button" disabled={pending} onClick={() => void discover()}>重新確認收藏</button></>}
       {taps.split && <button className="mascot-play-reset" type="button" disabled={pending} onClick={() => { setTaps(EMPTY_MASCOT_TAPS); setFound(null); setError(null) }}>合回一隻</button>}
     </div>

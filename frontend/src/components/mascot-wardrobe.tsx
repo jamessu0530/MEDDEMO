@@ -1,21 +1,23 @@
 import { useState } from "react"
-import { Check, LockKeyhole, MapPin, Sparkles, Shirt } from "lucide-react"
+import { Check, LockKeyhole, MapPin, Sparkles, Shirt } from "@/components/icons"
 
 import { Mascot } from "@/components/mascot"
 import { MascotPlay } from "@/components/mascot-play"
 import { Mascot3D } from "@/components/mascot-3d"
+import { ContextHelp } from "@/components/context-help"
 import { canWear, mascotOutfit, mascotPalette, type MascotCollection, type MascotEncounter, type MascotLook } from "@/lib/mascot-collection"
 
 import "./mascot-wardrobe.css"
 
 type Props = {
   collection: MascotCollection
+  showHeading?: boolean
   onEquip: (look: MascotLook, asAvatar: boolean) => Promise<void>
   onEncounter: (eventId: string) => Promise<MascotEncounter>
 }
 
 /** 正式頁與獨立互動預覽共用的收藏、試穿、換裝介面。 */
-export function MascotWardrobe({ collection, onEquip, onEncounter }: Props) {
+export function MascotWardrobe({ collection, onEquip, onEncounter, showHeading = true }: Props) {
   const [look, setLook] = useState(collection.equipped)
   const [view, setView] = useState<"3d" | "flat">("3d")
   const [tab, setTab] = useState<"cities" | "colors" | "clothes">("cities")
@@ -41,15 +43,15 @@ export function MascotWardrobe({ collection, onEquip, onEncounter }: Props) {
   }
 
   return <div className="mascot-wardrobe">
-    <div className="wardrobe-heading"><span className="wardrobe-eyebrow">我的熊熊滾</span><h1>把旅途，穿在身上。</h1><p>跑縣市收藏限定款，戳戳熊熊遇見異色。每一套，都可以變成你的頭像。</p></div>
-    <div className="wardrobe-stats"><span><MapPin size={16} />縣市款 <b>{cities.filter((item) => item.owned).length} / {cities.length}</b></span><span><Sparkles size={16} />異色 <b>{rares.filter((item) => item.owned).length} / {rares.length}</b></span><span><Shirt size={16} />自由混搭</span></div>
+    {showHeading && <div className="wardrobe-heading"><h1>熊熊衣櫃</h1></div>}
+    <div className="wardrobe-stats"><span><MapPin size={16} />縣市款 <b>{cities.filter((item) => item.owned).length} / {cities.length}</b></span><span><Sparkles size={16} />異色 <b>{rares.filter((item) => item.owned).length} / {rares.length}</b></span><ContextHelp label="收藏方式"><p>到訪縣市內任一站，就能收藏該縣市的服裝。</p><p>連續戳熊熊六下會分裂，有 1/{collection.shiny_odds} 機會遇見異色；最多連續 {collection.shiny_odds} 次一定遇見。</p><p>拖曳熊熊可以轉身。收藏的色彩和服裝可以自由搭配，也能設為頭像。</p></ContextHelp></div>
     <div className="wardrobe-layout">
       <section className="wardrobe-dressing" aria-label="試穿與換裝">
-        <div className="wardrobe-stage-top"><span>{wearing ? "目前穿搭" : "試穿中"}</span><div className="wardrobe-view-toggle" role="group" aria-label="熊熊滾檢視方式"><button type="button" aria-pressed={view === "3d"} onClick={() => setView("3d")}>立體</button><button type="button" aria-pressed={view === "flat"} onClick={() => setView("flat")}>平面</button></div><button type="button" onClick={() => { setLook(collection.equipped); setMessage(""); setError("") }}>回到目前穿搭</button></div>
+        <div className="wardrobe-stage-top"><span>{wearing ? "目前穿搭" : "試穿中"}</span><div className="wardrobe-view-toggle" role="group" aria-label="熊熊滾檢視方式"><button type="button" aria-pressed={view === "3d"} onClick={() => setView("3d")}>立體</button><button type="button" aria-pressed={view === "flat"} onClick={() => setView("flat")}>平面</button></div>{!wearing && <button type="button" onClick={() => { setLook(collection.equipped); setMessage(""); setError("") }}>還原穿搭</button>}</div>
         <div className={`wardrobe-stage color-${look.color}`}>{view === "3d" ? <Mascot3D key={`${look.color}-${look.outfit}`} look={look} onEncounter={onEncounter} /> : <MascotPlay key={`${look.color}-${look.outfit}`} state="idle" size={240} look={look} onEncounter={onEncounter} />}</div>
-        <div className="wardrobe-look-name"><h2>{outfit.name === "原本的熊熊" ? color.name : `${color.name} · ${outfit.name}`}</h2><span>{owned ? <><Check size={14} />已收藏，可以換上</> : <><LockKeyhole size={14} />還沒收藏，先試穿看看</>}</span></div>
+        <div className="wardrobe-look-name"><h2>{outfit.name === "原本的熊熊" ? color.name : `${color.name} · ${outfit.name}`}</h2><span>{owned ? <><Check size={14} />已收藏</> : <><LockKeyhole size={14} />尚未收藏</>}</span></div>
         <div className="wardrobe-actions"><button className="wardrobe-primary" type="button" disabled={!owned || busy} onClick={() => void save(collection.use_as_avatar)}>{busy ? "保存中…" : "換上這套"}</button><button type="button" disabled={!owned || busy} onClick={() => void save(true)}>設為我的頭像</button></div>
-        <div className="wardrobe-avatar-row"><span className="wardrobe-avatar"><Mascot bust size={48} look={collection.equipped} /></span><div><b>{collection.use_as_avatar ? "正在使用的頭像" : "頭像效果"}</b><span>換裝後，頻道與個人頁也會跟著換。</span></div></div>
+        <div className="wardrobe-avatar-row"><span className="wardrobe-avatar"><Mascot bust size={48} look={collection.equipped} /></span><b>{collection.use_as_avatar ? "目前頭像" : "頭像預覽"}</b></div>
         {!owned && <p className="wardrobe-hint">{!collection.colors.find((item) => item.id === look.color)?.owned ? "連點熊熊六下觸發分裂，有機會遇到這款異色。" : outfit.unlock}</p>}
         {message && <p className="wardrobe-feedback" role="status">{message}</p>}{error && <p className="wardrobe-error" role="alert">{error}</p>}
       </section>
@@ -57,11 +59,10 @@ export function MascotWardrobe({ collection, onEquip, onEncounter }: Props) {
         <div className="wardrobe-tabs" role="group" aria-label="收藏分類">
           <button type="button" aria-pressed={tab === "cities"} onClick={() => setTab("cities")}><MapPin size={16} />縣市款</button><button type="button" aria-pressed={tab === "colors"} onClick={() => setTab("colors")}><Sparkles size={16} />異色</button><button type="button" aria-pressed={tab === "clothes"} onClick={() => setTab("clothes")}><Shirt size={16} />服裝</button>
         </div>
-        <p className="wardrobe-tab-hint">{tab === "cities" ? "到過該縣市的任一站，就能把限定服裝收進衣櫃。" : tab === "colors" ? `分裂時有 1/${collection.shiny_odds} 機會遇到異色；最多連續 ${collection.shiny_odds} 次一定遇到。` : "帽子、圍巾和披風，和你收藏的異色一起搭。"}</p>
         <div className="wardrobe-grid">
-          {tab === "colors" ? collection.colors.map((item) => <button key={item.id} type="button" className={`wardrobe-item ${look.color === item.id ? "selected" : ""} ${item.owned ? "" : "locked"}`} aria-pressed={look.color === item.id} aria-label={`${item.name}，${item.owned ? "已收藏" : "尚未收藏，可以試穿"}`} onClick={() => { setLook({ ...look, color: item.id }); setMessage(""); setError("") }}><span className="wardrobe-item-status">{item.owned ? <Check size={14} /> : <LockKeyhole size={14} />}{item.rarity === "shiny" ? "異色" : "經典"}</span><Mascot look={{ color: item.id, outfit: look.outfit }} size={104} /><b>{item.name}</b><span>{item.owned ? "已收藏" : "分裂時有機會遇到"}</span></button>) : collection.outfits.filter((item) => tab === "clothes" ? !item.city : item.city).map((item) => <button key={item.id} type="button" className={`wardrobe-item ${look.outfit === item.id ? "selected" : ""} ${item.owned ? "" : "locked"}`} aria-pressed={look.outfit === item.id} aria-label={`${item.name}，${item.owned ? "已收藏" : "尚未收藏，可以試穿"}`} onClick={() => { setLook({ ...look, outfit: item.id }); setMessage(""); setError("") }}><span className="wardrobe-item-status">{item.owned ? <Check size={14} /> : <LockKeyhole size={14} />}{item.city ?? "日常"}</span><Mascot look={{ color: look.color, outfit: item.id }} size={104} /><b>{item.name}</b><span>{item.owned ? "已收藏" : item.unlock}</span></button>)}
+          {tab === "colors" ? collection.colors.map((item) => <button key={item.id} type="button" className={`wardrobe-item ${look.color === item.id ? "selected" : ""} ${item.owned ? "" : "locked"}`} aria-pressed={look.color === item.id} aria-label={`${item.name}，${item.owned ? "已收藏" : "尚未收藏，可以試穿"}`} onClick={() => { setLook({ ...look, color: item.id }); setMessage(""); setError("") }}><span className="wardrobe-item-status">{item.owned ? <Check size={14} /> : <LockKeyhole size={14} />}{item.rarity === "shiny" ? "異色" : "經典"}</span><Mascot look={{ color: item.id, outfit: look.outfit }} size={104} /><b>{item.name}</b></button>) : collection.outfits.filter((item) => tab === "clothes" ? !item.city : item.city).map((item) => <button key={item.id} type="button" className={`wardrobe-item ${look.outfit === item.id ? "selected" : ""} ${item.owned ? "" : "locked"}`} aria-pressed={look.outfit === item.id} aria-label={`${item.name}，${item.owned ? "已收藏" : "尚未收藏，可以試穿"}`} onClick={() => { setLook({ ...look, outfit: item.id }); setMessage(""); setError("") }}><span className="wardrobe-item-status">{item.owned ? <Check size={14} /> : <LockKeyhole size={14} />}{item.city ?? "日常"}</span><Mascot look={{ color: look.color, outfit: item.id }} size={104} /><b>{item.name}</b></button>)}
         </div>
-        {tab === "colors" && <p className="wardrobe-hint">已分裂 {collection.encounters} 次 · 再 {collection.guaranteed_in} 次內一定遇到異色。重複遇到同款也會留在收藏裡。</p>}
+        {tab === "colors" && <p className="wardrobe-hint">已分裂 {collection.encounters} 次 · 再 {collection.guaranteed_in} 次內遇見異色</p>}
       </section>
     </div>
   </div>

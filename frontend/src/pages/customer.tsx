@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { FileText, Handshake, MessagesSquare, Mic } from "lucide-react"
+import { FileText, Handshake, MessagesSquare, Mic } from "@/components/icons"
 import { Link, useLocation, useNavigate, useParams } from "react-router"
 
 import { openCustomerThread } from "@/api/channels"
@@ -18,6 +18,7 @@ import { CustomerStorefront } from "@/components/customer-storefront"
 import { NextNotes } from "@/components/next-notes"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
+import { ContextHelp } from "@/components/context-help"
 import { ReassignOwner } from "@/components/reassign-owner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -49,7 +50,7 @@ export function CustomerPage() {
   const navigate = useNavigate()
   // 電腦版左邊看狀況、右邊做事（docs/superpowers/specs/2026-10-09-desktop-layout-design.md）
   const desktop = useIsDesktop()
-  const { flash, backTo = "/" } = (useLocation().state as CustomerLocationState | null) ?? {}
+  const { flash, backTo = "/route" } = (useLocation().state as CustomerLocationState | null) ?? {}
   const user = useAuth()?.user
   const [state, setState] = useState<LoadState>({ status: "loading" })
   const [attempt, setAttempt] = useState(0)
@@ -340,12 +341,12 @@ function arTone(overdueDays: number | null): Tone {
 function StatCard({ label, value, unit, note, tone }: { label: string; value: string | number; unit: string; note?: string; tone?: Tone }) {
   return (
     <div className="flex flex-col gap-1 rounded-xl border-2 bg-card p-3 shadow-lip">
-      <p className="text-[0.6875rem] text-muted-foreground">{label}</p>
+      <p className="text-xs text-muted-foreground">{label}</p>
       <p className={cn("text-lg font-semibold tabular-nums", tone === "alert" && "text-destructive", tone === "warn" && "text-warning")}>
         {value}
-        <span className="ml-0.5 text-[0.6875rem] font-normal text-muted-foreground">{unit}</span>
+        <span className="ml-0.5 text-xs font-normal text-muted-foreground">{unit}</span>
       </p>
-      {note && <p className="text-[0.6875rem] leading-snug text-muted-foreground">{note}</p>}
+      {note && <p className="text-xs leading-snug text-muted-foreground">{note}</p>}
     </div>
   )
 }
@@ -355,21 +356,20 @@ function IntervalChart({ intervals, alert }: { intervals: CustomerProfile["inter
   const max = Math.max(1, ...intervals.map((item) => item.gap_days ?? 0))
   return (
     <section className="rounded-2xl border-2 bg-card p-4 shadow-lip">
-      <p className="text-sm font-semibold">每月進貨間隔</p>
-      <p className="text-[0.6875rem] text-muted-foreground">每次進貨距離上一次幾天，算在進貨的那個月</p>
+      <div className="flex items-center justify-between"><h2 className="text-base font-semibold">每月進貨間隔</h2><ContextHelp label="進貨間隔計算方式"><p>每次進貨距離上次進貨的天數，歸入本次進貨月份後取平均，單位為天。</p></ContextHelp></div>
       <div className="mt-3 flex h-36 items-end gap-2">
         {intervals.map((item, index) => {
           const last = index === intervals.length - 1
           return (
             <div key={item.month} className="flex flex-1 flex-col items-center justify-end gap-1">
-              <span className={cn("text-[0.6875rem] tabular-nums", last && alert ? "font-semibold text-destructive" : "text-muted-foreground")}>
+              <span className={cn("text-xs tabular-nums", last && alert ? "font-semibold text-destructive" : "text-muted-foreground")}>
                 {item.gap_days === null ? "—" : Math.round(item.gap_days)}
               </span>
               <div
                 className={cn("w-full rounded-md", item.gap_days === null ? "h-1 bg-muted" : last && alert ? "bg-destructive" : "bg-accent")}
                 style={item.gap_days === null ? undefined : { height: `${Math.max(6, (item.gap_days / max) * 96)}px` }}
               />
-              <span className="text-[0.6875rem] text-muted-foreground">{Number(item.month.slice(5))}月</span>
+              <span className="text-xs text-muted-foreground">{Number(item.month.slice(5))}月</span>
             </div>
           )
         })}
@@ -398,7 +398,7 @@ function ContractRow({ customerId, contract }: { customerId: string; contract: C
             </Badge>
           )}
         </p>
-        <p className="mt-0.5 text-[0.6875rem] text-muted-foreground">
+        <p className="mt-0.5 text-xs text-muted-foreground">
           {contract.pending_form_id
             ? "續約申請簽核中"
             : contract.ending_soon

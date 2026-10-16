@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Plus } from "lucide-react"
+import { Plus } from "@/components/icons"
 
 import { getNextNotes, type Note } from "@/api/notes"
 import { NoteDialog } from "@/components/note-dialog"

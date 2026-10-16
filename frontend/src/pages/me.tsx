@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { ChartNoAxesCombined, ChevronRight, Settings } from "lucide-react"
+import { ChartNoAxesCombined, ChevronRight, Settings } from "@/components/icons"
 import { Link, Navigate } from "react-router"
 
 import { getMe, type Me } from "@/api/me"
@@ -50,7 +50,7 @@ export function MePage() {
       <main className="flex flex-1 flex-col gap-4 px-4 pt-3 pb-10">
         <Link to="/reports" className="flex min-h-16 items-center gap-3 rounded-2xl border-2 bg-card px-4 py-3 shadow-lip">
           <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><ChartNoAxesCombined className="size-5" /></span>
-          <span className="min-w-0 flex-1"><span className="block text-sm font-semibold">我的報表</span><span className="block text-xs text-muted-foreground">自選指標與圖表，用 AI 調整重點</span></span>
+          <span className="min-w-0 flex-1 text-base font-semibold">我的報表</span>
           <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
         </Link>
         {state.status === "loading" && <p className="py-10 text-center text-sm text-muted-foreground">載入個人頁中…</p>}
@@ -85,7 +85,7 @@ export function MePage() {
               <Stat value={String(state.me.stats.customers)} label="名下客戶" />
               <Stat value={formatWan(state.me.stats.sales_last_year, 0)} label="近一年業績" />
             </div>
-            <Link to="/mascots" className="flex min-h-20 items-center gap-3 rounded-2xl border-2 bg-card px-4 py-3 shadow-lip"><Mascot state="hi" size={54} /><span className="min-w-0 flex-1"><span className="block text-sm font-semibold">熊熊滾收藏與換裝</span><span className="block text-xs text-muted-foreground">蒐集縣市款、遇見異色，換成你的頭像</span></span><ChevronRight className="size-4 shrink-0 text-muted-foreground" /></Link>
+            <Link to="/mascots" className="flex min-h-20 items-center gap-3 rounded-2xl border-2 bg-card px-4 py-3 shadow-lip"><Mascot state="hi" size={54} /><span className="min-w-0 flex-1 text-base font-semibold">熊熊衣櫃</span><ChevronRight className="size-4 shrink-0 text-muted-foreground" /></Link>
             <MedalWall medals={state.me.medals} userId={user.id} />
             <section className="rounded-3xl border-2 bg-card p-4 shadow-lip">
               <div className="flex items-baseline justify-between">

@@ -7,7 +7,7 @@ import {
   FileText,
   MapPin,
   Send,
-} from "lucide-react"
+} from "@/components/icons"
 
 import type { LessonAnswer } from "@/api/learning"
 import { Button } from "@/components/ui/button"

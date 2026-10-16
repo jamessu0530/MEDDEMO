@@ -1,4 +1,4 @@
-import { Check, Clock, Minus } from "lucide-react"
+import { Check, Clock, Minus } from "@/components/icons"
 
 import type { PresenceStatus } from "@/api/presence"
 import { Avatar, AvatarBadge, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -61,7 +61,7 @@ export function UserAvatar({
       {!mascot && <AvatarFallback
         aria-hidden
         className={cn(
-          "text-[0.6875rem] font-medium group-data-[size=lg]/avatar:text-sm group-data-[size=sm]/avatar:text-[0.5625rem]",
+          "text-xs font-medium group-data-[size=lg]/avatar:text-sm group-data-[size=sm]/avatar:text-xs",
           AVATAR_TONES[avatarTone(id, AVATAR_TONES.length)]
         )}
       >

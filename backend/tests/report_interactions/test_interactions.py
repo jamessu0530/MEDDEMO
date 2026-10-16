@@ -125,6 +125,9 @@ def test_api_accepts_query_selection_but_refuses_to_persist_temporary_selection(
     payload.pop("selection_groups")
     payload.pop("drill_filters")
     payload.pop("matrix_views")
+    payload.pop("canvas_selections")
+    payload.pop("navigation_page")
+    payload.pop("navigation_filters")
     assert client.put("/api/reports/config", json=payload, headers=headers).status_code == 200
     saved = client.get("/api/reports", headers=headers)
     assert saved.status_code == 200 and "selection_groups" not in saved.json()["config"]

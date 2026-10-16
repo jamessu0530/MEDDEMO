@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Search } from "lucide-react"
+import { Search } from "@/components/icons"
 
 import { CUSTOMER_TYPE_LABEL } from "@/api/customers"
 import { listMethods, type MethodCard } from "@/api/methods"
@@ -56,7 +56,7 @@ export function MethodsPage() {
 
   return (
     <div className="flex min-h-svh flex-col">
-      <PageHeader title="方法卡" subtitle="主管教的做法，全公司都看得到" backTo={user ? homePath(user.role) : "/"} />
+      <PageHeader title="方法卡" backTo={user ? homePath(user.role) : "/"} />
       <main className="flex flex-1 flex-col gap-3 px-4 pt-3 pb-10">
         {state.status === "loading" && <p className="py-10 text-center text-sm text-muted-foreground">載入方法卡中…</p>}
         {state.status === "error" && (
@@ -123,7 +123,7 @@ export function MethodsPage() {
             ) : (
               <>
                 <p className="text-xs text-muted-foreground">
-                  {filtering ? `符合的有 ${shown.length} 張` : `共 ${shown.length} 張`}，採用次數多的在前。用過之後點開，按一下有沒有幫上。
+                  {filtering ? `符合 ${shown.length} 張` : `共 ${shown.length} 張`} · 依採用次數排序
                 </p>
                 {shown.map((card) => (
                   <MethodCardItem key={card.id} card={card} onChanged={changed} />

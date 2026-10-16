@@ -61,7 +61,7 @@ export function DocumentPage() {
         {state.status === "ready" &&
           state.document.sections.map((section) => (
             <section key={section.section} className="flex flex-col gap-1.5">
-              <h2 className="text-sm font-semibold">{section.section}</h2>
+              <h2 className="text-base font-semibold">{section.section}</h2>
               <p className="text-sm leading-relaxed whitespace-pre-line text-foreground/90">{section.content}</p>
             </section>
           ))}

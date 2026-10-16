@@ -20,7 +20,7 @@ describe("Mascot", () => {
 
   it("每個狀態有自己的表情和道具", () => {
     const face: Record<MascotState, [string, string]> = {
-      idle: ["open", "smile"], hi: ["happy", "open"], listen: ["open", "smile"], think: ["up", "hmm"],
+      idle: ["open", "smile"], blink: ["open", "smile"], hi: ["happy", "open"], listen: ["open", "smile"], think: ["up", "hmm"],
       talk: ["open", "open"], wait: ["open", "smile"], yay: ["happy", "open"],
       ride: ["happy", "open"],
       roll: ["happy", "open"], sleep: ["closed", "smile"], stretch: ["closed", "open"], shy: ["closed", "smile"],
@@ -54,7 +54,7 @@ describe("Mascot", () => {
   })
 
   it("所有狀態加起來只用定案的那幾個顏色", () => {
-    const states: MascotState[] = ["idle", "hi", "listen", "think", "talk", "wait", "yay", "ride", "roll", "sleep", "stretch", "shy"]
+    const states: MascotState[] = ["idle", "hi", "listen", "think", "talk", "wait", "yay", "ride", "blink", "roll", "sleep", "stretch", "shy"]
     const colors = new Set(states.flatMap((state) => render({ state }).match(/#[0-9A-Fa-f]{6}\b|#fff\b/g) ?? []))
     // 主色、淺紫、深色；舌頭；泡泡與聲波；星星；眼睛的反光
     expect([...colors].sort()).toEqual(["#2B1B47", "#9B51E0", "#C9A2F5", "#EADBFD", "#FF8FB3", "#FFC93C", "#fff"].sort())

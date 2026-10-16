@@ -18,11 +18,13 @@ export type AuthUser = {
   acting_as?: { id: string; name: string } | null
   // 自己開的帳號才能改名字；公司帳號由公司設定
   can_rename?: boolean
+  // Demo 切換後顯示示範人物；account 保留真正登入者，供返回原帳號。
+  demo?: { account: { id: string; name: string }; role: Role | null } | null
 }
 
-/** 登入後的首頁：業務是今日路線；主管沒有自己的路線，直接進主管端；IT 進組織管理 */
+/** 登入後的首頁：業務進訂單；主管直接進主管端；IT 進組織管理 */
 export function homePath(role: Role) {
-  return role === "it" ? "/admin" : role === "manager" ? "/manager" : "/"
+  return role === "it" ? "/admin" : role === "manager" ? "/manager" : "/orders"
 }
 
 /** 進得了主管端的角色 */

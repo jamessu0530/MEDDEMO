@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     jwt_expire_hours: int = 24
     # 灌假資料時給每個帳號設的密碼。正式環境由 GitHub Secret 帶進來
     demo_password: str = DEFAULT_DEMO_PASSWORD
+    # 展示時可由使用者略過新人課程；正式使用設 false，恢復五關解鎖。
+    demo_skip_learning: bool = True
+    # 展示時每個登入帳號可切換業務／主管／IT；關閉後示範 token 恢復原帳號權限。
+    demo_role_switch: bool = False
     # 第三方登入。沒填的那家，登入頁與帳號設定就不出現它的按鈕。
     # client id / app id 其實會出現在網頁上、不算祕密，跟 secret 放一起是為了設定時一次在同一個地方填完
     google_client_id: str = ""
@@ -33,6 +37,8 @@ class Settings(BaseSettings):
     facebook_app_id: str = ""
     facebook_app_secret: str = ""
     redis_url: str = "redis://127.0.0.1:6379/0"
+    # Alloy 專用的抓取金鑰；留空時 /metrics 回 404，不開放匿名讀取。
+    metrics_token: str = ""
 
     # 語音辨識與抽欄位的供應商。留空代表還沒設定：錄音會停在「轉文字失敗」讓業務手動輸入逐字稿，
     # 抽欄位則留白讓業務手動填，整條流程照樣走得完

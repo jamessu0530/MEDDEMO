@@ -1,4 +1,4 @@
-import { Loader2 } from "lucide-react"
+import { Loader2 } from "@/components/icons"
 
 import type { ProposalSide, RouteProposal } from "@/api/route"
 import { DriveSource } from "@/components/route/drive-source"
@@ -129,7 +129,7 @@ function Body({ proposal, onPick }: { proposal: RouteProposal; onPick: (customer
             <Column title="現在" side={proposal.before} marks={new Set()} />
             <Column title="改成" side={proposal.after} marks={marks} />
           </div>
-          <p className="mt-1 px-1 text-[0.6875rem] text-muted-foreground">
+          <p className="mt-1 px-1 text-xs text-muted-foreground">
             路上
             <DriveSource estimated={proposal.estimated} />
           </p>
@@ -173,7 +173,7 @@ function Column({ title, side, marks }: { title: string; side: ProposalSide; mar
           )
         })}
       </ol>
-      <p className="mt-1.5 text-[0.6875rem] text-muted-foreground tabular-nums">
+      <p className="mt-1.5 text-xs text-muted-foreground tabular-nums">
         {side.travel_km} 公里 · {formatMinutes(side.travel_minutes)}
       </p>
     </div>

@@ -27,7 +27,7 @@ export function ReportPointComparison({
       ? reportDisplayValue(card, amount, unit)
       : formatReportExactValue(amount, unit)
   return (
-    <span className="mt-1 block text-[10px] font-normal whitespace-normal text-muted-foreground">
+    <span className="mt-1 block text-xs font-normal whitespace-normal text-muted-foreground">
       前期 {comparisonPrevious(value, metric, formatter)}
       <br />
       {comparisonText(value, metric, {
@@ -67,7 +67,7 @@ export function ReportComparisonSummary({
           formatValue: formatter,
         })}
       </p>
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-xs text-muted-foreground">
         前期 {comparisonPrevious(comparison.value, metric, formatter)}
         {comparison.value.status === "ok" &&
           metric !== "net_margin_rate" &&
@@ -75,13 +75,13 @@ export function ReportComparisonSummary({
           ` · 差額 ${formatter(comparison.value.delta, metric)}`}
       </p>
       {comparison.start && comparison.end && (
-        <p className="text-[10px] text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           {comparison.start > comparison.end
             ? "比較日期條件沒有交集"
             : `比較日期：${comparison.start} 至 ${comparison.end}`}
         </p>
       )}
-      <p className="text-[10px] text-muted-foreground">
+      <p className="text-xs text-muted-foreground">
         {comparison.note} 日期條件同步平移，其餘條件與權限相同。
       </p>
     </div>

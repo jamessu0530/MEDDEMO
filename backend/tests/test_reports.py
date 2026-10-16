@@ -645,7 +645,7 @@ def test_provider_schema_is_compact_typed_and_supports_nullable_and_legacy_confi
     assert card_schema["additionalProperties"] is False
     assert set(card_schema["properties"]["visual"]["enum"]) == {
         "kpi", "bar", "column", "stacked_bar", "stacked_column", "percent_bar", "percent_column",
-        "line", "area", "pie", "donut", "treemap", "combo", "scatter", "table", "matrix",
+        "line", "area", "pie", "donut", "treemap", "combo", "scatter", "table", "matrix", "map", "waterfall", "funnel",
     }
     assert card_schema["properties"]["legend"]["type"] == ["string", "null"]
     assert None in card_schema["properties"]["legend"]["enum"]

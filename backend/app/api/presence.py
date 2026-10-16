@@ -440,18 +440,20 @@ async def websocket(ws: WebSocket):
     if user_id is None:
         await ws.close(CLOSE_UNAUTHORIZED)
         return
-    if _connections[user_id] >= MAX_CONNECTIONS:
+    # 多個登入者可以展示同一位人物，連線上限仍按真正登入者計算。
+    account_id = auth.subject_from_token(token)
+    if _connections[account_id] >= MAX_CONNECTIONS:
         await ws.close(CLOSE_TOO_MANY)
         return
-    _connections[user_id] += 1
+    _connections[account_id] += 1
     try:
         await _Connection(ws, user_id, token, active).run()
     except WebSocketDisconnect:
         pass
     finally:
-        _connections[user_id] -= 1
-        if _connections[user_id] <= 0:
-            del _connections[user_id]
+        _connections[account_id] -= 1
+        if _connections[account_id] <= 0:
+            del _connections[account_id]
         # 斷線不記心跳（models.UserPresence.last_seen_at）：從最後一次心跳起算 5 分鐘變離線
         # 自己已經關掉的（心跳驗不過、太久沒心跳）再關一次會丟 RuntimeError；手機先斷線的話送不出去，
         # Starlette 會丟 WebSocketDisconnect，不擋的話每次斷線都在 log 留一段 traceback

@@ -1,5 +1,6 @@
+import type { StudioExploration } from "@/lib/report-studio"
 import { useEffect, useRef, useState } from "react"
-import { Bookmark, Copy, FilePlus2, Save } from "lucide-react"
+import { Bookmark, Copy, FilePlus2, Save } from "@/components/icons"
 import {
   createReportBookmark,
   createReportDocument,
@@ -21,7 +22,7 @@ import { normalizeReportConfig, type ReportConfig } from "@/lib/reports"
 import { ReportShareDialog } from "@/components/reports/report-share"
 
 const BUTTON =
-  "flex min-h-10 items-center justify-center gap-1.5 rounded-md border bg-background px-2.5 text-xs disabled:opacity-40"
+  "flex min-h-10 items-center justify-center gap-1.5 rounded-md border bg-background px-2.5 text-sm disabled:opacity-40"
 const INPUT =
   "h-10 w-full min-w-0 rounded-md border bg-background px-2.5 text-sm"
 export function ReportDocumentControls({
@@ -35,10 +36,12 @@ export function ReportDocumentControls({
   onBookmark,
   requestAction,
   flushDraft,
+  exploration,
 }: {
   config: ReportConfig
   library: ReportLibrarySnapshot
   pageId: string
+  exploration?: StudioExploration
   dirty: boolean
   saving: boolean
   onOpen: (snapshot: ReportLibrarySnapshot) => void
@@ -140,7 +143,7 @@ export function ReportDocumentControls({
       const saved = await createReportBookmark(
         library.active_report_id,
         bookmarkName.trim(),
-        captureReportBookmark(config, pageId),
+        captureReportBookmark(config, pageId, exploration),
         abort.signal
       )
       if (!abort.signal.aborted) {
@@ -163,7 +166,7 @@ export function ReportDocumentControls({
         </summary>
         <div className="space-y-2 p-2.5 pt-0" aria-label="報表管理">
           <div className="flex flex-wrap items-center gap-2">
-            <label className="min-w-0 flex-[1_1_12rem] space-y-1 text-[10px] text-muted-foreground">
+            <label className="min-w-0 flex-[1_1_12rem] space-y-1 text-sm text-muted-foreground">
               <span>我的報表（{library.documents.length}／20）</span>
               <select
                 className={INPUT}
@@ -213,7 +216,7 @@ export function ReportDocumentControls({
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <select
-              aria-label="套用篩選書籤"
+              aria-label="套用檢視書籤"
               className={`${INPUT} w-auto flex-[1_1_12rem]`}
               value=""
               disabled={busy || saving || !library.bookmarks.length}
@@ -225,7 +228,7 @@ export function ReportDocumentControls({
               }}
             >
               <option value="">
-                篩選書籤（{library.bookmarks.length}／20）
+                檢視書籤（{library.bookmarks.length}／20）
               </option>
               {library.bookmarks.map((item) => (
                 <option key={item.id} value={item.id}>
@@ -243,7 +246,7 @@ export function ReportDocumentControls({
               }}
             >
               <Bookmark className="size-3.5" />
-              儲存篩選書籤
+              儲存檢視書籤
             </button>
             {!library.readonly && (
               <button
@@ -256,8 +259,8 @@ export function ReportDocumentControls({
               </button>
             )}
           </div>
-          <p className="text-[10px] leading-relaxed text-muted-foreground">
-            書籤保存期間與三層固定篩選，不包含暫時聯動或下鑽。
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            書籤保存日期、篩選、下鑽、選取與物件顯示狀態。
             {dirty && "請先儲存報表再新增書籤或共享。"}
           </p>
           {error && !mode && !bookmarkDialog && (
@@ -293,10 +296,10 @@ export function ReportDocumentControls({
             <DialogDescription>
               {mode === "new"
                 ? "建立一張銷售指標卡，再加入所需圖表。現有報表會保留。"
-                : "保存目前編輯內容，並複製圖表、桌機／手機版面與篩選書籤。原報表保持原值。"}
+                : "保存目前編輯內容，並複製圖表、桌機／手機版面與檢視書籤。原報表保持原值。"}
             </DialogDescription>
           </DialogHeader>
-          <label className="space-y-1.5 text-xs">
+          <label className="space-y-1.5 text-sm">
             <span>新報表名稱</span>
             <input
               className={INPUT}
@@ -339,16 +342,16 @@ export function ReportDocumentControls({
       >
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>儲存篩選書籤</DialogTitle>
+            <DialogTitle>儲存檢視書籤</DialogTitle>
             <DialogDescription>
-              保存目前期間、報表／分頁／單圖固定篩選與目前分頁。相同名稱會更新原書籤。
+              保存目前分頁、篩選、下鑽、選取、矩陣展開及物件顯示狀態。同名書籤會被更新。
             </DialogDescription>
           </DialogHeader>
-          <label className="space-y-1.5 text-xs">
+          <label className="space-y-1.5 text-sm">
             <span>書籤名稱</span>
             <input
               className={INPUT}
-              aria-label="篩選書籤名稱"
+              aria-label="檢視書籤名稱"
               maxLength={40}
               value={bookmarkName}
               onChange={(event) => setBookmarkName(event.target.value)}
@@ -356,7 +359,7 @@ export function ReportDocumentControls({
           </label>
           {existingBookmark && (
             <p className="text-xs text-muted-foreground">
-              將更新同名書籤的篩選條件。
+              將更新同名書籤的檢視狀態。
             </p>
           )}
           {bookmarkFull && (
@@ -379,7 +382,7 @@ export function ReportDocumentControls({
               ? "儲存中…"
               : existingBookmark
                 ? "更新同名書籤"
-                : "建立篩選書籤"}
+                : "建立檢視書籤"}
           </button>
         </DialogContent>
       </Dialog>

@@ -1,5 +1,6 @@
 """新人操作課程：過關、重送、帳號隔離，以及真正的 AI API 解鎖。"""
 
+import datetime as dt
 from types import SimpleNamespace
 
 import pytest
@@ -9,6 +10,8 @@ from sqlalchemy import delete, func, select
 from app.main import app
 from app.models import AppUser, LearningCompletion
 from app.services import auth as auth_service, learning
+from app.services.voice import VoiceSession
+from app.tasks import redis
 
 ANSWERS = {
     "customer-v1": {"opened": True, "priority": "promise"},
@@ -33,6 +36,85 @@ def new_account(tx, user_id="XLEARN"):
 
 def submit(client, headers, lesson_id, answer=None):
     return client.post(f"/api/first-week/course/{lesson_id}/complete", headers=headers, json={"answer": ANSWERS[lesson_id] if answer is None else answer})
+
+
+@pytest.fixture
+def demo_enabled(env):
+    env(DEMO_SKIP_LEARNING="true")
+    yield
+    keys = list(redis().scan_iter(f"{learning.DEMO_SKIP_PREFIX}*"))
+    if keys:
+        redis().delete(*keys)
+
+
+def test_demo_skip_opens_all_ai_apis_without_completing_lessons(tx, client, demo_enabled, monkeypatch, env):
+    headers = new_account(tx)
+    other = new_account(tx, "XLEARN2")
+    assert submit(client, headers, "customer-v1").json()["xp"] == 20
+    assert client.get("/api/first-week/course", headers=headers).json()["demo_skip_available"] is True
+    assert client.post("/api/asks/route", headers=headers, json={"question": "促銷條件？"}).status_code == 403
+
+    skipped = client.post("/api/first-week/course/demo-skip", headers=headers)
+    assert skipped.status_code == 200
+    assert skipped.json()["ai_unlocked"] is True
+    assert skipped.json()["demo_skipped"] is True
+    assert skipped.json()["completed"] == ["customer-v1"]
+    assert skipped.json()["xp"] == 20
+    assert client.post("/api/first-week/course/demo-skip", headers=headers).json()["xp"] == 20
+    assert TestClient(app).get("/api/first-week/course", headers=headers).json()["ai_unlocked"] is True
+    assert client.get("/api/first-week/course", headers=other).json()["ai_unlocked"] is False
+
+    monkeypatch.setattr("app.services.ask_followup.standalone", lambda question, earlier: question)
+    monkeypatch.setattr("app.services.ask_router.route", lambda *_: SimpleNamespace(kind="knowledge", choices=[], confidence=1.0))
+    queued = []
+    monkeypatch.setattr("app.api.asks.visit_queue", lambda: SimpleNamespace(enqueue=lambda *args: queued.append(args)))
+    env(LLM_PROVIDER="gemini")
+    monkeypatch.setattr("app.services.voice.vocabulary", lambda *_: "")
+    monkeypatch.setattr("app.services.voice.create_session", lambda *_: VoiceSession(
+        token="demo-token", model="demo-model", api_version="v1beta",
+        expires_at=dt.datetime.now(dt.UTC) + dt.timedelta(minutes=30), config={}, tool_kinds={},
+    ))
+    assert client.post("/api/asks/route", headers=headers, json={"question": "促銷條件？"}).status_code == 200
+    assert client.post("/api/asks", headers=headers, json={"kind": "knowledge", "question": "促銷條件？"}).status_code == 202
+    assert len(queued) == 1
+    assert client.post("/api/voice/session", headers=headers).status_code == 200
+    assert client.get("/api/first-week/course", headers=headers).json()["completed"] == ["customer-v1"]
+    # 略過只開 AI；課程仍須依序完成。
+    assert submit(client, headers, "route-v1").status_code == 409
+    assert submit(client, headers, "product-v1").json()["xp"] == 40
+
+    # 重新登入不沿用前一次的略過；舊狀態到期後也恢復課程門檻。
+    user = tx.get(AppUser, "XLEARN")
+    key = learning.demo_skip_key(user)
+    assert 0 < redis().ttl(key) <= 24 * 3600
+    user.session_version += 1
+    tx.commit()
+    fresh_headers = {"Authorization": f"Bearer {auth_service.create_token(user)}"}
+    assert client.get("/api/first-week/course", headers=fresh_headers).json()["ai_unlocked"] is False
+    assert client.post("/api/first-week/course/demo-skip", headers=fresh_headers).status_code == 200
+    redis().delete(learning.demo_skip_key(user))
+    assert client.post("/api/voice/session", headers=fresh_headers).status_code == 403
+
+
+def test_demo_skip_requires_login_and_demo_setting(tx, client, auth, demo_enabled, env):
+    headers = new_account(tx)
+    assert client.post("/api/first-week/course/demo-skip").status_code == 401
+    assert client.post("/api/first-week/course/demo-skip", headers=auth("M01")).status_code == 403
+    assert client.post("/api/first-week/course/demo-skip", headers=headers).status_code == 200
+    env(DEMO_SKIP_LEARNING="false")
+    state = client.get("/api/first-week/course", headers=headers).json()
+    assert state["demo_skip_available"] is False
+    assert state["demo_skipped"] is False
+    assert state["ai_unlocked"] is False
+    assert state["completed"] == []
+    assert state["xp"] == 0
+    assert client.post("/api/first-week/course/demo-skip", headers=headers).status_code == 403
+    for path, body in (
+        ("/api/asks", {"kind": "knowledge", "question": "促銷條件？"}),
+        ("/api/asks/route", {"question": "促銷條件？"}),
+        ("/api/voice/session", None),
+    ):
+        assert client.post(path, headers=headers, json=body).status_code == 403
 
 
 def test_wrong_answer_and_skipping_do_not_save_progress(tx, client):

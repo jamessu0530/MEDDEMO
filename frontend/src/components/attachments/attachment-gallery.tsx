@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { FileText } from "lucide-react"
+import { FileText } from "@/components/icons"
 
 import type { Attachment } from "@/api/attachments"
 import { ImageViewer } from "@/components/attachments/image-viewer"

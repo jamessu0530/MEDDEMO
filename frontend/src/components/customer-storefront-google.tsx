@@ -6,7 +6,7 @@ import {
   ChevronRight,
   ExternalLink,
   Navigation,
-} from "lucide-react"
+} from "@/components/icons"
 
 import type { MapsConfig } from "@/api/maps"
 import { StorefrontFallback } from "@/components/customer-storefront"

@@ -62,10 +62,9 @@ def test_promotions_need_sign_in(engine):
 
 def test_product_list_includes_spoken_aliases(client):
     products = {p["sku"]: p for p in client.get("/api/products").json()}
-    # 40 個虛構品項、促銷方案的 20 個真實品項，加上真實型錄；確認頁的預設選單只列常用品項
+    # 正式清單只列真實型錄和促銷品項，舊版虛構商品不再供選取。
     assert len(products) > 1500
-    assert "魚油" in products["HS-FO30"]["aliases"] and products["HS-FO30"]["common"]
+    assert "HS-FO30" not in products
     assert products["C490191"]["common"] and "虎讚" in products["C490191"]["aliases"]
     assert not products["F762505"]["common"]
     assert products["F762505"]["spec"] == ""
-    assert products["HS-FO30"]["spec"]

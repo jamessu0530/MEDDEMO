@@ -2,7 +2,7 @@
 
 import datetime as dt
 import uuid
-from typing import Self
+from typing import Self, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import func, select
@@ -40,7 +40,38 @@ class NamedFilters(FixedFilters):
     id: str = Field(min_length=1, max_length=48, pattern=reports.SLUG_PATTERN)
 
 
+class DrillStep(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    dimension: Literal["year", "quarter", "month"]
+    point: reports.ReportSelectionPoint
+
+
+class DrillState(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    dimension: Literal["year", "quarter", "month"]
+    steps: list[DrillStep] = Field(default_factory=list, max_length=3)
+
+
+class Exploration(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    selections: list[reports.ReportSelectionGroup] = Field(default_factory=list, max_length=24)
+    drills: dict[str, DrillState] = Field(default_factory=dict, max_length=24)
+    matrix_views: dict[str, reports.MatrixView] = Field(default_factory=dict, max_length=24)
+    canvas_values: dict[str, list[str]] = Field(default_factory=dict, max_length=100)
+    hidden: dict[str, bool] = Field(default_factory=dict, max_length=124)
+    navigation_page: str | None = Field(default=None, max_length=48, pattern=reports.SLUG_PATTERN)
+    navigation_filters: list[reports.ReportFilter] = Field(default_factory=list, max_length=8)
+
+    @model_validator(mode="after")
+    def valid_values(self) -> Self:
+        if any(len(keys) > 500 or len(set(keys)) != len(keys) or any(not key or len(key) > 160 for key in keys) for keys in self.canvas_values.values()):
+            raise ValueError("切片器書籤選取過多或重複")
+        reports.validate_filters(self.navigation_filters)
+        return self
+
+
 class BookmarkState(FixedFilters):
+    exploration: Exploration | None = None
     period: reports.Period
     owner_id: str | None = Field(default=None, min_length=1, max_length=64)
     customer_type: reports.CustomerType | None = None
@@ -186,7 +217,13 @@ def create(session: Session, user: AppUser, config: reports.ReportConfig, source
     library = load(session, user, lock=True)
     if len(library.documents) >= 20:
         raise LibraryError("每個帳號最多可保存 20 份報表。")
-    copied = [item.model_copy(deep=True, update={"id": f"bookmark-{uuid.uuid4().hex}"}) for item in document(library, source_id).bookmarks] if source_id else []
+    source_bookmarks = document(library, source_id).bookmarks if source_id else []
+    ids = {item.id: f"bookmark-{uuid.uuid4().hex}" for item in source_bookmarks}
+    copied = [item.model_copy(deep=True, update={"id": ids[item.id]}) for item in source_bookmarks]
+    config = config.model_copy(deep=True)
+    for obj in config.objects:
+        if obj.action and obj.action.kind == "bookmark" and obj.action.target in ids:
+            obj.action = obj.action.model_copy(update={"target": ids[obj.action.target]})
     new = SavedReport(id=f"report-{uuid.uuid4().hex}", config=config, updated_at=now(), bookmarks=copied)
     library.documents.append(new)
     library.active_id = new.id
@@ -213,21 +250,47 @@ def save(session: Session, user: AppUser, report_id: str, config: reports.Report
     return store(session, user, library, report_id)
 
 
-def validate_bookmark(session: Session, user: AppUser, state: BookmarkState):
+def validate_bookmark(session: Session, user: AppUser, state: BookmarkState, config: reports.ReportConfig | None = None):
     allowed = {owner.id for owner in reports.owners(session, user)}
     required = {state.owner_id} if state.owner_id else set()
     for scoped in [state, *state.pages, *state.cards]:
         required.update(item.key for item in scoped.filters if item.dimension == "owner")
         required.update(key for item in scoped.slicers if item.dimension == "owner" for key in item.keys)
+    if state.exploration:
+        exploration = state.exploration
+        filters = [*exploration.navigation_filters, *(f for group in exploration.selections for point in group.points for f in point.filters), *(f for drill in exploration.drills.values() for step in drill.steps for f in step.point.filters)]
+        required.update(item.key for item in filters if item.dimension == "owner")
+        if config:
+            objects = {item.id: item for item in config.objects}
+            cards = {item.id: item for item in config.cards}
+            if not set(exploration.hidden) <= set(objects) | set(cards):
+                raise LibraryError("書籤顯示狀態包含不存在的物件")
+            payload = config.model_dump()
+            for id, drill in exploration.drills.items():
+                if id not in cards or cards[id].dimension not in reports.DATE_DIMENSIONS:
+                    raise LibraryError("書籤下鑽來源不存在或不是日期圖表")
+                expected = drill.steps[0].dimension if drill.steps else drill.dimension
+                for step in drill.steps:
+                    if step.dimension != expected or not any(f.dimension == expected for f in step.point.filters):
+                        raise LibraryError("書籤下鑽階層不連續")
+                    expected = {"year": "quarter", "quarter": "month"}.get(expected)
+                if drill.steps and drill.dimension != expected:
+                    raise LibraryError("書籤下鑽層級不正確")
+                for card in payload["cards"]:
+                    if card["id"] == id:
+                        card["dimension"] = drill.dimension
+            payload.update(selection_groups=[item.model_dump() for item in exploration.selections], matrix_views={id: view.model_dump() for id, view in exploration.matrix_views.items()}, canvas_selections=[{"object_id": id, "keys": keys} for id, keys in exploration.canvas_values.items() if keys], navigation_page=exploration.navigation_page, navigation_filters=[f.model_dump() for f in exploration.navigation_filters])
+            query = reports.ReportQuery.model_validate(payload)
+            reports.validate_owner(session, user, query)
     if not required <= allowed:
         raise reports.OwnerNotAllowed("書籤包含不在你可以查看範圍內的業務。")
 
 
 def bookmark(session: Session, user: AppUser, report_id: str, name: str, state: BookmarkState) -> LibrarySnapshot:
-    validate_bookmark(session, user, state)
     library = load(session, user, lock=True)
     found = document(library, report_id)
     editable(found)
+    validate_bookmark(session, user, state, found.config)
     existing = next((item for item in found.bookmarks if item.name.casefold() == name.casefold()), None)
     if existing:
         existing.name, existing.state, existing.updated_at = name, state, now()

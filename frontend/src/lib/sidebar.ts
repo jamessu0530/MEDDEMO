@@ -2,7 +2,6 @@ import {
   Bell,
   BookOpenText,
   Calendar,
-  CalendarDays,
   ChartNoAxesCombined,
   ClipboardCheck,
   ClipboardList,
@@ -14,7 +13,7 @@ import {
   Route,
   TriangleAlert,
   type LucideIcon,
-} from "lucide-react"
+} from "@/components/icons"
 
 import type { Role } from "@/lib/auth"
 import { trimPath } from "@/lib/desktop-layout"
@@ -30,8 +29,8 @@ export const SIDEBAR_ITEM = "flex min-h-11 w-full items-center gap-3 rounded-ful
 // 業務：上面是底部分頁列，下面是手機上擠在首頁頁首的入口
 const SALES: SidebarGroups = {
   main: [
-    { to: "/", label: "今日", icon: CalendarDays, badge: "uploads" },
-    { to: "/orders", label: "訂單", icon: ClipboardList },
+    { to: "/orders", label: "訂單", icon: ClipboardList, badge: "uploads" },
+    { to: "/route", label: "路線", icon: Route },
     { to: "/channels", label: "頻道", icon: MessagesSquare, badge: "channels" },
     { to: "/ask", label: "問答", icon: MessageCircleQuestion },
     { to: "/products", label: "商品與促銷", icon: Pill },
@@ -45,9 +44,10 @@ const SALES: SidebarGroups = {
   ],
 }
 
-// 主管端的五個分頁（pages/manager.tsx 的 VIEWS），主管與 IT 共用
+// 主管端的六個分頁（pages/manager.tsx 的 VIEWS），主管與 IT 共用
 const MANAGER: SidebarItem[] = [
   { to: "/manager", label: "團隊行程", icon: Route },
+  { to: "/manager?view=priority", label: "客戶策略", icon: ChartNoAxesCombined },
   { to: "/manager?view=asks", label: "提問", icon: MessageCircleQuestion },
   { to: "/manager?view=notices", label: "風險通報", icon: TriangleAlert, badge: "notices" },
   { to: "/manager?view=oa", label: "簽核", icon: ClipboardCheck, badge: "oa" },
@@ -56,7 +56,7 @@ const MANAGER: SidebarItem[] = [
 const CHANNELS: SidebarItem = { to: "/channels", label: "頻道", icon: MessagesSquare, badge: "channels" }
 const CATALOG: SidebarItem = { to: "/products", label: "商品與促銷", icon: Pill }
 const ADMIN: SidebarItem = { to: "/admin", label: "組織管理", icon: Network }
-const MANAGER_VIEWS = ["asks", "notices", "oa", "methods"]
+const MANAGER_VIEWS = ["priority", "asks", "notices", "oa", "methods"]
 
 export function sidebarItems(role: Role): SidebarGroups {
   if (role === "sales") return SALES

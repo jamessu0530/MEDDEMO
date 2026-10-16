@@ -231,6 +231,27 @@ def test_the_socket_needs_a_valid_token(client):
     assert closed.value.code == 4401
 
 
+def test_demo_viewers_have_separate_socket_limits(client, auth, env, monkeypatch):
+    env(DEMO_ROLE_SWITCH="true")
+    monkeypatch.setattr(presence_api, "MAX_CONNECTIONS", 1)
+    tokens = []
+    for user_id in ("U02", "U04"):
+        response = client.post("/api/auth/demo-role", headers=auth(user_id), json={"role": "it"})
+        assert response.status_code == 200
+        tokens.append(response.json()["token"])
+    with client.websocket_connect("/api/ws") as first, client.websocket_connect("/api/ws") as second:
+        for ws, token in zip((first, second), tokens, strict=True):
+            ws.send_json({"type": "auth", "token": token, "active": True})
+            assert ws.receive_json() == {"type": "ready", "user_id": "A01"}
+            assert ws.receive_json()["type"] == "presence"
+        # 同一個登入者第二條連線仍被擋，不因示範人物共用而放寬上限。
+        with client.websocket_connect("/api/ws") as extra:
+            extra.send_json({"type": "auth", "token": tokens[0], "active": True})
+            with pytest.raises(WebSocketDisconnect) as closed:
+                extra.receive_json()
+        assert closed.value.code == presence_api.CLOSE_TOO_MANY
+
+
 def test_connecting_shows_me_available_and_others_see_status_changes(client, engine, auth):
     with client.websocket_connect("/api/ws") as ws:
         assert connect(ws, engine, "U01") == {"U01": "available"}

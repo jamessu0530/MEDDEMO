@@ -1,4 +1,4 @@
-import { Moon, Sun } from "lucide-react"
+import { Moon, Sun } from "@/components/icons"
 
 import { chooseSkin } from "@/lib/preferences"
 import { useSkin } from "@/lib/skin"

@@ -6,6 +6,21 @@ image:
   # GHCR 是私有的，映像由部署流程用短期 token 先拉進 K3s；這裡不能設 Always，否則 pod 會自己去映像庫拉而失敗
   pullPolicy: IfNotPresent
 
+# Grafana Cloud Metrics。部署流程在四個監控 Secrets 都齊全時自動啟用。
+# Alloy 跟 API 在同一個 Pod，僅抓 localhost；不需要叢集讀取權限。
+monitoring:
+  enabled: false
+  secretName: meddemo-monitoring
+  environment: production
+  alloyImage: grafana/alloy:v1.20.1
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
 # 對外網址：Cloudflare（橘雲）→ K3s 內建的 Traefik → web（Nginx）
 ingress:
   host: meddemo.jamessu2016.com
@@ -21,6 +36,10 @@ redis:
 # 這裡寫什麼鍵，ConfigMap 就產生同名的環境變數，新增參數不必改模板。留空＝用程式裡的預設值。
 # 金鑰不放這裡，放 GitHub Secrets（見下面的 secrets）。
 config:
+  # 展示時讓新人自行略過課程；正式使用設 false，前後端都恢復五關解鎖。
+  DEMO_SKIP_LEARNING: "true"
+  # 每個登入帳號都可切換業務／主管／IT 示範身分；正式使用設 false。
+  DEMO_ROLE_SWITCH: "true"
   # 語音辨識。留空＝不辨識，錄音改走手動輸入逐字稿
   ASR_PROVIDER: gemini
   ASR_MODEL: ""
