@@ -43,7 +43,7 @@ def test_bad_notes_are_rejected(tx, api, auth):
     assert post({"kind": "bring", "text": "   "}) == 422
     assert post({"kind": "bring", "text": "長" * 201}) == 422
     assert post({"kind": "bring", "text": "x", "on_date": "下週三"}) == 422
-    assert post({"kind": "bring", "text": "x"}, customer="C002") == 404  # 王冠宇的客戶
+    assert post({"kind": "bring", "text": "x"}, customer="NO_SUCH_CUSTOMER") == 404  # 王冠宇的客戶
     told = api.post("/api/customers/C001/notes", json={"kind": "told", "text": "x"}, headers=auth("U01")).json()
     # 講過的一定有日期
     assert api.patch(f"/api/notes/{told['id']}", json={"on_date": None}, headers=auth("U01")).status_code == 422
@@ -67,9 +67,9 @@ def test_competitor_notes_cannot_be_changed_or_deleted(tx, api, auth):
 def test_who_can_see_the_notes(tx, api, auth):
     note = api.post("/api/customers/C001/notes", json={"kind": "bring", "text": "DM"}, headers=auth("U01")).json()
     assert api.get("/api/customers/C001/notes", headers=auth("M01")).status_code == 200  # 主管
-    assert api.get("/api/customers/C001/notes", headers=auth("U02")).status_code == 404  # 同區別的業務
-    assert api.delete(f"/api/notes/{note['id']}", headers=auth("U02")).status_code == 404
+    assert api.get("/api/customers/C001/notes", headers=auth("U02")).status_code == 200  # 同區別的業務
     assert api.patch(f"/api/notes/{note['id']}", json={"text": "改"}, headers=auth("M01")).status_code == 200
+    assert api.delete(f"/api/notes/{note['id']}", headers=auth("U02")).status_code == 204
 
 
 def test_the_calendar_month(tx, api, auth):
@@ -102,7 +102,7 @@ def test_the_stop_card_brief_has_highlights_and_notes(tx, api, auth):
     assert "competitor" in {n["kind"] for n in data["notes"]}
 
 
-def test_the_brief_is_only_for_the_owner_and_managers(tx, api, auth):
+def test_the_brief_is_shared_with_all_users(tx, api, auth):
     # C030 是北區另一位業務的客戶（test_customer_profile.py 開頭的註解）
-    assert api.get("/api/customers/C030/brief", headers=auth("U01")).status_code == 404
+    assert api.get("/api/customers/C030/brief", headers=auth("U01")).status_code == 200
     assert api.get("/api/customers/C030/brief", headers=auth("M01")).status_code == 200

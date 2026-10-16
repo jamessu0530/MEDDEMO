@@ -28,7 +28,7 @@ from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.types import UserDefinedType
 
-CUSTOMER_TYPES = ("chain", "independent", "clinic")
+CUSTOMER_TYPES = ("chain", "independent", "clinic", "outlet")
 # SAP 的付款條件代碼，各代表什麼見 services/payment_terms.py
 PAYMENT_TERM_CODES = ("RM06", "RCD1", "RCD2", "RZ04")
 # processing：錄音已上傳，背景正在轉文字或整理欄位
@@ -226,26 +226,44 @@ class Customer(Base):
         one_of("grade", ("A", "B", "C"), "grade"),
         one_of("payment_term", PAYMENT_TERM_CODES, "payment_term"),
         CheckConstraint("(type = 'chain') = (chain_group IS NOT NULL)", name="chain_group"),
+        CheckConstraint("type = 'outlet' OR (owner_user_id IS NOT NULL AND grade IS NOT NULL AND payment_term IS NOT NULL)", name="legacy_fields"),
+        Index("uq_customer_legacy_name", "name", unique=True, postgresql_where=text("type <> 'outlet'")),
     )
 
     id: Mapped[str] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(unique=True)
+    name: Mapped[str]
     type: Mapped[str]
     chain_group: Mapped[str | None]
     region: Mapped[str]
     city: Mapped[str]
     # 地點（縣市，台北市到行政區）：客戶討論串掛在這裡。city 保留，今日路線與語意層照舊用它
     place_id: Mapped[str] = mapped_column(ForeignKey("place.id"))
-    grade: Mapped[str]
+    grade: Mapped[str | None]
     contract_end_date: Mapped[dt.date | None]
-    owner_user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id"))
+    owner_user_id: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
     # 行政區或鄉鎮（「大安」「板橋」），排序習慣的「地區」用；位置是那一區的中心點錯開幾百公尺，
     # 沒有真的地址（data/seed/generate.py 的 location_of）
     area: Mapped[str]
     lat: Mapped[float]
     lng: Mapped[float]
     # 付款條件：應收帳款的到期日與下單時扣的現金折扣照它算（services/payment_terms.py）
-    payment_term: Mapped[str]
+    payment_term: Mapped[str | None]
+
+
+class PublicOutlet(Base):
+    """公開通路的來源紀錄；客戶全員共用，不建立業務分配或虛構評級。"""
+    __tablename__ = "public_outlet"
+
+    customer_id: Mapped[str] = mapped_column(ForeignKey("customer.id"), primary_key=True)
+    phone: Mapped[str]
+    address: Mapped[str]
+    category: Mapped[str]
+    review_notes: Mapped[list[str]] = mapped_column(JSONB)
+    raw_record: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    source_url: Mapped[str]
+    data_url: Mapped[str]
+    retrieved_on: Mapped[dt.date]
+    snapshot_sha256: Mapped[str]
 
 
 class Product(Base):

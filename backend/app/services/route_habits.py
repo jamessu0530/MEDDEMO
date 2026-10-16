@@ -22,7 +22,7 @@ from app.services import route_planner
 TARGET_KINDS = ("customer", "chain", "type", "area")
 # 換成排序規則的種類；window、duration 只當新增一站時的預設值
 RULE_KINDS = ("precedence", "first", "last")
-TYPE_LABEL = {"chain": "連鎖藥局", "independent": "獨立藥局", "clinic": "診所"}
+TYPE_LABEL = {"chain": "連鎖藥局", "independent": "獨立藥局", "clinic": "診所", "outlet": "公開通路（待核對）"}
 # date.weekday() 的 0 是星期一
 WEEKDAY_LABEL = "一二三四五六日"
 WINDOW_TEXT = {"at": "都約 {} 到", "before": "都 {} 以前到", "after": "都 {} 以後到"}
@@ -179,8 +179,8 @@ def defaults(habits: list[RouteHabit], customer: Customer) -> tuple[tuple[str, d
 
 
 def targets(session: Session, user_id: str) -> dict[str, list[tuple[str, str]]]:
-    """新增習慣能選的對象，(值, 給人看的名字)：自己的客戶、他們的連鎖體系、三種客戶類型、他們所在的地區。"""
-    customers = list(session.scalars(select(Customer).where(Customer.owner_user_id == user_id).order_by(Customer.name)))
+    """新增習慣能選的對象，(值, 給人看的名字)：全部共用客戶、連鎖體系、客戶類型與所在地區。"""
+    customers = list(session.scalars(select(Customer).order_by(Customer.name)))
     return {
         "customer": [(c.id, c.name) for c in customers],
         "chain": [(g, g) for g in sorted({c.chain_group for c in customers if c.chain_group})],
@@ -198,7 +198,7 @@ def validate(spec: HabitSpec, options: dict[str, list[tuple[str, str]]]) -> None
     allowed = {by: {value for value, _ in items} for by, items in options.items()}
     for target in [spec.subject] + ([spec.object] if spec.kind == "precedence" else []):
         if target.get("by") not in allowed or target.get("value") not in allowed[target["by"]]:
-            raise InvalidHabit("找不到這個對象，只能選自己的客戶")
+            raise InvalidHabit("找不到這個客戶或地區")
     if spec.kind == "precedence" and spec.subject == spec.object:
         raise InvalidHabit("前後不能是同一個對象")
     if spec.kind == "window" and (spec.window_kind not in ("at", "before", "after") or spec.window_time is None):

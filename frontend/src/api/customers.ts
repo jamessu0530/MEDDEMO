@@ -5,11 +5,18 @@ import { readUser } from "@/lib/auth"
 export type Customer = {
   id: string
   name: string
-  type: "chain" | "independent" | "clinic"
+  type: "chain" | "independent" | "clinic" | "outlet"
   region: string
-  grade: string
-  owner_id: string
-  owner_name: string
+  grade: string | null
+  owner_id: string | null
+  owner_name: string | null
+  city?: string
+  area?: string
+  phone?: string | null
+  address?: string | null
+  source_url?: string | null
+  retrieved_on?: string | null
+  review_notes?: string[]
   last_visit_date: string | null
 }
 
@@ -17,6 +24,7 @@ export const CUSTOMER_TYPE_LABEL: Record<Customer["type"], string> = {
   chain: "連鎖藥局",
   independent: "獨立藥局",
   clinic: "診所",
+  outlet: "公開通路（待核對）",
 }
 
 // 沒訊號的地方也要能選客戶開始錄音（FR-4.3）：每次載入成功就把清單記在手機裡，連不上時拿出來用。
@@ -37,18 +45,18 @@ function readCachedCustomers(): Customer[] | null {
 }
 
 /** 登入者看得到的客戶清單（後端依登入身分篩過）；連不上伺服器時改用上次載入的清單（cached 為 true） */
-export async function listCustomers(signal?: AbortSignal) {
+export async function listCustomers(signal?: AbortSignal, query = "") {
   try {
-    const customers = await request<Customer[]>("/api/customers", { signal })
+    const customers = await request<Customer[]>(`/api/customers${query ? `?q=${encodeURIComponent(query)}` : ""}`, { signal })
     try {
-      localStorage.setItem(cacheKey(), JSON.stringify(customers))
+      if (!query) localStorage.setItem(cacheKey(), JSON.stringify(customers))
     } catch {
       // 存不進去就算了，下次沒網路時只是看不到清單
     }
     return { customers, cached: false }
   } catch (error) {
     const cached = signal?.aborted ? null : readCachedCustomers()
-    if (cached) return { customers: cached, cached: true }
+    if (cached) return { customers: cached.filter(c => c.name.includes(query.trim())), cached: true }
     throw error
   }
 }

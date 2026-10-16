@@ -31,7 +31,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog"
 import { formatDate, formatTaipeiDateTime } from "@/lib/format"
-import { ORDER_STATUS, orderMoney } from "@/lib/orders"
+import { ORDER_STATUS, PAYMENT_TERMS, orderMoney } from "@/lib/orders"
 import { cn } from "@/lib/utils"
 
 const SELECT = "h-11 min-w-0 rounded-xl border bg-card px-3 text-sm"
@@ -184,7 +184,6 @@ export function OrdersPage() {
                         "狀態",
                         "訂單金額",
                         "出貨／交易日期",
-                        "負責業務",
                         "上次修改",
                         "SAP 訂單編號",
                       ].map((label) => (
@@ -219,12 +218,6 @@ export function OrdersPage() {
                         </td>
                         <td className="px-4 py-4">
                           {formatDate(order.shipping_date)}
-                        </td>
-                        <td className="px-4 py-4">
-                          {order.owner_name}
-                          <span className="ml-1 text-xs text-muted-foreground">
-                            {order.owner_id}
-                          </span>
                         </td>
                         <td className="px-4 py-4 text-xs">
                           {order.updated_at
@@ -268,7 +261,6 @@ export function OrdersPage() {
                     </div>
                     <div className="flex items-center justify-between text-xs text-muted-foreground">
                       <span>
-                        {order.owner_name} ·{" "}
                         {order.source === "history" ? "歷史交易" : "訂單工作區"}
                       </span>
                       <ChevronRight className="size-4" />
@@ -368,24 +360,33 @@ function CreateOrderDialog({
   const navigate = useNavigate()
   const [customers, setCustomers] = useState<OrderCustomer[] | null>(null)
   const [customerId, setCustomerId] = useState("")
+  const [customerQuery, setCustomerQuery] = useState("")
+  const [paymentTerm, setPaymentTerm] = useState("")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
   const [retry, setRetry] = useState(0)
   useEffect(() => {
     const controller = new AbortController()
-    getOrderCustomers(controller.signal)
-      .then((value) => {
-        if (!controller.signal.aborted) {
-          setCustomers(value)
-          setError("")
-        }
-      })
-      .catch((err) => {
-        if (!controller.signal.aborted)
-          setError(err instanceof Error ? err.message : "客戶沒有載入")
-      })
-    return () => controller.abort()
-  }, [retry])
+    const timer = setTimeout(
+      () =>
+        getOrderCustomers(controller.signal, customerQuery.trim())
+          .then((value) => {
+            if (!controller.signal.aborted) {
+              setCustomers(value)
+              setError("")
+            }
+          })
+          .catch((err) => {
+            if (!controller.signal.aborted)
+              setError(err instanceof Error ? err.message : "客戶沒有載入")
+          }),
+      200
+    )
+    return () => {
+      clearTimeout(timer)
+      controller.abort()
+    }
+  }, [retry, customerQuery])
   async function create() {
     const selected = customers?.find((customer) => customer.id === customerId)
     if (!selected || busy) return
@@ -396,8 +397,8 @@ function CreateOrderDialog({
         customer_id: selected.id,
         ship_to_id: selected.id,
         shipping_date: asOf,
-        payment_term: selected.payment_term,
-        shipping_address: "",
+        payment_term: paymentTerm,
+        shipping_address: selected.address || "",
         recipient: "",
         purchase_no: "",
         note: "",
@@ -418,26 +419,63 @@ function CreateOrderDialog({
             先選擇客戶建立草稿，之後再加入產品與出貨資料。
           </DialogDescription>
         </DialogHeader>
+        <Input
+          aria-label="搜尋訂單客戶"
+          placeholder="搜尋客戶名稱、地址或電話（支援錯字）"
+          maxLength={100}
+          value={customerQuery}
+          onChange={(event) => {
+            setCustomerQuery(event.target.value)
+            setCustomerId("")
+            setPaymentTerm("")
+            setCustomers(null)
+          }}
+        />
         <label className="space-y-2 text-sm">
           <span>客戶名稱</span>
           <select
             aria-label="新訂單客戶"
             className={`${SELECT} w-full`}
             value={customerId}
-            onChange={(event) => setCustomerId(event.target.value)}
+            onChange={(event) => {
+              setCustomerId(event.target.value)
+              setPaymentTerm(
+                customers?.find((c) => c.id === event.target.value)
+                  ?.payment_term || ""
+              )
+            }}
             disabled={busy || !customers}
           >
             <option value="">{customers ? "請選擇客戶" : "載入客戶中…"}</option>
             {customers?.map((customer) => (
               <option key={customer.id} value={customer.id}>
-                {customer.name} · {customer.owner_name}
+                {customer.name} ·{" "}
+                {customer.address ||
+                  `${customer.city || customer.region}${customer.area || ""}`}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="space-y-2 text-sm">
+          <span>付款條件</span>
+          <select
+            aria-label="新訂單付款條件"
+            className={`${SELECT} w-full`}
+            value={paymentTerm}
+            onChange={(event) => setPaymentTerm(event.target.value)}
+            disabled={busy || !customerId}
+          >
+            <option value="">請選擇本次訂單的付款條件</option>
+            {Object.entries(PAYMENT_TERMS).map(([code, label]) => (
+              <option key={code} value={code}>
+                {label}
               </option>
             ))}
           </select>
         </label>
         {customers?.length === 0 && (
           <p className="text-sm text-muted-foreground">
-            目前沒有可建立訂單的客戶，請確認負責範圍。
+            沒有符合搜尋的客戶，請調整名稱、地址或電話。
           </p>
         )}
         {error && (
@@ -454,7 +492,10 @@ function CreateOrderDialog({
           <Button variant="outline" disabled={busy} onClick={onClose}>
             取消
           </Button>
-          <Button disabled={busy || !customerId} onClick={() => void create()}>
+          <Button
+            disabled={busy || !customerId || !paymentTerm}
+            onClick={() => void create()}
+          >
             {busy && <LoaderCircle className="size-4 animate-spin" />}建立草稿
           </Button>
         </div>

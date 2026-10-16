@@ -28,9 +28,9 @@ Visual = Literal[
 ]
 Period = Literal["this_month", "last_month", "quarter", "six_months", "year", "custom"]
 Template = Literal["sales", "manager"]
-CustomerType = Literal["chain", "independent", "clinic"]
+CustomerType = Literal["chain", "independent", "clinic", "outlet"]
 TAIPEI = dt.timezone(dt.timedelta(hours=8), "Asia/Taipei")
-TYPE_LABELS = {"chain": "連鎖藥局", "independent": "獨立藥局", "clinic": "診所"}
+TYPE_LABELS = {"chain": "連鎖藥局", "independent": "獨立藥局", "clinic": "診所", "outlet": "公開通路（待核對）"}
 STACKED = {"stacked_bar", "stacked_column", "percent_bar", "percent_column"}
 LEGEND_VISUALS = {"bar", "column", "line", "area", "matrix"} | STACKED
 SLUG_PATTERN = r"^[a-z][a-z0-9_-]*$"
@@ -1199,7 +1199,7 @@ def data(session: Session, user: AppUser, config: ReportConfig) -> ReportData:
     start, end = period_bounds(config.period, today, config.date_range)
     scope = Scope.for_user(user)
     acting = user.acts_as or user
-    scope_label = "全公司" if acting.role == "it" else "我的團隊" if acting.role == "manager" else "我的客戶"
+    scope_label = "全公司共用"
     if config.owner_id:
         scope_label = next(owner.name for owner in owners(session, user) if owner.id == config.owner_id)
     if user.acts_as_user_id:

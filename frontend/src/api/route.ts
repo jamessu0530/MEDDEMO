@@ -33,7 +33,7 @@ export type RouteStop = {
   customer_id: string
   customer_name: string
   type: "chain" | "independent" | "clinic"
-  grade: string
+  grade: string | null
   planned_time: string
   status: "done" | "next" | "todo"
   signal: RouteSignal
@@ -333,8 +333,8 @@ export async function saveToday(userId: string, version: number, draft: RouteDra
 }
 
 /** 加一站的候選：順路的前幾家（估算多繞幾分鐘）與其他客戶。order、locked 是草稿上還沒跑的站與鎖住的站 */
-export function getCandidates(order: string[], locked: string[], signal?: AbortSignal) {
-  const query = new URLSearchParams({ order: order.join(","), locked: locked.join(",") })
+export function getCandidates(order: string[], locked: string[], signal?: AbortSignal, q = "") {
+  const query = new URLSearchParams({ order: order.join(","), locked: locked.join(","), q })
   return request<RouteCandidates>(`/api/itinerary/today/candidates?${query}`, { signal })
 }
 

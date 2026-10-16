@@ -35,7 +35,7 @@ KIND_LABEL = {
     "national": "全國頻道", "region": "整區頻道", "team": "小組頻道", "place": "地點頻道", "customer": "客戶討論串",
     "topic": "文字頻道",
 }
-CUSTOMER_TYPE_LABEL = {"chain": "連鎖藥局", "independent": "獨立藥局", "clinic": "診所"}
+CUSTOMER_TYPE_LABEL = {"chain": "連鎖藥局", "independent": "獨立藥局", "clinic": "診所", "outlet": "公開通路（待核對）"}
 
 SYSTEM = """你是「熊熊滾」，醫藥通路業務團隊頻道裡的 AI 助理。有人在頻道裡 @ 你，請判斷怎麼回答。
 
@@ -191,11 +191,11 @@ def _customer(session: Session, customer_id: str) -> str:
     customer, place, owner = session.execute(
         select(Customer, Place.name, AppUser.name)
         .join(Place, Place.id == Customer.place_id)
-        .join(AppUser, AppUser.id == Customer.owner_user_id)
+        .outerjoin(AppUser, AppUser.id == Customer.owner_user_id)
         .where(Customer.id == customer_id)
     ).one()
     chain = f"；連鎖體系 {customer.chain_group}" if customer.chain_group else ""
     return (
         f"這個討論串的客戶：{customer.name}；類型 {CUSTOMER_TYPE_LABEL[customer.type]}{chain}；"
-        f"縣市 {customer.city}；地點 {place}；等級 {customer.grade}；負責人 {owner}"
+        f"縣市 {customer.city}；地點 {place}；客戶資料全員共用"
     )

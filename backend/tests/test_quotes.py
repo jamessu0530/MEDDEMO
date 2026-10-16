@@ -62,7 +62,7 @@ def test_bad_quotes_are_rejected(client):
     assert post({"items": [{"sku": "HS-FO30", "qty": 0}]}) == 422
     assert post({"items": [{"sku": "HS-FO30", "qty": 1}, {"sku": "HS-FO30", "qty": 2}]}) == 422
     assert post({"items": [{"sku": "NOPE", "qty": 1}]}) == 422
-    assert post({"items": [{"sku": "HS-FO30", "qty": 1}]}, customer="C002") == 404  # 王冠宇的客戶
+    assert post({"items": [{"sku": "HS-FO30", "qty": 1}]}, customer="DOES_NOT_EXIST") == 404  # 不存在的客戶
 
 
 def test_no_quote_when_sap_is_down(client):
@@ -233,7 +233,7 @@ def test_the_quote_page_lists_this_period_by_product(tx, api, auth):
     assert premium["packs"][0] | {"code": None} == {
         "code": None, "name": "Premium眼藥水(小口)", "deal": "常態搭贈<22+1>", "buy_qty": 22, "free_qty": 1, "deal_price": 5500,
     }
-    assert api.get("/api/customers/C002/quote-promotion", headers=auth("U01")).status_code == 404  # 王冠宇的客戶
+    assert api.get("/api/customers/C002/quote-promotion", headers=auth("U01")).status_code == 200  # 王冠宇的客戶
 
 
 def test_no_running_period_means_no_promotion_section(tx, api, auth):

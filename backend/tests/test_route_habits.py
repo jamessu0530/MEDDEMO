@@ -88,13 +88,14 @@ def test_window_and_duration_are_only_defaults_and_the_newest_wins():
     assert rh.defaults([older, newer, window], BANQIAO) == (None, None)
 
 
-def test_create_writes_the_sentence_and_only_takes_own_customers(tx):
+def test_create_writes_the_sentence_and_accepts_shared_customers(tx):
     mine = tx.scalars(select(Customer).where(Customer.owner_user_id == "U01").order_by(Customer.id)).first()
     theirs = tx.scalars(select(Customer).where(Customer.owner_user_id == "U02")).first()
     made = rh.create(tx, "U01", rh.HabitSpec("duration", {"by": "customer", "value": mine.id}, duration_minutes=60), "manual")
     assert made.id and made.text == f"去 {mine.name} 都停 60 分" and made.active and made.object is None
-    with pytest.raises(rh.InvalidHabit, match="只能選自己的客戶"):
-        rh.create(tx, "U01", rh.HabitSpec("first", {"by": "customer", "value": theirs.id}), "manual")
+    assert rh.create(tx, "U01", rh.HabitSpec("first", {"by": "customer", "value": theirs.id}), "manual").user_id == "U01"
+    with pytest.raises(rh.InvalidHabit, match="找不到這個客戶或地區"):
+        rh.create(tx, "U01", rh.HabitSpec("first", {"by": "customer", "value": "NO_SUCH_CUSTOMER"}), "manual")
     with pytest.raises(rh.InvalidHabit, match="同一個對象"):
         rh.create(tx, "U01", rh.HabitSpec("precedence", {"by": "type", "value": "clinic"}, {"by": "type", "value": "clinic"}), "manual")
     with pytest.raises(rh.InvalidHabit, match="約的時間"):
@@ -118,7 +119,7 @@ def test_reset_demo_skips_habits_whose_targets_dont_exist(tx):
     不能整個噴 InvalidHabit；其他能建的照建，建出來的對象都要是真的存在的。"""
     options = rh.targets(tx, "U03")
     allowed = {by: {value for value, _ in items} for by, items in options.items()}
-    assert "康泰連鎖藥局" not in allowed["chain"]
+    assert "康泰連鎖藥局" in allowed["chain"]
     rh.reset_demo(tx, "U03")
     habits = rh.mine(tx, "U03")
     assert all(h.subject["value"] in allowed[h.subject["by"]] for h in habits)

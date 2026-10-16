@@ -99,7 +99,7 @@ class FieldsInput(BaseModel):
 def _load(session: Session, visit_id: str, user: AppUser, *, lock: bool = False, write: bool = False) -> Visit:
     """看不到的拜訪跟不存在一樣回 404。
 
-    讀是團隊層級：同一個主管底下的業務互相看得到。
+    已確認的業務紀錄全員可讀，未確認草稿僅實際建立者可讀。
     改、確認、刪除是個人層級：同團隊的其他業務一律唯讀，但主管的路徑比較短、截不掉，所以主管
     動得了屬下的拜訪——這不是拜訪的例外，每一種資料的 SELF 都是這樣（services/scope.py）。
     看不到和不能改都回 404 不回 403，不透露這筆紀錄存在。
@@ -109,9 +109,11 @@ def _load(session: Session, visit_id: str, user: AppUser, *, lock: bool = False,
         raise HTTPException(404, "找不到這筆拜訪紀錄")
     scope = Scope.for_user(user)
     rep = session.get(AppUser, visit.user_id)
+    if visit.status not in ("confirmed", "synced") and visit.user_id != user.id:
+        raise HTTPException(404, "找不到這筆拜訪紀錄")
     if not scope.can_see(SHARING_LEVEL["visit_record"], rep.org_path if rep else None):
         raise HTTPException(404, "找不到這筆拜訪紀錄")
-    if write and not scope.can_see(SHARING_LEVEL["visit_edit"], rep.org_path if rep else None):
+    if write and visit.user_id != user.id and not scope.can_see(SHARING_LEVEL["visit_edit"], rep.org_path if rep else None):
         raise HTTPException(404, "找不到這筆拜訪紀錄")
     return visit
 
@@ -190,12 +192,12 @@ def upload_audio(
     """上傳口述錄音。轉文字和整理欄位在背景做，畫面輪詢 GET /api/visits/{id} 看進度。"""
     own_customer = SHARING_LEVEL["customer_profile"]
     if client_ref and (existing := session.scalar(select(Visit).where(Visit.client_ref == client_ref))):
-        if not Scope.for_user(user).can_see(own_customer, owner_path(session, session.get(Customer, existing.customer_id))):
+        if existing.user_id != user.id:
             raise HTTPException(404, "找不到這家客戶")
         response.status_code = 200  # 同一段錄音重送：不重建，也不再轉一次文字
         return _detail(session, existing)
     customer = session.get(Customer, customer_id)
-    if not Scope.for_user(user).can_see(own_customer, owner_path(session, customer)):
+    if customer is None or not Scope.for_user(user).can_see(own_customer, owner_path(session, customer)):
         raise HTTPException(404, "找不到這家客戶")
     content = file.file.read(MAX_AUDIO_BYTES + 1)
     if len(content) > MAX_AUDIO_BYTES:
@@ -205,7 +207,7 @@ def upload_audio(
 
     visit = Visit(
         customer_id=customer.id,
-        user_id=customer.owner_user_id,
+        user_id=user.id,
         visited_at=dt.datetime.now(dt.UTC),
         status="processing",
         client_ref=client_ref,
@@ -216,8 +218,11 @@ def upload_audio(
     except IntegrityError:
         # 兩個重送請求同時到：另一個已經建好了，回傳那一筆
         session.rollback()
+        existing = session.scalar(select(Visit).where(Visit.client_ref == client_ref))
+        if existing is None or existing.user_id != user.id:
+            raise HTTPException(404, "找不到這段錄音")
         response.status_code = 200
-        return _detail(session, session.scalar(select(Visit).where(Visit.client_ref == client_ref)))
+        return _detail(session, existing)
     session.add(VisitAudio(
         visit_id=visit.id, content=content, mime_type=file.content_type or "application/octet-stream", language=language,
     ))

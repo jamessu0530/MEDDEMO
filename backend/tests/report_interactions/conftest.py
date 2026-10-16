@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.db import SEMANTIC_LAYER, database_url, get_session
 from app.main import app
-from app.models import AppSetting, AppUser, Base, Customer, OrgUnit, Place, Product, Receivable, SalesTransaction, UserReportConfig, Visit
+from app.models import AppSetting, AppUser, Base, Customer, OrgUnit, Place, Product, PublicOutlet, Receivable, SalesTransaction, UserReportConfig, Visit
 
 
 @pytest.fixture(autouse=True)
@@ -31,7 +31,7 @@ def interaction_engine():
     try:
         with engine.begin() as conn:
             conn.exec_driver_sql("CREATE EXTENSION IF NOT EXISTS ltree")
-        tables = [model.__table__ for model in (AppSetting, OrgUnit, Place, AppUser, Product, Customer, SalesTransaction, Receivable, Visit, UserReportConfig)]
+        tables = [model.__table__ for model in (AppSetting, OrgUnit, Place, AppUser, Product, Customer, PublicOutlet, SalesTransaction, Receivable, Visit, UserReportConfig)]
         Base.metadata.create_all(engine, tables=tables)
         today_function = re.search(r"CREATE FUNCTION app_today\(\).*?\$\$;", SEMANTIC_LAYER.read_text(), re.S)
         assert today_function is not None

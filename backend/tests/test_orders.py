@@ -104,7 +104,7 @@ def test_an_order_is_refused_while_sap_is_down(tx, api):
 
 def test_only_draft_quotes_can_be_ordered(tx, api, auth):
     quote_no = open_quote(api, tx, [{"sku": "HS-FO30", "qty": 20}])
-    assert api.post(f"/api/customers/C001/quotes/{quote_no}/order", headers=auth("U03")).status_code == 404
+    assert api.post(f"/api/customers/C001/quotes/{quote_no}/order", headers=auth("U03")).status_code == 200
     assert api.post("/api/customers/C001/quotes/Q-NOPE/order").status_code == 404
     tx.execute(update(SapQuotationDraft).where(SapQuotationDraft.quote_no == quote_no).values(status="pending_approval"))
     assert api.post(f"/api/customers/C001/quotes/{quote_no}/order").status_code == 409

@@ -290,7 +290,7 @@ export type ReportConfig = {
   period: ReportPeriod
   refresh_seconds?: 0 | 60 | 300 | 900
   owner_id: string | null
-  customer_type: "chain" | "independent" | "clinic" | null
+  customer_type: "chain" | "independent" | "clinic" | "outlet" | null
   cards: ReportCard[]
   pages?: ReportPage[]
   filters?: ReportFilter[]
@@ -420,6 +420,7 @@ export const PERIODS: Record<ReportPeriod, string> = {
   custom: "自訂日期",
 }
 export const CUSTOMER_TYPES = {
+  outlet: "公開通路（待核對）",
   chain: "連鎖藥局",
   independent: "獨立藥局",
   clinic: "診所",

@@ -13,12 +13,15 @@ METRICS = ["sales", "net_margin", "net_margin_rate", "order_count", "avg_order_v
 
 
 def config(rows=None, columns=None, metrics=None, *, view=None, **changes):
+    slicers = changes.get("slicers", [])
+    if not any(item["dimension"] == "owner" for item in slicers):
+        changes["slicers"] = [{"dimension": "owner", "keys": ["S1", "S2"]}, *slicers]
     rows = rows or ["owner", "customer_type", "customer"]
     columns = ["year", "quarter", "month"] if columns is None else columns
     metrics = metrics or METRICS
     card_changes = changes.pop("card", {})
     body = {
-        "name": "矩陣驗收", "template": "manager", "period": "custom", "date_range": {"start": "2031-01-01", "end": "2031-04-17"},
+        "slicers": [{"dimension": "owner", "keys": ["S1", "S2"]}], "name": "矩陣驗收", "template": "manager", "period": "custom", "date_range": {"start": "2031-01-01", "end": "2031-04-17"},
         "cards": [{"id": "matrix", "title": "階層矩陣", "metric": metrics[0], "dimension": rows[0], "legend": columns[0] if columns else None,
             "visual": "matrix", "limit": 3, "matrix": {"rows": rows, "columns": columns, "metrics": metrics}, **card_changes}],
         "matrix_views": {"matrix": view or {"row_expand_depth": 3, "column_expand_depth": 3}}, **changes,
@@ -151,10 +154,10 @@ def test_full_matrix_cell_predicate_links_other_charts_without_losing_hierarchy(
 
 
 def test_view_owner_paths_outside_permission_rejected(interaction_session):
-    body = config(view={"expanded_rows": [[item.model_dump() for item in path(owner="S3")]]})
+    body = config(view={"expanded_rows": [[item.model_dump() for item in path(owner="UNKNOWN_OWNER")]]})
     with pytest.raises(reports.OwnerNotAllowed):
         result(interaction_session, body)
-    assert result(interaction_session, config(), user="S1").matrix.totals["sales"] == 750
+    assert result(interaction_session, config(), user="S1").matrix.totals["sales"] == 1750
 
 
 def test_compare_all_cell_metrics_with_same_current_shape_and_period_shift(interaction_session):

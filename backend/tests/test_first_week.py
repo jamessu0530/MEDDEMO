@@ -57,6 +57,16 @@ def status_of(client, headers) -> dict:
     return body
 
 
+
+def shared_customer_counts(db):
+    rows = db.execute(text("SELECT type, grade, count(*) FROM customer GROUP BY type, grade")).all()
+    return {"total": sum(n for _, _, n in rows),
+            "by_type": {t: sum(n for kind, _, n in rows if kind == t) for t in ("chain", "independent", "clinic", "outlet")},
+            "by_grade": {g: sum(n for _, grade, n in rows if grade == g) for g in ("A", "B", "C")}}
+
+def shared_cities(db):
+    return list(db.execute(text("SELECT city FROM customer GROUP BY city ORDER BY count(*) DESC, city")).scalars())
+
 def region_ranking(db, region: str) -> dict[str, list[str]]:
     """這一區近 90 天每個類別進貨金額由高到低的料號。用客戶的區算，跟服務裡照組織樹取範圍的寫法互相對照。"""
     ranked: dict[str, list[str]] = {}
@@ -64,7 +74,7 @@ def region_ranking(db, region: str) -> dict[str, list[str]]:
         SELECT p.category, t.sku FROM sales_transaction t
         JOIN customer c ON c.id = t.customer_id
         JOIN product p ON p.sku = t.sku
-        WHERE c.region = :region AND t.date > app_today() - 90
+        WHERE t.date > app_today() - 90
         GROUP BY p.category, t.sku
         ORDER BY sum(t.amount) DESC, t.sku
     """), {"region": region}):
@@ -72,7 +82,7 @@ def region_ranking(db, region: str) -> dict[str, list[str]]:
     return ranked
 
 
-def test_a_long_serving_rep_is_not_a_newcomer_but_can_still_open_the_page(client, auth):
+def test_a_long_serving_rep_is_not_a_newcomer_but_can_still_open_the_page(client, auth, db):
     # 林昱辰 2021-03-01 到職：到職日當天算第 1 天
     day_no = (seed.DEFAULT_AS_OF - date(2021, 3, 1)).days + 1
     assert status_of(client, auth("U01")) == {"is_newcomer": False, "day_no": day_no}
@@ -82,18 +92,14 @@ def test_a_long_serving_rep_is_not_a_newcomer_but_can_still_open_the_page(client
     # 哪一區、主管是誰來自組織樹；轄區縣市是名下客戶所在的縣市，客戶多的在前
     assert page["employee"] == {
         "employee_no": "E00342", "hire_date": "2021-03-01", "region": "北區", "manager_name": "陳建宏",
-        "cities": ["台北市", "新北市", "新竹市"], "proxy_of": None,
+        "cities": shared_cities(db), "proxy_of": None,
     }
-    assert page["customers"] == {
-        "total": 53,
-        "by_type": {"chain": 16, "independent": 24, "clinic": 13},
-        "by_grade": {"A": 11, "B": 27, "C": 15},
-    }
+    assert page["customers"] == shared_customer_counts(db)
     assert page["promotion"] == {"name": "202610保藥特搭活動", "item_count": 34}
     assert [day["day"] for day in page["days"]] == [1, 2, 3, 4, 5]
 
 
-def test_a_rep_it_just_created_is_on_day_one_and_has_no_customers_yet(tx, client, auth):
+def test_a_rep_it_just_created_is_on_day_one_and_can_access_shared_customers(tx, client, auth, db):
     account = {"name": "測試新人", "email": "rookie@meddemo.tw", "password": "abcd1234", "role": "sales", "manager_id": "M02"}
     assert client.post("/api/admin/users", json=account, headers=auth("A01")).status_code == 201
     rookie = headers_for(tx.get(AppUser, "U06"))
@@ -103,13 +109,11 @@ def test_a_rep_it_just_created_is_on_day_one_and_has_no_customers_yet(tx, client
     assert (page["is_newcomer"], page["day_no"]) == (True, 1)
     assert page["employee"] == {
         "employee_no": tx.get(SapEmployee, "U06").employee_no, "hire_date": seed.DEFAULT_AS_OF.isoformat(),
-        "region": "中區", "manager_name": "張淑芬", "cities": [], "proxy_of": None,
+        "region": "中區", "manager_name": "張淑芬", "cities": shared_cities(db), "proxy_of": None,
     }
     # 名下還沒有客戶（等主管分配）：客戶那兩區是空的，其餘照常
-    assert page["customers"] == {
-        "total": 0, "by_type": {"chain": 0, "independent": 0, "clinic": 0}, "by_grade": {"A": 0, "B": 0, "C": 0},
-    }
-    assert page["key_customers"] == []
+    assert page["customers"] == shared_customer_counts(db)
+    assert len(page["key_customers"]) == 5
     # 同一區的進貨排名不看自己名下有沒有客戶
     assert {line["category"] for line in page["product_lines"]} == CATEGORIES
     assert all(len(line["top"]) == 3 for line in page["product_lines"])
@@ -128,7 +132,7 @@ def test_newcomer_means_the_first_thirty_days(tx, client, auth):
     assert status_on_day(31) == {"is_newcomer": False, "day_no": 31}
 
 
-def test_a_self_created_account_is_a_newcomer_looking_at_the_demo_rep(tx, client, auth):
+def test_a_self_created_account_is_a_newcomer_looking_at_the_demo_rep(tx, client, auth, db):
     judge = headers_for(self_created(tx))
     # 沒有人員主檔：一律當新人，沒有到職日所以也沒有「第幾天」
     assert status_of(client, judge) == {"is_newcomer": True, "day_no": None}
@@ -137,11 +141,11 @@ def test_a_self_created_account_is_a_newcomer_looking_at_the_demo_rep(tx, client
     assert (page["is_newcomer"], page["day_no"]) == (True, None)
     assert page["employee"] == {
         "employee_no": None, "hire_date": None, "region": "北區", "manager_name": "陳建宏",
-        "cities": ["台北市", "新北市", "新竹市"], "proxy_of": "林昱辰",
+        "cities": shared_cities(db), "proxy_of": "林昱辰",
     }
     # 客戶、產品線、先認識的五家都是林昱辰的
     demo = client.get("/api/first-week", headers=auth("U01")).json()
-    assert page["customers"]["total"] == 53
+    assert page["customers"]["total"] == 253
     for key in ("customers", "product_lines", "key_customers"):
         assert page[key] == demo[key]
 
@@ -164,7 +168,7 @@ def test_status_lists_the_task_ids_so_the_home_card_can_count_progress(client, a
     assert len(status["task_ids"]) == 15 and "task_ids" not in page
 
 
-def test_product_lines_list_the_regions_best_sellers_of_that_category(client, auth, db):
+def test_product_lines_list_the_companys_best_sellers_of_that_category(client, auth, db):
     north = client.get("/api/first-week", headers=auth("U01")).json()["product_lines"]
     # 每條產品線一區，照人員主檔的順序
     assert [line["category"] for line in north] == ["保健品", "慢性處方", "一般用藥", "醫材"]
@@ -185,7 +189,7 @@ def test_product_lines_list_the_regions_best_sellers_of_that_category(client, au
     assert {line["category"]: [item["sku"] for item in line["top"]] for line in central} == {
         category: skus[:3] for category, skus in region_ranking(db, "中區").items()
     }
-    assert central != north
+    assert central == north
 
 
 def test_product_lines_follow_the_employee_master(tx, client, auth):
@@ -195,8 +199,8 @@ def test_product_lines_follow_the_employee_master(tx, client, auth):
     assert [line["category"] for line in lines] == ["醫材", "慢性處方"]
 
 
-def test_the_customers_to_meet_first_are_the_reps_own_best_a_grade_accounts(tx, client, auth):
-    own = {c.id: c for c in tx.scalars(select(Customer).where(Customer.owner_user_id == "U01"))}
+def test_the_customers_to_meet_first_are_the_shared_best_a_grade_accounts(tx, client, auth):
+    own = {c.id: c for c in tx.scalars(select(Customer))}
     amounts = dict(tx.execute(text("SELECT customer_id, amount_last_90d FROM v_customer_summary")).all())
 
     def expected(grade: str) -> list[str]:

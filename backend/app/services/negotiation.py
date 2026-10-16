@@ -38,7 +38,7 @@ CAMPAIGN_FEE_CAP_RATE = 0.15
 # 促銷品項最多列五個，一個料號一列
 MAX_DEALS = 5
 # 《連鎖通路合約條件》：獨立藥局不收上架費，通路獎勵統一為進貨金額的 2%；診所不適用上架費與通路獎勵
-CHANNEL_REWARD_RATE = {"independent": 0.02, "clinic": None}
+CHANNEL_REWARD_RATE = {"independent": 0.02, "clinic": None, "outlet": None}
 # 《報價權限》：業務可在標準供貨價之外自行給予最多 3%（含）的折扣，超過要簽核。
 # 跟開報價的簽核規則是同一個數字，只留一份（services/approvals.py）
 FREE_DISCOUNT_PCT = approvals.DISCOUNT_FREE

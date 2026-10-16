@@ -81,7 +81,7 @@ def page(session: Session, user: AppUser) -> dict[str, Any]:
     acting = user.acts_as or user
     employee = session.get(SapEmployee, user.id)
     manager = session.get(AppUser, acting.manager_id) if acting.manager_id else None
-    own = Customer.owner_user_id == scope.acting_user_id
+    own = Scope.for_user(user).customers_at(SHARING_LEVEL["customer_basic"])
     since = app_today(session) - dt.timedelta(days=RECENT_DAYS)
 
     cities = session.scalars(

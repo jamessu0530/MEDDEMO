@@ -11,8 +11,11 @@ from app.services import auth, reports
 
 
 def config(card_changes=None, **changes):
+    slicers = changes.get("slicers", [])
+    if not any(item["dimension"] == "owner" for item in slicers):
+        changes["slicers"] = [{"dimension": "owner", "keys": ["S1", "S2"]}, *slicers]
     return reports.ReportConfig.model_validate({
-        "name": "篩選驗收", "template": "manager", "period": "this_month",
+        "slicers": [{"dimension": "owner", "keys": ["S1", "S2"]}], "name": "篩選驗收", "template": "manager", "period": "this_month",
         "cards": [{"id": "total", "title": "業績", "metric": "sales", "dimension": "none", "visual": "kpi", **(card_changes or {})}],
         **changes,
     })
@@ -111,7 +114,7 @@ def test_snapshot_ignores_date_and_unrelated_product_but_applies_customer_slicer
 
 @pytest.mark.parametrize("level", ["report", "page", "card"])
 def test_every_layer_rejects_owner_keys_outside_permission(interaction_session, level):
-    slicer = {"dimension": "owner", "keys": ["S1", "S3"]}
+    slicer = {"dimension": "owner", "keys": ["S1", "UNKNOWN_OWNER"]}
     changes = {"slicers": [slicer]} if level == "report" else {"pages": [{"id": "overview", "name": "分頁", "slicers": [slicer]}]} if level == "page" else {}
     body = config(card_changes={"slicers": [slicer]} if level == "card" else None, **changes)
     with pytest.raises(reports.OwnerNotAllowed):
@@ -128,13 +131,13 @@ def test_customer_slicer_with_outside_ids_or_sql_text_never_expands_scope(intera
 def test_filter_choices_and_ai_context_are_scoped_to_actual_user(interaction_session):
     user = interaction_session.get(AppUser, "S1")
     options = reports.filter_options(interaction_session, user)
-    assert {item.key for item in options.customer} == {"C1", "C4"}
-    assert {item.key for item in options.owner} == {"S1"}
+    assert {item.key for item in options.customer} == {"C1", "C2", "C3", "C4"}
+    assert {item.key for item in options.owner} == {"S1", "S2", "S3"}
     assert {item.key for item in options.product} == {"P1", "P2"}
     class LLM:
         def json(self, **kwargs):
             payload = json.loads(kwargs["prompt"])
-            assert {item["key"] for item in payload["filter_options"]["customer"]} == {"C1", "C4"}
+            assert {item["key"] for item in payload["filter_options"]["customer"]} == {"C1", "C2", "C3", "C4"}
             assert payload["as_of"] == "2031-04-17"
             return {"kind": "clarify", "message": "請指定日期", "config": None}
     assert reports.adjust(interaction_session, user, "調整日期", config(), llm=LLM()).kind == "clarify"
@@ -150,7 +153,7 @@ def test_dates_slicers_and_page_filters_roundtrip_without_changing_old_keys(inte
     client = TestClient(app)
     response = client.get("/api/reports", headers={"Authorization": f"Bearer {auth.create_token(user)}"})
     assert response.status_code == 200 and response.json()["as_of"] == "2031-04-17"
-    assert {item["key"] for item in response.json()["filter_options"]["customer"]} == {"C1", "C2", "C4"}
+    assert {item["key"] for item in response.json()["filter_options"]["customer"]} == {"C1", "C2", "C3", "C4"}
 
 
 def test_stale_multi_owner_filters_are_removed_at_every_layer_after_org_change(interaction_session):
@@ -163,7 +166,7 @@ def test_stale_multi_owner_filters_are_removed_at_every_layer_after_org_change(i
     moved.manager_id, moved.org_path = "M2", "TW.N.M2.S2"
     interaction_session.flush()
     loaded = reports.get_config(interaction_session, user)
-    assert loaded.slicers[0].keys == ["S1"] and loaded.pages[0].slicers == [] and loaded.cards[0].slicers == []
+    assert loaded.slicers[0].keys == ["S1", "S2"] and loaded.pages[0].slicers[0].keys == ["S2"] and loaded.cards[0].slicers[0].keys == ["S2"]
 
 
 @pytest.mark.parametrize("changes", [

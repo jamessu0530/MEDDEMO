@@ -15,7 +15,7 @@ def point(**filters):
 
 def query(points=None, *, interaction="filter", period="this_month", filters=None, groups=None):
     return reports.ReportQuery.model_validate({
-        "name": "聯動測試", "template": "manager", "period": period,
+        "slicers": [{"dimension": "owner", "keys": ["S1", "S2"]}], "name": "聯動測試", "template": "manager", "period": period,
         "filters": filters or [],
         "cards": [
             {"id": "source", "title": "來源", "metric": "sales", "dimension": "month", "legend": "owner", "visual": "stacked_column"},
@@ -77,11 +77,11 @@ def test_highlight_aligns_matrix_series_and_cells(interaction_session):
     assert all([point.key for point in item.points] == [point.key for point in target.points] for item in target.highlight.series)
 
 
-def test_owner_selection_outside_visible_scope_is_rejected(interaction_session):
+def test_unknown_owner_selection_is_rejected(interaction_session):
     with pytest.raises(reports.OwnerNotAllowed):
-        result(interaction_session, query([point(month="2031-04", owner="S3")]))
+        result(interaction_session, query([point(month="2031-04", owner="UNKNOWN_OWNER")]))
     with pytest.raises(reports.OwnerNotAllowed):
-        result(interaction_session, query([point(month="2031-04", owner="S2")]), user="S1")
+        result(interaction_session, query([point(month="2031-04", owner="UNKNOWN_OWNER")]), user="S1")
 
 
 @pytest.mark.parametrize("customer", ["C3", "' OR 1=1 --"])

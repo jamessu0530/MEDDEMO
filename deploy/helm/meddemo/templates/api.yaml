@@ -34,6 +34,7 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
             {{- include "meddemo.databaseEnv" . | nindent 12 }}
+            {{- include "meddemo.searchEnv" . | nindent 12 }}
             - name: REDIS_URL
               value: redis://redis:6379/0
           envFrom:

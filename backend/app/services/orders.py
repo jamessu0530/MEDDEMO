@@ -33,6 +33,9 @@ def place(session: Session, customer: Customer, quote_no: str, *, payment_term: 
 
     先把狀態改掉再寫交易：兩個人同時按，後到的那個改不到任何一列，不會寫兩次。
     """
+    term = payment_term or customer.payment_term
+    if term not in payment_terms.TERMS:
+        raise ValueError("請從訂單頁選擇本次付款條件，再送出訂單")
     lines = session.execute(
         update(SapQuotationDraft)
         .where(
@@ -59,7 +62,6 @@ def place(session: Session, customer: Customer, quote_no: str, *, payment_term: 
             channel_reward=_fee(line.amount, terms["channel_reward_rate"]),
         ))
     total = sum((line.amount for line in lines), Decimal(0))
-    term = payment_term or customer.payment_term
     session.add(Receivable(
         invoice_no=order_no, customer_id=customer.id, invoice_date=today,
         due_date=payment_terms.due_date(term, today),

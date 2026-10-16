@@ -10,8 +10,11 @@ from app.services import auth, report_details, reports
 
 
 def config(metric="sales", card=None, **changes):
+    slicers = changes.get("slicers", [])
+    if not any(item["dimension"] == "owner" for item in slicers):
+        changes["slicers"] = [{"dimension": "owner", "keys": ["S1", "S2"]}, *slicers]
     return reports.ReportQuery.model_validate({
-        "name": "指標驗收", "template": "manager", "period": "this_month",
+        "slicers": [{"dimension": "owner", "keys": ["S1", "S2"]}], "name": "指標驗收", "template": "manager", "period": "this_month",
         "cards": [{"id": "target", "title": "指標", "metric": metric, "dimension": "none", "visual": "kpi", **(card or {})}],
         **changes,
     })
@@ -111,7 +114,7 @@ def test_previous_month_uses_same_cutoff_and_permissions_not_full_previous_month
     assert data.total == 1350 and data.comparison.start == dt.date(2031, 3, 1) and data.comparison.end == dt.date(2031, 3, 17)
     assert data.comparison.value.previous == 500 and data.comparison.value.relative_change == pytest.approx(1.7)
     own = result(interaction_session, config(card={"comparison": "previous_month"}), user="S1")
-    assert own.total == 650 and own.comparison.value.previous == 400
+    assert own.total == 1350 and own.comparison.value.previous == 500
 
 
 def test_previous_year_and_partial_custom_range_map_categories_to_current_dates(interaction_session):

@@ -72,7 +72,11 @@ LEFT JOIN orders o ON o.customer_id = c.id
 LEFT JOIN visits v ON v.customer_id = c.id
 LEFT JOIN ar ON ar.customer_id = c.id
 -- 明寫型別：參數是 NULL 時 Postgres 推不出型別
-WHERE (CAST(:owner_id AS text) IS NULL OR c.owner_user_id = CAST(:owner_id AS text))
+WHERE (CAST(:owner_id AS text) IS NULL
+    OR EXISTS (SELECT 1 FROM visit personal_visit WHERE personal_visit.customer_id = c.id
+               AND personal_visit.user_id = CAST(:owner_id AS text))
+    OR EXISTS (SELECT 1 FROM sales_order personal_order WHERE personal_order.customer_id = c.id
+               AND personal_order.created_by = CAST(:owner_id AS text)))
 """)
 
 
@@ -83,9 +87,9 @@ class Candidate:
     customer_id: str
     name: str
     type: str
-    grade: str
+    grade: str | None
     chain_group: str | None
-    owner_user_id: str
+    owner_user_id: str | None
     last_visit_date: date | None
     last_order_date: date | None
     interval_now: float | None
@@ -107,15 +111,15 @@ def candidates(session: Session, as_of: date, owner_id: str | None = None) -> li
         typical_gap = gap_before or gap_now or DEFAULT_ORDER_GAP
         contract_left = (r["contract_end_date"] - as_of).days if r["contract_end_date"] else None
         # 沒有拜訪紀錄的客戶當作剛好照正常間隔來，不給它「拖太久」的加成
-        visit_gap_days = (as_of - r["last_visit_date"]).days if r["last_visit_date"] else VISIT_GAP_BY_GRADE[r["grade"]]
+        visit_gap_days = (as_of - r["last_visit_date"]).days if r["last_visit_date"] else VISIT_GAP_BY_GRADE.get(r["grade"], 17)
         order_gap_days = (as_of - r["last_order_date"]).days if r["last_order_date"] else typical_gap
         features = {
             "interval_change": gap_now / gap_before - 1 if gap_now and gap_before else 0.0,
-            "visit_gap": visit_gap_days / VISIT_GAP_BY_GRADE[r["grade"]],
+            "visit_gap": visit_gap_days / VISIT_GAP_BY_GRADE.get(r["grade"], 17),
             "order_gap": order_gap_days / typical_gap,
             "ar_age_days": float(r["ar_age_days"]),
             "contract_soon": max(0.0, 1 - contract_left / CONTRACT_HORIZON_DAYS) if contract_left is not None else 0.0,
-            "grade_weight": GRADE_WEIGHT[r["grade"]],
+            "grade_weight": GRADE_WEIGHT.get(r["grade"], 0.0),
         }
         out.append(Candidate(
             customer_id=r["id"], name=r["name"], type=r["type"], grade=r["grade"],

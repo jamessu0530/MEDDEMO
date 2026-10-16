@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import DateTime, cast, func, literal, select, union_all
 from sqlalchemy.orm import Session
 
-from app.models import AppUser, Customer, PAYMENT_TERM_CODES, Product, SalesOrder, SalesTransaction, SapQuotationDraft
+from app.models import AppUser, Customer, PAYMENT_TERM_CODES, Product, PublicOutlet, SalesOrder, SalesTransaction, SapQuotationDraft
 from app.pricing import supply_price
 from app.services import customer_profile, orders, writeback
 from app.services.scope import SHARING_LEVEL, Scope
@@ -114,13 +114,13 @@ def detail(session: Session, user: AppUser, order_id: str):
     target = customer(session, user, order.customer_id)
     products = _products(session, order.items)
     ship = session.get(Customer, order.ship_to_id)
-    owner = session.get(AppUser, target.owner_user_id)
+    owner = session.get(AppUser, target.owner_user_id) if target.owner_user_id else None
     items = [_item_out(products[item["sku"]], target.type, item, i) for i, item in enumerate(order.items)]
     return {"id": order.id, "order_no": order.order_no, "customer_id": target.id, "customer_name": target.name,
         "ship_to_id": order.ship_to_id, "ship_to_name": ship.name, "shipping_address": order.shipping_address,
         "recipient": order.recipient, "shipping_date": order.shipping_date, "payment_term": order.payment_term,
         "purchase_no": order.purchase_no, "note": order.note, "status": order.status, "revision": order.revision,
-        "order_type": "Z200 標準出貨", "currency": "TWD", "owner_id": owner.id, "owner_name": owner.name,
+        "order_type": "Z200 標準出貨", "currency": "TWD", "owner_id": owner.id if owner else None, "owner_name": owner.name if owner else None,
         "amount": float(order.amount), "items": items, "sap_order_no": order.sap_order_no, "as_of": customer_profile.app_today(session),
         "created_at": order.created_at, "updated_at": order.updated_at, "readonly": order.status != "draft", "source": "workspace"}
 
@@ -217,7 +217,7 @@ def historical_detail(session: Session, user: AppUser, order_id: str):
         SalesTransaction.customer_id == target.id, SalesTransaction.order_no == number).order_by(SalesTransaction.id)).all()
     if not rows:
         raise OrderError("找不到這張訂單", 404)
-    owner = session.get(AppUser, target.owner_user_id)
+    owner = session.get(AppUser, target.owner_user_id) if target.owner_user_id else None
     items = []
     grouped = {}
     for transaction, product in rows:
@@ -235,8 +235,8 @@ def historical_detail(session: Session, user: AppUser, order_id: str):
     return {"id": order_id, "order_no": number, "customer_id": target.id, "customer_name": target.name,
         "ship_to_id": target.id, "ship_to_name": "未記錄", "shipping_address": "", "recipient": "",
         "shipping_date": day, "payment_term": target.payment_term, "purchase_no": "", "note": "歷史交易未記錄的收貨資訊以空白呈現。",
-        "status": "effective", "revision": 1, "order_type": "歷史交易", "currency": "TWD", "owner_id": owner.id,
-        "owner_name": owner.name, "amount": float(sum((transaction.amount for transaction, _ in rows), Decimal(0))), "items": items, "sap_order_no": None,
+        "status": "effective", "revision": 1, "order_type": "歷史交易", "currency": "TWD", "owner_id": owner.id if owner else None,
+        "owner_name": owner.name if owner else None, "amount": float(sum((transaction.amount for transaction, _ in rows), Decimal(0))), "items": items, "sap_order_no": None,
         "as_of": customer_profile.app_today(session),
         "created_at": stamp, "updated_at": None, "readonly": True, "source": "history"}
 
@@ -247,19 +247,21 @@ def list_orders(session: Session, user: AppUser, q="", status="all", page=1, pag
         Customer.name.label("customer_name"), SalesOrder.status.label("status"), SalesOrder.shipping_date.label("shipping_date"),
         SalesOrder.updated_at.label("updated_at"), SalesOrder.sap_order_no.label("sap_order_no"), AppUser.id.label("owner_id"),
         AppUser.name.label("owner_name"), SalesOrder.amount.label("amount"), literal("workspace").label("source")) \
-        .join(Customer, Customer.id == SalesOrder.customer_id).join(AppUser, AppUser.id == Customer.owner_user_id).where(scope)
+        .join(Customer, Customer.id == SalesOrder.customer_id).outerjoin(AppUser, AppUser.id == Customer.owner_user_id).where(scope)
     history = select(SalesTransaction.order_no.label("id"), SalesTransaction.order_no.label("order_no"),
         Customer.id.label("customer_id"), Customer.name.label("customer_name"), literal("effective").label("status"),
         func.min(SalesTransaction.date).label("shipping_date"), cast(func.min(SalesTransaction.date), DateTime(timezone=True)).label("updated_at"),
         SalesTransaction.order_no.label("sap_order_no"), AppUser.id.label("owner_id"), AppUser.name.label("owner_name"),
         func.sum(SalesTransaction.amount).label("amount"), literal("history").label("source")) \
-        .join(Customer, Customer.id == SalesTransaction.customer_id).join(AppUser, AppUser.id == Customer.owner_user_id).where(
+        .join(Customer, Customer.id == SalesTransaction.customer_id).outerjoin(AppUser, AppUser.id == Customer.owner_user_id).where(
         scope, ~select(SalesOrder.id).where(SalesOrder.sap_order_no == SalesTransaction.order_no, SalesOrder.customer_id == SalesTransaction.customer_id).exists()) \
         .group_by(SalesTransaction.order_no, Customer.id, AppUser.id)
     if q:
+        from app.services.outlet_search import customer_matches
+        matching = Customer.id.in_(customer_matches(session, q))
         pattern = "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
-        fresh = fresh.where(Customer.name.ilike(pattern, escape="\\") | SalesOrder.order_no.ilike(pattern, escape="\\") | SalesOrder.sap_order_no.ilike(pattern, escape="\\"))
-        history = history.where(Customer.name.ilike(pattern, escape="\\") | SalesTransaction.order_no.ilike(pattern, escape="\\"))
+        fresh = fresh.where(matching | Customer.name.ilike(pattern, escape="\\") | SalesOrder.order_no.ilike(pattern, escape="\\") | SalesOrder.sap_order_no.ilike(pattern, escape="\\"))
+        history = history.where(matching | Customer.name.ilike(pattern, escape="\\") | SalesTransaction.order_no.ilike(pattern, escape="\\"))
     if status != "all":
         fresh = fresh.where(SalesOrder.status == status)
     if status == "draft":
@@ -293,7 +295,14 @@ def catalog(session: Session, user: AppUser, customer_id: str, q="", page=1):
         "unit_price": supply_price(product.unit_price, target.type)} for product in products], "total": total, "page": page, "page_size": 25}
 
 
-def customers(session: Session, user: AppUser):
-    rows = session.execute(select(Customer, AppUser.name).join(AppUser, AppUser.id == Customer.owner_user_id).where(
-        Scope.for_user(user).customers_at(SHARING_LEVEL["quote"])).order_by(Customer.name)).all()
-    return [{"id": row.id, "name": row.name, "owner_name": name, "owner_id": row.owner_user_id, "payment_term": row.payment_term, "region": row.region} for row, name in rows]
+def customers(session: Session, user: AppUser, q: str = ""):
+    from app.services.outlet_search import customer_matches
+    matches = customer_matches(session, q) if q else None
+    rows = session.execute(select(Customer, AppUser.name, PublicOutlet.address, PublicOutlet.phone)
+        .outerjoin(AppUser, AppUser.id == Customer.owner_user_id)
+        .outerjoin(PublicOutlet, PublicOutlet.customer_id == Customer.id).where(
+        Scope.for_user(user).customers_at(SHARING_LEVEL["quote"]),
+        Customer.id.in_(matches) if matches is not None else literal(True)).order_by(Customer.name)).all()
+    return [{"id": row.id, "name": row.name, "owner_name": name, "owner_id": row.owner_user_id,
+        "payment_term": row.payment_term, "region": row.region, "city": row.city, "area": row.area,
+        "address": address, "phone": phone} for row, name, address, phone in rows]

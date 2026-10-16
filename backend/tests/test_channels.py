@@ -122,15 +122,15 @@ def test_a_demoted_managers_channel_is_archived_for_it_only(tx, client, auth):
     assert client.post(f"/api/channels/{team}/messages", json={"body": "還在嗎"}, headers=it).status_code == 409
 
 
-def test_customer_threads_are_open_to_the_whole_region(tx, client, auth):
+def test_customer_threads_are_open_to_the_whole_company(tx, client, auth):
     # C002 康泰南京店在台北市中山區，負責人是王冠宇 U02
     opened = client.post("/api/customers/C002/thread", headers=auth("U01"))
     assert opened.status_code == 200
     thread = opened.json()
-    assert (thread["kind"], thread["name"], thread["audience"]) == ("customer", "康泰連鎖藥局 · 南京店", "北區所有人都看得到")
+    assert (thread["kind"], thread["name"], thread["audience"]) == ("customer", "康泰連鎖藥局 · 南京店", "全公司所有人都看得到")
     # 可以重複呼叫，拿到同一個
     assert client.post("/api/customers/C002/thread", headers=auth("M01")).json()["id"] == thread["id"]
-    assert client.post("/api/customers/C002/thread", headers=auth("U04")).status_code == 404
+    assert client.post("/api/customers/C002/thread", headers=auth("U04")).status_code == 200
     assert client.post("/api/customers/C999/thread", headers=auth("U01")).status_code == 404
     # 客戶討論串不放在頻道列表裡
     assert thread["id"] not in {c["id"] for c in listing(client, auth("U01"))}
@@ -141,7 +141,7 @@ def test_the_owner_always_sees_their_customers_thread(tx, client, auth):
     client.put("/api/admin/customers/C001/owner", json={"owner_id": "U04"}, headers=auth("A01"))
     assert client.post("/api/customers/C001/thread", headers=auth("U04")).status_code == 200
     assert client.post("/api/customers/C001/thread", headers=auth("M03")).status_code == 200
-    assert client.post("/api/customers/C001/thread", headers=auth("U03")).status_code == 404
+    assert client.post("/api/customers/C001/thread", headers=auth("U03")).status_code == 200
     assert "台北市・大安區" not in names(client, auth("U04"))
 
 
@@ -211,19 +211,19 @@ def test_unread_skips_my_own_messages_and_only_moves_forward(tx, client, auth):
     assert unread("U02") == 1
 
 
-def test_the_badge_counts_my_team_my_region_and_my_customers_only(tx, client, auth):
+def test_the_badge_counts_my_team_my_region_and_shared_customers(tx, client, auth):
     def badge(user_id):
         return client.get("/api/channels/unread", headers=auth(user_id)).json()["count"]
 
     # 灌資料放的對話：陳建宏小組 5 則（林昱辰 2、陳建宏 2、王冠宇 1）、大安區 2 則、忠孝店討論串 2 則（林昱辰），
     # 文字頻道：新品上市 2 則（陳建宏、王冠宇）、補貨問題 1 則（林昱辰）、公司公告 1 則（James）
-    assert badge("U02") == 7          # 小組裡別人發的 4 則、新品上市 1、補貨問題 1、公司公告 1；地點頻道不算紅點
+    assert badge("U02") == 9          # 小組裡別人發的 4 則、新品上市 1、補貨問題 1、公司公告 1；地點頻道不算紅點
     assert badge("U01") == 6          # 小組裡別人發的 3 則、新品上市 2、公司公告 1；忠孝店與補貨問題是自己發的
     assert badge("M01") == 8          # 小組 3 則、組員負責的忠孝店 2 則、新品上市 1、補貨問題 1、公司公告 1
     assert badge("A01") == 3          # IT 只算全國與三個區，加上底下的文字頻道：新品上市 2、補貨問題 1
     national = channel_id(client, auth, "全國", "U04")
     post(client, auth("U04"), national, "南區這週辦檔期")
-    assert badge("U02") == 8 and badge("A01") == 4
+    assert badge("U02") == 10 and badge("A01") == 4
 
 
 def test_a_place_lists_only_threads_with_messages(tx, client, auth):

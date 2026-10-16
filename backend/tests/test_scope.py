@@ -1,11 +1,6 @@
-"""資料權限：組織是一棵樹，每個人的位置決定他看得到什麼（backend/app/services/scope.py）。
+"""客戶業務資料全員共用，私人草稿與寫入權限維持各自規則。
 
-可見範圍 = 把自己的路徑截到該種資料的共享層級，再看對方在不在底下；主管的路徑比較短、
-截不動，所以「主管看得到、動得了屬下的」是同一個式子的結果，不是另一條規則。
-每一種資料停在哪一級寫在 SHARING_LEVEL：客戶清單全公司、業績數字同區、拜訪紀錄同團隊、
-客戶檔案與報價只有負責人（和他的主管）。
-
-同一條規則有兩個執法點，這裡兩邊都測：API 走 ORM，模型寫的 SQL 走四個語意層 View。
+同時驗證已登入 API、ORM、SQL 語意層與未確認錄音的建立者隔離。
 """
 
 import datetime as dt
@@ -29,65 +24,65 @@ def client(engine):
     return TestClient(app)
 
 
-def test_everyone_sees_every_customer_but_only_acts_on_their_own(client, auth):
+def test_everyone_sees_every_customer_and_can_open_all_business_details(client, auth):
     assert client.get("/api/customers").status_code == 401
-    # 客戶清單是全國共享的：名稱、類型、區、等級、負責人
     assert len(client.get("/api/customers", headers=auth("U01")).json()) == 253
     assert len(client.get("/api/customers", headers=auth("M01")).json()) == 253
     assert client.get("/api/customers/C002", headers=auth("U03")).status_code == 200
 
-    # 但檔案、議價卡、報價還是只有負責人與他的主管看得到。C002 是王冠宇（U02）的
-    assert client.get("/api/customers/C002/profile", headers=auth("U01")).status_code == 404
+    assert client.get("/api/customers/C002/profile", headers=auth("U01")).status_code == 200
     assert client.get("/api/customers/C002/profile", headers=auth("U02")).status_code == 200
     assert client.get("/api/customers/C002/profile", headers=auth("M01")).status_code == 200
-    assert client.get("/api/customers/C002/negotiation", headers=auth("M02")).status_code == 404
-    assert client.get("/api/customers/C002/quote-items", headers=auth("U01")).status_code == 404
+    assert client.get("/api/customers/C002/negotiation", headers=auth("M02")).status_code == 200
+    assert client.get("/api/customers/C002/quote-items", headers=auth("U01")).status_code == 200
 
 
-def test_the_customer_list_hides_visit_dates_from_outside_the_team(client, auth):
-    """客戶清單是全公司的，但「上次拜訪」是拜訪資料算出來的，拜訪資料只到團隊層級。
-
-    規格寫的全公司欄位只有名稱、類型、區、縣市、等級、負責人，上次拜訪不在裡面；
-    別區的客戶照樣列出來，只是這一欄是空的。
-    """
+def test_the_customer_list_shares_confirmed_visit_dates_across_regions(client, auth):
     def listed(user_id):
         return {c["id"]: c for c in client.get("/api/customers", headers=auth(user_id)).json()}
 
     north = listed("U01")
-    assert len(north) == 253  # 清單本身沒有縮水
-    assert north["C001"]["last_visit_date"] is not None  # 自己的客戶
-    assert north["C002"]["last_visit_date"] is not None  # 同團隊 U02 的客戶
-    assert north["C017"]["last_visit_date"] is None      # 南區 U04 的客戶
-    assert north["C017"]["owner_name"] and north["C017"]["region"] == "南區"  # 其他欄位照給
+    assert len(north) == 253
+    assert north["C001"]["last_visit_date"] is not None
+    assert north["C002"]["last_visit_date"] is not None
+    assert north["C017"]["last_visit_date"] is not None
+    assert north["C017"]["owner_name"] and north["C017"]["region"] == "南區"
 
-    # C017 確實有拜訪紀錄，上一行的 None 是擋下來的，不是本來就沒有
     assert listed("U04")["C017"]["last_visit_date"] is not None
-    # 主管的路徑比較短，看得到屬下的。M01 是 U01 與 U02 的主管
     assert listed("M01")["C002"]["last_visit_date"] is not None
-    assert listed("M01")["C017"]["last_visit_date"] is None
+    assert listed("M01")["C017"]["last_visit_date"] is not None
 
 
-def test_recording_a_visit_for_someone_elses_customer_is_refused(client, auth):
+def test_recording_for_any_customer_uses_the_actual_actor_and_keeps_draft_private(tx, client, auth, monkeypatch):
+    from app.api import visits as visits_api
+    monkeypatch.setattr(visits_api, "_enqueue", lambda *args: None)
     response = client.post(
-        "/api/visits/audio", data={"customer_id": "C002"},
+        "/api/visits/audio", data={"customer_id": "C002", "client_ref": "global-visit-policy"},
         files={"file": ("visit.webm", b"fake-audio", "audio/webm")}, headers=auth("U01"),
     )
-    assert response.status_code == 404
+    assert response.status_code == 202
+    visit_id = response.json()["id"]
+    assert tx.get(Visit, visit_id).user_id == "U01"
+    assert client.get(f"/api/visits/{visit_id}", headers=auth("U01")).status_code == 200
+    for user_id in ("U02", "U03", "M01"):
+        assert client.get(f"/api/visits/{visit_id}", headers=auth(user_id)).status_code == 404
+    replay = client.post(
+        "/api/visits/audio", data={"customer_id": "C002", "client_ref": "global-visit-policy"},
+        files={"file": ("visit.webm", b"fake-audio", "audio/webm")}, headers=auth("U02"),
+    )
+    assert replay.status_code == 404
 
 
-def test_teammates_can_read_a_visit_but_only_the_owner_can_change_it(client, auth, engine):
+def test_all_users_can_read_a_visit_but_only_the_owner_can_change_it(client, auth, engine):
     with Session(engine) as session:
         visit = session.scalars(
             select(Visit).where(Visit.user_id == "U02", Visit.status.in_(("confirmed", "synced")))
         ).first()
         visit_id = visit.id
 
-    # U01 與 U02 同一個團隊（都在 M01 底下）
     assert client.get(f"/api/visits/{visit_id}", headers=auth("U01")).status_code == 200
     assert client.get(f"/api/visits/{visit_id}", headers=auth("M01")).status_code == 200
-    # U03 在中區，看不到
-    assert client.get(f"/api/visits/{visit_id}", headers=auth("U03")).status_code == 404
-    # 看得到不等於能改：同團隊的拜訪唯讀
+    assert client.get(f"/api/visits/{visit_id}", headers=auth("U03")).status_code == 200
     assert client.delete(f"/api/visits/{visit_id}", headers=auth("U01")).status_code == 404
 
 
@@ -123,22 +118,20 @@ def test_a_manager_can_act_on_his_reports_visit_even_though_a_teammate_cannot(cl
     assert client.put(f"/api/visits/{visit_id}/fields", json={"fields": {}}, headers=auth("U03")).status_code == 404
 
 
-def test_quoting_for_someone_elses_customer_is_refused(client, auth):
+def test_quoting_for_any_customer_is_allowed(tx, client, auth):
     body = {"items": [{"sku": "RX-TAM02", "qty": 10}]}
-    assert client.post("/api/customers/C002/quotes", json=body, headers=auth("U01")).status_code == 404
+    assert client.post("/api/customers/C002/quotes", json=body, headers=auth("U01")).status_code == 201
 
 
-def test_sales_figures_stop_at_the_region(engine):
+def test_sales_figures_are_shared_company_wide(engine):
     sql = "SELECT count(DISTINCT customer_id) FROM v_customer_summary"
     assert run_readonly(engine, sql).rows == [[253]]
-    # U01 在 REGION 層級看得到整個北區（他的 53 家加 U02 的 50 家），不只自己的
-    assert run_readonly(engine, sql, Scope(path="TW.N.M01.U01")).rows == [[103]]
-    assert run_readonly(engine, sql, Scope(path="TW.N.M01")).rows == [[103]]
-    assert run_readonly(engine, sql, Scope(path="TW.C.M02.U03")).rows == [[50]]
+    assert run_readonly(engine, sql, Scope(path="TW.N.M01.U01")).rows == [[253]]
+    assert run_readonly(engine, sql, Scope(path="TW.N.M01")).rows == [[253]]
+    assert run_readonly(engine, sql, Scope(path="TW.C.M02.U03")).rows == [[253]]
     for view in ("v_monthly_sales", "v_margin_breakdown"):
-        # 北區 103 家全部都有交易，所以是剛好 103；寫 <= 103 的話少過濾到一區以外的幾家也測不出來
         rows = run_readonly(engine, f"SELECT count(DISTINCT customer_id) FROM {view}", Scope(path="TW.N.M01.U01")).rows
-        assert rows[0][0] == 103
+        assert rows[0][0] == 253
 
 
 def test_the_sql_views_declare_the_same_depths_as_python():
@@ -153,7 +146,7 @@ def test_the_sql_views_declare_the_same_depths_as_python():
     # app_in_scope 的函式定義與 GRANT 在第一個 View 之前、參數也不是 <別名>.org_path，不會被抓進來
     blocks = re.split(r"CREATE(?: OR REPLACE)? VIEW (\w+) AS", sql)[1:]
     declared = {
-        name: [int(depth) for depth in re.findall(r"app_in_scope\(\s*\w+\.org_path\s*,\s*(\d+)\s*\)", body)]
+        name: [int(depth) for depth in re.findall(r"app_in_scope\(\s*(?:\w+\.org_path|\x27TW\x27::ltree)\s*,\s*(\d+)\s*\)", body)]
         for name, body in zip(blocks[::2], blocks[1::2], strict=True)
     }
     # 每個 View 一個過濾條件。少了哪個 View、多了新的 View、或深度跟 Python 對不上，都在這裡爆
@@ -169,11 +162,10 @@ def test_the_sql_views_declare_the_same_depths_as_python():
     }
 
 
-def test_visit_records_stop_at_the_team(engine):
+def test_confirmed_visit_records_are_shared_company_wide(engine):
     sql = "SELECT count(DISTINCT rep_id) FROM v_visit_signal"
-    # 同一個團隊（U01 與 U02）看得到彼此的拜訪，看不到別區的
-    assert run_readonly(engine, sql, Scope(path="TW.N.M01.U01")).rows == [[2]]
-    assert run_readonly(engine, sql, Scope(path="TW.C.M02.U03")).rows == [[1]]
+    assert run_readonly(engine, sql, Scope(path="TW.N.M01.U01")).rows == [[5]]
+    assert run_readonly(engine, sql, Scope(path="TW.C.M02.U03")).rows == [[5]]
 
 
 def test_the_model_cannot_lift_the_filter(engine):
@@ -187,16 +179,15 @@ def test_the_model_cannot_lift_the_filter(engine):
         run_readonly(engine, sneaky, scope)
 
 
-def test_customers_named_in_an_answer_are_limited_to_the_asker(engine):
+def test_all_named_customers_can_be_added_to_the_askers_route(engine):
     record = AskRecord(
         id="scope-test", user_id="U01", kind="data", question="北區保健品為什麼下滑",
         answer="衰退集中在康泰忠孝店與康泰連鎖藥局 · 南京店，其次是福安板橋店。", status="answered",
     )
     with Session(engine) as session:
         u01, u02 = session.get(AppUser, "U01"), session.get(AppUser, "U02")
-        # 南京店是王冠宇的，林昱辰的答案裡提到也不能排進他的路線
-        assert [c.name for c in mentioned_customers(session, record, u01)] == ["康泰連鎖藥局 · 忠孝店", "福安連鎖藥局 · 板橋店"]
-        assert [c.name for c in mentioned_customers(session, record, u02)] == ["康泰連鎖藥局 · 南京店"]
+        assert [c.name for c in mentioned_customers(session, record, u01)] == ["康泰連鎖藥局 · 忠孝店", "康泰連鎖藥局 · 南京店", "福安連鎖藥局 · 板橋店"]
+        assert [c.name for c in mentioned_customers(session, record, u02)] == ["康泰連鎖藥局 · 忠孝店", "康泰連鎖藥局 · 南京店", "福安連鎖藥局 · 板橋店"]
         record.kind = "knowledge"
         assert mentioned_customers(session, record, u01) == []
 
@@ -246,7 +237,7 @@ def test_a_scope_with_no_path_denies_everyone_instead_of_allowing_everyone():
     assert lost.can_see(SELF, None) is False
 
 
-def test_a_scope_with_no_path_sees_no_customers_through_the_orm(engine):
+def test_a_scope_with_no_path_sees_shared_customers_through_the_orm(engine):
     from sqlalchemy import select
     from sqlalchemy.orm import Session as OrmSession
 
@@ -256,15 +247,15 @@ def test_a_scope_with_no_path_sees_no_customers_through_the_orm(engine):
     lost = Scope(path=None)
     with OrmSession(engine) as session:
         rows = session.execute(select(Customer.id).where(lost.customers_at(SELF))).all()
-    assert rows == []
+    assert len(rows) == 253
 
 
-def test_a_scope_with_no_path_sees_no_rows_in_the_semantic_layer(engine):
+def test_a_scope_with_no_path_sees_shared_business_rows_in_the_semantic_layer(engine):
     from app.services.scope import Scope
 
     lost = Scope(path=None)
     sql = "SELECT count(DISTINCT customer_id) FROM v_customer_summary"
-    assert run_readonly(engine, sql, lost).rows == [[0]]
+    assert run_readonly(engine, sql, lost).rows == [[253]]
 
 
 def test_a_fifth_level_in_the_org_tree_is_refused_instead_of_leaking_upward():

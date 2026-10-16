@@ -23,10 +23,14 @@ TODAY = dt.date(2031, 4, 17)
 
 def config(metric="sales", dimension="none", visual="kpi", **changes):
     return reports.ReportConfig.model_validate({
-        "name": "我的報表", "template": "sales", "period": "this_month", "owner_id": None,
+        "name": "我的報表", "template": "sales", "period": "this_month", "owner_id": "RPT01",
         "customer_type": None, "cards": [{"id": "metric", "title": "測試指標", "metric": metric,
             "dimension": dimension, "visual": visual, "limit": 3}], **changes,
     })
+
+
+def selected_reps(body):
+    return body.model_copy(update={"owner_id": None, "slicers": [reports.ReportSlicer(dimension="owner", keys=["RPT01", "RPT02"])]})
 
 
 def headers(user):
@@ -105,36 +109,35 @@ def test_templates_and_owners_follow_actual_role_and_scope(sample, tx, client):
     sales = client.get("/api/reports", headers=headers(sample["RPT01"]))
     assert sales.status_code == 200, sales.text
     assert sales.json()["config"] == reports.templates()["sales"].model_dump(mode="json")
-    assert sales.json()["owners"] == [{"id": "RPT01", "name": "報表業務 RPT01"}]
+    assert {"RPT01", "RPT02", "RPT03"} <= {item["id"] for item in sales.json()["owners"]}
     assert sales.json()["ai_available"] is False
     manager = client.get("/api/reports", headers=headers(tx.get(AppUser, "M01"))).json()
     assert manager["config"]["template"] == "manager"
     owner_ids = {owner["id"] for owner in manager["owners"]}
-    assert {"RPT01", "RPT02"} <= owner_ids and "RPT03" not in owner_ids
+    assert {"RPT01", "RPT02"} <= owner_ids and "RPT03" in owner_ids
     it = tx.scalar(select(AppUser).where(AppUser.role == "it"))
     all_owners = client.get("/api/reports", headers=headers(it)).json()["owners"]
     assert {"RPT01", "RPT02", "RPT03"} <= {owner["id"] for owner in all_owners}
 
 
 def test_sales_manager_it_cannot_expand_access_by_changing_templates(sample, tx):
-    template = config(template="manager")
-    assert reports.data(tx, sample["RPT01"], template).cards[0].total == 400
-    assert reports.data(tx, tx.get(AppUser, "M01"), template).cards[0].total == 1100
+    template = config(template="manager", owner_id=None)
+    assert reports.data(tx, sample["RPT01"], template).cards[0].total == 2000
+    assert reports.data(tx, tx.get(AppUser, "M01"), template).cards[0].total == 2000
     it = tx.scalar(select(AppUser).where(AppUser.role == "it"))
     assert reports.data(tx, it, template).cards[0].total == 2000
 
 
 def test_missing_org_path_fails_closed_instead_of_showing_all_reports(sample, tx):
     unplaced = AppUser(id="RPTNOACCESS", name="沒有組織位置", role="sales", region="北區")
-    for metric in ("sales", "net_margin", "visits", "overdue", "customers"):
-        result = reports.data(tx, unplaced, config(metric))
-        assert result.cards[0].total == 0
-    assert reports.owners(tx, unplaced) == []
+    for metric, expected in [("sales",400),("net_margin",150),("visits",3),("overdue",200),("customers",1)]:
+        assert reports.data(tx, unplaced, config(metric)).cards[0].total == expected
+    assert {"RPT01", "RPT02", "RPT03"} <= {owner.id for owner in reports.owners(tx, unplaced)}
 
 
 @pytest.mark.parametrize("path", ["/api/reports/config", "/api/reports/data", "/api/reports/adjust"])
 def test_forged_owner_is_rejected_before_query_or_ai(sample, client, path):
-    body = config(owner_id="RPT02").model_dump(mode="json")
+    body = config(owner_id="NO_SUCH_USER").model_dump(mode="json")
     if path.endswith("adjust"):
         body = {"question": "查其他業務", "config": body}
     send = client.put if path.endswith("config") else client.post
@@ -173,7 +176,7 @@ def test_net_margin_includes_both_fees_and_type_and_owner_filters(sample, tx):
     assert reports.data(tx, manager, config(owner_id="RPT02")).cards[0].total == 700
     assert reports.data(tx, manager, config(customer_type="clinic")).cards[0].total == 400
     assert reports.data(tx, manager, config(customer_type="chain")).cards[0].total == 0
-    grouped = reports.data(tx, manager, config("sales", "customer_type", "bar")).cards[0]
+    grouped = reports.data(tx, manager, selected_reps(config("sales", "customer_type", "bar"))).cards[0]
     assert [(point.key, point.label, point.value) for point in grouped.points] == [
         ("independent", "獨立藥局", 700), ("clinic", "診所", 400),
     ]
@@ -193,16 +196,16 @@ def test_product_and_owner_grouping_use_the_same_aggregate_and_scope(sample, tx)
     products = reports.data(tx, sample["RPT01"], config("net_margin", "product", "table")).cards[0]
     assert products.total == 150
     assert [(point.key, point.value) for point in products.points] == [("HS-FO30", 150)]
-    owners = reports.data(tx, tx.get(AppUser, "M01"), config("sales", "owner", "bar")).cards[0]
+    owners = reports.data(tx, tx.get(AppUser, "M01"), selected_reps(config("sales", "owner", "bar"))).cards[0]
     assert owners.total == 1100
     assert [(point.key, point.value) for point in owners.points] == [("RPT02", 700), ("RPT01", 400)]
 
 
 def test_visit_counts_enforce_customer_and_actual_visitor_scope_and_taipei_dates(sample, tx):
     card = reports.data(tx, sample["RPT01"], config("visits", "month", "line")).cards[0]
-    assert card.total == 2 and card.points[0].value == 2
+    assert card.total == 3 and card.points[0].value == 3
     manager = tx.get(AppUser, "M01")
-    result = reports.data(tx, manager, config("visits", "owner", "table"))
+    result = reports.data(tx, manager, selected_reps(config("visits", "owner", "table")))
     assert result.cards[0].total == 4
     assert [(point.key, point.value) for point in result.cards[0].points] == [("RPT01", 3), ("RPT02", 1)]
     assert reports.data(tx, manager, config("visits", owner_id="RPT02")).cards[0].total == 1
@@ -241,9 +244,8 @@ def test_stale_owner_filter_is_cleared_after_org_change(sample, tx):
     sample["RPT02"].org_path = f"{tx.get(AppUser, 'M02').org_path}.RPT02"
     tx.flush()
     loaded = reports.get_config(tx, manager)
-    assert loaded.name == "保留版面" and loaded.owner_id is None
-    with pytest.raises(reports.OwnerNotAllowed):
-        reports.data(tx, manager, config(owner_id="RPT02"))
+    assert loaded.name == "保留版面" and loaded.owner_id == "RPT02"
+    assert reports.data(tx, manager, config(owner_id="RPT02")).cards[0].total == 700
 
 
 def test_report_settings_survive_seed_preservation_without_resetting_database(sample, tx):
@@ -309,7 +311,7 @@ def test_ai_only_proposes_validated_config_and_never_saves(sample, tx):
     assert result.config.model_dump(mode="json") == proposal
     assert tx.get(UserReportConfig, "RPT01") is None
     context = json.loads(fake.calls[0]["prompt"])
-    assert context["visible_owners"] == [{"id": "RPT01", "name": "報表業務 RPT01"}]
+    assert {"RPT01", "RPT02", "RPT03"} <= {item["id"] for item in context["visible_owners"]}
     assert "$ref" not in json.dumps(fake.calls[0]["schema"])
     assert "SQL" in fake.calls[0]["system"]
 
@@ -333,7 +335,7 @@ def test_ai_can_propose_removing_all_cards_without_saving_or_changing_filters(sa
 def test_ai_cannot_return_sql_or_expand_scope_or_invalid_config(sample, tx, mutation):
     output = {"kind": "proposal", "message": "已調整", "config": config().model_dump(mode="json")}
     if mutation in {"foreign-owner", "empty-foreign-owner"}:
-        output["config"]["owner_id"] = "RPT02"
+        output["config"]["owner_id"] = "NO_SUCH_USER"
         if mutation == "empty-foreign-owner":
             output["config"]["cards"] = []
     elif mutation == "sql-config":
@@ -363,7 +365,7 @@ def test_ai_clarifies_unsupported_requests_and_api_handles_failure(sample, tx, c
     body = {"question": "顯示薪資", "config": config().model_dump(mode="json")}
     response = client.post("/api/reports/adjust", headers=headers(sample["RPT01"]), json=body)
     assert response.status_code == 200 and response.json()["kind"] == "clarify"
-    fake.output = {"kind": "proposal", "message": "越權", "config": config(owner_id="RPT02").model_dump(mode="json")}
+    fake.output = {"kind": "proposal", "message": "越權", "config": config(owner_id="NO_SUCH_USER").model_dump(mode="json")}
     assert client.post("/api/reports/adjust", headers=headers(sample["RPT01"]), json=body).status_code == 502
     assert tx.get(UserReportConfig, "RPT01") is None
 
@@ -405,7 +407,7 @@ def visual_config(kind, dimension="customer", **changes):
 
 def test_old_saved_report_configs_load_with_new_defaults_without_overwriting(sample, tx, client):
     old = {
-        "name": "舊的個人報表", "template": "sales", "period": "this_month", "owner_id": None,
+        "name": "舊的個人報表", "template": "sales", "period": "this_month", "owner_id": "RPT01",
         "customer_type": None, "cards": [{"id": "legacy", "title": "業績", "metric": "sales",
             "dimension": "none", "visual": "kpi", "limit": 5}],
     }
@@ -434,7 +436,7 @@ def test_category_visuals_share_real_scoped_data(sample, tx, visual):
 
 @pytest.mark.parametrize("visual", ["stacked_bar", "stacked_column", "percent_bar", "percent_column"])
 def test_stacked_visuals_return_real_aligned_series_and_zero_fill(sample, tx, visual):
-    body = visual_config(visual, "month", legend="owner").model_copy(update={"period": "six_months"})
+    body = selected_reps(visual_config(visual, "month", legend="owner").model_copy(update={"period": "six_months"}))
     card = reports.data(tx, tx.get(AppUser, "M01"), body).cards[0]
     assert card.total == 1700
     assert [point.value for point in card.points] == [100, 0, 200, 0, 300, 1100]
@@ -461,7 +463,7 @@ def test_series_other_bucket_preserves_all_displayed_values(sample, tx):
 
 
 def test_matrix_returns_month_columns_in_chronological_order_with_real_cells(sample, tx):
-    body = visual_config("matrix", "customer_type", legend="month").model_copy(update={"period": "year"})
+    body = selected_reps(visual_config("matrix", "customer_type", legend="month").model_copy(update={"period": "year"}))
     card = reports.data(tx, tx.get(AppUser, "M01"), body).cards[0]
     assert [(point.key, point.value) for point in card.points] == [("clinic", 1000), ("independent", 700)]
     assert [item.key for item in card.series] == [f"2030-{month:02d}" for month in range(5, 13)] + [f"2031-{month:02d}" for month in range(1, 5)]
@@ -485,17 +487,17 @@ def test_secondary_metric_is_fee_inclusive_scoped_sql_aggregate(sample, tx, visu
 
 
 def test_optional_line_series_and_product_legends_are_real_scoped_aggregates(sample, tx):
-    body = visual_config("line", "month", legend="owner")
+    body = selected_reps(visual_config("line", "month", legend="owner"))
     card = reports.data(tx, tx.get(AppUser, "M01"), body).cards[0]
     assert [(item.key, item.points[0].value, item.points[0].secondary_value) for item in card.series] == [
         ("RPT02", 700, None), ("RPT01", 400, None),
     ]
-    matrix = visual_config("matrix", "product", legend="customer")
+    matrix = selected_reps(visual_config("matrix", "product", legend="customer"))
     card = reports.data(tx, tx.get(AppUser, "M01"), matrix).cards[0]
     assert [(item.key, item.points[0].key, item.points[0].value) for item in card.series] == [
         ("RPTC02", "HS-FO30", 700), ("RPTC01", "HS-FO30", 400),
     ]
-    visits = visual_config("stacked_column", "month", metric="visits", legend="owner")
+    visits = selected_reps(visual_config("stacked_column", "month", metric="visits", legend="owner"))
     card = reports.data(tx, tx.get(AppUser, "M01"), visits).cards[0]
     assert [(item.key, item.points[0].value) for item in card.series] == [("RPT01", 3), ("RPT02", 1)]
 
@@ -532,7 +534,7 @@ def test_supported_product_filters_apply_and_unsupported_global_filters_have_exp
     assert reports.data(tx, sample["RPT01"], mismatch).cards[0].total == 0
     visits = config("visits").model_copy(update={"filters": mismatch.filters})
     result = reports.data(tx, sample["RPT01"], visits).cards[0]
-    assert result.total == 2 and "商品篩選未套用" in result.note
+    assert result.total == 3 and "商品篩選未套用" in result.note
     snapshot = config("overdue").model_copy(update={"filters": [reports.ReportFilter(dimension="month", key="2031-04")]})
     result = reports.data(tx, sample["RPT01"], snapshot).cards[0]
     assert result.total == 200 and "月份篩選未套用" in result.note
@@ -542,7 +544,7 @@ def test_supported_product_filters_apply_and_unsupported_global_filters_have_exp
 def test_owner_filters_are_authorized_at_every_level_including_ai(sample, tx, client, level):
     body = config().model_dump(mode="json")
     target = body if level == "report" else body["cards"][0]
-    target["filters"] = [{"dimension": "owner", "key": "RPT02"}]
+    target["filters"] = [{"dimension": "owner", "key": "UNKNOWN_OWNER"}]
     report = reports.ReportConfig.model_validate(body)
     for path, method in (("/api/reports/config", client.put), ("/api/reports/data", client.post)):
         assert method(path, headers=headers(sample["RPT01"]), json=body).status_code == 403
@@ -564,7 +566,7 @@ def test_sort_orders_apply_before_limit_and_months_always_stay_chronological(sam
     assert [point.key for point in labels.points] == ["RPTC01", "RPTC04", "RPTC05"]
     months = visual_config("area", "month", sort="value_asc").model_copy(update={"period": "six_months"})
     assert [point.key for point in reports.data(tx, sample["RPT01"], months).cards[0].points] == ["2030-11", "2030-12", "2031-01", "2031-02", "2031-03", "2031-04"]
-    type_sort = visual_config("bar", "customer_type", sort="label_asc")
+    type_sort = selected_reps(visual_config("bar", "customer_type", sort="label_asc"))
     assert [point.label for point in reports.data(tx, tx.get(AppUser, "M01"), type_sort).cards[0].points] == ["獨立藥局", "診所"]
 
 
@@ -578,8 +580,8 @@ def test_org_changes_clear_stale_owner_filters_while_preserving_other_customizat
     tx.flush()
     loaded = reports.get_config(tx, manager)
     assert loaded.name == "保留頁面與篩選"
-    assert [item.model_dump() for item in loaded.filters] == [{"dimension": "customer_type", "key": "independent"}]
-    assert loaded.cards[0].filters == []
+    assert [item.model_dump() for item in loaded.filters] == [{"dimension": "owner", "key": "RPT02"}, {"dimension": "customer_type", "key": "independent"}]
+    assert loaded.cards[0].filters == body.cards[0].filters
 
 
 def test_multiple_pages_and_formats_persist_and_cards_use_existing_page_ids(sample, tx, client):

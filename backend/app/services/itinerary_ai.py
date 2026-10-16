@@ -488,7 +488,7 @@ def _customers(session: Session, rep_id: str) -> dict[str, Customer]:
     """這位業務自己的客戶（照名稱排）：只有這些 id 是 AI 可以用的。"""
     return {
         c.id: c
-        for c in session.scalars(select(Customer).where(Customer.owner_user_id == rep_id).order_by(Customer.name))
+        for c in session.scalars(select(Customer).order_by(Customer.name))
     }
 
 

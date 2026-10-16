@@ -358,7 +358,6 @@ function OrderEditor({ initial }: { initial: OrderDetail }) {
               draft.shipping_date,
             ],
             ["狀態", <OrderBadge status={order.status} />],
-            ["負責業務", `${order.owner_name} · ${order.owner_id}`],
           ].map(([label, value]) => (
             <div key={String(label)} className="min-w-0">
               <dt className="text-xs text-muted-foreground">{label}</dt>
@@ -813,7 +812,7 @@ function OrderEditor({ initial }: { initial: OrderDetail }) {
                 )}
                 {customers?.map((customer) => (
                   <option key={customer.id} value={customer.id}>
-                    {customer.name}
+                    {customer.name} · {customer.address || `${customer.city || customer.region}${customer.area || ""}`}
                   </option>
                 ))}
               </select>

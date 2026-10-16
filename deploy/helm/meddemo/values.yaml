@@ -17,6 +17,10 @@ db:
 redis:
   image: redis:8.10.1-alpine
 
+elasticsearch:
+  enabled: true
+  image: docker.elastic.co/elasticsearch/elasticsearch:9.5.5
+
 # 程式參數（用哪家服務、哪個模型）：改這裡、commit、推 main 就會部署生效，跟 CARE-infra 的 values.yaml 一樣。
 # 這裡寫什麼鍵，ConfigMap 就產生同名的環境變數，新增參數不必改模板。留空＝用程式裡的預設值。
 # 金鑰不放這裡，放 GitHub Secrets（見下面的 secrets）。

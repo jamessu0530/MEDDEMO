@@ -315,7 +315,7 @@ def test_it_can_hand_one_customer_to_another_rep(tx, client, auth):
     assert chart["log"][0]["detail"].endswith("的負責人從王冠宇改成黃怡君")
     assert client.get("/api/customers/C002", headers=auth("U03")).json()["owner_id"] == "U03"
     assert client.get("/api/customers/C002/profile", headers=auth("U03")).status_code == 200
-    assert client.get("/api/customers/C002/profile", headers=auth("U02")).status_code == 404
+    assert client.get("/api/customers/C002/profile", headers=auth("U02")).status_code == 200
 
 
 # 組織一改，誰看得到哪些頻道可能就變了：每個改組織的操作都發 channels 事件，

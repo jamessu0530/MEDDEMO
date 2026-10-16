@@ -9,8 +9,11 @@ from app.services import reports
 
 
 def config(**patch):
+    slicers = patch.get("slicers", [])
+    if not any(item["dimension"] == "owner" for item in slicers):
+        patch["slicers"] = [{"dimension": "owner", "keys": ["S1", "S2"]}, *slicers]
     return reports.ReportConfig.model_validate({
-        "name": "版面驗收", "template": "manager", "period": "this_month",
+        "slicers": [{"dimension": "owner", "keys": ["S1", "S2"]}], "name": "版面驗收", "template": "manager", "period": "this_month",
         "pages": [{"id": "overview", "name": "總覽", "desktop_layout": "free"}],
         "cards": [{"id": "sales", "title": "業績", "metric": "sales", "dimension": "owner", "visual": "bar", **patch}],
     })
@@ -65,6 +68,6 @@ def test_layout_persists_through_api_and_hidden_cards_keep_data_and_scope(intera
     assert actual == expected
     sales_headers = {"Authorization": f"Bearer {auth.create_token(interaction_session.get(AppUser, 'S1'))}"}
     own = client.post("/api/reports/data", headers=sales_headers, json=body.model_dump(mode="json"))
-    assert own.json()["cards"][0]["total"] == 650
-    body.owner_id = "S3"
+    assert own.json()["cards"][0]["total"] == 1350
+    body.owner_id = "UNKNOWN_OWNER"
     assert client.post("/api/reports/data", headers=sales_headers, json=body.model_dump(mode="json")).status_code == 403

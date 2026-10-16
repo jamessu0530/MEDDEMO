@@ -66,7 +66,7 @@ def test_the_prompt_has_the_route_the_customers_and_the_habits(tx):
     other = mine_not_on_route(tx, ids)
     assert f"{other.name}：{other.id}" in prompt
     theirs = tx.scalars(select(Customer).where(Customer.owner_user_id == "U02")).first()
-    assert theirs.id not in prompt
+    assert theirs.id in prompt
     assert (proposal.result["kind"], proposal.result["text"]) == ("answer", "因為帳款逾期最久。")
     assert proposal.question == "為什麼第一站排這家？" and proposal.base_version == itinerary.version
 
@@ -102,9 +102,9 @@ def test_adding_and_removing_stops(tx):
     assert stops[other.id].source == "ai" and ids[3] not in stops
 
 
-def test_other_reps_customers_are_not_found(tx):
+def test_nonexistent_customers_are_not_found(tx):
     _, ids, _ = route(tx)
-    theirs = tx.scalars(select(Customer.id).where(Customer.owner_user_id == "U02")).first()
+    theirs = "NO_SUCH_CUSTOMER"
     proposal = ask(tx, {"op": "add", "customer_id": theirs}, {"op": "remove", "customer_id": "德安"})
     result = proposal.result
     assert result["notes"] == [f"找不到『{theirs}』", "找不到『德安』"]
@@ -182,7 +182,7 @@ def test_rules_that_cannot_be_kept_are_named_and_cannot_be_applied(tx):
 def test_adding_and_disabling_habits(tx):
     itinerary, ids, names = route(tx)
     old = route_habits.create(tx, "U01", route_habits.HabitSpec("last", {"by": "customer", "value": ids[1]}), "manual")
-    theirs = tx.scalars(select(Customer.id).where(Customer.owner_user_id == "U02")).first()
+    theirs = "NO_SUCH_CUSTOMER"
     proposal = ask(
         tx,
         {"op": "add_habit", "habit": {"kind": "first", "subject": {"by": "area", "value": "板橋"}, "weekday": 0}},
@@ -192,7 +192,7 @@ def test_adding_and_disabling_habits(tx):
     )
     result = proposal.result
     assert result["habits_added"] == ["星期一先跑板橋"] and result["habits_disabled"] == [old.text]
-    assert result["notes"] == ["記不起來這條習慣：找不到這個對象，只能選自己的客戶", "找不到『習慣 999999』"]
+    assert result["notes"] == ["記不起來這條習慣：找不到這個客戶或地區", "找不到『習慣 999999』"]
     itinerary_ai.apply(tx, "U01", proposal.id)
     habits = {h.text: h for h in route_habits.mine(tx, "U01")}
     assert habits["星期一先跑板橋"].source == "ai" and not habits[old.text].active
@@ -228,6 +228,7 @@ def test_an_ambiguous_name_asks_which_one(tx):
     assert result["kind"] == "ask_which" and result["mention"] == "康泰"
     assert result["candidates"] == [
         {"customer_id": ids[1], "customer_name": names[ids[1]]}, {"customer_id": ids[2], "customer_name": names[ids[2]]},
+        {"customer_id": theirs, "customer_name": tx.get(Customer, theirs).name},
     ]
 
 
@@ -254,11 +255,10 @@ def test_applying_after_the_customer_changed_owner(tx):
     before_version = itinerary.version
     tx.get(Customer, ids[3]).owner_user_id = "U02"
     tx.flush()
-    with pytest.raises(service.VersionConflict):
-        itinerary_ai.apply(tx, "U01", proposal.id)
+    itinerary_ai.apply(tx, "U01", proposal.id)
     view = service.view(tx, itinerary)
     stops = {s.customer_id for s in view.stops}
-    assert ids[3] in stops and view.version == before_version
+    assert ids[3] not in stops and view.version == before_version + 1
 
 
 def test_applying_after_a_stop_was_confirmed_as_done(tx):

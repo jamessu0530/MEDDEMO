@@ -5,7 +5,7 @@ from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import Date, case, cast, func, select, text
 from sqlalchemy.exc import IntegrityError
@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.api.auth import CurrentUser
 from app.api.methods import MethodCardOut
 from app.db import get_session
-from app.models import AppUser, Customer, Product, SalesTransaction, SapQuotationDraft, Visit
+from app.models import AppUser, Customer, PublicOutlet, Product, SalesTransaction, SapQuotationDraft, Visit
 from app.pricing import supply_price
 from app.services import approvals, customer_profile, last_order, negotiation, orders, promo_packs, writeback
 from app.services.scope import SHARING_LEVEL, Scope
@@ -28,10 +28,17 @@ class CustomerItem(BaseModel):
     name: str
     type: str
     region: str
-    grade: str
+    grade: str | None
     # 負責業務。IT 在客戶檔案頁換負責人時，要知道現在是誰
-    owner_id: str
-    owner_name: str
+    owner_id: str | None
+    owner_name: str | None
+    city: str = ""
+    area: str = ""
+    phone: str | None = None
+    address: str | None = None
+    source_url: str | None = None
+    retrieved_on: date | None = None
+    review_notes: list[str] = Field(default_factory=list)
     last_visit_date: date | None
 
 
@@ -216,21 +223,20 @@ def _customer_query(scope: Scope):
         select(
             Customer.id, Customer.name, Customer.type, Customer.region, Customer.grade,
             Customer.owner_user_id.label("owner_id"), AppUser.name.label("owner_name"),
+            Customer.city, Customer.area, PublicOutlet.phone, PublicOutlet.address, PublicOutlet.source_url, PublicOutlet.retrieved_on,
+            func.coalesce(PublicOutlet.review_notes, text("'[]'::jsonb")).label("review_notes"),
             visible_last_visit.label("last_visit_date"),
         )
-        .join(AppUser, AppUser.id == Customer.owner_user_id)
+        .outerjoin(AppUser, AppUser.id == Customer.owner_user_id)
+        .outerjoin(PublicOutlet, PublicOutlet.customer_id == Customer.id)
         .outerjoin(Visit, (Visit.customer_id == Customer.id) & Visit.status.in_(("confirmed", "synced")))
-        .group_by(Customer.id, AppUser.name)
+        .group_by(Customer.id, AppUser.name, PublicOutlet.customer_id)
         .order_by(Customer.id)
     )
 
 
 def _load(session: Session, customer_id: str, user: AppUser, level: int) -> tuple[Customer, CustomerItem]:
-    """看不到的客戶跟不存在一樣回 404，不透露這個編號是別人的客戶。
-
-    level 是這次要求的資料屬於哪一種共享層級，由呼叫端從 SHARING_LEVEL 取（services/scope.py）：
-    客戶本身全公司共用，檔案、議價卡與報價是負責人自己的。
-    """
+    """載入全員共用客戶與目前業務摘要；不存在的編號回 404。"""
     scope = Scope.for_user(user)
     row = session.execute(
         _customer_query(scope).where(Customer.id == customer_id, scope.customers_at(level))
@@ -241,12 +247,16 @@ def _load(session: Session, customer_id: str, user: AppUser, level: int) -> tupl
 
 
 @router.get("", response_model=list[CustomerItem])
-def list_customers(session: SessionDep, user: CurrentUser, q: str | None = None):
+def list_customers(session: SessionDep, user: CurrentUser, q: str = Query(default="", max_length=100)):
     """業務開始口述前先選客戶；q 以客戶名稱做部分比對。客戶清單全國共享（services/scope.py）。"""
     scope = Scope.for_user(user)
     stmt = _customer_query(scope).where(scope.customers_at(SHARING_LEVEL["customer_basic"]))
     if q:
-        stmt = stmt.where(Customer.name.contains(q, autoescape=True))
+        from app.services.outlet_search import customer_matches
+        ids = customer_matches(session, q)
+        stmt = stmt.where(Customer.id.in_(ids))
+        if ids:
+            stmt = stmt.order_by(None).order_by(case({key: i for i, key in enumerate(ids)}, value=Customer.id), Customer.id)
     return [CustomerItem(**row._mapping) for row in session.execute(stmt)]
 
 
@@ -652,7 +662,7 @@ def create_quote(session: SessionDep, customer_id: str, body: QuoteInput, user: 
                 form = approvals.submit(
                     session, kind="discount", customer=customer,
                     # 申請人記客戶的負責人，跟出差單一樣：自建帳號、主管代開的單都在負責人的申請匣裡
-                    applicant=session.get(AppUser, customer.owner_user_id),
+                    applicant=user.acts_as or user,
                     payload={
                         "quote_no": quote_no, "discount_pct": body.discount_pct,
                         "list_amount": sum(supply[line.sku] * line.qty for line in plain), "amount": discounted_amount,
@@ -696,7 +706,10 @@ def place_order(session: SessionDep, customer_id: str, quote_no: str, user: Curr
     # 跟開報價一樣受模擬系統開關影響：展示「SAP 停機」時成交也寫不進去
     if writeback.is_mock_down("sap"):
         raise HTTPException(503, "SAP 暫時連不上，沒有成交，請稍後再試")
-    placed = orders.place(session, customer, quote_no)
+    try:
+        placed = orders.place(session, customer, quote_no)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
     if placed is None:
         exists = session.scalar(
             select(func.count()).select_from(SapQuotationDraft)
@@ -786,7 +799,7 @@ def create_contract_request(session: SessionDep, customer_id: str, body: Contrac
         raise HTTPException(422, "費率有調整要送業務處長，請寫申請理由")
     _oa_must_be_up("續約申請沒有送出")
     form = approvals.submit(
-        session, kind="contract", customer=customer, applicant=session.get(AppUser, customer.owner_user_id), payload=payload,
+        session, kind="contract", customer=customer, applicant=user.acts_as or user, payload=payload,
     )
     session.commit()
     return approvals.approval_out(session, form)

@@ -18,7 +18,6 @@ import { CustomerStorefront } from "@/components/customer-storefront"
 import { NextNotes } from "@/components/next-notes"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
-import { ReassignOwner } from "@/components/reassign-owner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -166,8 +165,14 @@ export function CustomerPage() {
       {flash && <p className="rounded-xl bg-primary/10 px-3 py-2 text-sm text-primary">{flash}</p>}
       {notice && <p className="rounded-xl bg-primary/10 px-3 py-2 text-sm text-primary">{notice}</p>}
       {threadError && <p className="rounded-xl bg-destructive/10 px-3 py-2 text-sm text-destructive">{threadError}</p>}
-      {/* IT 可以把這家交給別的業務；換完重新載入，負責人就是新的那位 */}
-      {user?.role === "it" && <ReassignOwner customer={customer} onDone={() => setAttempt((n) => n + 1)} />}
+      {customer.source_url && <section className="rounded-xl border bg-card p-4 text-sm">
+        <h2 className="font-semibold">公開通路資料</h2>
+        <p className="mt-2">{customer.address}</p>
+        <p className="mt-1">電話：{customer.phone || "來源未提供"}</p>
+        <p className="mt-2 text-xs text-muted-foreground">來源查詢日 {customer.retrieved_on}，現行合作與營業狀態待核對。</p>
+        {!!customer.review_notes?.length && <p className="mt-2 text-xs text-amber-700">待核對：{customer.review_notes.join("、")}</p>}
+        <a href={customer.source_url} target="_blank" rel="noreferrer" className="mt-2 inline-block text-primary underline">查看官網來源</a>
+      </section>}
     </>
   )
   const brief = (

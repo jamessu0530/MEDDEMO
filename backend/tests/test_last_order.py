@@ -174,8 +174,8 @@ def test_unchanged_packs_carry_no_warning(client):
     assert [line["pack"]["name"] for line in last["lines"] if line["pack"]] == ["Premium眼藥水(小口)", "骨營膠囊600T(小口)"]
 
 
-def test_someone_elses_customer_is_not_found(client, auth):
-    assert client.get("/api/customers/C001/last-order", headers=auth("U03")).status_code == 404
+def test_anyone_can_read_a_customers_last_order(client, auth):
+    assert client.get("/api/customers/C001/last-order", headers=auth("U03")).status_code == 200
 
 
 def test_a_customer_who_never_ordered_has_no_last_order(tx, auth):

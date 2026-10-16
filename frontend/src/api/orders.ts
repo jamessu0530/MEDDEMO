@@ -4,10 +4,14 @@ export type OrderStatus = "draft" | "effective"
 export type OrderCustomer = {
   id: string
   name: string
-  owner_id: string
-  owner_name: string
-  payment_term: string
+  owner_id: string | null
+  owner_name: string | null
+  payment_term: string | null
   region: string
+  city?: string
+  area?: string
+  address?: string | null
+  phone?: string | null
 }
 export type OrderProduct = {
   sku: string
@@ -51,8 +55,8 @@ export type OrderSummary = {
   shipping_date: string
   updated_at: string | null
   sap_order_no: string | null
-  owner_id: string
-  owner_name: string
+  owner_id: string | null
+  owner_name: string | null
   source: "workspace" | "history"
 }
 export type OrderDetail = OrderSummary &
@@ -95,8 +99,8 @@ export function getOrder(id: string, signal?: AbortSignal) {
     signal,
   })
 }
-export function getOrderCustomers(signal?: AbortSignal) {
-  return request<OrderCustomer[]>("/api/orders/customers", { signal })
+export function getOrderCustomers(signal?: AbortSignal, query = "") {
+  return request<OrderCustomer[]>(`/api/orders/customers${query ? `?q=${encodeURIComponent(query)}` : ""}`, { signal })
 }
 export function getOrderProducts(
   customerId: string,

@@ -55,7 +55,7 @@ class Stop(BaseModel):
     customer_id: str
     customer_name: str
     type: str
-    grade: str
+    grade: str | None
     planned_time: str
     status: str
     signal: str
@@ -479,11 +479,11 @@ def save_today(session: SessionDep, body: SaveInput, user: CurrentUser):
 
 
 @router.get("/today/candidates", response_model=CandidateList)
-def list_candidates(session: SessionDep, user: CurrentUser, order: str | None = None, locked: str = ""):
+def list_candidates(session: SessionDep, user: CurrentUser, order: str | None = None, locked: str = "", q: str = Query(default="", max_length=100)):
     """加一站的候選。order、locked 是調整清單上目前還沒跑的站與鎖住的站（逗號分隔）；沒給 order 就用存著的。"""
     ids = [cid for cid in order.split(",") if cid] if order is not None else None
     try:
-        found = service.candidates(session, _rep_id(user), ids, [cid for cid in locked.split(",") if cid])
+        found = service.candidates(session, _rep_id(user), ids, [cid for cid in locked.split(",") if cid], q.strip())
     except LookupError:
         raise HTTPException(403, NO_ROUTE) from None
     result = CandidateList(

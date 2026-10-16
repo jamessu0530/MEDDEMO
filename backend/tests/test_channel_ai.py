@@ -136,7 +136,7 @@ def test_a_customer_thread_adds_the_basic_customer_profile_only(tx, mascot):
     customer = tx.get(Customer, "C001")
     assert (
         f"這個討論串的客戶：{customer.name}；類型 連鎖藥局；連鎖體系 {customer.chain_group}；"
-        f"縣市 台北市；地點 台北市・大安區；等級 {customer.grade}；負責人 林昱辰"
+        f"縣市 台北市；地點 台北市・大安區；客戶資料全員共用"
     ) in prompt
     # 合約到期日不是 customer_basic 的欄位
     assert customer.contract_end_date is None or customer.contract_end_date.isoformat() not in prompt

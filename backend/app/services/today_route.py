@@ -279,7 +279,7 @@ def labels(session: Session, owner_id: str, customer_ids: list[str]) -> dict[str
     overdue = _overdue_commitments(session, owner_id, today)
     opportunities = _opportunities(session, owner_id, today)
     found = {}
-    for candidate in route_model.candidates(session, today, owner_id=owner_id):
+    for candidate in route_model.candidates(session, today):
         if candidate.customer_id in wanted:
             signal, reason, _ = _label(
                 candidate, today, overdue.get(candidate.customer_id), opportunities.get(candidate.customer_id)
