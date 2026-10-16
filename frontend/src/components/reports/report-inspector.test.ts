@@ -106,12 +106,14 @@ describe("ReportInspector", () => {
     expect(action(html, "往後排列")).not.toContain("disabled=")
   })
 
-  it("每頁 12 張停用複製，最後一張停用刪除", () => {
+  it("每頁 12 張停用複製，最後一張仍可刪除", () => {
     const full = inspector(
       Array.from({ length: 12 }, (_, index) => card(`card-${index}`))
     )
     expect(action(full, "複製圖表")).toContain("disabled=")
     expect(action(full, "刪除圖表")).not.toContain("disabled=")
-    expect(action(inspector([card("only")]), "刪除圖表")).toContain("disabled=")
+    expect(action(inspector([card("only")]), "刪除圖表")).not.toContain(
+      "disabled="
+    )
   })
 })

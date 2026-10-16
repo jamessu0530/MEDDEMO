@@ -31,6 +31,33 @@ def test_reading_legacy_does_not_rewrite_or_create_settings(interaction_session)
     assert interaction_session.get(UserReportConfig, user.id).config == raw
 
 
+def test_empty_canvas_can_be_saved_loaded_validated_copied_and_shared(interaction_session):
+    client, headers = client_for(interaction_session)
+    created = client.post("/api/reports/library", headers=headers, json={"config": config().model_dump(mode="json")}).json()
+    report_id = created["active_report_id"]
+    empty = config(cards=[], slicers=[{"dimension": "owner", "keys": ["S1"]}]).model_dump(mode="json")
+    saved = client.put(f"/api/reports/library/{report_id}", headers=headers, json={"config": empty, "revision": 1})
+    assert saved.status_code == 200 and saved.json()["config"] == empty
+    loaded = client.get("/api/reports", headers=headers)
+    assert loaded.status_code == 200 and loaded.json()["config"] == empty
+    assert client.post("/api/reports/library/validate", headers=headers, json={"config": empty}).json() == empty
+    data = client.post("/api/reports/data", headers=headers, json=empty)
+    assert data.status_code == 200 and data.json()["cards"] == []
+    copied = client.post("/api/reports/library", headers=headers, json={"config": empty, "source_id": report_id})
+    assert copied.status_code == 200 and copied.json()["config"] == empty
+    shared = client.post(f"/api/reports/library/{report_id}/share", headers=headers, json={"recipient_id": "S1", "revision": 2})
+    assert shared.status_code == 200
+    _, recipient = client_for(interaction_session, "S1")
+    received = client.get("/api/reports", headers=recipient).json()
+    # Sharing keeps the recipient's active report; open the delivered report explicitly.
+    shared_id = next(item["id"] for item in received["documents"] if item["readonly"])
+    opened = client.post("/api/reports/library/open", headers=recipient, json={"report_id": shared_id})
+    assert opened.status_code == 200 and opened.json()["config"]["cards"] == []
+    assert opened.json()["readonly"] is True
+    foreign = empty | {"owner_id": "S3"}
+    assert client.put(f"/api/reports/library/{report_id}", headers=headers, json={"config": foreign, "revision": 2}).status_code == 403
+
+
 def test_create_open_copy_save_and_legacy_api_preserve_siblings_and_bookmarks(interaction_session):
     user = interaction_session.get(AppUser, "M1")
     original = config("原始")

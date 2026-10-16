@@ -360,7 +360,7 @@ class ReportConfig(BaseModel):
     refresh_seconds: Literal[0, 60, 300, 900] = 0
     owner_id: str | None = Field(default=None, min_length=1, max_length=64)
     customer_type: CustomerType | None = None
-    cards: list[ReportCard] = Field(min_length=1, max_length=24)
+    cards: list[ReportCard] = Field(max_length=24)
     pages: list[ReportPage] = Field(default_factory=lambda: [ReportPage(id="overview", name="總覽")], min_length=1, max_length=5)
     filters: list[ReportFilter] = Field(default_factory=list, max_length=8)
     slicers: list[ReportSlicer] = Field(default_factory=list, max_length=7)
@@ -1287,7 +1287,8 @@ combo 與 scatter 的主指標、secondary_metric 都必須是 sales、net_margi
 net_margin_rate、order_count、avg_order_value 不能使用堆疊、百分比、圓餅、環圈或矩形樹圖，因為比率、平均與去重數不能直接相加；可用數字卡、比較、趨勢、表格或矩陣。
 五種交易指標可用所有分組；visits 不可用 product；overdue、customers 不可用 year、quarter、month 或 product。
 comparison 預設 none，可選 previous_month 前月同區間或 previous_year 去年同期。日期條件同步往前移一個月／一年，其餘條件相同；月底對齊月底，未完成月按相同日期截止。淨毛利率以百分點差異比較；上期零、負值或沒有符合條件資料時不虛構成長率。快照 customers、overdue 必須 none。
-最多 24 張卡片，至少一張；pages 最多五頁，每頁最多 12 張卡片。頁面 id 與卡片 id 是唯一的小寫英文開頭 slug。卡片 page_id 要指向存在的頁面。title 與 name 最長 40 字。排行 limit 3 到 10。
+報表可以沒有卡片（cards=[]），最多 24 張卡片；pages 至少一頁、最多五頁，每頁最多 12 張卡片。使用者明確要求刪除全部圖表、清空報表或保留空白畫布時，回 kind=proposal，完整 config 的 cards=[]，保留報表名稱、頁面與其餘未要求修改的條件；不必要求保留指標或新增替代圖表。刪除指定圖表也可以刪除最後一張。
+頁面 id 與卡片 id 是唯一的小寫英文開頭 slug。卡片 page_id 要指向存在的頁面。title 與 name 最長 40 字。排行 limit 3 到 10。
 width 可選 half/full；height compact/regular/tall；sort value_desc/value_asc/label_asc（日期始終時間順序）；color 為 # 加六位十六進位碼；show_labels/show_legend 為布林；target 正數不超過一兆，可留 null；淨毛利率的 target 是比例，0.5 代表 50%。
 每頁 desktop_layout 為 flow（舊自動格線）或 free（自由版面）；卡片 desktop_layout 可為 null 或 {x,y,w,h}：畫布寬 24 格，每列 24px，x>=0、x+w<=24、y 0–400、w 4–24、h 8–60，可用小數。卡片 mobile_layout 可為 null 或 {order,width,height,hidden}，order 為 0–23 整數、width half/full、height 8–60 整數（每格 24px）、hidden 為布林。手機版面獨立，隱藏只改呈現，不改資料權限或查詢條件；沒有要求時完整保留兩種版面。
 format 是顯示設定，不改變資料或權限。numbers 為各指標的 {unit,decimals,grouping,show_unit}：unit auto/none/thousand/ten_thousand/million，百分比只能 auto/none；decimals null 或 0 至 6。conditional 為各指標的規則：color_mode none/rules/gradient，color_target background/font，rules 最多八條 {minimum,maximum,color}，下限包含、上限不包含、依序取第一條；gradient 的 minimum/maximum 可為 null（完整最低層分組自動範圍）、low_color/high_color 為六位 hex。data_bars 開關適用表格與矩陣，bar_minimum<=0、bar_maximum>=0、下限小於上限，可為 null；positive_color/negative_color、show_bar_value；apply_totals 預設 false。比率範圍是原始比例，0.5 代表 50%。series_colors 為 {dimension,key,color}，最多 64 組，以可見的分組編號指定顏色，不改條件；metric_colors 指定各指標顏色。axes 有 show_x/show_y/show_secondary/show_grid/show_titles 及 x_title/y_title/secondary_title（最多 60 字）。tooltip 有 show/show_rows/show_share/show_comparison/show_highlight/show_target 布林。沒有要求時保留原本 format。

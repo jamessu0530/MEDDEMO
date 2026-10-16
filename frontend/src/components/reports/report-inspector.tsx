@@ -1024,7 +1024,6 @@ export function ReportInspector({
             <button
               type="button"
               className={cn(ACTION, "text-destructive hover:bg-destructive/5")}
-              disabled={config.cards.length <= 1}
               onClick={onDelete}
             >
               <Trash2 className="size-3.5" aria-hidden="true" />

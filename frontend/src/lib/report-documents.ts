@@ -201,7 +201,6 @@ export function readReportLocalDraft(
       time > now + 60000 ||
       !value.config ||
       !Array.isArray(value.config.cards) ||
-      value.config.cards.length < 1 ||
       value.config.cards.length > 24
     )
       return null

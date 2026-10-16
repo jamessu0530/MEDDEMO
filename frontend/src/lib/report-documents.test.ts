@@ -68,6 +68,24 @@ function draft(): ReportLocalDraft {
 }
 
 describe("報表編輯保護", () => {
+  it("清空圖表後可復原、重做並從本機草稿恢復空白畫布", () => {
+    const original = config()
+    const cleared = editReportDraft(
+      { config: original, history: [], future: [] },
+      { ...original, cards: [] }
+    )
+    expect(cleared.config.cards).toEqual([])
+    expect(undoReportDraft(cleared).config).toEqual(original)
+    expect(redoReportDraft(undoReportDraft(cleared)).config).toEqual(
+      cleared.config
+    )
+    const storage = memory()
+    writeReportLocalDraft(storage, { ...draft(), config: cleared.config })
+    expect(
+      readReportLocalDraft(storage, "M1", "report-default", now)?.config
+    ).toEqual(cleared.config)
+    expect(cleared.config.pages).toEqual(original.pages)
+  })
   it("復原與重做保留順序，新編輯清除重做，沒有變化不新增紀錄", () => {
     const initial: ReportDraftHistory = {
       config: config("A"),
@@ -181,7 +199,7 @@ describe("報表編輯保護", () => {
       { updated_at: "bad" },
       { updated_at: new Date(now + 120000).toISOString() },
       { updated_at: new Date(now - 15 * 86400000).toISOString() },
-      { config: { cards: [] } },
+      { config: { cards: null } },
     ]) {
       storage.setItem(key, JSON.stringify({ ...draft(), ...patch }))
       expect(

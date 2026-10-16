@@ -32,7 +32,8 @@ export function ReportExportDialog({
     cardId ??
       config.cards.find((card) => (card.page_id ?? "overview") === pageId)
         ?.id ??
-      config.cards[0].id
+      config.cards[0]?.id ??
+      ""
   )
   const [selection, setSelection] = useState<"chart" | "selected">("chart")
   const [busy, setBusy] = useState(false)
@@ -41,11 +42,13 @@ export function ReportExportDialog({
   useEffect(() => () => controller.current?.abort(), [])
   const pages = reportPages(config)
   const currentPage = pages.find((page) => page.id === pageId) ?? pages[0]
-  const empty =
-    scope === "page" &&
-    !config.cards.some(
-      (card) => (card.page_id ?? "overview") === currentPage.id
-    )
+  const empty = !config.cards.some(
+    (card) =>
+      scope === "all" ||
+      (scope === "page"
+        ? (card.page_id ?? "overview") === currentPage.id
+        : card.id === selectedCard)
+  )
   const highlight =
     !!config.selection_groups?.length &&
     config.cards.some((card) => card.interaction === "highlight")
@@ -54,6 +57,7 @@ export function ReportExportDialog({
     onClose()
   }
   async function download() {
+    if (busy || empty) return
     const abort = new AbortController()
     controller.current = abort
     setBusy(true)
@@ -159,7 +163,9 @@ export function ReportExportDialog({
               整份報表（{pages.length} 頁、{config.cards.length} 張圖表）
             </option>
             <option value="page">目前分頁：{currentPage.name}</option>
-            <option value="card">單一圖表</option>
+            <option value="card" disabled={!config.cards.length}>
+              單一圖表
+            </option>
           </select>
         </label>
         {scope === "card" && (
@@ -218,7 +224,9 @@ export function ReportExportDialog({
         </div>
         {empty && (
           <p role="alert" className="text-xs text-destructive">
-            目前分頁沒有圖表。
+            {scope === "page"
+              ? "目前分頁沒有圖表。"
+              : "目前沒有可匯出的圖表，新增圖表後即可匯出。"}
           </p>
         )}
         {error && (

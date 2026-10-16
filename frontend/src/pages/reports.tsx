@@ -26,7 +26,6 @@ import {
   Save,
   Settings2,
   SlidersHorizontal,
-  Sparkles,
   Trash2,
   X,
 } from "lucide-react"
@@ -43,6 +42,7 @@ import {
   type ReportWorkspace,
 } from "@/api/reports"
 import { Notice } from "@/components/notice"
+import { Mascot } from "@/components/mascot"
 import { PageHeader } from "@/components/page-header"
 import { ReportChart } from "@/components/reports/report-chart"
 import { ReportDocumentControls } from "@/components/reports/report-document-controls"
@@ -603,7 +603,7 @@ function ReportDocument({
     setSelectedId(copy.id)
   }
   function deleteSelected() {
-    if (!selected || config.cards.length <= 1) return
+    if (!selected) return
     change({
       ...config,
       cards: config.cards.filter((card) => card.id !== selected.id),
@@ -1290,61 +1290,72 @@ function ReportDocument({
               }}
             />
           )}
-          <ReportLayoutCanvas
-            config={config}
-            pageId={currentPage.id}
-            editing={editing}
-            isDesktop={isDesktop}
-            selectedId={selected?.id ?? null}
-            onSelect={selectCard}
-            onChange={change}
-            onMobileChange={setMobileLayout}
-            renderCard={(card, layout) => (
-              <CanvasVisual
-                key={card.id}
-                card={
-                  queryConfig.cards.find((item) => item.id === card.id) ?? card
-                }
-                layout={layout}
-                filterOptions={filterOptions}
-                data={cardData(card.id)}
-                kpiCount={
-                  pageCards.filter((item) => item.visual === "kpi").length
-                }
-                editing={editing}
-                selected={layout.selected}
-                loading={loading}
-                selections={
-                  selectionGroups.find((group) => group.source_id === card.id)
-                    ?.points ?? []
-                }
-                onSelect={layout.onSelect}
-                onFocus={() => setFocusId(card.id)}
-                onPoint={explorePoint}
-                matrixView={matrixViews[card.id]}
-                onMatrixViewChange={(view) =>
-                  setMatrixViews((current) => ({ ...current, [card.id]: view }))
-                }
-                explore={exploreControls(
-                  queryConfig.cards.find((item) => item.id === card.id) ?? card
-                )}
-              />
-            )}
-          />
+          {!!pageCards.length && (
+            <ReportLayoutCanvas
+              config={config}
+              pageId={currentPage.id}
+              editing={editing}
+              isDesktop={isDesktop}
+              selectedId={selected?.id ?? null}
+              onSelect={selectCard}
+              onChange={change}
+              onMobileChange={setMobileLayout}
+              renderCard={(card, layout) => (
+                <CanvasVisual
+                  key={card.id}
+                  card={
+                    queryConfig.cards.find((item) => item.id === card.id) ??
+                    card
+                  }
+                  layout={layout}
+                  filterOptions={filterOptions}
+                  data={cardData(card.id)}
+                  kpiCount={
+                    pageCards.filter((item) => item.visual === "kpi").length
+                  }
+                  editing={editing}
+                  selected={layout.selected}
+                  loading={loading}
+                  selections={
+                    selectionGroups.find((group) => group.source_id === card.id)
+                      ?.points ?? []
+                  }
+                  onSelect={layout.onSelect}
+                  onFocus={() => setFocusId(card.id)}
+                  onPoint={explorePoint}
+                  matrixView={matrixViews[card.id]}
+                  onMatrixViewChange={(view) =>
+                    setMatrixViews((current) => ({
+                      ...current,
+                      [card.id]: view,
+                    }))
+                  }
+                  explore={exploreControls(
+                    queryConfig.cards.find((item) => item.id === card.id) ??
+                      card
+                  )}
+                />
+              )}
+            />
+          )}
           {!pageCards.length && (
             <div className="flex min-h-64 flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed bg-card/50 text-center">
               <FileChartColumn className="size-9 text-muted-foreground/50" />
               <p className="text-sm font-medium">這一頁還沒有視覺效果</p>
               <p className="px-5 text-xs text-muted-foreground">
-                選擇圖表，再配置你想比較的資料。
+                {readonly
+                  ? "這份共享報表目前保留空白頁面。"
+                  : "可以保留空白畫布，或新增圖表重新開始。"}
               </p>
-              <Button
-                className="rounded-md shadow-none"
-                onClick={() => setGallery(true)}
-              >
-                <Plus className="size-4" />
-                新增視覺效果
-              </Button>
+              {!readonly && (
+                <Button
+                  className="rounded-md shadow-none"
+                  onClick={() => setGallery(true)}
+                >
+                  <Plus className="size-4" />
+                  新增視覺效果
+                </Button>
+              )}
             </div>
           )}
           <div
@@ -1926,6 +1937,7 @@ function AiReportDock({
   const keyboardInset = useKeyboardInset()
   const configKey = JSON.stringify(config)
   const activeResult = result?.base === configKey ? result.adjustment : null
+  const mascotState = busy ? "think" : activeResult ? "talk" : "idle"
   useEffect(() => {
     latestConfig.current = config
   }, [config])
@@ -1988,7 +2000,7 @@ function AiReportDock({
           <div className="mb-3 max-h-[min(55dvh,28rem)] overflow-y-auto rounded-3xl border-2 bg-card p-4 shadow-xl">
             <div className="mb-2 flex items-center justify-between gap-2">
               <p className="flex items-center gap-2 text-sm font-semibold">
-                <Sparkles className="size-4 text-primary" />
+                <Mascot state={mascotState} size={32} />
                 {activeResult?.kind === "proposal"
                   ? "AI 建議的調整"
                   : "用一句話調整報表"}
@@ -2031,24 +2043,30 @@ function AiReportDock({
                         ? CUSTOMER_TYPES[activeResult.config.customer_type]
                         : "全部客戶類型"}
                     </p>
-                    <ol className="my-3 space-y-1.5 rounded-2xl bg-muted/60 p-3">
-                      {activeResult.config.cards.map((card, index) => (
-                        <li
-                          key={card.id}
-                          className="flex items-start gap-2 text-xs"
-                        >
-                          <span className="text-muted-foreground">
-                            {index + 1}.
-                          </span>
-                          <span className="min-w-0 flex-1 wrap-break-word">
-                            {card.title}
-                          </span>
-                          <span className="shrink-0 text-muted-foreground">
-                            {VISUALS[card.visual]}
-                          </span>
-                        </li>
-                      ))}
-                    </ol>
+                    {activeResult.config.cards.length === 0 ? (
+                      <p className="my-3 rounded-2xl bg-muted/60 p-3 text-sm">
+                        清空全部 {config.cards.length} 張圖表，保留空白畫布。
+                      </p>
+                    ) : (
+                      <ol className="my-3 space-y-1.5 rounded-2xl bg-muted/60 p-3">
+                        {activeResult.config.cards.map((card, index) => (
+                          <li
+                            key={card.id}
+                            className="flex items-start gap-2 text-xs"
+                          >
+                            <span className="text-muted-foreground">
+                              {index + 1}.
+                            </span>
+                            <span className="min-w-0 flex-1 wrap-break-word">
+                              {card.title}
+                            </span>
+                            <span className="shrink-0 text-muted-foreground">
+                              {VISUALS[card.visual]}
+                            </span>
+                          </li>
+                        ))}
+                      </ol>
+                    )}
                     <p className="mb-3 text-xs text-muted-foreground">
                       套用後可復原，按儲存即可保留到帳號。
                     </p>
@@ -2108,7 +2126,7 @@ function AiReportDock({
             onClick={() => setExpanded((open) => !open)}
             className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"
           >
-            <Sparkles className="size-5" />
+            <Mascot state={mascotState} size={44} />
           </button>
           <input
             ref={inputRef}

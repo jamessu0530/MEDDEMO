@@ -275,7 +275,7 @@ def test_unsupported_card_definitions_are_rejected(changes):
         reports.ReportConfig.model_validate(body)
 
 
-@pytest.mark.parametrize("change", [{"cards": []}, {"period": "all"}, {"template": "it"}, {"name": "x" * 41}, {"sql": "DROP TABLE customer"}])
+@pytest.mark.parametrize("change", [{"cards": None}, {"period": "all"}, {"template": "it"}, {"name": "x" * 41}, {"sql": "DROP TABLE customer"}])
 def test_unsupported_report_definitions_are_rejected(change):
     body = config().model_dump(mode="json") | change
     with pytest.raises(ValidationError):
@@ -314,13 +314,28 @@ def test_ai_only_proposes_validated_config_and_never_saves(sample, tx):
     assert "SQL" in fake.calls[0]["system"]
 
 
+def test_ai_can_propose_removing_all_cards_without_saving_or_changing_filters(sample, tx):
+    original = config(owner_id="RPT01", filters=[{"dimension": "customer", "key": "RPTC01"}])
+    reports.save_config(tx, sample["RPT01"], original)
+    proposal = original.model_dump(mode="json") | {"cards": []}
+    fake = FakeLLM({"kind": "proposal", "message": "可以清空全部圖表，保留空白畫布。", "config": proposal})
+    result = reports.adjust(tx, sample["RPT01"], "可以現在把我上面的圖表都刪掉", original, llm=fake)
+    Draft202012Validator(api_schema(fake.calls[0]["schema"])).validate(fake.output)
+    assert result.config.model_dump(mode="json") == proposal
+    assert reports.get_config(tx, sample["RPT01"]) == original
+    assert reports.data(tx, sample["RPT01"], result.config).cards == []
+    assert "cards=[]" in fake.calls[0]["system"]
+
+
 @pytest.mark.parametrize("mutation", [
-    "foreign-owner", "sql-config", "sql-output", "unsupported-metric", "invalid-chart", "empty-proposal", "clarify-with-config", "malformed",
+    "foreign-owner", "empty-foreign-owner", "sql-config", "sql-output", "unsupported-metric", "invalid-chart", "empty-proposal", "clarify-with-config", "malformed",
 ])
 def test_ai_cannot_return_sql_or_expand_scope_or_invalid_config(sample, tx, mutation):
     output = {"kind": "proposal", "message": "已調整", "config": config().model_dump(mode="json")}
-    if mutation == "foreign-owner":
+    if mutation in {"foreign-owner", "empty-foreign-owner"}:
         output["config"]["owner_id"] = "RPT02"
+        if mutation == "empty-foreign-owner":
+            output["config"]["cards"] = []
     elif mutation == "sql-config":
         output["config"]["sql"] = "SELECT * FROM customer"
     elif mutation == "sql-output":
