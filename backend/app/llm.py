@@ -27,13 +27,13 @@ RETRY_ATTEMPTS = 3
 # 有這個上限就不必走 files.upload。超過的由呼叫端改在提示裡給說明（services/attachments.inline_files）
 MEDIA_LIMIT_BYTES = 18 * 1024 * 1024
 
-# 附給模型看的檔案：(內容, MIME 類型)，照片或 PDF
+# 附給模型的檔案：(內容, MIME 類型)，照片、PDF 或核對拜訪名稱用的原始錄音
 Media = tuple[bytes, str]
 
 
 class LLM(Protocol):
     # effort 是推理強度 low／medium／high，對到 Gemini 的 thinking_level；
-    # media 是一起給模型看的照片與 PDF（頻道、提問的附件），放在提示前面
+    # media 是一起給模型的附件或核對名稱用的原音，放在提示前面
     def json(
         self, *, system: str, prompt: str, schema: dict[str, Any], effort: str = "medium", media: Sequence[Media] = ()
     ) -> dict[str, Any]: ...

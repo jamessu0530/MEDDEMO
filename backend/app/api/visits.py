@@ -26,6 +26,7 @@ from app.services.extraction import (
     validate_fields,
 )
 from app.services.reminders import create_reminder
+from app.services.speech_names import customer_candidates
 from app.services.speech_audio import MAX_RECORDING_SECONDS
 from app.services.speech_languages import RecordingLanguage
 from app.tasks import get_progress, visit_queue
@@ -64,6 +65,13 @@ class RiskNotice(BaseModel):
     manager_name: str
 
 
+class CustomerCandidate(BaseModel):
+    id: str
+    name: str
+    quote: str
+    match_kind: str
+
+
 class VisitDetail(BaseModel):
     id: str
     customer_id: str
@@ -86,6 +94,7 @@ class VisitDetail(BaseModel):
     oa_form_id: int | None = None
     # 講了跟上次一樣或跟上次比的加減時，展開那一刻的快照（services/repeat_order.py）；確認頁照它寫每一列變了什麼
     repeat_last: dict[str, Any] | None = None
+    customer_candidates: list[CustomerCandidate] = Field(default_factory=list)
 
 
 class TranscriptInput(BaseModel):
@@ -94,6 +103,10 @@ class TranscriptInput(BaseModel):
 
 class FieldsInput(BaseModel):
     fields: dict[str, Any]
+
+
+class CustomerInput(BaseModel):
+    customer_id: str = Field(min_length=1)
 
 
 def _load(session: Session, visit_id: str, user: AppUser, *, lock: bool = False, write: bool = False) -> Visit:
@@ -147,6 +160,8 @@ def _detail(session: Session, visit: Visit) -> VisitDetail:
         risk_notice=_risk_notice(session, visit),
         oa_form_id=session.scalar(select(OaExpenseForm.id).where(OaExpenseForm.visit_id == visit.id)),
         repeat_last=visit.repeat_last,
+        customer_candidates=[CustomerCandidate(**c) for c in customer_candidates(session, visit.transcript,
+            Scope.for_user(session.get(AppUser, visit.user_id)))] if visit.status == "draft" else [],
     )
 
 
@@ -261,6 +276,28 @@ def reprocess(session: SessionDep, visit_id: str, user: CurrentUser):
     visit.error_message = None
     session.commit()
     _enqueue(session, visit, "process_audio")
+    return _detail(session, visit)
+
+
+@router.put("/{visit_id}/customer", status_code=202, response_model=VisitDetail)
+def update_customer(session: SessionDep, visit_id: str, body: CustomerInput, user: CurrentUser):
+    """使用者核對錄音提到的商家後才切換；上次訂單與欄位依新客戶重新整理。"""
+    visit = _load(session, visit_id, user, lock=True, write=True)
+    if visit.status != "draft":
+        raise HTTPException(409, "只有待確認的紀錄可以切換客戶")
+    customer = session.get(Customer, body.customer_id)
+    if customer is None or not Scope.for_user(user).can_see(SHARING_LEVEL["customer_profile"], owner_path(session, customer)):
+        raise HTTPException(404, "找不到這家客戶")
+    if visit.customer_id == customer.id:
+        return _detail(session, visit)
+    visit.customer_id = customer.id
+    visit.fields_raw = visit.fields_final = None
+    visit.field_sources = None
+    visit.repeat_last = None
+    visit.status = "processing"
+    visit.error_message = None
+    session.commit()
+    _enqueue(session, visit, "extract_transcript")
     return _detail(session, visit)
 
 

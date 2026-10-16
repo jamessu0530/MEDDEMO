@@ -1,7 +1,8 @@
 """Taigi AI Labs 台語拜訪錄音：完整辨識後才交給現有欄位抽取。
 
 API 的 best 是台語漢字，保留為逐字稿讓使用者核對；不套用華語的拼音同音字
-修正，也不先翻譯原文。華語欄位由 extraction 整理，sources 仍引用台語原話。
+修正，也不先翻譯原文。廠商這個端點只送音檔，不假設支援熱詞參數；名稱強化
+在 visit_processing / extraction 以原音、完整型錄候選與商家候選核對，sources 仍引用台語原話。
 """
 
 import logging

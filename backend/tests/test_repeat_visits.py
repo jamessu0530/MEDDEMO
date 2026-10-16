@@ -16,7 +16,7 @@ class RepeatExtractor:
     def __init__(self, repeat, intent=None, said=SAID):
         self.repeat, self.intent, self.said = repeat, intent, said
 
-    def extract(self, transcript, visit_date, products, packs=()):
+    def extract(self, transcript, visit_date, products, packs=(), **context):
         return Extraction({**FIELDS, "intent": self.intent}, {"repeat_last": self.said}, repeat_last=self.repeat)
 
 

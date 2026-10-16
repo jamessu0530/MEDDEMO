@@ -15,9 +15,10 @@ from jsonschema import Draft202012Validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.llm import LLM, get_llm
+from app.llm import LLM, Media, get_llm
 from app.models import Product
 from app.services.promo_packs import Pack, packs_by_code
+from app.services.speech_names import NameMatcher, recent_product_skus
 
 SCHEMA_FILE = Path(__file__).resolve().parents[1] / "schemas" / "visit_fields.schema.json"
 FIELD_KEYS = ("competitor", "complaint", "intent", "commitment", "follow_up_date", "notes")
@@ -42,6 +43,7 @@ PROMPT = """你是藥品通路業務的助理。下面是業務拜訪客戶後�
 12. 業務講跟上次比的加減（例如「再加一口小口 Premium」「魚油比上次少 5 盒」「人工淚液照上次」），填進 repeat_last.relative：品項與口照第 7、9 條對，delta 是加減的數量（口是口數，少就是負數，照上次填 0）；這些不要再填進 intent。講了確定的總數（例如「魚油這次 40 盒」）才照第 7 條填 intent。只講加減、沒講跟上次一樣時 all 填 false。講了品名與口數、沒講哪一口（例如「Premium 再加一口」）時，sku 照品項表填、promo_code 填 null，由後端對到上次訂的那一口；這種加減不適用第 9 條「對不到唯一的一口」。
 13. 逐字稿可能是台語漢字或華台語混講。只有語意明確時，欄位中的敘述才用台灣繁體中文華語整理；品名、數量、單位、金額、劑量、日期與承諾不能改。台語「拜五」是星期五，「兩口」的單位仍是口，「毋愛」是否定，不可漏掉。sources 仍逐字引用台語原文，不要把翻譯當作原文。疑似辨識錯字不能靠諧音或常識猜成品名、單位或日期；例如「拜鼓」無法確定是星期幾，不可改成「星期五」，due 與 date 必須填 null，敘述保留不清楚的原話。不確定的品名保留原話、sku 填 null；不確定的數量或單位填 null。
 14. 逐字稿也可能是英語、日語、印尼語、越南語、泰語或多語混講。欄位敘述翻譯成台灣繁體中文華語，但 sources 必須逐字照抄原語言，不可引用翻譯；intent.product_text 保留原本的品名講法。翻譯不可增加原文沒有的數量、單位、金額、劑量、日期或承諾，也不可漏掉否定。只有原文語意明確、對得上唯一品項時才填 sku；不確定的數量、單位與日期填 null。
+15. 品項表包含常用品項與從完整型錄找到的相關候選；候選不代表業務已提到，更不代表已確定規格。同名的不同劑量、容量、尺寸不能互換；未明確指定且對到多個 SKU 時填 null。
 
 品項表（sku｜名稱｜單位｜口語別名）：
 {catalog}
@@ -51,6 +53,15 @@ PROMPT = """你是藥品通路業務的助理。下面是業務拜訪客戶後�
 
 逐字稿：
 {transcript}
+"""
+
+NAME_AUDIO_PROMPT = """
+另附這次拜訪的原始錄音，僅用來核對逐字稿中已提及的藥品、競品與商家名稱，包含台語與華台語混講。
+下列只是名稱候選，不是已確認的辨識結果：
+{terms}
+必須聽到明確的名稱、且對得上唯一品項，才可用正式名稱或 sku；近音候選不能直接當答案。
+不可因為附了錄音而新增逐字稿沒有的事件，或改動數量、單位、金額、劑量、日期、承諾與否定。
+intent.product_text 與 sources 仍必須保留逐字稿原話，不能把核對後的名稱冒充原文。不確定就保留原話、sku 填 null。
 """
 
 
@@ -72,7 +83,8 @@ class Extraction:
 
 class FieldExtractor(Protocol):
     def extract(
-        self, transcript: str, visit_date: date, products: list[ProductHint], packs: Sequence[Pack] = ()
+        self, transcript: str, visit_date: date, products: list[ProductHint], packs: Sequence[Pack] = (),
+        *, name_audio: Media | None = None, name_terms: Sequence[str] = (),
     ) -> Extraction: ...
 
 
@@ -140,12 +152,37 @@ def build_prompt(transcript: str, visit_date: date, products: list[ProductHint],
     )
 
 
-def product_hints(session: Session) -> list[ProductHint]:
-    # 只給常用品項：真實型錄有一千多樣，全部放進提示詞會變慢又容易對錯
-    rows = session.execute(
-        select(Product.sku, Product.name, Product.unit, Product.aliases).where(Product.common).order_by(Product.sku)
-    )
-    return [ProductHint(*row) for row in rows]
+MAX_EXTRA_PRODUCTS = 32
+
+
+def product_hints(session: Session, transcript: str = "", customer_id: str | None = None) -> list[ProductHint]:
+    """常用品項、這家最近進過的品項，加上完整型錄的相關候選。"""
+    recent = set(session.scalars(recent_product_skus(customer_id))) if customer_id else set()
+    query = select(Product.sku, Product.name, Product.unit, Product.aliases, Product.common).order_by(Product.sku)
+    if not transcript.strip():
+        query = query.where(Product.common | Product.sku.in_(recent))
+    common, matched = [], []
+    matcher = NameMatcher(transcript)
+    for sku, name, unit, aliases, is_common in session.execute(query):
+        hint = ProductHint(sku, name, unit, aliases)
+        if is_common or sku in recent:
+            common.append(hint)
+        elif match := matcher.match([sku, name, *aliases], partial=True):
+            matched.append((match.score, hint))
+    # 依吻合程度挑相關候選；共同口語名的規格群若超過上限，整群略過，避免只留下某個規格而誤選。
+    matched.sort(key=lambda item: (-item[0], item[1].sku))
+    extra = matched[:MAX_EXTRA_PRODUCTS]
+    if len(matched) > MAX_EXTRA_PRODUCTS:
+        cutoff = matched[MAX_EXTRA_PRODUCTS][0]
+        extra = [item for item in extra if item[0] > cutoff]
+    return common + [hint for _, hint in extra]
+
+
+def drop_unknown_products(intent: list[dict[str, Any]] | None, products: list[ProductHint]) -> list[dict[str, Any]] | None:
+    """模型猜出候選清單外的料號時留給使用者選，不把不存在的料號送去回寫。"""
+    allowed = {p.sku for p in products}
+    return [({**item, "sku": None, "promo_code": None} if item.get("sku") and item["sku"] not in allowed else item)
+        for item in intent] if intent else intent
 
 
 def empty_fields() -> dict[str, Any]:
@@ -221,10 +258,14 @@ class LLMFieldExtractor:
         self.llm = llm
 
     def extract(
-        self, transcript: str, visit_date: date, products: list[ProductHint], packs: Sequence[Pack] = ()
+        self, transcript: str, visit_date: date, products: list[ProductHint], packs: Sequence[Pack] = (),
+        *, name_audio: Media | None = None, name_terms: Sequence[str] = (),
     ) -> Extraction:
         prompt = build_prompt(transcript, visit_date, products, packs)
-        data = self.llm.json(system=SYSTEM, prompt=prompt, schema=output_schema())
+        if name_audio:
+            prompt += NAME_AUDIO_PROMPT.format(terms="、".join(dict.fromkeys(name_terms)))
+        kwargs = {"media": [name_audio]} if name_audio else {}
+        data = self.llm.json(system=SYSTEM, prompt=prompt, schema=output_schema(), **kwargs)
         return Extraction(
             fields=data["fields"],
             sources={k: v for k, v in (data.get("sources") or {}).items() if v},

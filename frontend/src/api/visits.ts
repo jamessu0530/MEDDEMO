@@ -57,6 +57,8 @@ export type RepeatSnapshot = {
   relative: { sku: string; promo_code: string | null; last_qty: number; delta: number }[]
 }
 
+export type CustomerCandidate = { id: string; name: string; quote: string; match_kind: "exact" | "phonetic" }
+
 export type Visit = {
   id: string
   customer_id: string
@@ -79,6 +81,7 @@ export type Visit = {
   oa_form_id: number | null
   // 沒講跟上次一樣、也沒講跟上次比的加減是 null
   repeat_last: RepeatSnapshot | null
+  customer_candidates?: CustomerCandidate[]
 }
 
 // 新錄音一律 auto；明確語言保留給舊版離線錄音與歷史紀錄。
@@ -113,6 +116,10 @@ export function reprocessVisit(id: string) {
 
 export function updateFields(id: string, fields: VisitFields) {
   return request<Visit>(`/api/visits/${id}/fields`, jsonBody("PUT", { fields }))
+}
+
+export function updateVisitCustomer(id: string, customerId: string) {
+  return request<Visit>(`/api/visits/${id}/customer`, jsonBody("PUT", { customer_id: customerId }))
 }
 
 export function confirmVisit(id: string) {

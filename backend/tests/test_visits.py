@@ -48,7 +48,7 @@ class FakeExtractor:
         self.fields, self.sources = fields, sources
         self.packs = ()
 
-    def extract(self, transcript, visit_date, products, packs=()):
+    def extract(self, transcript, visit_date, products, packs=(), **context):
         assert any(p.sku == "HS-FO30" for p in products)  # 品項表有帶給模型
         self.packs = packs
         return Extraction(self.fields, self.sources)
@@ -147,7 +147,7 @@ def test_taiwanese_recording_keeps_its_language_and_original_quotes(client, prov
             return Transcript(spoken)
 
     class Extractor:
-        def extract(self, transcript, visit_date, products, packs=()):
+        def extract(self, transcript, visit_date, products, packs=(), **context):
             assert transcript == spoken
             return Extraction(fields, sources)
 
@@ -202,7 +202,7 @@ def test_auto_recording_keeps_mode_through_resend_retry_and_chinese_draft(client
             return Transcript(spoken, review_note="華語辨識暫時無法使用，請核對逐字稿。")
 
     class Chinese:
-        def extract(self, transcript, visit_date, products, packs=()):
+        def extract(self, transcript, visit_date, products, packs=(), **context):
             assert transcript == spoken
             return Extraction(fields, {"intent": spoken})
 
@@ -241,7 +241,7 @@ def test_foreign_recording_keeps_language_through_resend_retry_and_chinese_extra
         return ForeignTranscriber()
 
     class ChineseExtractor:
-        def extract(self, transcript, visit_date, products, packs=()):
+        def extract(self, transcript, visit_date, products, packs=(), **context):
             assert transcript == spoken
             return Extraction(fields, {"intent": spoken})
 

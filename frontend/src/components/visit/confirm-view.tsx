@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react"
 import { ChevronDown, Pencil } from "@/components/icons"
 import { useNavigate } from "react-router"
 
-import { confirmVisit, discardVisit, type FieldKey, type Visit } from "@/api/visits"
+import { confirmVisit, discardVisit, updateVisitCustomer, type CustomerCandidate, type FieldKey, type Visit } from "@/api/visits"
 import { CompetitorNames } from "@/components/visit/competitor-names"
 import { FieldEditor } from "@/components/visit/field-editor"
 import { FIELD_LABEL, FIELD_ORDER, summarize } from "@/components/visit/field-format"
@@ -24,11 +24,28 @@ export function ConfirmView({ visit, onChange }: ConfirmViewProps) {
   const [confirming, setConfirming] = useState(false)
   const [problem, setProblem] = useState<string | null>(null)
   const [askDiscard, setAskDiscard] = useState(false)
+  const [switching, setSwitching] = useState(false)
+  const [customerChoice, setCustomerChoice] = useState<CustomerCandidate | null>(null)
   // 意向裡的口照編號查（不管哪一期），摘要才寫得出搭贈與金額
   const promotions = usePromotions()
   const packs = Object.fromEntries(promotions.flatMap((p) => p.items).map((pack) => [pack.code, pack]))
 
   const filled = FIELD_ORDER.filter((key) => visit.fields[key] !== null).length
+  const otherCustomers = (visit.customer_candidates ?? []).filter((candidate) => candidate.id !== visit.customer_id)
+
+  async function switchCustomer() {
+    if (!customerChoice) return
+    setSwitching(true)
+    setProblem(null)
+    try {
+      onChange(await updateVisitCustomer(visit.id, customerChoice.id))
+      setCustomerChoice(null)
+    } catch (err) {
+      setProblem(err instanceof Error ? err.message : "切換客戶失敗，請再試一次")
+    } finally {
+      setSwitching(false)
+    }
+  }
 
   async function confirm() {
     setConfirming(true)
@@ -54,6 +71,24 @@ export function ConfirmView({ visit, onChange }: ConfirmViewProps) {
       )}
 
       <TranscriptPanel transcript={visit.transcript} sources={visit.sources} />
+
+      {otherCustomers.length > 0 && (
+        <section className="rounded-xl border-2 bg-card p-4 shadow-lip" aria-label="核對拜訪客戶">
+          <p className="text-sm font-medium">錄音提到其他商家，請核對拜訪對象</p>
+          <p className="mt-1 text-sm text-muted-foreground">目前客戶：{visit.customer_name}。也可能只是提到其他店，確認後再切換。</p>
+          <ul className="mt-3 flex flex-col gap-3">
+            {otherCustomers.map((candidate) => (
+              <li key={candidate.id} className="flex items-start justify-between gap-3">
+                <div className="min-w-0 text-sm">
+                  <p className="font-medium">{candidate.name}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{candidate.match_kind === "phonetic" ? "近音候選" : "原文提到"}：「{candidate.quote}」</p>
+                </div>
+                <Button variant="outline" className="shrink-0" disabled={switching || confirming} onClick={() => setCustomerChoice(candidate)}>切換到這家</Button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <p className="text-sm text-muted-foreground">已整理出 {filled} 個欄位 · 點欄位可以修改</p>
       <ul className="flex flex-col gap-2">
@@ -81,7 +116,7 @@ export function ConfirmView({ visit, onChange }: ConfirmViewProps) {
 
       <p className="text-xs text-muted-foreground">確認後會同時寫入 CRM · SAP · OA</p>
       {problem && <p className="text-sm text-destructive">{problem}</p>}
-      <Button className="h-12 text-base" onClick={confirm} disabled={confirming}>
+      <Button className="h-12 text-base" onClick={confirm} disabled={confirming || switching}>
         {confirming ? "寫入中…" : "確認並回寫"}
       </Button>
       <Button variant="ghost" className="h-11" onClick={() => setAskDiscard(true)}>
@@ -89,6 +124,20 @@ export function ConfirmView({ visit, onChange }: ConfirmViewProps) {
       </Button>
 
       <FieldEditor visit={visit} field={editing} onClose={() => setEditing(null)} onSaved={onChange} />
+
+      <Dialog open={customerChoice !== null} onOpenChange={(open) => { if (!open && !switching) setCustomerChoice(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>切換到 {customerChoice?.name}？</DialogTitle>
+            <DialogDescription>會保留逐字稿，依這家客戶重新整理欄位與上次訂單；目前手動修改的欄位會被取代。</DialogDescription>
+          </DialogHeader>
+          {problem && <p role="alert" className="text-sm text-destructive">{problem}</p>}
+          <DialogFooter>
+            <Button variant="outline" disabled={switching} onClick={() => setCustomerChoice(null)}>保留目前客戶</Button>
+            <Button disabled={switching} onClick={switchCustomer}>{switching ? "切換中…" : "切換並重新整理"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={askDiscard} onOpenChange={setAskDiscard}>
         <DialogContent showCloseButton={false}>

@@ -22,6 +22,7 @@ from app.gemini import gemini_client
 from app.models import Customer, Product
 from app.services.asr_cleanup import HomophoneFixer, to_taiwan
 from app.services.speech_languages import LANGUAGE_NAMES, SpeechLanguage
+from app.services.speech_names import customer_terms, recent_product_skus
 
 log = logging.getLogger(__name__)
 HOTWORDS_FILE = Path(__file__).resolve().parents[1] / "resources" / "hotwords.txt"
@@ -91,10 +92,13 @@ def load_hotwords(session: Session) -> list[str]:
 
 
 def visit_hotwords(session: Session, customer_id: str) -> list[str]:
-    """一次拜訪用的熱詞：這家客戶的名稱（整個與分段，例如「康泰連鎖藥局」「忠孝店」）排最前面，再接共用熱詞。"""
+    """客戶全名與口語短名、最近進過的品項（含非常用品項）、共用熱詞。"""
     customer = session.get(Customer, customer_id)
-    names = [customer.name, *customer.name.split(" · ")] if customer else []
-    return list(dict.fromkeys(names + load_hotwords(session)))
+    names = [*customer_terms(customer.name), *customer.name.split(" · ")] if customer else []
+    products = session.execute(select(Product.name, Product.aliases)
+        .where(Product.sku.in_(recent_product_skus(customer_id))).order_by(Product.sku))
+    terms = [term for name, aliases in products for term in (name, *aliases)]
+    return list(dict.fromkeys(names + terms + load_hotwords(session)))
 
 
 def gemini_audio_mime(mime_type: str) -> str:
