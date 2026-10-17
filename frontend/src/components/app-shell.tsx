@@ -22,7 +22,7 @@ export function AppShell({
   user: AuthUser
   children: ReactNode
 }) {
-  const { pathname, search } = useLocation()
+  const { pathname } = useLocation()
   const width = pageWidth(pathname)
   const desktop = useIsDesktop()
   const collapsed = useSidebarCollapsed()
@@ -44,7 +44,7 @@ export function AppShell({
           data-ui-demo-page
           className={cn(
             width === "column" && "lg:mx-auto lg:max-w-2xl",
-            pageAssistantPlacement(pathname, search) === "dock" && "pb-[var(--page-assistant-dock-space,16rem)]"
+            pageAssistantPlacement(pathname) === "dock" && "pb-[var(--page-assistant-dock-space,16rem)]"
           )}
         >
           {children}

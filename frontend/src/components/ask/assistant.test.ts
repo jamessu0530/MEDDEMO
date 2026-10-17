@@ -79,7 +79,6 @@ describe("所有頁面的共用 AI 助理", () => {
     "/channels/2",
     "/channels/search",
     "/channels/2/threads",
-    "/manager?view=priority",
     "/customers/C01/record",
     "/privacy",
     "/auth/google/callback",
@@ -95,8 +94,15 @@ describe("所有頁面的共用 AI 助理", () => {
     expect(opened).not.toContain('id="page-assistant-panel" hidden=""')
   })
 
-  it("一般頁面保留直接輸入的操作方式", () => {
-    const html = render("/orders", false)
+  it.each([
+    "/orders",
+    "/manager",
+    "/manager?view=priority",
+    "/manager?view=asks",
+    "/manager?view=oa",
+    "/manager?view=methods",
+  ])("%s 使用相同的底部詢問欄，可直接輸入", (path) => {
+    const html = render(path, false)
     expect(html).toContain('data-placement="dock"')
     expect(html).toContain('id="page-assistant-input"')
     expect(html).not.toContain('aria-label="開啟 AI 助理"')

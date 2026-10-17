@@ -14,11 +14,8 @@ describe("各頁的 AI 輸入方式", () => {
       "/channels/2/threads",
     ])
       expect(pageAssistantPlacement(path)).toBe("floating")
-    expect(pageAssistantPlacement("/manager", "?view=priority")).toBe(
-      "floating"
-    )
   })
-  it("一般頁面就地提問，主管其他分頁也可用", () => {
+  it("一般頁面與主管各分頁使用相同的底部詢問欄", () => {
     for (const path of [
       "/orders",
       "/orders/new",
@@ -27,6 +24,8 @@ describe("各頁的 AI 輸入方式", () => {
       "/calendar",
       "/me",
       "/settings",
+      "/manager",
+      "/manager/",
       "/oa/new/expense",
       "/oa/forms/123/edit",
       "/oa/apps",
@@ -34,7 +33,6 @@ describe("各頁的 AI 輸入方式", () => {
       "/oa/forms/123",
     ])
       expect(pageAssistantPlacement(path)).toBe("dock")
-    expect(pageAssistantPlacement("/manager", "?view=oa")).toBe("dock")
   })
   it("公開頁和錄音頁也保留助理入口", () => {
     for (const path of [

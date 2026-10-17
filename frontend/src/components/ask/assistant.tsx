@@ -57,8 +57,8 @@ const loadVoiceDock = () => import("@/components/ask/voice-dock")
 export function Assistant() {
   const user = useAuth()?.user
   const page = useCurrentPageContext()
-  const { pathname, search } = useLocation()
-  const floating = pageAssistantPlacement(pathname, search) === "floating"
+  const { pathname } = useLocation()
+  const floating = pageAssistantPlacement(pathname) === "floating"
   const inset = useAssistantInset(true, floating)
   const open = useSyncExternalStore(
     assistantWindow.subscribe,
