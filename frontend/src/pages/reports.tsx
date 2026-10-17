@@ -1337,11 +1337,9 @@ function ReportDocument({
           </div>
         }
       />
+      <div className="report-navigation-bar">
       <nav
-        className={cn(
-          "report-page-tabs flex items-center overflow-x-auto",
-          !editing && pages.length === 1 && "hidden"
-        )}
+        className="report-page-tabs flex min-w-0 flex-1 items-center overflow-x-auto"
         aria-label="報表分頁"
         data-ui-demo="report-page-tabs"
       >
@@ -1390,8 +1388,7 @@ function ReportDocument({
           </>
         )}
       </nav>
-      <div className="report-toolbar">
-        <div className="report-reading-controls">
+        <div className="report-reading-controls" role="group" aria-label="報表日期與篩選">
           <NativeSelect
             aria-label="報表期間"
             data-ui-demo="report-period"
@@ -1418,12 +1415,14 @@ function ReportDocument({
             aria-haspopup="dialog"
           >
             <SlidersHorizontal className="size-4 shrink-0" />
-            <span>{filtered ? "已套用篩選" : "篩選"}</span>
+            <span className="hidden sm:inline">{filtered ? "已套用篩選" : "篩選"}</span>
             {filtered && (
-              <span className="size-1.5 shrink-0 rounded-full bg-primary" />
+              <span className="absolute top-2 right-2 size-1.5 rounded-full bg-primary" />
             )}
           </button>
         </div>
+      </div>
+      <div className="report-toolbar">
         {readonly && (
           <p className="report-readonly-note" role="status">
             唯讀共享 · 來自 {library.shared_from?.name}
