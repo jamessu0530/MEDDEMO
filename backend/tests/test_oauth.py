@@ -18,12 +18,18 @@ from app.services import oauth
 
 @pytest.fixture
 def client(engine):
-    with Session(engine) as session:
-        session.execute(delete(UserIdentity))
-        # 前一個測試自動開的帳號也清掉
-        session.execute(delete(AppUser).where(AppUser.id.like("X%")))
-        session.commit()
-    return TestClient(app)
+    def cleanup():
+        with Session(engine) as session:
+            session.execute(delete(UserIdentity))
+            session.execute(delete(AppUser).where(AppUser.id.like("X%")))
+            session.commit()
+
+    cleanup()
+    try:
+        yield TestClient(app)
+    finally:
+        # API 會真的 commit；最後一個 OAuth 測試也要清理，避免影響後面的測試檔。
+        cleanup()
 
 
 @pytest.fixture
