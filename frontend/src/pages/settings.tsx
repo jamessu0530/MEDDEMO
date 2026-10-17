@@ -535,14 +535,6 @@ export function SettingsPage() {
           <ChevronRight className="size-4 text-muted-foreground" />
         </Link>
 
-        {/* 業務帳號隨時可以回去看；過了新人期首頁不再顯示入口卡，這裡是唯一的入口 */}
-        {user.role === "sales" && (
-          <Link to="/first-week" className="flex min-h-14 items-center justify-between rounded-2xl border-2 bg-card px-4 shadow-lip press">
-            <span className="text-sm font-medium">新人第一週</span>
-            <ChevronRight className="size-4 text-muted-foreground" />
-          </Link>
-        )}
-
         {/* 業務自己的排序習慣；調整行程的頁首也進得去 */}
         {user.role === "sales" && (
           <Link

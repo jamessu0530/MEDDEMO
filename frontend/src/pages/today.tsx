@@ -34,7 +34,6 @@ import { ridesOf, type Leg } from "@/lib/rides"
 import { applyProgress } from "@/lib/route-progress"
 import { useIsDesktop } from "@/lib/use-media-query"
 import { cn } from "@/lib/utils"
-import { FirstWeekEntry } from "@/pages/first-week"
 
 type LoadState =
   | { status: "loading" }
@@ -131,8 +130,7 @@ export function TodayPage() {
     return () => observer.disconnect()
   }, [userId])
 
-  // 切到地圖（或從客戶檔案回到地圖）時，把切換捲到固定的頁首正下面：地圖的高度是照這個位置算的，
-  // 上面有新人卡時不捲的話，地圖下半與底下那張卡會被輸入列蓋住
+  // 切到地圖（或從客戶檔案回到地圖）時，把切換捲到固定的頁首正下面，避免地圖下半被輸入列蓋住。
   useEffect(() => {
     const node = switchRef.current
     if (!onMap || !node) return
@@ -219,26 +217,21 @@ export function TodayPage() {
     <div
       className="flex min-h-svh flex-col"
       style={{
-        "--home-header": headerHeight ? `${headerHeight}px` : undefined,
+        "--home-header": headerHeight !== null ? `${headerHeight}px` : undefined,
         "--home-route-width": split ? "27.5rem" : "calc(100% - 17rem)",
       } as CSSProperties}
     >
-      <header ref={headerRef} className="sticky top-0 z-10 bg-background/95 px-4 pt-2 pb-3 backdrop-blur lg:px-6">
-        <h1 className="sr-only">今日路線</h1>
+      <h1 className="sr-only">今日路線</h1>
+      <header ref={headerRef} className="sticky top-0 z-10 bg-background/95 px-4 pt-2 pb-3 backdrop-blur lg:hidden">
         <SalesToolbar user={user}>
           {state.status === "ready" && !state.cached && <EditRouteLink />}
         </SalesToolbar>
-        <div className="hidden justify-end lg:flex">
-          {state.status === "ready" && !state.cached && <EditRouteLink />}
-        </div>
       </header>
 
       {/* 底部分頁列約 64px，上面再疊一條跟熊熊滾說的輸入列，最後的終點要露出來 */}
       {/* overflow-x-clip：路線與地圖互相滑進來時，不要短暫多出左右捲軸 */}
       <main ref={layoutRef} className={cn("flex-1 overflow-x-clip px-4 pt-3 pb-48 lg:px-6 lg:pb-24", split && "lg:flex lg:items-start lg:gap-6")}>
         <div className={cn("min-w-0", split && "lg:w-[27.5rem] lg:shrink-0")}>
-        {/* 新人才有的入口卡；自己問自己的資料，載不到就不顯示，跟下面的路線互不影響 */}
-        <FirstWeekEntry userId={user.id} />
         {state.status === "ready" && state.cached && (
           <div className="mb-3 flex items-center gap-2 rounded-xl bg-muted px-3 py-2">
             <p className="flex-1 text-xs text-muted-foreground">
@@ -278,7 +271,17 @@ export function TodayPage() {
           />
         )}
 
-        {mappable && !split && <ViewSwitch ref={switchRef} onMap={onMap} onChange={showView} />}
+        <div className="relative">
+        {state.status === "ready" && !state.cached && (
+          <div className="absolute top-0 right-0 z-10 hidden lg:block">
+            <EditRouteLink />
+          </div>
+        )}
+        {mappable && !split && (
+          <div className="lg:pr-12">
+            <ViewSwitch ref={switchRef} onMap={onMap} onChange={showView} />
+          </div>
+        )}
         {route &&
           (route.stops.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-8 text-center">
@@ -318,6 +321,7 @@ export function TodayPage() {
               )}
             </div>
           ))}
+        </div>
         </div>
         {/* 電腦版：地圖在右欄，固定在頁首下面；沒有站或用的是舊行程就不畫 */}
         {split && mappable && route && (

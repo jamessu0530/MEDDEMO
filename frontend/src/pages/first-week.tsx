@@ -1,6 +1,6 @@
 import { openAssistant } from "@/ask/assistant-window"
 import { useEffect, useState } from "react"
-import { ChevronRight, FileText, GraduationCap } from "@/components/icons"
+import { ChevronRight, FileText } from "@/components/icons"
 import { Link, useNavigate } from "react-router"
 
 import { ApiError } from "@/api/client"
@@ -83,7 +83,7 @@ export function FirstWeekPage() {
       <PageHeader
         title="新人第一週"
         subtitle={(data && dayLabel(data)) ?? undefined}
-        backTo="/"
+        backTo="/me"
       />
       <main className="flex flex-1 flex-col gap-6 px-4 pt-4 pb-10">
         {state.status === "loading" && (
@@ -397,48 +397,5 @@ function TaskRow({ task }: { task: FirstWeekTask }) {
         <div className="flex min-h-14 flex-1 items-center p-3">{text}</div>
       )}
     </li>
-  )
-}
-
-/**
- * 首頁課程入口：只顯示給新人，進度與課程地圖取同一份帳號紀錄。
- */
-export function FirstWeekEntry({ userId }: { userId: string }) {
-  const [card, setCard] = useState<Course | null>(null)
-
-  useEffect(() => {
-    const controller = new AbortController()
-    getCourse(controller.signal)
-      .then((status) => {
-        if (!status.is_newcomer) return
-        setCard(status)
-      })
-      .catch(() => {
-        // 這張卡只是入口，載不到就算了
-      })
-    return () => controller.abort()
-  }, [userId])
-
-  if (!card) return null
-  return (
-    <Link
-      to="/first-week"
-      className="mb-3 flex min-h-14 press items-center gap-3 rounded-2xl border-2 border-primary/30 bg-primary/10 px-4 py-2.5 shadow-lip-primary-soft"
-    >
-      <GraduationCap className="size-5 shrink-0 text-primary" />
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium">
-          {card.demo_skipped
-            ? "Demo · AI 問答已開啟，可繼續新人課程"
-            : card.ai_unlocked
-              ? "新人課程完成 · AI 問答已解鎖"
-              : "新人闖關 · 完成後解鎖 AI 問答"}
-        </p>
-        <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
-          完成 {card.completed.length}／{card.lessons.length} 關 · {card.xp} XP
-        </p>
-      </div>
-      <ChevronRight className="size-4 shrink-0 text-primary" />
-    </Link>
   )
 }

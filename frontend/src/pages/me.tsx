@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState, type ComponentType } from "react"
 import {
   ChartNoAxesCombined,
   ChevronRight,
+  GraduationCap,
   Medal,
   MessagesSquare,
   Settings,
@@ -132,6 +133,7 @@ export function MePage() {
           >
             <PersonalMemory compact />
             <ProfileLink to="/conversations" icon={MessagesSquare} label="對話紀錄" />
+            <ProfileLink to="/first-week" icon={GraduationCap} label="新人課程" />
             <ProfileLink
               to="/me?view=achievements"
               icon={Medal}
