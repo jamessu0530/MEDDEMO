@@ -43,24 +43,38 @@ export function animateReportNumber(
 export function useReportAnimatedNumber(value: number | null, key: string) {
   const cache = useContext(ReportNumberCacheContext)
   const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
-  const [displayed, setDisplayed] = useState(value)
+  const [animation, setAnimation] = useState(() => ({
+    key,
+    target: value,
+    value: cache?.get(key) ?? value,
+  }))
   useLayoutEffect(() => {
     if (!cache) return
     if (value == null || !Number.isFinite(value)) {
       cache.delete(key)
-      setDisplayed(value)
       return
     }
     const from = cache.get(key)
     if (from == null || from === value || reducedMotion) {
       cache.set(key, value)
-      setDisplayed(value)
       return
     }
     return animateReportNumber(from, value, (next) => {
       cache.set(key, next)
-      setDisplayed(next)
+      setAnimation({ key, target: value, value: next })
     })
   }, [cache, key, value, reducedMotion])
-  return cache ? displayed : value
+  const current = cache?.get(key)
+  if (
+    !cache ||
+    reducedMotion ||
+    value == null ||
+    !Number.isFinite(value) ||
+    current == null ||
+    current === value
+  )
+    return value
+  return animation.key === key && animation.target === value
+    ? animation.value
+    : current
 }
