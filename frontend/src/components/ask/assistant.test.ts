@@ -240,6 +240,9 @@ describe("所有頁面的共用 AI 助理", () => {
     expect(html).not.toContain('id="page-assistant-launcher"')
     expect(html).not.toContain("在報表可以問")
     expect(html).not.toContain("這份報表應該先看哪些數字？")
+    expect(html).not.toContain("h-[var(--assistant-height)]")
+    expect(html).not.toContain("flex h-6 shrink-0 touch-none")
+    expect(html).toContain("pointer-events-auto absolute top-0")
   })
 
   it("收合與展開時都保留同一個拖曳把手，供觸控與鍵盤調整高度", () => {

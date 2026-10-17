@@ -5,6 +5,7 @@ import { ArrowLeft, ArrowRight, Ghost, RotateCcw, Sparkles } from "@/components/
 import { ASSISTANT_TRANSITION_MS, type AssistantTransitionAction } from "@/ask/use-assistant-transition"
 import { useAssistantSwipe } from "@/ask/use-assistant-swipe"
 import { AssistantModeTransition } from "@/components/ask/assistant-mode-transition"
+import { AssistantSwipeUnlock } from "@/components/ask/assistant-swipe-unlock"
 import { AssistantAchievements } from "@/components/ask/assistant-achievements"
 import { Mascot } from "@/components/mascot"
 import type { AssistantAchievement, AssistantAchievementUnlock, Collected } from "@/lib/mascot-collection"
@@ -31,7 +32,7 @@ export function Preview() {
     setMode(action)
     setEvent({ id: ++sequence.current, action, unlock: { achievement, newly_unlocked: !previous.owned } })
   }
-  const { dragging, ...swipe } = useAssistantSwipe(play)
+  const { dragging, preview, ...swipe } = useAssistantSwipe(play)
   useEffect(() => {
     if (!event || paused) return
     const timer = window.setTimeout(() => setEvent(null), duration)
@@ -45,10 +46,9 @@ export function Preview() {
         <span className="absolute top-5 left-5 rounded-full bg-card px-3 py-1.5 text-[11px] font-semibold text-muted-foreground">互動預覽</span>
         {event && <div className="pointer-events-none absolute inset-0" style={{ "--mode-bottom": "62px" } as CSSProperties}><AssistantModeTransition key={event.id} action={event.action} unlock={event.unlock} duration={duration} pausedAt={paused ? .53 : undefined} /></div>}
         {!event && <div className="flex flex-1 flex-col items-center justify-center gap-2"><Mascot state="hi" size={110} /><span className="text-xs text-muted-foreground">熊熊準備好變魔法了</span></div>}
-        <div {...swipe} data-swipe-direction={dragging ?? undefined} tabIndex={0} aria-label="向右滑開啟 Ghost mode，向左滑開新對話" onKeyDown={(e) => { if (e.key === "ArrowRight" || e.key === "ArrowLeft") { e.preventDefault(); play(e.key === "ArrowRight" ? "ghost" : "new") } }} className={`relative z-0 cursor-grab touch-pan-y select-none rounded-2xl border-2 bg-card p-4 shadow-sm focus-visible:outline-2 focus-visible:outline-primary ${mode === "ghost" ? "border-dashed border-primary/50" : "border-border"}`}>
-          <p className="flex items-center gap-2 text-sm font-bold">{mode === "ghost" ? <Ghost className="size-4 text-primary" /> : <Sparkles className="size-4 text-primary" />}{mode === "ghost" ? "Ghost mode · 熊熊滾" : "熊熊滾 · 新對話"}</p>
-          <p className="mt-3 rounded-xl bg-muted/50 px-3 py-3 text-sm text-muted-foreground">輸入問題…</p>
-          <p className="mt-3 flex items-center justify-between text-[10px] text-muted-foreground"><span>← 開新對話</span><span>Ghost mode →</span></p>
+        <div {...swipe} data-swipe-direction={dragging ?? undefined} data-preview-mode={mode} tabIndex={0} aria-label="向右滑開啟 Ghost mode，向左滑開新對話" onKeyDown={(e) => { if (e.key === "ArrowRight" || e.key === "ArrowLeft") { e.preventDefault(); play(e.key === "ArrowRight" ? "ghost" : "new") } }} className={`relative z-0 flex h-14 cursor-grab touch-pan-y items-center gap-3 overflow-hidden rounded-2xl border-2 bg-card px-3 shadow-sm focus-visible:outline-2 focus-visible:outline-primary ${mode === "ghost" ? "border-dashed border-primary/50" : "border-border"}`}>
+          <Mascot size={28} bust /><span className="flex-1 text-sm text-muted-foreground">輸入問題…</span><span className="text-primary" aria-hidden="true">↑</span>
+          {preview && <AssistantSwipeUnlock preview={preview} />}
         </div>
       </section>
       <section className="flex flex-col justify-center gap-3" aria-label="播放控制">
@@ -60,7 +60,7 @@ export function Preview() {
           <button type="button" aria-pressed={paused} onClick={() => { setPaused(!paused); play(mode) }} className="min-h-11 underline underline-offset-4">{paused ? "繼續播放" : "定格看動作"}</button>
           <button type="button" onClick={() => { setAchievements(INITIAL); setEvent(null) }} className="min-h-11 text-muted-foreground underline underline-offset-4">重設成就</button>
         </div>
-        <p className="px-2 text-xs leading-relaxed text-muted-foreground">首次發現會亮起成就，再次滑動可重播。正式對話框也支援 Alt + Shift + 左右方向鍵。</p>
+        <p className="px-2 text-xs leading-relaxed text-muted-foreground">左右滑動像解鎖一樣跟手；滑到一半往回收，熊熊會跑回去。滑到底再放開才切換，輸入框維持原本大小。首次完成會亮起成就。</p>
       </section>
     </div>
     <AssistantAchievements achievements={achievements} />

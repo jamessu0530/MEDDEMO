@@ -34,15 +34,15 @@ export function AssistantModeTransition({ action, unlock, failed, look, duration
     <div className="assistant-mode-stage" aria-hidden="true">
       <span className="assistant-mode-floor" />
       <div className="assistant-mode-runner assistant-mode-single">
-        <div className="assistant-mode-actor"><span className="assistant-mode-shadow" /><div className="assistant-mode-roll"><ModeBear ghost={ghost} look={look} /></div></div>
+        <div className="assistant-mode-actor"><span className="assistant-mode-shadow" /><div className="assistant-mode-roll"><AssistantModeBear ghost={ghost} look={look} /></div></div>
       </div>
       {!ghost && <>
         <div className="assistant-mode-smoke">
           {Array.from({ length: 7 }, (_, index) => <span key={index} style={{ "--puff": index, "--puff-x": `${Math.cos(index * Math.PI * 2 / 7) * 76}px`, "--puff-y": `${Math.sin(index * Math.PI * 2 / 7) * 46}px` } as CSSProperties} />)}
           <b>噗！</b>
         </div>
-        <div className="assistant-mode-runner assistant-mode-twin" data-side="left"><div className="assistant-mode-actor"><span className="assistant-mode-shadow" /><ModeBear look={look} /></div></div>
-        <div className="assistant-mode-runner assistant-mode-twin" data-side="right"><div className="assistant-mode-actor"><span className="assistant-mode-shadow" /><ModeBear look={look} /></div></div>
+        <div className="assistant-mode-runner assistant-mode-twin" data-side="left"><div className="assistant-mode-actor"><span className="assistant-mode-shadow" /><AssistantModeBear look={look} /></div></div>
+        <div className="assistant-mode-runner assistant-mode-twin" data-side="right"><div className="assistant-mode-actor"><span className="assistant-mode-shadow" /><AssistantModeBear look={look} /></div></div>
       </>}
       <div className="assistant-mode-dust">{[0, 1, 2].map((index) => <span key={index} style={{ "--dust": index } as CSSProperties} />)}</div>
       <span className="assistant-mode-spark" data-side="left">✦</span><span className="assistant-mode-spark" data-side="right">✧</span>
@@ -50,7 +50,7 @@ export function AssistantModeTransition({ action, unlock, failed, look, duration
   </div>
 }
 
-function ModeBear({ ghost = false, look }: { ghost?: boolean; look?: MascotLook }) {
+export function AssistantModeBear({ ghost = false, look }: { ghost?: boolean; look?: MascotLook }) {
   return <svg className="mascot assistant-mode-bear" viewBox="0 0 240 240" width="132" height="132" xmlns="http://www.w3.org/2000/svg">
     <g className="assistant-mode-stride">
       <MascotFigure state="hi" props={false} look={look} />

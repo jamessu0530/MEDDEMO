@@ -27,11 +27,11 @@ export function useAssistantResize(open: boolean, availableHeight = 720) {
     collapsedHeight,
   })
 
-  function apply(height: number) {
+  function apply(height: number, baseline = collapsedHeight) {
     const next = resizeAssistantPanel({
       height,
       availableHeight,
-      collapsedHeight,
+      collapsedHeight: baseline,
     })
     if (next.open) setPreferredHeight(next.height)
     if (next.open !== open) (next.open ? openAssistant : closeAssistant)()
@@ -62,7 +62,7 @@ export function useAssistantResize(open: boolean, availableHeight = 720) {
     if (!current.moved && Math.abs(delta) < 6) return
     current.moved = true
     setResizing(true)
-    apply(current.height + delta)
+    apply(current.height + delta, current.open ? collapsedHeight : current.height)
   }
 
   function finish(event: PointerEvent<HTMLDivElement>, cancelled = false) {
@@ -100,6 +100,7 @@ export function useAssistantResize(open: boolean, availableHeight = 720) {
     event.preventDefault()
     const height =
       panelRef.current?.getBoundingClientRect().height ?? size.height
+    const baseline = open ? collapsedHeight : height
     if (!open) setCollapsedHeight(height)
     const step = event.shiftKey ? 96 : 48
     if (
@@ -107,10 +108,10 @@ export function useAssistantResize(open: boolean, availableHeight = 720) {
       (event.key === "ArrowDown" && height - step < size.min)
     )
       closeAssistant()
-    else if (event.key === "End") apply(size.max)
+    else if (event.key === "End") apply(size.max, baseline)
     else if (event.key === "Enter" || event.key === " ")
       (open ? closeAssistant : openAssistant)()
-    else apply(height + (event.key === "ArrowUp" ? step : -step))
+    else apply(height + (event.key === "ArrowUp" ? step : -step), baseline)
   }
 
   return {

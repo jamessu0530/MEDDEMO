@@ -1,0 +1,47 @@
+.assistant-swipe-unlock {
+  position: absolute;
+  z-index: 20;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--card) 96%, transparent);
+  pointer-events: none;
+  user-select: none;
+}
+.assistant-swipe-fill {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: calc(var(--swipe-progress) * 100%);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--primary) 18%, transparent), color-mix(in srgb, var(--primary) 5%, transparent));
+  border-right: 1px solid color-mix(in srgb, var(--primary) 20%, transparent);
+}
+.assistant-swipe-unlock[data-action="new"] .assistant-swipe-fill { left: auto; right: 0; transform: scaleX(-1); }
+.assistant-swipe-label { display: flex; align-items: center; gap: 8px; padding-inline: 12px; color: var(--primary); font-size: 12px; font-weight: 600; }
+.assistant-swipe-arrows { font-size: 22px; letter-spacing: 3px; opacity: .65; }
+.assistant-swipe-runner {
+  position: absolute;
+  left: calc(-64px + (100% + 64px) * var(--swipe-progress));
+  bottom: -7px;
+  width: 64px;
+  height: 64px;
+}
+.assistant-swipe-unlock[data-action="new"] .assistant-swipe-runner { left: calc(100% - (100% + 64px) * var(--swipe-progress)); }
+.assistant-swipe-facing, .assistant-swipe-roll { width: 100%; height: 100%; }
+.assistant-swipe-runner .assistant-mode-bear { width: 64px; height: 64px; }
+.assistant-swipe-runner .assistant-mode-stride { animation-duration: .14s; }
+.assistant-swipe-unlock[data-retreating="true"] .assistant-swipe-facing { transform: scaleX(-1); }
+.assistant-swipe-unlock[data-action="new"] .assistant-swipe-roll { transform: rotate(calc(var(--swipe-progress) * -720deg)); }
+.assistant-swipe-unlock .assistant-mode-mask { animation: none; opacity: var(--swipe-progress); transform: translateY(calc((1 - var(--swipe-progress)) * -48px)); }
+.assistant-swipe-unlock[data-ready="true"] { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 45%, transparent); }
+.assistant-swipe-unlock[data-phase="returning"] .assistant-swipe-runner { transition: left 420ms cubic-bezier(.22,.7,.25,1); }
+.assistant-swipe-unlock[data-phase="returning"] .assistant-swipe-roll { transition: transform 420ms cubic-bezier(.22,.7,.25,1); }
+.assistant-swipe-unlock[data-phase="returning"] .assistant-swipe-fill { transition: width 420ms cubic-bezier(.22,.7,.25,1); }
+.assistant-swipe-unlock[data-phase="returning"] { animation: assistant-unlock-return 460ms both; }
+@keyframes assistant-unlock-return { 0%, 68% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .assistant-swipe-unlock *, .assistant-swipe-unlock { transition: none !important; animation: none !important; }
+  .assistant-swipe-unlock[data-action="new"] .assistant-swipe-roll { transform: none; }
+}

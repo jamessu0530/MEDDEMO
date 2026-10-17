@@ -24,7 +24,7 @@ import { useCurrentPageContext } from "@/ask/use-page-context"
 import { pageAssistantPlacement } from "@/ask/page-assistant"
 import { useAssistantLayout } from "@/ask/use-assistant-layout"
 import { useAssistantResize } from "@/ask/use-assistant-resize"
-import { useAssistantSwipe } from "@/ask/use-assistant-swipe"
+import { AssistantSwipeCard } from "@/components/ask/assistant-swipe-unlock"
 import { useAssistantTransition, type AssistantTransitionAction } from "@/ask/use-assistant-transition"
 import { AssistantModeTransition } from "@/components/ask/assistant-mode-transition"
 import { EntryView } from "@/components/ask/entry-view"
@@ -35,7 +35,7 @@ import { LearningAiGate } from "@/components/learning/ai-gate"
 import { Mascot } from "@/components/mascot"
 import { Notice } from "@/components/notice"
 import { Button } from "@/components/ui/button"
-import { Card, CardFooter, CardHeader } from "@/components/ui/card"
+import { CardFooter, CardHeader } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
 import { addDraftFiles, shrinkPhoto, type DraftFile } from "@/lib/attachments"
 import { useAuth } from "@/lib/auth"
@@ -76,9 +76,7 @@ export function Assistant() {
     if (action === "ghost") asking.threads.enterGhost()
     else asking.threads.startNew()
     transition.play(action)
-    openAssistant()
   }
-  const { dragging, ...swipe } = useAssistantSwipe(changeMode, Boolean(user) && !sending)
   const placement = pageAssistantPlacement(pathname)
   const enabled = Boolean(user) && placement !== "none"
   const bare = pageWidth(pathname) === "bare"
@@ -94,7 +92,7 @@ export function Assistant() {
     resizing,
     handleProps,
   } = useAssistantResize(open, availableHeight)
-  const fullAnimation = availableHeight !== undefined && availableHeight - panelHeight >= 248
+  const fullAnimation = availableHeight !== undefined && availableHeight - (open ? panelHeight : 80) >= 248
   const modeAnimation = transition.event && <AssistantModeTransition key={transition.event.id} action={transition.event.action} unlock={transition.reward?.unlock} failed={transition.reward?.failed} compact={!fullAnimation} heading={`熊熊滾 · ${page.title}`} />
   const demo = useSyncExternalStore(
     uiDemo.subscribe,
@@ -191,12 +189,12 @@ export function Assistant() {
         } as CSSProperties
       }
     >
-      <Card
-        {...swipe}
+      <AssistantSwipeCard
+        onSwipe={changeMode}
+        swipeEnabled={Boolean(user) && !sending}
         ref={panelRef}
         id="page-assistant-panel"
         data-assistant-mode={thread.ghost ? "ghost" : "saved"}
-        data-assistant-swipe={dragging ?? undefined}
         aria-keyshortcuts="Alt+Shift+ArrowRight Alt+Shift+ArrowLeft"
         onKeyDown={(event) => {
           if (!user || sending || !event.altKey || !event.shiftKey) return
@@ -207,34 +205,12 @@ export function Assistant() {
         hidden={!active}
         className={cn(
           "pointer-events-auto min-h-0 touch-pan-y gap-0 overflow-hidden rounded-2xl border-foreground py-0 shadow-lg shadow-foreground/5",
-          thread.ghost && "border-2 border-dashed border-muted-foreground/60 bg-muted/95",
-          dragging === "new" && "border-2 border-solid border-success",
+          thread.ghost && "border-dashed border-muted-foreground/60 bg-muted/95",
           open && "h-[var(--assistant-height)]",
           resizing && "select-none",
           !active && "hidden"
         )}
       >
-        {user && (
-          <div
-            id="page-assistant-resize"
-            role="separator"
-            tabIndex={0}
-            aria-label="調整對話框高度"
-            aria-orientation="horizontal"
-            aria-controls="page-assistant-answers"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuetext={
-              open
-                ? "向上拉高、向下縮小對話框"
-                : "對話已收合，向上拉查看紀錄"
-            }
-            {...handleProps}
-            className="flex h-6 shrink-0 touch-none cursor-ns-resize select-none items-center justify-center hover:bg-muted/50 focus-visible:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
-          >
-            <span className="h-0.5 w-8 rounded-full bg-muted-foreground/35" />
-          </div>
-        )}
         {open && (
           <CardHeader className="shrink-0 border-b px-3 py-1">
             <div className="flex items-center gap-3">
@@ -269,7 +245,21 @@ export function Assistant() {
         <LearningAiGate embedded compact active={active}>
           <AssistantContent key={`${user?.id}:${thread.id}`} open={open && active} active={active} />
         </LearningAiGate>
-      </Card>
+      </AssistantSwipeCard>
+      <div
+        id="page-assistant-resize"
+        role="separator"
+        tabIndex={0}
+        aria-label="調整對話框高度"
+        aria-orientation="horizontal"
+        aria-controls="page-assistant-answers"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuetext={open ? "向上拉高、向下縮小對話框" : "對話已收合，向上拉查看紀錄"}
+        {...handleProps}
+        className="pointer-events-auto absolute top-0 left-1/2 z-40 flex h-5 w-20 -translate-x-1/2 touch-none cursor-ns-resize select-none items-center justify-center rounded-full hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      ><span className="h-0.5 w-8 rounded-full bg-muted-foreground/35" /></div>
+      {!open && !fullAnimation && modeAnimation && <div className="pointer-events-none absolute inset-x-2 bottom-full overflow-hidden rounded-xl border bg-card/95 px-3 shadow-sm">{modeAnimation}</div>}
       {fullAnimation && modeAnimation}
     </div>
   )

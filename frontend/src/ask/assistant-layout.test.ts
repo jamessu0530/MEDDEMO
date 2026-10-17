@@ -35,6 +35,10 @@ describe("拖曳對話框", () => {
       })
     ).toEqual({ open: true, height: 184 })
   })
+  it("原尺寸的 54px 輸入列使用量到的高度，第一次按向上即可展開", () => {
+    expect(resizeAssistantPanel({ height: 54 + 48, availableHeight: 420, collapsedHeight: 54 }))
+      .toEqual({ open: true, height: 214 })
+  })
 
   it("鍵盤升起時限制高度，收起後能恢復使用者拉出的高度", () => {
     const args = { height: 600, collapsedHeight: 88 }
