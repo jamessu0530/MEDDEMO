@@ -525,7 +525,7 @@ function AssistantContent({
               type="button"
               variant="ghost"
               size="icon"
-              className="size-11 shrink-0"
+              className="size-9 shrink-0"
               aria-label="展開共用對話"
               aria-expanded={false}
               aria-controls="page-assistant-answers"
@@ -568,9 +568,9 @@ function AssistantContent({
                         : "輸入問題…"
             }
             aria-label="輸入問題"
-            className="max-h-[min(6rem,24dvh)] min-h-11 min-w-0 flex-1 resize-none overflow-y-auto rounded-lg border-0 bg-transparent px-1 py-2.5 text-base shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0"
+            className="h-9 field-sizing-fixed max-h-9 min-h-9 min-w-0 flex-1 resize-none overflow-y-auto rounded-lg border-0 bg-transparent px-1 py-1.5 text-base leading-6 shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0"
           />
-          <div className="flex shrink-0 items-center">
+          <div className="flex shrink-0 items-center [&>button]:size-9 [&>button]:min-h-0 [&>button]:p-0">
             {!session && (
               <AttachButton onPick={pick} disabled={busy} multiple={false} />
             )}
@@ -579,7 +579,7 @@ function AssistantContent({
                 type="button"
                 variant="ghost"
                 size="icon"
-                className="size-11 shrink-0"
+                className="size-9 shrink-0"
                 disabled={busy}
                 onClick={() => {
                   setNotice(null)
@@ -594,7 +594,7 @@ function AssistantContent({
             <Button
               type="submit"
               size="icon"
-              className="ml-auto size-11 shrink-0 rounded-xl shadow-none active:transform-none"
+              className="ml-auto size-9 shrink-0 rounded-xl shadow-none active:transform-none"
               disabled={busy || !question.trim()}
               aria-label="送出"
             >
