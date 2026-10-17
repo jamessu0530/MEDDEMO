@@ -27,11 +27,12 @@ export function useAssistantResize(open: boolean, availableHeight = 720) {
     collapsedHeight,
   })
 
-  function apply(height: number, baseline = collapsedHeight) {
+  function apply(height: number, baseline = collapsedHeight, wasOpen = open) {
     const next = resizeAssistantPanel({
       height,
       availableHeight,
       collapsedHeight: baseline,
+      wasOpen,
     })
     if (next.open) setPreferredHeight(next.height)
     if (next.open !== open) (next.open ? openAssistant : closeAssistant)()
@@ -62,7 +63,11 @@ export function useAssistantResize(open: boolean, availableHeight = 720) {
     if (!current.moved && Math.abs(delta) < 6) return
     current.moved = true
     setResizing(true)
-    apply(current.height + delta, current.open ? collapsedHeight : current.height)
+    apply(
+      current.height + delta,
+      current.open ? collapsedHeight : current.height,
+      current.open
+    )
   }
 
   function finish(event: PointerEvent<HTMLDivElement>, cancelled = false) {

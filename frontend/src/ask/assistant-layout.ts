@@ -19,7 +19,10 @@ export function assistantPanelSize({
     max,
     height: Math.max(
       min,
-      Math.min(max, height ?? (shortViewport ? max : Math.min(384, availableHeight * 0.55)))
+      Math.min(
+        max,
+        height ?? (shortViewport ? max : Math.min(384, availableHeight * 0.55))
+      )
     ),
   }
 }
@@ -28,15 +31,19 @@ export function resizeAssistantPanel({
   height,
   availableHeight,
   collapsedHeight,
+  wasOpen = false,
 }: {
   height: number
   availableHeight: number
   collapsedHeight: number
+  /** 手勢開始時的狀態，避免上拉展開時在最小高度附近反覆開關。 */
+  wasOpen?: boolean
 }) {
+  const size = assistantPanelSize({ height, availableHeight, collapsedHeight })
   return {
-    open: height > collapsedHeight + 40,
-    height: assistantPanelSize({ height, availableHeight, collapsedHeight })
-      .height,
+    // 展開後往下拉過最小高度就收合，不留下必須一次拉完的空白距離。
+    open: height > (wasOpen ? size.min : collapsedHeight + 40),
+    height: size.height,
   }
 }
 
