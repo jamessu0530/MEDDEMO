@@ -84,8 +84,9 @@ def touch(session: Session, user: AppUser, active: bool, at: dt.datetime | None 
     這裡用 FOR SHARE 讀同一列排在它後面，版號變了就丟 SignedOut，不讓剛登出的人又在線 5 分鐘。"""
     at = at or now()
     version = user.session_version
-    session.refresh(user, with_for_update={"read": True})
-    if user.session_version != version or user.deactivated_at is not None:
+    # 示範角色是未加入 Session 的角色視圖；鎖定並驗證真正登入帳號，不能把視圖的角色寫回去。
+    account = session.get(AppUser, user.id, populate_existing=True, with_for_update={"read": True})
+    if account is None or account.session_version != version or account.deactivated_at is not None:
         raise SignedOut
     row = _row(session, user.id)
     before = _status(row, at)

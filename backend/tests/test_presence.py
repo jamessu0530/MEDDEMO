@@ -240,9 +240,9 @@ def test_demo_viewers_have_separate_socket_limits(client, auth, env, monkeypatch
         assert response.status_code == 200
         tokens.append(response.json()["token"])
     with client.websocket_connect("/api/ws") as first, client.websocket_connect("/api/ws") as second:
-        for ws, token in zip((first, second), tokens, strict=True):
+        for ws, token, user_id in zip((first, second), tokens, ("U02", "U04"), strict=True):
             ws.send_json({"type": "auth", "token": token, "active": True})
-            assert ws.receive_json() == {"type": "ready", "user_id": "A01"}
+            assert ws.receive_json() == {"type": "ready", "user_id": user_id}
             assert ws.receive_json()["type"] == "presence"
         # 同一個登入者第二條連線仍被擋，不因示範人物共用而放寬上限。
         with client.websocket_connect("/api/ws") as extra:
@@ -250,6 +250,18 @@ def test_demo_viewers_have_separate_socket_limits(client, auth, env, monkeypatch
             with pytest.raises(WebSocketDisconnect) as closed:
                 extra.receive_json()
         assert closed.value.code == presence_api.CLOSE_TOO_MANY
+
+
+def test_demo_role_http_heartbeat_records_the_login_without_changing_its_role(tx, client, auth, env):
+    env(DEMO_ROLE_SWITCH="true")
+    response = client.post("/api/auth/demo-role", headers=auth("U02"), json={"role": "it"})
+    assert response.status_code == 200
+    headers = {"Authorization": f"Bearer {response.json()['token']}"}
+    assert ping(client, headers)["U02"] == "available"
+    assert tx.get(UserPresence, "U02") is not None
+    assert tx.get(UserPresence, "A01") is None
+    tx.refresh(tx.get(AppUser, "U02"))
+    assert tx.get(AppUser, "U02").role == "sales"
 
 
 def test_connecting_shows_me_available_and_others_see_status_changes(client, engine, auth):

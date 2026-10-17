@@ -82,7 +82,8 @@ def test_learning_progress_belongs_to_the_login_not_the_shared_representative(tx
     assert finish(client, mine, "chronic", 1).status_code == 200
     first = client.get("/api/me", headers=mine).json()
     second = client.get("/api/me", headers=other).json()
-    assert first["name"] == second["name"] == "林昱辰"
+    # 共用示範路線，姓名與學習進度仍屬於登入帳號。
+    assert first["name"] == second["name"] == "品類練習業務"
     assert next(m for m in first["medals"] if m["kind"] == "chronic" and m["tier"] == 1)["unlocked_on"]
     assert all(not m["unlocked_on"] for m in second["medals"] if m["kind"] in CATEGORIES)
     assert client.get("/api/first-week/course", headers=mine).json()["xp"] == 0
