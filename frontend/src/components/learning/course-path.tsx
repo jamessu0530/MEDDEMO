@@ -1,3 +1,4 @@
+import { openAssistant } from "@/ask/assistant-window"
 import {
   Check,
   ChevronRight,
@@ -200,13 +201,14 @@ export function CoursePath({
               : `再完成 ${course.lessons.length - course.completed.length} 關，就能用打字與語音問熊熊滾。`}
           </p>
           {course.ai_unlocked && (
-            <Link
-              to="/ask"
+            <button
+              type="button"
+              onClick={openAssistant}
               className="mt-3 inline-flex min-h-11 items-center gap-1 text-sm font-semibold text-success"
             >
-              去問熊熊滾
+              問熊熊滾
               <ChevronRight className="size-4" />
-            </Link>
+            </button>
           )}
         </div>
       </div>

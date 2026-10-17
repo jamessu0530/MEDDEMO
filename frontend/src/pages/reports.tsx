@@ -1,3 +1,4 @@
+import { useAskPageContext } from "@/ask/use-page-context"
 import { ReportPageTooltip } from "@/components/reports/report-page-tooltip"
 import {
   useEffect,
@@ -42,6 +43,7 @@ import {
   type ReportWorkspace,
 } from "@/api/reports"
 import { Notice } from "@/components/notice"
+import { BottomNav } from "@/components/bottom-nav"
 import { ContextHelp } from "@/components/context-help"
 import { Mascot } from "@/components/mascot"
 import { PageHeader } from "@/components/page-header"
@@ -204,17 +206,22 @@ export function ReportsPage() {
   }, [attempt])
 
   if (!user) return null
+  const primaryNavigation = user.role === "sales"
   if (boot?.status === "ready")
     return (
-      <ReportCanvas
-        key={user.id}
-        workspace={boot.workspace}
-        backTo={homePath(user.role)}
-      />
+      <>
+        <ReportCanvas
+          key={user.id}
+          workspace={boot.workspace}
+          backTo={homePath(user.role)}
+          primaryNavigation={primaryNavigation}
+        />
+        {primaryNavigation && <BottomNav />}
+      </>
     )
   return (
-    <div className="min-h-svh">
-      <PageHeader title="我的報表" backTo={homePath(user.role)} />
+    <div className="min-h-svh pb-24 lg:pb-0">
+      <PageHeader title={primaryNavigation ? "報表" : "我的報表"} backTo={primaryNavigation ? undefined : homePath(user.role)} />
       <main className="p-4">
         {boot?.status === "error" ? (
           <Notice
@@ -236,6 +243,7 @@ export function ReportsPage() {
           </p>
         )}
       </main>
+      {primaryNavigation && <BottomNav />}
     </div>
   )
 }
@@ -243,9 +251,11 @@ export function ReportsPage() {
 export function ReportCanvas({
   workspace,
   backTo,
+  primaryNavigation = false,
 }: {
   workspace: ReportWorkspace
   backTo: string
+  primaryNavigation?: boolean
 }) {
   const [activeWorkspace, setActiveWorkspace] = useState(workspace)
   return (
@@ -253,6 +263,7 @@ export function ReportCanvas({
       key={activeWorkspace.active_report_id ?? "report-default"}
       workspace={activeWorkspace}
       backTo={backTo}
+      primaryNavigation={primaryNavigation}
       onOpen={(snapshot) =>
         setActiveWorkspace((current) => ({ ...current, ...snapshot }))
       }
@@ -263,10 +274,12 @@ export function ReportCanvas({
 function ReportDocument({
   workspace,
   backTo,
+  primaryNavigation,
   onOpen,
 }: {
   workspace: ReportWorkspace
   backTo: string
+  primaryNavigation: boolean
   onOpen: (snapshot: ReportLibrarySnapshot) => void
 }) {
   const isDesktop = useIsDesktop()
@@ -434,6 +447,16 @@ function ReportDocument({
   const dateFallback = asOf
     ? reportPeriodRange(config.period, asOf, config.date_range)
     : { start: "", end: "" }
+  useAskPageContext({ title: `${config.name} · ${currentPage.name}`, facts: [
+    `報表：${config.name}`, `報表分頁：${currentPage.name}`, `期間：${config.period}`,
+    `資料基準日：${asOf}`, `日期範圍：${dateFallback.start} 至 ${dateFallback.end}`,
+    ...(currentPage.date_range ? [`頁面日期範圍：${JSON.stringify(currentPage.date_range)}`] : []),
+    `報表篩選：${JSON.stringify(config.filters ?? [])}`, `頁面篩選：${JSON.stringify(currentPage.filters ?? [])}`,
+    `選取條件：${JSON.stringify(selectionGroups)}`, `業務編號：${config.owner_id ?? "未指定"}`, `客戶類型：${config.customer_type ?? "全部"}`,
+    `導覽篩選：${JSON.stringify(queryConfig.navigation_filters ?? [])}`, `切片器選取：${JSON.stringify(queryConfig.canvas_selections ?? [])}`,
+    ...(selected ? [`選取圖表：${selected.title}`, `圖表指標：${selected.metric}；分類：${selected.dimension}`, `圖表篩選：${JSON.stringify(selected.filters ?? [])}`] : []),
+  ] })
+
   const filterOptions = workspace.filter_options ?? {
     ...emptyFilterOptions(),
     owner: workspace.owners.map((owner) => ({
@@ -1124,7 +1147,7 @@ function ReportDocument({
     <div ref={workspaceLayout.ref} className="min-h-svh min-w-0 bg-muted/30">
       <PageHeader
         title="報表工作區"
-        backTo={backTo}
+        backTo={primaryNavigation ? undefined : backTo}
         trailing={
           (editing || dirty) && (
             <div className="flex items-center gap-1 pr-2">
@@ -1500,6 +1523,7 @@ function ReportDocument({
       <main
         className={cn(
           "grid min-w-0 gap-4 p-3 pb-[calc(9rem+env(safe-area-inset-bottom))] lg:p-5 lg:pb-[calc(9rem+env(safe-area-inset-bottom))]",
+          primaryNavigation && "pb-[calc(13rem+env(safe-area-inset-bottom))]",
           editing &&
             dockedPanels &&
             (studioPanels.data
@@ -2202,6 +2226,7 @@ function ReportDocument({
       )}
       {!readonly && (
         <AiReportDock
+          bottomNavigation={primaryNavigation && !isDesktop}
           bounds={workspaceLayout.dockBounds}
           config={config}
           owners={workspace.owners}
@@ -2515,12 +2540,14 @@ function useKeyboardInset() {
 
 function AiReportDock({
   bounds,
+  bottomNavigation,
   config,
   owners,
   available,
   onApply,
 }: {
   bounds?: { left: number; width: number }
+  bottomNavigation: boolean
   config: ReportConfig
   owners: OwnerOption[]
   available: boolean
@@ -2597,7 +2624,7 @@ function AiReportDock({
     <div
       className="pointer-events-none fixed inset-x-0 z-30 mx-auto max-w-md pb-[calc(0.75rem+env(safe-area-inset-bottom))] lg:max-w-3xl"
       style={{
-        bottom: keyboardInset,
+        bottom: keyboardInset || (bottomNavigation ? "4rem" : 0),
         ...(bounds && {
           left: bounds.left,
           right: "auto",

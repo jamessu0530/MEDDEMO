@@ -5,7 +5,7 @@ import { DriveSource } from "@/components/route/drive-source"
 import { Mascot } from "@/components/mascot"
 import { Button } from "@/components/ui/button"
 import { formatMinutes, proposalMarks, whichQuestion } from "@/lib/itinerary"
-import { HOME_LEFT_FIXED } from "@/lib/desktop-layout"
+import { FIXED_COLUMN, HOME_LEFT_FIXED } from "@/lib/desktop-layout"
 import { cn } from "@/lib/utils"
 
 type ProposalSheetProps = {
@@ -45,7 +45,7 @@ export function ProposalSheet({ proposal, applying, stale, error, onApply, onClo
         aria-label="熊熊滾的提案"
         className={cn(
           "fixed inset-x-0 bottom-0 z-30 mx-auto max-w-md animate-in px-2.5 pb-[calc(0.5rem+env(safe-area-inset-bottom))] duration-200 slide-in-from-bottom-4 motion-reduce:animate-none",
-          placement === "home" ? cn(HOME_LEFT_FIXED, "lg:bottom-4 lg:pb-0") : "lg:left-56 lg:max-w-2xl"
+          placement === "home" ? cn(HOME_LEFT_FIXED, "lg:bottom-4 lg:pb-0") : FIXED_COLUMN
         )}
       >
         <div className="max-h-[80svh] overflow-y-auto rounded-2xl border-2 bg-card p-4 shadow-lip">

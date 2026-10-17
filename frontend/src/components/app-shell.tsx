@@ -5,6 +5,7 @@ import { AppSidebar } from "@/components/app-sidebar"
 import { DemoRoleSwitcher } from "@/components/demo-role-switcher"
 import type { AuthUser } from "@/lib/auth"
 import { pageWidth } from "@/lib/desktop-layout"
+import { setSidebarCollapsed, useSidebarCollapsed } from "@/lib/desktop-sidebar"
 import { useIsDesktop } from "@/lib/use-media-query"
 import { cn } from "@/lib/utils"
 
@@ -16,12 +17,13 @@ import { cn } from "@/lib/utils"
 export function AppShell({ user, children }: { user: AuthUser; children: ReactNode }) {
   const width = pageWidth(useLocation().pathname)
   const desktop = useIsDesktop()
+  const collapsed = useSidebarCollapsed()
   if (width === "bare") return <div className="lg:mx-auto lg:max-w-md">{children}</div>
   return (
     <>
       {/* 手機上整條側邊欄是隱藏的，不要掛上去，免得它的計數器還在背景一直抓資料 */}
-      {desktop && <AppSidebar user={user} />}
-      <div className="lg:pl-56">
+      {desktop && <AppSidebar user={user} collapsed={collapsed} onToggle={() => setSidebarCollapsed(!collapsed)} />}
+      <div className="lg:pl-[var(--app-sidebar-width)]">
         <DemoRoleSwitcher user={user} />
         <div className={cn(width === "column" && "lg:mx-auto lg:max-w-2xl")}>{children}</div>
       </div>

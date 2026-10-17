@@ -1,3 +1,4 @@
+import { openAssistant } from "@/ask/assistant-window"
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router"
 
@@ -53,7 +54,7 @@ export function EscalationsPage() {
         {state.status === "ready" && state.items.length === 0 && (
           <Notice
             text="還沒有轉給主管的提問。問答查不到答案時，可以按「轉給主管回答」。"
-            action={{ label: "去問答", onClick: () => navigate("/ask") }}
+            action={{ label: "問熊熊滾", onClick: () => openAssistant() }}
           />
         )}
         {state.status === "ready" &&

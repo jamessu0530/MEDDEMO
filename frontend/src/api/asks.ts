@@ -1,11 +1,10 @@
 import type { Attachment } from "@/api/attachments"
+import type { AskPageContext } from "@/ask/page-context"
 import { jsonBody, request, upload } from "@/api/client"
 
 // memory：在頻道記憶裡找（各頻道整理出來的重點與附件）
 export type AskKind = "data" | "knowledge" | "memory"
 export const ASK_KINDS: AskKind[] = ["data", "knowledge", "memory"]
-// 問答頁上方的切換：auto 是送出前先問後端該查哪一種（routeAsk），其餘是業務自己指定
-export type AskMode = AskKind | "auto"
 export type AskStatus = "queued" | "running" | "answered" | "no_evidence" | "not_converged" | "failed"
 
 export type TraceItem = {
@@ -77,23 +76,25 @@ export type Ask = {
 export const isFinished = (ask: Ask) => ask.status !== "queued" && ask.status !== "running"
 
 /** 這段對話前面答完的一輪：送出下一題時帶著，要看前文才懂的會先改寫成完整問句 */
-export type Turn = { question: string; answer: string }
+export type Turn = { question: string; answer: string; page?: AskPageContext; has_file?: boolean }
 
-/** kind 有值：後端（TypeSafe Jev）有把握是這一種；null：請業務從 choices 選，機率高的在前。
- * question 是要拿去查的那一句，rewritten 表示看了前文改寫過 */
+/** 自動挑來源；無法確定意圖時回自然語言 clarification。question 是整理後的問句。 */
 export type RouteResult = {
   kind: AskKind | null
   choices: AskKind[]
   confidence: number | null
   question: string
   rewritten: boolean
+  clarification?: string | null
+  context_used?: boolean
+  continues_previous?: boolean
 }
 
-/** 送出前先整理這一題：追問就改寫；kind 沒給（選「自動」）再判斷該查哪一種。不建提問、不算提問次數 */
-export function routeAsk(question: string, hasFile: boolean, earlier: Turn[] = [], kind?: AskKind) {
+/** 帶當下頁面與最近對話，整理問題、來源或追問，不建提問紀錄。 */
+export function routeAsk(question: string, hasFile: boolean, earlier: Turn[] = [], page?: AskPageContext) {
   return request<RouteResult>(
     "/api/asks/route",
-    jsonBody("POST", { question, has_file: hasFile, earlier, kind: kind ?? null })
+    jsonBody("POST", { question, has_file: hasFile, earlier, page })
   )
 }
 

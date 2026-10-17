@@ -73,6 +73,7 @@
 
 /* 配色取自提案原型（index.html） */
 :root {
+    --app-sidebar-width: 14rem;
     --background: #F6F5F9;
     --foreground: #1A1626;
     --card: #FFFFFF;
@@ -159,6 +160,11 @@
     --lip-strong: #2A2A29;
     --primary-lip: #8A8A87;
     --destructive-lip: #A63E2C;
+}
+
+/* 電腦版側邊欄收成圖示列；主內容、固定輸入列與換頁動畫共用這個寬度。 */
+:root[data-sidebar-collapsed="true"] {
+    --app-sidebar-width: 4rem;
 }
 
 /*

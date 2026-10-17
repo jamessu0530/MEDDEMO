@@ -23,7 +23,7 @@ describe("UnlockToast", () => {
     expect(html).toContain('href="/me"')
     expect(html).toContain('role="status"')
     // 電腦版對齊路線欄，寬度跟著首頁的並排／單欄切換
-    expect(html).toContain("lg:left-[15.5rem]")
+    expect(html).toContain("lg:left-[calc(var(--app-sidebar-width)+1.5rem)]")
     expect(html).toContain("lg:w-[var(--home-route-width,27.5rem)]")
   })
 })

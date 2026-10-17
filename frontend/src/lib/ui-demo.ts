@@ -10,12 +10,6 @@ export type DemoStep = {
 /** 固定的教學步驟；問答只提出教學邀請，不能傳入程式碼、選擇器或任意點擊位置。 */
 export const ORDER_DEMO_STEPS: readonly DemoStep[] = [
   {
-    target: "orders-nav",
-    page: "/ask",
-    action: "click",
-    text: "先打開「訂單」，我帶你建立一張練習單。",
-  },
-  {
     target: "new-order",
     page: "/orders",
     action: "click",
@@ -220,7 +214,7 @@ export function createUiDemo(
       }
     },
     start() {
-      if (state.status === "running" || env.pathname() !== "/ask") return
+      if (state.status === "running" || env.pathname() !== "/orders") return
       cleanup()
       controller = new AbortController()
       unlisten = env.listen(() => stop())

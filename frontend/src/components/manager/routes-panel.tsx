@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react"
+import { useEffect, useState } from "react"
 import { ChevronLeft, ChevronRight, MapPin } from "@/components/icons"
 import { Link, useNavigate, useSearchParams } from "react-router"
 
@@ -14,10 +14,12 @@ import {
 } from "@/api/team-routes"
 import { MapSlot } from "@/components/map-slot"
 import { RepRouteCard } from "@/components/manager/rep-route-card"
+import { ResizableMapLayout } from "@/components/manager/resizable-map-layout"
 import { Notice } from "@/components/notice"
 import { LiveAvatar } from "@/components/user-avatar"
 import { useIsDesktop } from "@/lib/use-media-query"
-import { realtime, useRealtimeConnected } from "@/lib/realtime"
+import { realtime } from "@/lib/realtime"
+import { RouteLiveLoader } from "@/lib/route-live-loader"
 import { headerLine, progressLine, SOURCE_LABEL, totalsLine, windowLabel, withLocation, withLocations } from "@/lib/team-routes"
 import { cn } from "@/lib/utils"
 import type { CustomerLocationState } from "@/pages/customer"
@@ -55,26 +57,19 @@ function useLiveLoad<T>(
 ) {
   const [state, setState] = useState<Load<T>>({ status: "loading" })
   const [attempt, setAttempt] = useState(0)
-  const connected = useRealtimeConnected()
   useEffect(() => {
-    const controller = new AbortController()
-    const full = () =>
-      load(controller.signal)
-        .then((data) => setState({ status: "ready", data }))
-        .catch((error: unknown) => {
-          if (controller.signal.aborted) return
-          const message = error instanceof ApiError && error.status === 404 ? error.message : LOAD_FAILED
-          setState((current) => (current.status === "ready" ? current : { status: "error", message }))
-        })
-    const locationsOnly = () =>
-      getTeamLocations(controller.signal)
-        .then((update) =>
-          setState((current) => (current.status === "ready" ? { status: "ready", data: mergeLocations(current.data, update) } : current))
-        )
-        .catch(() => {
-          // 拿不到就等下一次通知或整份重拿
-        })
-    void full()
+    const loader = new RouteLiveLoader({
+      full: load,
+      locations: getTeamLocations,
+      onFull: (data) => setState({ status: "ready", data }),
+      onLocations: (update) =>
+        setState((current) => (current.status === "ready" ? { status: "ready", data: mergeLocations(current.data, update) } : current)),
+      onError: (error) => {
+        const message = error instanceof ApiError && error.status === 404 ? error.message : LOAD_FAILED
+        setState((current) => (current.status === "ready" ? current : { status: "error", message }))
+      },
+    })
+    loader.reload("full")
 
     let timer: ReturnType<typeof setTimeout> | undefined
     let wantFull = false
@@ -84,7 +79,7 @@ function useLiveLoad<T>(
         timer = undefined
         const reloadFull = wantFull
         wantFull = false
-        void (reloadFull ? full() : locationsOnly())
+        loader.reload(reloadFull ? "full" : "locations")
       }, RELOAD_DELAY_MS)
     }
     const off = realtime.subscribe((event) => {
@@ -92,20 +87,19 @@ function useLiveLoad<T>(
       else if (event.type === "itinerary" && watches(event.user_id)) soon(true)
       else if (event.type === "location" && watches(event.user_id)) soon(false)
     })
-    const poll = connected
-      ? undefined
-      : setInterval(() => {
-          if (document.visibilityState === "visible") void full()
-        }, POLL_MS)
+    // 連線狀態只決定這次要不要輪詢，不重啟 effect／中止還在等的行程請求。
+    const poll = setInterval(() => {
+      if (!realtime.isConnected() && document.visibilityState === "visible") loader.reload("full")
+    }, POLL_MS)
     return () => {
-      controller.abort()
+      loader.dispose()
       clearTimeout(timer)
       clearInterval(poll)
       off()
     }
-    // load、mergeLocations、watches 每次 render 都是新的函式；要不要重拿只看 key、按了重新載入、連線狀態
+    // load、mergeLocations、watches 每次 render 都是新的函式；換行程或按重新載入才重啟。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, attempt, connected])
+  }, [key, attempt])
   const retry = () => {
     setState({ status: "loading" })
     setAttempt((n) => n + 1)
@@ -117,18 +111,8 @@ function Loading() {
   return <p className="py-10 text-center text-sm text-muted-foreground">載入中…</p>
 }
 
-// 電腦版團隊行程的地圖：在左邊、固定在頁首下面，高度是視窗扣掉頁首
-const DESKTOP_MAP = "h-[calc(100svh-5.5rem)]"
-
-/** 電腦版：地圖在左邊固定不動，右邊 26rem 是清單或一位業務的詳細 */
-function BesideMap({ map, children }: { map: ReactNode; children: ReactNode }) {
-  return (
-    <div className="grid grid-cols-[minmax(0,1fr)_26rem] items-start gap-6">
-      <div className="sticky top-[4.5rem]">{map}</div>
-      <div className="flex min-w-0 flex-col gap-3">{children}</div>
-    </div>
-  )
-}
+// 外層的拖曳控制設定高度，載入中與 Google 地圖共用同一尺寸。
+const DESKTOP_MAP = "h-[var(--manager-map-height,clamp(20rem,calc(100svh-12rem),48rem))]"
 
 function TeamOverview() {
   const navigate = useNavigate()
@@ -157,11 +141,11 @@ function TeamOverview() {
   const cards = data.reps.map((route) => <RepRouteCard key={route.rep.id} route={route} />)
   if (desktop) {
     return (
-      <BesideMap map={<MapSlot routes={data.reps} className={DESKTOP_MAP} />}>
+      <ResizableMapLayout map={<MapSlot routes={data.reps} className={DESKTOP_MAP} />}>
         {header}
         {cards}
         <GoogleAttribution routes={data.reps} />
-      </BesideMap>
+      </ResizableMapLayout>
     )
   }
   return (
@@ -230,11 +214,11 @@ function RepDetail({ userId }: { userId: string }) {
   )
   if (desktop) {
     return (
-      <BesideMap map={<MapSlot routes={[route]} removed={route.removed} className={DESKTOP_MAP} />}>
+      <ResizableMapLayout map={<MapSlot routes={[route]} removed={route.removed} className={DESKTOP_MAP} />}>
         {back}
         {who}
         {details}
-      </BesideMap>
+      </ResizableMapLayout>
     )
   }
   return (

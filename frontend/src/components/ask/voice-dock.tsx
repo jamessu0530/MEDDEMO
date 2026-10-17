@@ -2,6 +2,7 @@ import { useEffect } from "react"
 import { Hand, Loader2, Mic, PhoneOff, Volume2, VolumeX } from "@/components/icons"
 
 import type { Conversation } from "@/ask/conversation"
+import type { AskPageContext } from "@/ask/page-context"
 import { Mascot } from "@/components/mascot"
 import { Button } from "@/components/ui/button"
 import { voiceMascotState } from "@/lib/mascot"
@@ -17,6 +18,7 @@ export type VoiceSession = { sendText: (text: string) => void; noteActivity: () 
 export default function VoiceDock({
   conversation,
   polls,
+  page,
   onClose,
   onSession,
   onNotice,
@@ -24,11 +26,12 @@ export default function VoiceDock({
   conversation: Conversation
   // 查詢輪詢的中止訊號，登出時才會中止（ask/ask-session.ts）
   polls: AbortSignal
+  page: AskPageContext
   onClose: () => void
   onSession: (session: VoiceSession | null) => void
   onNotice: (notice: string | null) => void
 }) {
-  const voice = useVoiceSession(conversation, polls)
+  const voice = useVoiceSession(conversation, polls, page)
   const live = voice.status === "listening" || voice.status === "speaking"
 
   // 按麥克風就是表達了要講話，載完直接開始，不讓人再按一次

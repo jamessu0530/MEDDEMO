@@ -39,13 +39,14 @@ describe("Demo 跳過新人課程", () => {
     const normal = render({ ...course, demo_skip_available: false })
     expect(normal).not.toContain("Demo：跳過課程")
     expect(normal).toContain("通關獎勵：AI 問答")
-    expect(normal).not.toContain('href="/ask"')
+    expect(normal).not.toContain("問熊熊滾</button>")
   })
 
   it("略過後可進 AI，仍顯示真實進度與尚未完成的課程", () => {
     const skipped = render({ ...course, ai_unlocked: true, demo_skipped: true })
     expect(skipped).toContain("Demo · AI 問答已開啟")
-    expect(skipped).toContain('href="/ask"')
+    expect(skipped).toContain("問熊熊滾")
+    expect(skipped).not.toContain('href="/ask"')
     expect(skipped).toContain("20 XP")
     expect(skipped).toContain("繼續闖關")
     expect(skipped).not.toContain("第一章完成！")

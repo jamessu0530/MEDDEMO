@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import type { Ask, AskKind, MemoryFile, Source } from "@/api/asks"
 import { createConversation, type ToolRun } from "@/ask/conversation"
 import { buildMemoryMap, filterMemoryMap } from "@/ask/memory-map"
+import { layoutMemoryMap } from "@/ask/memory-map-layout"
 
 function answered(
   id: string,
@@ -31,6 +32,50 @@ const source: Source = {
 }
 
 describe("query memory map", () => {
+  it("不同查詢類型連成同一張網絡，不建立分類分區", () => {
+    const conversation = createConversation()
+    for (const kind of ["data", "knowledge", "memory"] as const) {
+      const id = conversation.addToolRun(kind, `${kind}問題`)
+      conversation.replace(id, {
+        ask: answered(String(id), kind, { sources: [source] }),
+      })
+    }
+    const graph = buildMemoryMap(conversation.getSnapshot())
+    expect(graph.nodes.some((node) => node.kind === "topic")).toBe(false)
+    const reachable = new Set(["conversation"])
+    for (let pass = 0; pass < graph.nodes.length; pass++)
+      for (const link of graph.links) {
+        if (reachable.has(link.source)) reachable.add(link.target)
+        if (reachable.has(link.target)) reachable.add(link.source)
+      }
+    expect(reachable.size).toBe(graph.nodes.length)
+    const searched = filterMemoryMap(graph, "all", "退貨辦法")
+    expect(searched.nodes.some((node) => node.id === "conversation")).toBe(true)
+    expect(
+      searched.nodes.filter((node) => node.kind === "question")
+    ).toHaveLength(3)
+
+    // Category changes do not move nodes into separate regions.
+    const layout = layoutMemoryMap(graph)
+    expect(
+      layoutMemoryMap({
+        ...graph,
+        nodes: graph.nodes.map((node) => ({ ...node, askKind: "data" })),
+      })
+    ).toEqual(layout)
+    expect(layout.get("conversation")).toEqual({ x: 0, y: 0, z: 0 })
+    const points = [...layout.values()]
+    expect(
+      points.every((point) => Object.values(point).every(Number.isFinite))
+    ).toBe(true)
+    for (let a = 0; a < points.length; a++)
+      for (let b = a + 1; b < points.length; b++)
+        expect(
+          Math.hypot(points[a].x - points[b].x, points[a].y - points[b].y)
+        ).toBeGreaterThan(1)
+    expect(layoutMemoryMap({ ...graph, nodes: [], links: [] }).size).toBe(0)
+  })
+
   it("共用引用合成一個節點，每題仍能回到自己的對話", () => {
     const conversation = createConversation()
     const first = conversation.addToolRun("knowledge", "近效期怎麼退？")

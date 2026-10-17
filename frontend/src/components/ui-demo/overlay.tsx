@@ -1,7 +1,7 @@
 import { useEffect, useSyncExternalStore } from "react"
 import { createPortal } from "react-dom"
 import { MousePointer2, Square, X } from "@/components/icons"
-import { useLocation } from "react-router"
+import { useLocation, useNavigate } from "react-router"
 import { Mascot } from "@/components/mascot"
 import { Button } from "@/components/ui/button"
 import { ORDER_DEMO_STEPS } from "@/lib/ui-demo"
@@ -11,9 +11,16 @@ import "./ui-demo.css"
 /** 跨頁保留的操作提示；整層穿透點擊，只有停止／關閉鈕接收輸入。 */
 export function UiDemoOverlay() {
   const state = useSyncExternalStore(uiDemo.subscribe, uiDemo.getSnapshot)
-  const { pathname } = useLocation()
+  const { pathname, search, key, state: locationState } = useLocation()
+  const navigate = useNavigate()
   useEffect(() => {
-    if (!["/ask", "/orders", "/orders/demo"].includes(pathname))
+    if (pathname === "/orders" && locationState?.startOrderDemo) {
+      uiDemo.start()
+      navigate({ pathname, search }, { replace: true, state: { ...locationState, startOrderDemo: false } })
+    }
+  }, [pathname, search, key, locationState, navigate])
+  useEffect(() => {
+    if (!["/orders", "/orders/demo"].includes(pathname))
       uiDemo.stop("已離開示範流程，現在由你操作。")
   }, [pathname])
   if (state.status === "idle") return null

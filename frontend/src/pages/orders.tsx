@@ -1,16 +1,15 @@
-import { useEffect, useState, useSyncExternalStore } from "react"
+import { useAskPageContext } from "@/ask/use-page-context"
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react"
 import {
   ChevronLeft,
   ChevronRight,
-  ClipboardList,
   LoaderCircle,
-  Plus,
   RotateCw,
-  Users,
 } from "@/components/icons"
-import { Link, useNavigate } from "react-router"
+import { Link, useNavigate, useSearchParams } from "react-router"
 import {
   createOrder,
+  getOrderCustomer,
   getOrders,
   type OrderCustomer,
   type OrderList,
@@ -19,7 +18,7 @@ import { BottomNav } from "@/components/bottom-nav"
 import { Mascot } from "@/components/mascot"
 import { Notice } from "@/components/notice"
 import { PendingUploads } from "@/components/pending-uploads"
-import { SalesToolbar } from "@/components/sales-toolbar"
+import { SalesHeader } from "@/components/sales-header"
 import { Button } from "@/components/ui/button"
 import { SearchField } from "@/components/ui/search-field"
 import { SearchSelect } from "@/components/ui/search-select"
@@ -32,16 +31,31 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog"
 import { formatDate, formatTaipeiDateTime } from "@/lib/format"
-import { useAuth } from "@/lib/auth"
 import { ORDER_STATUS, PAYMENT_TERMS, orderMoney } from "@/lib/orders"
 import { cn } from "@/lib/utils"
-import { makePracticeOrder, PRACTICE_CUSTOMER } from "@/lib/order-practice"
+import { PRACTICE_CUSTOMER } from "@/lib/order-practice"
 import { uiDemo } from "@/lib/ui-demo-browser"
 
 const SELECT = "h-11 min-w-0 rounded-xl border bg-card px-3 text-sm"
 
-export function OrdersPage() {
-  const user = useAuth()?.user
+export function OrdersPage({
+  newOrder = false,
+  title = "訂單",
+  navigation,
+  showBottomNav = true,
+  active = true,
+}: {
+  newOrder?: boolean
+  title?: string
+  navigation?: ReactNode
+  showBottomNav?: boolean
+  active?: boolean
+}) {
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const customerId = newOrder
+    ? searchParams.get("customer_id") || undefined
+    : undefined
   const demonstrating =
     useSyncExternalStore(uiDemo.subscribe, uiDemo.getSnapshot).status ===
     "running"
@@ -55,6 +69,10 @@ export function OrdersPage() {
   const [error, setError] = useState("")
   const [retry, setRetry] = useState(0)
   const [creating, setCreating] = useState(false)
+  useAskPageContext({ title: newOrder ? "新增訂單" : "銷售訂單", facts: [
+    `搜尋：${query.trim() || "無"}`, `訂單狀態篩選：${status}`, `排序：${sort}`, `清單第 ${page} 頁`,
+    ...(customerId ? [`客戶編號：${customerId}`] : []),
+  ] }, active)
   useEffect(() => {
     const controller = new AbortController()
     const timer = setTimeout(() => {
@@ -80,40 +98,17 @@ export function OrdersPage() {
   return (
     <div className="min-h-svh pb-24 lg:pb-8">
       <header className="border-b bg-card px-4 py-5 lg:px-6">
-        {user?.role === "sales" && (
-          <div className="mb-3 lg:hidden">
-            <SalesToolbar user={user} />
-          </div>
-        )}
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <span className="flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-              <ClipboardList className="size-6" />
-            </span>
-            <div>
-              <h1 className="text-xl font-semibold">訂單</h1>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" asChild>
-              <Link to="/customers">
-                <Users className="size-4" />
-                客戶資料
-              </Link>
-            </Button>
-            <Button
-              data-ui-demo="new-order"
-              disabled={!result && !demonstrating}
-              onClick={() => {
-                setPractice(demonstrating)
-                setCreating(true)
-              }}
-            >
-              <Plus className="size-4" />
-              新增訂單
-            </Button>
-          </div>
-        </div>
+        <SalesHeader
+          title={title}
+          createDisabled={!result && !demonstrating}
+          onCreate={() => {
+            if (demonstrating) {
+              setPractice(true)
+              setCreating(true)
+            } else navigate("/orders/new")
+          }}
+        />
+        {navigation}
       </header>
       <main className="space-y-4 p-4 lg:p-6">
         <PendingUploads />
@@ -307,7 +302,7 @@ export function OrdersPage() {
                     setQuery("")
                     setStatus("all")
                     setPage(1)
-                  } else setCreating(true)
+                  } else navigate("/orders/new")
                 }}
               >
                 {query || status !== "all" ? "清除篩選" : "建立訂單草稿"}
@@ -341,12 +336,26 @@ export function OrdersPage() {
           </div>
         </section>
       </main>
-      <BottomNav />
-      {creating && (
+      {showBottomNav && <BottomNav />}
+      {(newOrder || creating) && (
         <CreateOrderDialog
-          asOf={result?.as_of ?? makePracticeOrder().as_of}
-          practice={practice}
-          onClose={() => setCreating(false)}
+          key={customerId ?? "new"}
+          asOf={result?.as_of}
+          customerId={customerId}
+          practice={!newOrder && practice}
+          onClose={() => {
+            if (newOrder)
+              navigate(
+                customerId
+                  ? `/customers/${encodeURIComponent(customerId)}`
+                  : "/orders",
+                { replace: true }
+              )
+            else {
+              setCreating(false)
+              setPractice(false)
+            }
+          }}
         />
       )}
     </div>
@@ -371,9 +380,11 @@ export function OrderBadge({ status }: { status: "draft" | "effective" }) {
 function CreateOrderDialog({
   practice,
   asOf,
+  customerId,
   onClose,
 }: {
-  asOf: string
+  asOf?: string
+  customerId?: string
   practice: boolean
   onClose: () => void
 }) {
@@ -382,11 +393,40 @@ function CreateOrderDialog({
   const [paymentTerm, setPaymentTerm] = useState("")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
+  const [defaults, setDefaults] = useState<{ as_of: string } | null>(null)
+  const [loadingCustomer, setLoadingCustomer] = useState(!!customerId)
+  const [loadError, setLoadError] = useState("")
+  const [retry, setRetry] = useState(0)
+  useEffect(() => {
+    if (!customerId || practice) return
+    const controller = new AbortController()
+    getOrderCustomer(customerId, controller.signal)
+      .then((value) => {
+        if (controller.signal.aborted) return
+        setCustomer(value.customer)
+        setPaymentTerm(value.customer.payment_term || "")
+        setDefaults(value)
+        setLoadError("")
+      })
+      .catch((err) => {
+        if (!controller.signal.aborted)
+          setLoadError(err instanceof Error ? err.message : "客戶資料沒有載入")
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoadingCustomer(false)
+      })
+    return () => controller.abort()
+  }, [customerId, practice, retry])
+  const shippingDate = defaults?.as_of ?? asOf
   async function create() {
     const selected = customer
-    if (!selected || busy) return
+    if (!selected || busy || loadingCustomer || loadError) return
     if (practice) {
       navigate("/orders/demo")
+      return
+    }
+    if (!shippingDate) {
+      setError("出貨日期尚未載入，請重新載入訂單頁。")
       return
     }
     setBusy(true)
@@ -395,7 +435,7 @@ function CreateOrderDialog({
       const order = await createOrder({
         customer_id: selected.id,
         ship_to_id: selected.id,
-        shipping_date: asOf,
+        shipping_date: shippingDate,
         payment_term: paymentTerm,
         shipping_address: selected.address || "",
         recipient: "",
@@ -403,7 +443,7 @@ function CreateOrderDialog({
         note: "",
         items: [],
       })
-      navigate(`/orders/${order.id}`)
+      navigate(`/orders/${order.id}`, { replace: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : "草稿沒有建立")
       setBusy(false)
@@ -420,6 +460,24 @@ function CreateOrderDialog({
               : "先選擇客戶建立草稿，之後再加入產品與出貨資料。"}
           </DialogDescription>
         </DialogHeader>
+        {loadingCustomer && (
+          <p role="status" className="text-sm text-muted-foreground">
+            載入客戶資料中…
+          </p>
+        )}
+        {loadError && (
+          <Notice
+            text={loadError}
+            action={{
+              label: "重新載入客戶",
+              onClick: () => {
+                setLoadingCustomer(true)
+                setLoadError("")
+                setRetry((value) => value + 1)
+              },
+            }}
+          />
+        )}
         <div className="space-y-2 text-sm">
           <p>客戶名稱</p>
           {practice ? (
@@ -443,7 +501,7 @@ function CreateOrderDialog({
               label="新訂單客戶"
               value={customer?.id ?? ""}
               selected={customer ?? undefined}
-              disabled={busy}
+              disabled={busy || loadingCustomer || !!loadError}
               onSelect={(value) => {
                 setCustomer(value)
                 setPaymentTerm(value.payment_term || "")
@@ -458,7 +516,7 @@ function CreateOrderDialog({
             label="新訂單付款條件"
             value={paymentTerm}
             placeholder="請選擇本次訂單的付款條件"
-            disabled={busy || !customer}
+            disabled={busy || loadingCustomer || !customer}
             options={Object.entries(PAYMENT_TERMS).map(([value, label]) => ({
               value,
               label,
@@ -477,7 +535,14 @@ function CreateOrderDialog({
           </Button>
           <Button
             data-ui-demo={practice ? "practice-create" : undefined}
-            disabled={busy || !customer || !paymentTerm}
+            disabled={
+              busy ||
+              loadingCustomer ||
+              !!loadError ||
+              !customer ||
+              !paymentTerm ||
+              (!practice && !shippingDate)
+            }
             onClick={() => void create()}
           >
             {busy && <LoaderCircle className="size-4 animate-spin" />}建立草稿

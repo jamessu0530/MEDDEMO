@@ -1,3 +1,4 @@
+import { openAssistant } from "@/ask/assistant-window"
 import { useEffect, useState } from "react"
 import { ChevronRight, FileText, GraduationCap } from "@/components/icons"
 import { Link, useNavigate } from "react-router"
@@ -123,7 +124,7 @@ export function FirstWeekPage() {
                       ? { ...current, course }
                       : current
                   )
-                  navigate("/ask")
+                  openAssistant()
                 }}
               />
             )}

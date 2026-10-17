@@ -28,7 +28,7 @@ export function CatalogPage() {
         <ProductsPanel navigation={navigation} active={view === "products"} />
       </section>
       <section hidden={view !== "promotions"} aria-label="促銷方案">
-        <PromotionsPanel navigation={navigation} />
+        <PromotionsPanel navigation={navigation} active={view === "promotions"} />
       </section>
       <BottomNav />
     </div>

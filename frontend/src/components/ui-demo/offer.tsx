@@ -1,10 +1,12 @@
 import { useState } from "react"
+import { useNavigate } from "react-router"
+import { closeAssistant } from "@/ask/assistant-window"
 import { MousePointer2 } from "@/components/icons"
 import { Mascot } from "@/components/mascot"
 import { Button } from "@/components/ui/button"
-import { uiDemo } from "@/lib/ui-demo-browser"
 
 export function UiDemoOffer() {
+  const navigate = useNavigate()
   const [declined, setDeclined] = useState(false)
   if (declined)
     return (
@@ -28,7 +30,7 @@ export function UiDemoOffer() {
         </div>
       </div>
       <div className="flex flex-wrap gap-2">
-        <Button onClick={() => uiDemo.start()}>
+        <Button onClick={() => { closeAssistant(); navigate("/orders", { state: { startOrderDemo: true } }) }}>
           <MousePointer2 className="size-4" />
           好，操作給我看
         </Button>

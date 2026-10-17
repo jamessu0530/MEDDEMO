@@ -93,17 +93,17 @@ describe("editable memory map", () => {
     })
   })
 
-  it("刪除分類節點後，分類篩選仍可查看該類的問題", () => {
+  it("刪除對話中心後，仍可搜尋問題與個人筆記", () => {
     const { map } = graph()
     const store = createMapEditsStore()
-    store.remove("topic:knowledge")
+    store.remove("conversation")
     const filtered = filterMemoryMap(
       applyMapEdits(map, store.getSnapshot()),
-      "knowledge",
-      ""
+      "all",
+      "退貨"
     )
     expect(filtered.nodes.some((node) => node.id === "question:1")).toBe(true)
-    expect(filtered.nodes.some((node) => node.id === "topic:knowledge")).toBe(
+    expect(filtered.nodes.some((node) => node.id === "conversation")).toBe(
       false
     )
   })

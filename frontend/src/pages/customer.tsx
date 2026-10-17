@@ -1,3 +1,4 @@
+import { useAskPageContext } from "@/ask/use-page-context"
 import { useEffect, useState } from "react"
 import { FileText, Handshake, MessagesSquare, Mic } from "@/components/icons"
 import { Link, useLocation, useNavigate, useParams } from "react-router"
@@ -62,6 +63,11 @@ export function CustomerPage() {
   const [placing, setPlacing] = useState(false)
   const [orderError, setOrderError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+
+  useAskPageContext({
+    title: state.status === "ready" && state.profile.customer.id === customerId ? `${state.profile.customer.name} · 客戶檔案` : "客戶檔案",
+    facts: state.status === "ready" && state.profile.customer.id === customerId ? [`客戶：${state.profile.customer.name}`, `客戶編號：${customerId}`, `區域：${state.profile.customer.region}`] : [`客戶編號：${customerId}`, "客戶資料尚未載入"],
+  })
 
   async function confirmOrder() {
     if (!ordering || placing) return
@@ -158,7 +164,7 @@ export function CustomerPage() {
   const { profile } = state
   const { customer, stats } = profile
   const toRecord = () => navigate(`/customers/${customer.id}/record`)
-  const toQuote = () => navigate(`/customers/${customer.id}/quote`)
+  const toOrder = () => navigate(`/orders/new?${new URLSearchParams({ customer_id: customer.id })}`)
   const toNegotiation = () => navigate(`/customers/${customer.id}/negotiation`)
 
   const alerts = (
@@ -261,9 +267,9 @@ export function CustomerPage() {
                 語音記錄
               </Button>
               <div className="flex gap-2">
-                <Button variant="outline" className="h-12 flex-1 gap-1.5" onClick={toQuote}>
+                <Button variant="outline" className="h-12 flex-1 gap-1.5" onClick={toOrder}>
                   <FileText className="size-4" />
-                  開報價
+                  新增訂單
                 </Button>
                 <Button variant="outline" className="h-12 flex-1 gap-1.5" onClick={toNegotiation}>
                   <Handshake className="size-4" />
@@ -317,10 +323,10 @@ export function CustomerPage() {
             <Handshake className="size-4" />
             談判卡
           </Button>
-          {/* 原型放在「語音記錄」旁邊：不必等拜訪口述，直接挑常進的品項開 SAP 報價草稿 */}
-          <Button variant="outline" className="h-12 flex-1 gap-1.5" onClick={toQuote}>
+          {/* 與訂單首頁共用建立流程，直接帶入這家客戶。 */}
+          <Button variant="outline" className="h-12 flex-1 gap-1.5" onClick={toOrder}>
             <FileText className="size-4" />
-            開報價
+            新增訂單
           </Button>
           <Button className="h-12 flex-1 gap-1.5" onClick={toRecord}>
             <Mic className="size-4" />

@@ -24,7 +24,7 @@ describe("使用者接手", () => {
 })
 
 function setup(steps?: readonly DemoStep[]) {
-  let pathname = "/ask"
+  let pathname = "/orders"
   let interrupt = () => {}
   let connected = true
   let available = true

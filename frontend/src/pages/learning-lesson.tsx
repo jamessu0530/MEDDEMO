@@ -1,3 +1,4 @@
+import { openAssistant } from "@/ask/assistant-window"
 import { useEffect, useRef, useState } from "react"
 import { CheckCircle2, ChevronRight, Lightbulb, Sparkles } from "@/components/icons"
 import { Link, useParams } from "react-router"
@@ -152,12 +153,7 @@ function LessonContent({ lessonId }: { lessonId: string }) {
                 </p>
               </div>
             )}
-            <Button asChild className="h-12 w-full text-base">
-              <Link to={next ? `/first-week/lessons/${next.id}` : "/ask"}>
-                {next ? "繼續下一關" : "去問熊熊滾"}
-                <ChevronRight />
-              </Link>
-            </Button>
+            {next ? <Button asChild className="h-12 w-full text-base"><Link to={`/first-week/lessons/${next.id}`}>繼續下一關<ChevronRight /></Link></Button> : <Button className="h-12 w-full text-base" onClick={openAssistant}>問熊熊滾<ChevronRight /></Button>}
             <Link
               to="/first-week"
               className="flex min-h-11 items-center text-sm text-muted-foreground"

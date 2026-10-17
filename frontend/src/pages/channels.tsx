@@ -1,3 +1,4 @@
+import { useAskPageContext } from "@/ask/use-page-context"
 import { Link, useNavigate, useParams, useSearchParams } from "react-router"
 import { useEffect, useState } from "react"
 import { Search } from "@/components/icons"
@@ -80,6 +81,8 @@ export function ChannelsPage() {
       : null
   const selected = state.status === "ready" && panes?.railId != null ? (state.channels.find((c) => c.id === panes.railId) ?? null) : null
   const selectedId = selected?.id ?? null
+  const contextChannel = opened?.id === panes?.openId ? opened : state.status === "ready" ? state.channels.find((channel) => channel.id === panes?.openId) : null
+  useAskPageContext({ title: contextChannel ? `${contextChannel.name} · 頻道` : undefined, facts: contextChannel ? [`開啟的頻道：${contextChannel.name}（編號 ${contextChannel.id}）`] : [] })
 
   useEffect(() => {
     if (selectedId !== null) rememberChannel(selectedId)

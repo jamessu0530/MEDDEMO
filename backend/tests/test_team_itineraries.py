@@ -1,8 +1,9 @@
 """主管端的行程分頁：看得到哪些業務、地圖要的座標與線、跟系統早上的建議比改了什麼。"""
 
 import datetime as dt
+import threading
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, event, select
 
 from app.models import AppUser, Customer, Itinerary, OrgUnit, UserLocation, Visit
 from app.services import google_routes, locations, travel
@@ -14,6 +15,41 @@ from app.timeutil import TAIPEI
 
 def person(tx, user_id):
     return tx.get(AppUser, user_id)
+
+
+def test_team_travel_runs_in_parallel_without_using_the_session_in_workers(tx, monkeypatch):
+    people = [person(tx, user_id) for user_id in ("U01", "U02")]
+    for rep in people:
+        itineraries.get_or_create(tx, rep.id)
+    owner_thread = threading.get_ident()
+    both_started = threading.Barrier(2, timeout=5)
+
+    def along(points, modes):
+        assert threading.get_ident() != owner_thread
+        both_started.wait()  # 串行處理會逾時：兩位必須同時開始查車程。
+        return travel.fill(points, {}, google=False, modes=modes)
+
+    def sql_on_owner_thread(*args):
+        assert threading.get_ident() == owner_thread, "Session 不可交給路線查詢執行緒"
+
+    monkeypatch.setattr(travel, "along", along)
+    monkeypatch.setattr(travel, "lines", lambda points, modes: None)
+    bind = tx.get_bind()
+    event.listen(bind, "before_cursor_execute", sql_on_owner_thread)
+    try:
+        found = team.routes(tx, people)
+    finally:
+        event.remove(bind, "before_cursor_execute", sql_on_owner_thread)
+    assert [route.rep.id for route in found] == ["U01", "U02"]
+    assert all(route.view.estimated and route.stops for route in found)
+
+
+def test_team_batch_preserves_the_single_route_result_and_order(tx):
+    people = [person(tx, user_id) for user_id in ("U02", "U01")]
+    expected = [team.route(tx, rep) for rep in people]
+    found = team.routes(tx, people)
+    assert found == expected
+    assert team.routes(tx, []) == []
 
 
 def test_a_manager_sees_their_own_reps_and_it_sees_everyone(tx):

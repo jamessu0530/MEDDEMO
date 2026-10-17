@@ -126,7 +126,10 @@ export function createMapMascot(id: string) {
     bounds,
     animate(seconds: number, reducedMotion: boolean) {
       const openness = reducedMotion ? 1 : mascotEyeOpenness(seconds)
-      for (const eye of eyes) eye.scale.y = .134 * openness
+      const scale = .134 * openness
+      const changed = eyes.some((eye) => eye.scale.y !== scale)
+      if (changed) for (const eye of eyes) eye.scale.y = scale
+      return changed
     },
     setThinking(thinking: boolean) {
       smile.visible = !thinking

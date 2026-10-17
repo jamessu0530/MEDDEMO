@@ -39,7 +39,7 @@ const readAuthFailed = () => authFailed
 export function MapSlot({ routes, removed, className = "h-64" }: { routes: RepRoute[]; removed?: RemovedStop[]; className?: string }) {
   return (
     <MapGate className={className}>
-      {(config, onFail) => <RouteMap config={config} routes={routes} removed={removed} onFail={onFail} />}
+      {(config, onFail) => <RouteMap config={config} routes={routes} removed={removed} className={className} onFail={onFail} />}
     </MapGate>
   )
 }

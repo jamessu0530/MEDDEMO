@@ -12,18 +12,19 @@ import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/lib/auth"
 
-export function LearningAiGate({ children }: { children: ReactNode }) {
+export function LearningAiGate({ children, embedded = false, active = true }: { children: ReactNode; embedded?: boolean; active?: boolean }) {
   const user = useAuth()?.user
   if (user?.role !== "sales") return children
-  return <SalesGate key={user.id}>{children}</SalesGate>
+  return <SalesGate key={user.id} embedded={embedded} active={active}>{children}</SalesGate>
 }
 
-function SalesGate({ children }: { children: ReactNode }) {
+function SalesGate({ children, embedded, active }: { children: ReactNode; embedded: boolean; active: boolean }) {
   const [course, setCourse] = useState<Course | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
+    if (!active) return
     const controller = new AbortController()
     getCourse(controller.signal)
       .then(setCourse)
@@ -36,13 +37,13 @@ function SalesGate({ children }: { children: ReactNode }) {
           )
       })
     return () => controller.abort()
-  }, [attempt])
+  }, [attempt, active])
 
   if (course?.ai_unlocked) return children
   return (
-    <div className="flex min-h-svh flex-col">
-      <PageHeader title="AI 問答" backTo="/" />
-      <main className="flex flex-1 flex-col items-center gap-5 px-5 pt-10 pb-28 text-center">
+    <div className={embedded ? "min-h-0 flex-1 overflow-y-auto" : "flex min-h-svh flex-col"}>
+      {!embedded && <PageHeader title="AI 問答" backTo="/" />}
+      <main className={embedded ? "flex flex-col items-center gap-4 px-5 py-6 text-center" : "flex flex-1 flex-col items-center gap-5 px-5 pt-10 pb-28 text-center"}>
         {error ? (
           <Notice
             text={error}
@@ -84,7 +85,7 @@ function SalesGate({ children }: { children: ReactNode }) {
           </>
         )}
       </main>
-      <BottomNav />
+      {!embedded && <BottomNav />}
     </div>
   )
 }

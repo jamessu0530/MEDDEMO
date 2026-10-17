@@ -1,3 +1,4 @@
+import { useAskPageContext } from "@/ask/use-page-context"
 import { useEffect, useState, type ReactNode } from "react"
 import { ChartNoAxesCombined, ChevronRight, Network, Settings, TriangleAlert } from "@/components/icons"
 import { Link, useNavigate, useSearchParams } from "react-router"
@@ -79,6 +80,10 @@ export function ManagerPage() {
   const user = useAuth()?.user
   const [params, setParams] = useSearchParams()
   const view: View = VIEWS.find((value) => value === params.get("view")) ?? "routes"
+  useAskPageContext({ facts: [
+    ...(params.get("rep") ? [`選取的業務編號：${params.get("rep")}`] : []),
+    ...(params.get("item") ? [`選取項目編號：${params.get("item")}`] : []),
+  ] })
   // 分頁上的數字（lib/manager-counts.ts）：每分鐘問一次，切換分頁時馬上再問一次
   const noticeCount = useUnseenNotices()
   const oaCount = usePendingOa()

@@ -292,14 +292,61 @@ def get_or_create(session: Session, user_id: str) -> Itinerary:
         return found
 
 
+@dataclass
+class _ViewTiming:
+    start: dt.datetime
+    points: list[travel.Point]
+    modes: list[TravelMode]  # 包含跑完的站；points 只包含出發點與還沒跑的站
+
+
+@dataclass
+class PreparedView:
+    """先在 Session 所在執行緒讀好行程；只有 points／modes 可交給外部查詢執行緒。"""
+
+    day: _Day
+    open: list[_Open]
+    precedences: list[tuple[str, str]]
+    skipped: set[int]
+    reasons: dict[str, str]
+    timing: _ViewTiming
+
+    @property
+    def customers(self) -> list[Customer]:
+        return [c for _, c in self.day.done] + [o.customer for o in self.open]
+
+    @property
+    def points(self) -> list[travel.Point]:
+        return self.timing.points
+
+    @property
+    def modes(self) -> list[TravelMode]:
+        return self.timing.modes[len(self.day.done):]
+
+
+def prepare_view(session: Session, itinerary: Itinerary) -> PreparedView:
+    """讀取行程與交通方式，不問 Google；讓主管總覽可以只並行查車程、不共用 Session。"""
+    day = _day(session, itinerary)
+    open_ = _saved_open(session, day)
+    skipped = set(itinerary.skipped_habit_ids)
+    return PreparedView(
+        day, open_, _precedences(session, itinerary), skipped, _reasons(itinerary, skipped),
+        _view_timing(session, day, open_),
+    )
+
+
+def finish_view(session: Session, prepared: PreparedView, matrix: travel.Matrix) -> ItineraryView:
+    """在原 Session 的執行緒組好畫面，使用這次查到的車程，不另外存車程快取。"""
+    return _compose(
+        session, prepared.day, prepared.open, prepared.precedences, prepared.skipped,
+        prepared.reasons, [], timing=prepared.timing, matrix=matrix,
+    )
+
+
 def view(session: Session, itinerary: Itinerary) -> ItineraryView:
     """畫面要的樣子：跑完的站在前（照拜訪時間），還沒跑的照存著的順序；時間、車程、規則與違反現算。"""
-    day = _day(session, itinerary)
-    skipped = set(itinerary.skipped_habit_ids)
-    return _compose(
-        session, day, _saved_open(session, day), _precedences(session, itinerary), skipped,
-        _reasons(itinerary, skipped), [],
-    )
+    prepared = prepare_view(session, itinerary)
+    matrix = travel.along(prepared.points, prepared.modes)
+    return finish_view(session, prepared, matrix)
 
 
 def stop_order(session: Session, itinerary: Itinerary) -> list[tuple[Customer, bool]]:
@@ -1092,17 +1139,24 @@ def _write(session: Session, day: _Day, open_: list[_Open]) -> None:
         day.itinerary.urgent = None
 
 
+def _view_timing(session: Session, day: _Day, open_: list[_Open]) -> _ViewTiming:
+    durations = day.durations() | {o.customer.id: o.duration_minutes for o in open_}
+    start, points = _points(session, day.rep, day.itinerary.date, day.done, durations, [o.customer for o in open_])
+    return _ViewTiming(start, points, _leg_modes(session, day, _chain(day, open_)))
+
+
 def _compose(
     session: Session, day: _Day, open_: list[_Open], precedences: list[tuple[str, str]], skipped: set[int],
     reasons: dict[str, str], pending: Sequence[PendingHabit], estimate: bool = False,
+    *, timing: _ViewTiming | None = None, matrix: travel.Matrix | None = None,
 ) -> ItineraryView:
     itinerary, rep = day.itinerary, day.rep
-    durations = day.durations() | {o.customer.id: o.duration_minutes for o in open_}
-    start, points = _points(session, rep, itinerary.date, day.done, durations, [o.customer for o in open_])
+    timing = timing or _view_timing(session, day, open_)
+    start, points, modes = timing.start, timing.points, timing.modes
     # 每一段的交通方式（辦公室 → 跑完的站 → 還沒跑的站）；算時間只要還沒跑的那幾段，第一段從出發點過來
-    modes = _leg_modes(session, day, _chain(day, open_))
     ahead = modes[len(day.done):]
-    matrix = _timed(points, rep.travel_mode, ahead, estimate)
+    if matrix is None:
+        matrix = _timed(points, rep.travel_mode, ahead, estimate)
     planned = route_planner.schedule(start, 0, [o.plan_stop(n + 1) for n, o in enumerate(open_)], matrix.minutes)
     rules = _rules(open_, precedences, day.habits, skipped, pending)
     order = [o.customer.id for o in open_]

@@ -29,14 +29,12 @@ export const SIDEBAR_ITEM = "flex min-h-11 w-full items-center gap-3 rounded-ful
 // 業務：上面是底部分頁列，下面是手機上擠在首頁頁首的入口
 const SALES: SidebarGroups = {
   main: [
-    { to: "/orders", label: "訂單", icon: ClipboardList, badge: "uploads" },
+    { to: "/orders", label: "銷售", icon: ClipboardList, badge: "uploads" },
     { to: "/route", label: "路線", icon: Route },
     { to: "/channels", label: "頻道", icon: MessagesSquare, badge: "channels" },
-    { to: "/ask", label: "問答", icon: MessageCircleQuestion },
-    { to: "/products", label: "商品與促銷", icon: Pill },
+    { to: "/reports", label: "報表", icon: ChartNoAxesCombined },
   ],
   more: [
-    { to: "/reports", label: "我的報表", icon: ChartNoAxesCombined },
     { to: "/calendar", label: "日曆", icon: Calendar },
     { to: "/methods", label: "方法卡", icon: BookOpenText },
     { to: "/oa/forms", label: "我的申請單", icon: FileText },

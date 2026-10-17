@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
 from app.main import app
-from app.models import AppUser, Customer, Product, Promotion, PromotionItem, Receivable, SalesOrder, SalesTransaction, SapQuotationDraft
+from app.models import AppUser, Customer, Product, Promotion, PromotionItem, PublicOutlet, Receivable, SalesOrder, SalesTransaction, SapQuotationDraft
 from app.services import auth, order_workspace as service
 
 
@@ -53,11 +53,19 @@ def test_empty_draft_roundtrip_edit_conflict_and_clear_all_items(workspace):
     assert rows["total"] == 1 and rows["items"][0]["id"] == order["id"]
 
 
-def test_list_combines_history_and_new_orders_with_scoped_search_sort_and_pages(workspace):
+def test_list_excludes_seed_history_and_keeps_created_orders_search_sort_and_pages(workspace):
+    api, headers = client(workspace)
+    # 六筆展示交易仍供客戶與報表使用，但不再冒充訂單工作區的生效訂單。
+    assert workspace.scalar(select(func.count()).select_from(SalesTransaction)) == 6
+    assert api.get("/api/orders", headers=headers).json()["total"] == 0
+    assert api.get("/api/orders?status=effective", headers=headers).json()["total"] == 0
     api, headers, order = create(workspace)
+    create(workspace, customer_id="C2", items=[{"sku": "P1", "qty": 2, "unit_price": 95}])
+    create(workspace, customer_id="C3", items=[{"sku": "P2", "qty": 3, "unit_price": 90}])
     first = api.get("/api/orders?page_size=2", headers=headers).json()
     second = api.get("/api/orders?page_size=2&page=2", headers=headers).json()
-    assert first["total"] == second["total"] == 7
+    assert first["total"] == second["total"] == 3
+    assert len(first["items"]) == 2 and len(second["items"]) == 1
     assert not {row["id"] for row in first["items"]} & {row["id"] for row in second["items"]}
     ranked = api.get("/api/orders?sort=amount_desc", headers=headers).json()
     amounts = [row["amount"] for row in ranked["items"]]
@@ -65,7 +73,9 @@ def test_list_combines_history_and_new_orders_with_scoped_search_sort_and_pages(
     searched = api.get(f"/api/orders?q={order['order_no']}", headers=headers).json()
     assert searched["total"] == 1 and searched["items"][0]["id"] == order["id"]
     assert api.get("/api/orders?q=%25", headers=headers).json()["total"] == 0
-    assert {row["customer_id"] for row in ranked["items"]} == {"C1", "C2", "C3", "C4"}
+    assert {row["customer_id"] for row in ranked["items"]} == {"C1", "C2", "C3"}
+    assert all(row["source"] == "workspace" for row in ranked["items"])
+    assert api.get("/api/orders?q=O0", headers=headers).json()["total"] == 0
     _, foreign = client(workspace, "S3")
     assert api.get(f"/api/orders/{order['id']}", headers=foreign).status_code == 200
     saved = api.put(f"/api/orders/{order['id']}", headers=foreign, json=body(revision=1, items=[{"sku":"P1","qty":1,"unit_price":100}]))
@@ -73,6 +83,29 @@ def test_list_combines_history_and_new_orders_with_scoped_search_sort_and_pages(
     assert api.post(f"/api/orders/{order['id']}/submit", headers=foreign, json={"revision": saved.json()["revision"]}).status_code == 200
     assert api.post("/api/orders", headers=headers, json=body(customer_id="C3")).status_code == 201
     assert api.post("/api/orders", headers=headers, json=body(ship_to_id="C3")).status_code == 201
+
+
+def test_new_order_from_customer_loads_exact_defaults_without_creating_a_draft(workspace):
+    workspace.add(PublicOutlet(customer_id="C1", address="臺北市中正區測試路 1 號", phone="02-12345678",
+        category="藥局", review_notes=[], raw_record={}, source_url="https://example.com/outlets",
+        data_url="https://example.com/outlets.json", retrieved_on=dt.date(2031, 4, 17), snapshot_sha256="test"))
+    workspace.flush()
+    api, headers = client(workspace)
+    response = api.get("/api/orders/customers/C1", headers=headers)
+    assert response.status_code == 200
+    defaults = response.json()
+    selected = defaults["customer"]
+    assert (selected["id"], selected["payment_term"], selected["address"], selected["phone"]) == (
+        "C1", "RM06", "臺北市中正區測試路 1 號", "02-12345678")
+    assert defaults["as_of"] == "2031-04-17"
+    assert workspace.scalar(select(func.count()).select_from(SalesOrder)) == 0
+    created = api.post("/api/orders", headers=headers, json=body(customer_id=selected["id"], ship_to_id=selected["id"],
+        payment_term=selected["payment_term"], shipping_date=defaults["as_of"], shipping_address=selected["address"]))
+    assert created.status_code == 201
+    assert created.json()["shipping_address"] == selected["address"]
+    assert created.json()["customer_id"] == selected["id"]
+    assert api.get("/api/orders/customers/missing", headers=headers).status_code == 404
+    assert api.get("/api/orders/customers/C1").status_code == 401
 
 
 def test_historical_amounts_keep_precision_and_duplicate_sku_lines_are_grouped(workspace):

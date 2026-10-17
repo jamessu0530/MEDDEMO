@@ -23,6 +23,20 @@ class Settings(BaseSettings):
     jwt_secret: str = ""
     # 登入之後多久要重新登入。決賽當天只用幾個小時，一天綽綽有餘
     jwt_expire_hours: int = 24
+    # 行事曆：CalDAV 憑證的 Fernet 金鑰；未填時使用穩定 JWT_SECRET 衍生。
+    calendar_encryption_key: str = ""
+    calendar_vapid_private_key: str = ""
+    calendar_vapid_subject: str = ""
+    calendar_smtp_host: str = ""
+    calendar_smtp_port: int = 465
+    calendar_smtp_username: str = ""
+    calendar_smtp_password: str = ""
+    calendar_smtp_from: str = ""
+    calendar_smtp_starttls: bool = False
+    # 邀請信中的公開回覆網址；本機只測試、不寄真實邀請。
+    calendar_public_base_url: str = ""
+    # 限定可連接的外部日曆主機，避免訂閱網址探測內網。其他供應商由管理員明確加入。
+    calendar_remote_hosts: str = "*.icloud.com,calendar.google.com,www.google.com,outlook.office365.com,outlook.live.com,www.officeholidays.com,ics.calendarlabs.com"
     # 灌假資料時給每個帳號設的密碼。正式環境由 GitHub Secret 帶進來
     demo_password: str = DEFAULT_DEMO_PASSWORD
     # 展示時可由使用者略過新人課程；正式使用設 false，恢復五關解鎖。

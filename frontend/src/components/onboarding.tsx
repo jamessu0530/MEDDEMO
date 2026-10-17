@@ -14,8 +14,8 @@ const STEPS: { icon: LucideIcon; mascot: MascotState; title: string; body: strin
   {
     icon: ClipboardList,
     mascot: "hi",
-    title: "打開先看訂單，拜訪切到路線",
-    body: "首頁可以查詢訂單、追蹤狀態和新增訂單。要出門拜訪時，點「路線」查看今天跑哪幾家、每一站的原因，也能切換地圖和調整行程。點一站進客戶檔案，就能看進貨間隔、帳齡、答應過的事和談判卡。",
+    title: "銷售查訂單，拜訪切到路線",
+    body: "在「銷售」切換訂單、商品和促銷，可以查訂單、追蹤狀態、查型錄和活動。點「報表」查看業績與分析。要出門拜訪時，點「路線」查看今天跑哪幾家、每一站的原因，也能切換地圖和調整行程。點一站進客戶檔案，就能看進貨間隔、帳齡、答應過的事和談判卡。",
   },
   {
     icon: Mic,
@@ -27,7 +27,7 @@ const STEPS: { icon: LucideIcon; mascot: MascotState; title: string; body: strin
     icon: MessageCircleQuestion,
     mascot: "think",
     title: "想到就問",
-    body: "在「問答」打字，或按麥克風用講的，查數字和公司規定，答案附出處。查不到可以轉給主管，主管回覆了首頁會提醒你。",
+    body: "每個頁面都能點「問熊熊滾」，直接打字或按麥克風用講的。熊熊滾會參考你正在看的客戶、商品或報表，也能問其他事情，答案附出處。查不到可以轉給主管，主管回覆了會提醒你。",
   },
 ]
 

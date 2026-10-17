@@ -1,0 +1,37 @@
+{
+  "reviewed_at": "2026-10-17T00:33:03+08:00",
+  "reviews": [
+    {
+      "customer_id": "OUT-2db5111e125daf6655a2631ee0f6",
+      "image_url": "https://api.watsons.com.tw/medias/?context=bWFzdGVyfHJvb3R8MTg5MjQ5fGltYWdlL2pwZWd8YURsbUwyZzNOaTg1TVRVeE5ESXlPRGt3TURFMExtcHdad3w0Nzc1MDNlNDMxYzMxMDdmZGRiNzM2MDlmYjU1NDQ1MDcyNjc1ZDlkNjNkNDRmZjBiZTdhN2ViMDRjYjBlNzYw",
+      "page_url": "https://www.watsons.com.tw/store/wtctw_335_zh_TW/%E4%B8%83%E5%A0%B5",
+      "verification_method": "manual_visual_review",
+      "evidence": "屈臣氏招牌與玻璃店門",
+      "verified_at": "2026-10-17T00:33:03+08:00"
+    },
+    {
+      "customer_id": "OUT-4230dd6cc773ba01638398245382",
+      "image_url": "https://ppi.tw/sites/default/files/cover/025_303.jpg",
+      "page_url": "https://ppi.tw/pharmacy/5911021214",
+      "verification_method": "manual_visual_review",
+      "evidence": "合康藥局招牌與門口",
+      "verified_at": "2026-10-17T00:33:03+08:00"
+    },
+    {
+      "customer_id": "OUT-b3f446d8b7485773ad74f4332ebe",
+      "image_url": "https://ppi.tw/sites/default/files/cover/004_315.jpg",
+      "page_url": "https://ppi.tw/pharmacy/5911020057",
+      "verification_method": "manual_visual_review",
+      "evidence": "合豐藥局招牌與門口",
+      "verified_at": "2026-10-17T00:33:03+08:00"
+    },
+    {
+      "customer_id": "OUT-02a34e8df5949a0802da81dfa576",
+      "image_url": "https://ppi.tw/sites/default/files/cover/030_254.jpg",
+      "page_url": "https://ppi.tw/pharmacy/5911020039",
+      "verification_method": "manual_visual_review",
+      "evidence": "民安藥局招牌與門口",
+      "verified_at": "2026-10-17T00:33:03+08:00"
+    }
+  ]
+}

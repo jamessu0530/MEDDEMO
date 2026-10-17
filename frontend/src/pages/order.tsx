@@ -1,3 +1,4 @@
+import { useAskPageContext } from "@/ask/use-page-context"
 import { useEffect, useState } from "react"
 import {
   Check,
@@ -135,6 +136,12 @@ function OrderEditor({
   const busy = phase !== null
   const readonly = order.readonly
   const dirty = JSON.stringify(draft) !== JSON.stringify(orderInput(order))
+  useAskPageContext({ title: `${order.order_no} · 訂單明細`, facts: [
+    `訂單編號：${order.order_no}`, `客戶：${order.customer_name}（${order.customer_id}）`,
+    `狀態：${order.status === "draft" ? "草稿" : "已生效"}`, `正式交易資料是否已寫入：${order.status === "effective" ? "是" : "否"}`,
+    ...(dirty ? ["此頁有尚未儲存的修改，不能當作正式交易"] : []),
+    ...(practice ? ["這是教學練習單，不是真實交易"] : []),
+  ] })
   const blocker = useBlocker(
     ({ currentLocation, nextLocation }) =>
       !practice && dirty && currentLocation.pathname !== nextLocation.pathname

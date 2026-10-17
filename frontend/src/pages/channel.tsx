@@ -1,3 +1,4 @@
+import { useAskPageContext } from "@/ask/use-page-context"
 import { useEffect, useRef, useState } from "react"
 import { NotebookPen, Search, SendHorizontal, Store } from "@/components/icons"
 import { Link, useLocation, useParams, useSearchParams } from "react-router"
@@ -121,6 +122,9 @@ export function ChannelConversation({
   const selfId = viewer?.id ?? ""
   const connected = useRealtimeConnected()
   const [state, setState] = useState<LoadState>({ status: "loading" })
+  useAskPageContext({ title: state.status === "ready" && state.channel.id === id ? `${state.channel.name} · 頻道` : "頻道對話", facts: [
+    `頻道編號：${id}`, ...(state.status === "ready" && state.channel.id === id ? [`頻道名稱：${state.channel.name}`] : ["頻道資料尚未載入"]),
+  ] })
   // 上方兩個分頁：對話、記憶看板
   const [tab, setTab] = useState<"chat" | "board">(initialTab ?? "chat")
   // 從看板跳回來要標亮的那一則

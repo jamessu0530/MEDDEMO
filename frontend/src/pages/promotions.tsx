@@ -1,3 +1,4 @@
+import { useAskPageContext } from "@/ask/use-page-context"
 import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { ChevronDown, Search } from "@/components/icons"
 
@@ -8,6 +9,7 @@ import {
 } from "@/api/promotions"
 import { Notice } from "@/components/notice"
 import { ContextHelp } from "@/components/context-help"
+import { ProductPhoto } from "@/components/product-photo"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -38,7 +40,7 @@ const STATUS_VARIANT = {
 } as const
 
 /** 促銷方案：每一期的整張訂單活動（PM 提醒）與各品項的搭贈。不必問 AI，業務在店裡被問到時直接翻 */
-export function PromotionsPanel({ navigation }: { navigation: ReactNode }) {
+export function PromotionsPanel({ heading, navigation, active = true }: { heading?: ReactNode; navigation: ReactNode; active?: boolean }) {
   const [state, setState] = useState<LoadState>({ status: "loading" })
   const [attempt, setAttempt] = useState(0)
   const [selected, setSelected] = useState<string | null>(null)
@@ -58,6 +60,11 @@ export function PromotionsPanel({ navigation }: { navigation: ReactNode }) {
 
   const promotions = state.status === "ready" ? state.promotions : []
   const current = pickPromotion(promotions, selected)
+  useAskPageContext({ title: current ? `${current.name} · 促銷方案` : "促銷方案", facts: [
+    ...(current ? [`促銷期別：${current.name}`, `期間：${current.start_date} 至 ${current.end_date}`] : ["促銷資料尚未載入"]),
+    `商品分類：${filters.category || "全部"}`, `品牌：${filters.brand || "全部"}`, `搜尋：${filters.query.trim() || "無"}`,
+    `搭贈篩選：${filters.dealType}`, `最低折扣：${filters.minDiscount}`, `只看類別最優惠：${filters.bestOnly ? "是" : "否"}`, `排序：${filters.sort}`,
+  ] }, active)
   // 一期只有幾十個品項，整份在手機上篩選，打字時不必等網路
   const keyword = filters.query.trim()
   const hasItemFilters = Boolean(
@@ -143,8 +150,8 @@ export function PromotionsPanel({ navigation }: { navigation: ReactNode }) {
 
   return (
     <div className="flex min-h-svh flex-col">
-      <header className="sticky top-0 z-10 border-b bg-background/95 px-4 pt-4 pb-3 backdrop-blur">
-        <h1 className="mt-0.5 text-xl font-semibold">商品與促銷</h1>
+      <header className={cn("sticky top-0 z-10 border-b bg-background/95 px-4 backdrop-blur", heading ? "py-5 lg:px-6" : "pt-4 pb-3")}>
+        {heading ?? <h1 className="mt-0.5 text-xl font-semibold">商品與促銷</h1>}
         {navigation}
         {promotions.length > 1 && (
           <div className="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 pb-1.5">
@@ -419,20 +426,25 @@ function ItemRow({
 }) {
   return (
     <li className="rounded-xl border-2 bg-card px-4 py-3 shadow-lip">
-      <div className="flex items-start justify-between gap-3">
-        <p className="leading-snug font-medium">{item.name}</p>
-        <Badge variant="secondary" className="shrink-0">
-          {dealLabel(item)}
-        </Badge>
+      <div className="flex items-start gap-3 sm:gap-4">
+        <ProductPhoto product={item} />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <p className="min-w-0 leading-snug font-medium">{item.name}</p>
+            <Badge variant="secondary" className="shrink-0">
+              {dealLabel(item)}
+            </Badge>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            <Badge variant="outline">{item.category}</Badge>
+            {isCategoryBest && <Badge>類別最高折扣</Badge>}
+            <span className="text-xs text-muted-foreground">
+              {item.group_name} · {item.sku}
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">{item.deal}</p>
+        </div>
       </div>
-      <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        <Badge variant="outline">{item.category}</Badge>
-        {isCategoryBest && <Badge>類別最高折扣</Badge>}
-        <span className="text-xs text-muted-foreground">
-          {item.group_name} · {item.sku}
-        </span>
-      </div>
-      <p className="mt-1 text-xs text-muted-foreground">{item.deal}</p>
       <dl className="mt-3 grid grid-cols-3 gap-2 border-t pt-2 text-center">
         <div>
           <dt className="text-xs text-muted-foreground">每口</dt>

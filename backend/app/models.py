@@ -1422,6 +1422,109 @@ class RouteHabit(Base):
     created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
 
 
+class PlannerCalendar(Base):
+    """一般行事曆。帳號自己的資料，不跟著代理示範業務共用。"""
+
+    __tablename__ = "planner_calendar"
+    __table_args__ = (one_of("source", ("local", "ics", "caldav"), "source"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    color: Mapped[str] = mapped_column(String(7))
+    source: Mapped[str] = mapped_column(server_default="local")
+    remote_url: Mapped[str | None] = mapped_column(Text)
+    # 外部服務憑證只存 Fernet 密文；訂閱網址不含帳號密碼。
+    credentials: Mapped[str | None] = mapped_column(Text)
+    feed_token_hash: Mapped[str | None] = mapped_column(String(64), unique=True)
+    synced_at: Mapped[dt.datetime | None]
+    sync_error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+
+
+class PlannerMember(Base):
+    __tablename__ = "planner_member"
+    __table_args__ = (
+        one_of("role", ("owner", "editor", "reader"), "role"),
+        one_of("status", ("pending", "accepted", "declined"), "status"),
+    )
+
+    calendar_id: Mapped[str] = mapped_column(ForeignKey("planner_calendar.id", ondelete="CASCADE"), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), primary_key=True)
+    role: Mapped[str]
+    status: Mapped[str] = mapped_column(server_default="pending")
+    visible: Mapped[bool] = mapped_column(server_default="true")
+
+
+class PlannerEvent(Base):
+    __tablename__ = "planner_event"
+    __table_args__ = (
+        UniqueConstraint("calendar_id", "uid"),
+        CheckConstraint("ends_at > starts_at", name="positive_duration"),
+        Index("ix_planner_event_range", "calendar_id", "starts_at", "ends_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    calendar_id: Mapped[str] = mapped_column(ForeignKey("planner_calendar.id", ondelete="CASCADE"), index=True)
+    uid: Mapped[str] = mapped_column(String(255))
+    title: Mapped[str] = mapped_column(String(200))
+    starts_at: Mapped[dt.datetime]
+    ends_at: Mapped[dt.datetime]
+    timezone: Mapped[str] = mapped_column(String(80), server_default="Asia/Taipei")
+    all_day: Mapped[bool] = mapped_column(server_default="false")
+    location: Mapped[str] = mapped_column(Text, server_default="")
+    description: Mapped[str] = mapped_column(Text, server_default="")
+    url: Mapped[str] = mapped_column(Text, server_default="")
+    recurrence: Mapped[str | None] = mapped_column(String(500))
+    reminders: Mapped[list[int]] = mapped_column(JSONB, default=list)
+    # key 是原本發生時間（UTC ISO）；值是取消標記或此一次的完整覆寫。
+    exceptions: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    recurrence_dates: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    sequence: Mapped[int] = mapped_column(server_default="0")
+    remote_href: Mapped[str | None] = mapped_column(Text)
+    remote_etag: Mapped[str | None] = mapped_column(Text)
+    ical_data: Mapped[str | None] = mapped_column(Text)
+    dirty: Mapped[bool] = mapped_column(server_default="true")
+    deleted_at: Mapped[dt.datetime | None]
+    updated_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+
+
+class PlannerAttendee(Base):
+    __tablename__ = "planner_attendee"
+    __table_args__ = (one_of("status", ("needs_action", "accepted", "tentative", "declined"), "status"),)
+
+    event_id: Mapped[str] = mapped_column(ForeignKey("planner_event.id", ondelete="CASCADE"), primary_key=True)
+    email: Mapped[str] = mapped_column(String(254), primary_key=True)
+    status: Mapped[str] = mapped_column(server_default="needs_action")
+    response_token_hash: Mapped[str | None] = mapped_column(String(64), unique=True)
+    last_invited_at: Mapped[dt.datetime | None]
+
+
+class PlannerNotification(Base):
+    __tablename__ = "planner_notification"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), index=True)
+    event_id: Mapped[str] = mapped_column(ForeignKey("planner_event.id", ondelete="CASCADE"), index=True)
+    occurrence: Mapped[dt.datetime]
+    title: Mapped[str] = mapped_column(String(200))
+    due_at: Mapped[dt.datetime] = mapped_column(index=True)
+    read_at: Mapped[dt.datetime | None]
+    pushed_at: Mapped[dt.datetime | None]
+
+
+class PlannerPushSubscription(Base):
+    __tablename__ = "planner_push_subscription"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), index=True)
+    session_version: Mapped[int]
+    subscription: Mapped[dict[str, Any]] = mapped_column(JSONB)
+
+
+PLANNER_TABLES = (PlannerCalendar, PlannerMember, PlannerEvent, PlannerAttendee, PlannerNotification, PlannerPushSubscription)
+
+
 class ItineraryProposal(Base):
     """跟熊熊滾說要怎麼排、「幫我排順一點」算出來的提案（services/itinerary_ai.py）。
 

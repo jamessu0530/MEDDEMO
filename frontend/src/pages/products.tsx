@@ -1,3 +1,4 @@
+import { useAskPageContext } from "@/ask/use-page-context"
 import {
   useEffect,
   useLayoutEffect,
@@ -33,9 +34,11 @@ type LoadState =
 
 /** 頁內的完整商品型錄：品項與 AI 查詢讀同一份資料。 */
 export function ProductsPanel({
+  heading,
   navigation,
   active = true,
 }: {
+  heading?: ReactNode
   navigation: ReactNode
   active?: boolean
 }) {
@@ -90,6 +93,10 @@ export function ProductsPanel({
       bySku.has(sku) ? [bySku.get(sku)!] : []
     )
   }, [found, selection, filterKey])
+  useAskPageContext({ title: `${category || "全部商品"}${query.trim() ? ` · ${query.trim()}` : ""} · 商品型錄`, facts: [
+    `商品分類：${category || "全部"}`, `搜尋：${query.trim() || "無"}`,
+    ...(state.status === "ready" ? [`符合篩選共 ${found.length} 項商品`, ...(found.length === 1 ? [`唯一符合商品：${found[0].name}（料號 ${found[0].sku}）`] : [])] : ["商品資料尚未載入"]),
+  ] }, active)
   const browsing = useProductBrowsing(
     listRef,
     active,
@@ -189,8 +196,8 @@ export function ProductsPanel({
 
   return (
     <div data-product-panel className="flex min-h-svh flex-col">
-      <header className="sticky top-0 z-10 border-b bg-background/95 px-4 pt-4 pb-3 backdrop-blur">
-        <h1 className="mt-0.5 text-xl font-semibold">商品與促銷</h1>
+      <header className={cn("sticky top-0 z-10 border-b bg-background/95 px-4 backdrop-blur", heading ? "py-5 lg:px-6" : "pt-4 pb-3")}>
+        {heading ?? <h1 className="mt-0.5 text-xl font-semibold">商品與促銷</h1>}
         {navigation}
         {state.status === "ready" && (
           <>

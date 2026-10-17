@@ -6,18 +6,18 @@ import { describe, expect, it } from "vitest"
 import { SidebarNav } from "@/components/sidebar-nav"
 import { sidebarItems, type SidebarBadge } from "@/lib/sidebar"
 
-const render = (role: "sales" | "manager", counts: Partial<Record<SidebarBadge, number>>, pathname = "/", search = "") =>
+const render = (role: "sales" | "manager", counts: Partial<Record<SidebarBadge, number>>, pathname = "/", search = "", collapsed = false) =>
   renderToStaticMarkup(
-    createElement(MemoryRouter, null, createElement(SidebarNav, { groups: sidebarItems(role), counts, pathname, search }))
+    createElement(MemoryRouter, null, createElement(SidebarNav, { groups: sidebarItems(role), counts, pathname, search, collapsed }))
   )
 // 標了 aria-current 的那一個連結裡面的字
 const activeText = (html: string) => html.match(/<a[^>]*aria-current="page"[^>]*>(.*?)<\/a>/)?.[1] ?? ""
 
 describe("SidebarNav", () => {
   it("每一項連到自己的網址，目前這一項標 aria-current", () => {
-    const html = render("sales", {}, "/ask")
+    const html = render("sales", {}, "/orders")
     expect(html).toContain('href="/calendar"')
-    expect(activeText(html)).toContain("問答")
+    expect(activeText(html)).toContain("銷售")
     expect(html.match(/aria-current="page"/g)).toHaveLength(1)
   })
 
@@ -36,5 +36,15 @@ describe("SidebarNav", () => {
     const html = render("manager", { notices: 3 }, "/manager", "?view=notices")
     expect(activeText(html)).toContain("風險通報")
     expect(html).toContain(">3<")
+  })
+
+  it("收合後保留導覽名稱、提示、未讀數字與目前頁面", () => {
+    const html = render("sales", { channels: 120 }, "/channels", "", true)
+    expect(activeText(html)).toContain("頻道")
+    expect(html).toContain('title="頻道（120）"')
+    expect(html).toContain('class="sr-only">頻道</span>')
+    expect(html).toContain(">99+<")
+    expect(html).toContain('href="/orders"')
+    expect(html).toContain('href="/calendar"')
   })
 })

@@ -7,7 +7,7 @@ import uuid
 from decimal import Decimal, ROUND_HALF_UP
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from sqlalchemy import DateTime, cast, func, literal, select, union_all
+from sqlalchemy import func, literal, select
 from sqlalchemy.orm import Session
 
 from app.models import AppUser, Customer, PAYMENT_TERM_CODES, Product, PublicOutlet, SalesOrder, SalesTransaction, SapQuotationDraft
@@ -243,31 +243,21 @@ def historical_detail(session: Session, user: AppUser, order_id: str):
 
 
 def list_orders(session: Session, user: AppUser, q="", status="all", page=1, page_size=25, sort="updated_desc"):
+    # 交易表包含展示用種子資料；訂單工作區只列使用者建立的草稿與生效訂單。
     scope = Scope.for_user(user).customers_at(SHARING_LEVEL["quote"])
     fresh = select(SalesOrder.id.label("id"), SalesOrder.order_no.label("order_no"), Customer.id.label("customer_id"),
         Customer.name.label("customer_name"), SalesOrder.status.label("status"), SalesOrder.shipping_date.label("shipping_date"),
         SalesOrder.updated_at.label("updated_at"), SalesOrder.sap_order_no.label("sap_order_no"), AppUser.id.label("owner_id"),
         AppUser.name.label("owner_name"), SalesOrder.amount.label("amount"), literal("workspace").label("source")) \
         .join(Customer, Customer.id == SalesOrder.customer_id).outerjoin(AppUser, AppUser.id == Customer.owner_user_id).where(scope)
-    history = select(SalesTransaction.order_no.label("id"), SalesTransaction.order_no.label("order_no"),
-        Customer.id.label("customer_id"), Customer.name.label("customer_name"), literal("effective").label("status"),
-        func.min(SalesTransaction.date).label("shipping_date"), cast(func.min(SalesTransaction.date), DateTime(timezone=True)).label("updated_at"),
-        SalesTransaction.order_no.label("sap_order_no"), AppUser.id.label("owner_id"), AppUser.name.label("owner_name"),
-        func.sum(SalesTransaction.amount).label("amount"), literal("history").label("source")) \
-        .join(Customer, Customer.id == SalesTransaction.customer_id).outerjoin(AppUser, AppUser.id == Customer.owner_user_id).where(
-        scope, ~select(SalesOrder.id).where(SalesOrder.sap_order_no == SalesTransaction.order_no, SalesOrder.customer_id == SalesTransaction.customer_id).exists()) \
-        .group_by(SalesTransaction.order_no, Customer.id, AppUser.id)
     if q:
         from app.services.outlet_search import customer_matches
         matching = Customer.id.in_(customer_matches(session, q))
         pattern = "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
         fresh = fresh.where(matching | Customer.name.ilike(pattern, escape="\\") | SalesOrder.order_no.ilike(pattern, escape="\\") | SalesOrder.sap_order_no.ilike(pattern, escape="\\"))
-        history = history.where(matching | Customer.name.ilike(pattern, escape="\\") | SalesTransaction.order_no.ilike(pattern, escape="\\"))
     if status != "all":
         fresh = fresh.where(SalesOrder.status == status)
-    if status == "draft":
-        history = history.where(literal(False))
-    combined = union_all(fresh, history).subquery()
+    combined = fresh.subquery()
     total = session.scalar(select(func.count()).select_from(combined))
     key = combined.c.amount if sort == "amount_desc" else combined.c.shipping_date if sort == "shipping_desc" else combined.c.updated_at
     query = select(combined).order_by(key.desc(), combined.c.order_no.desc(), combined.c.customer_id).offset((page - 1) * page_size).limit(page_size)
@@ -275,10 +265,6 @@ def list_orders(session: Session, user: AppUser, q="", status="all", page=1, pag
     for row in session.execute(query).mappings():
         item = dict(row)
         item["amount"] = float(item["amount"])
-        if row["source"] == "history":
-            item["id"] = history_id(row["customer_id"], row["order_no"])
-            item["updated_at"] = None
-            item["sap_order_no"] = None
         items.append(item)
     return {"items": items, "total": total, "page": page, "page_size": page_size, "as_of": customer_profile.app_today(session), "integration": "demo"}
 
@@ -296,6 +282,21 @@ def catalog(session: Session, user: AppUser, customer_id: str, q="", page=1):
         "unit_price": supply_price(product.unit_price, target.type)} for product in products], "total": total, "page": page, "page_size": 25}
 
 
+def _customer_out(row: Customer, owner_name, address, phone):
+    return {"id": row.id, "name": row.name, "owner_name": owner_name, "owner_id": row.owner_user_id,
+        "payment_term": row.payment_term, "region": row.region, "city": row.city, "area": row.area,
+        "address": address, "phone": phone}
+
+
+def customer_defaults(session: Session, user: AppUser, customer_id: str):
+    target = customer(session, user, customer_id)
+    owner = session.get(AppUser, target.owner_user_id) if target.owner_user_id else None
+    outlet = session.get(PublicOutlet, target.id)
+    return {"customer": _customer_out(target, owner.name if owner else None,
+        outlet.address if outlet else None, outlet.phone if outlet else None),
+        "as_of": customer_profile.app_today(session)}
+
+
 def customers(session: Session, user: AppUser, q: str = ""):
     from app.services.outlet_search import customer_matches
     matches = customer_matches(session, q) if q else None
@@ -304,6 +305,4 @@ def customers(session: Session, user: AppUser, q: str = ""):
         .outerjoin(PublicOutlet, PublicOutlet.customer_id == Customer.id).where(
         Scope.for_user(user).customers_at(SHARING_LEVEL["quote"]),
         Customer.id.in_(matches) if matches is not None else literal(True)).order_by(Customer.name)).all()
-    return [{"id": row.id, "name": row.name, "owner_name": name, "owner_id": row.owner_user_id,
-        "payment_term": row.payment_term, "region": row.region, "city": row.city, "area": row.area,
-        "address": address, "phone": phone} for row, name, address, phone in rows]
+    return [_customer_out(row, name, address, phone) for row, name, address, phone in rows]

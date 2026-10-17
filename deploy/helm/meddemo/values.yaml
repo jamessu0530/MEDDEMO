@@ -64,6 +64,14 @@ config:
   VOICE_MODEL: gemini-3.1-flash-live-preview
   # 主管頁地圖的 Map ID（Google Cloud Console → Map Management 建一個 JavaScript 的）。留空＝Google 給測試用的 DEMO_MAP_ID
   GOOGLE_MAPS_MAP_ID: ""
+  # 一般日曆：私密金鑰與 SMTP 憑證放 GitHub Secrets，其餘設定由此注入。
+  CALENDAR_PUBLIC_BASE_URL: https://meddemo.jamessu2016.com
+  CALENDAR_VAPID_SUBJECT: https://meddemo.jamessu2016.com
+  CALENDAR_REMOTE_HOSTS: "*.icloud.com,calendar.google.com,www.google.com,outlook.office365.com,outlook.live.com,www.officeholidays.com,ics.calendarlabs.com"
+  CALENDAR_SMTP_HOST: ""
+  CALENDAR_SMTP_PORT: "465"
+  CALENDAR_SMTP_STARTTLS: "false"
+  CALENDAR_SMTP_FROM: ""
 
 # 金鑰：Secret 由部署流程從 GitHub Secrets 建立，不放進 chart（跟 CARE 的 care-backend-secret 一樣）
 secrets:

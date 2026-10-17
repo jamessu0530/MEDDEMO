@@ -130,6 +130,25 @@ const samples: Entry[] = [
   ),
 ]
 
+// 24 questions, each with 24 distinct sources: 601 nodes including the center.
+const stressSamples: Entry[] = Array.from({ length: 24 }, (_, index) =>
+  sample(
+    index + 1,
+    "knowledge",
+    `壓力測試問題 ${index + 1}`,
+    "僅供開發效能檢查的示範回答。",
+    {
+      sources: Array.from({ length: 24 }, (_, source) => ({
+        chunk_id: 1000 + index * 24 + source,
+        source_name: "開發壓力測試",
+        doc_title: `示範線索 ${index + 1}-${source + 1}`,
+        section: "效能測試",
+        content: "這是測試排列與畫面反應的示範段落。",
+      })),
+    }
+  )
+)
+
 export function Preview() {
   const [entries, setEntries] = useState(samples)
   const [jumped, setJumped] = useState<number | null>(null)
@@ -190,6 +209,9 @@ export function Preview() {
         </Button>
         <Button variant="outline" onClick={() => setEntries([])}>
           空白對話
+        </Button>
+        <Button variant="outline" onClick={() => setEntries(stressSamples)}>
+          壓力測試（601 節點）
         </Button>
       </div>
       {jumped !== null && (

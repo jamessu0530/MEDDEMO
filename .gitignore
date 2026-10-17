@@ -8,6 +8,8 @@ __pycache__/
 /frontend/vite.report-preview.config.ts
 /frontend/src/preview/reports-goal.tsx
 /output/
+# 本機照片研究的試算表與檢視中繼產物，正式來源資料存於 data/public-outlets。
+/outputs/
 # 同步軟體產生的舊版副本，正式比較頁使用 viewer.js。
 /design/medals/gallery/viewer 2.js
 # 同步軟體產生的編號舊副本保留在本機，避免舊程式與測試進入正式建置。
@@ -19,6 +21,8 @@ __pycache__/
 /frontend/src/components/reports/report-filters.test [0-9].ts
 /frontend/src/lib/product-photos [0-9].ts
 /frontend/src/lib/product-photos.test [0-9].ts
+/frontend/src/pages/calendar [0-9].tsx
+/data/public-outlets/photo-sources [0-9].json
 # 測試語料的真人錄音屬於個資（NFR-8），不進 git
 data/eval/audio/
 # 從 Salesforce 產品清單整頁複製下來的原始檔（含庫存），只給 data/seed/import_products.py 轉檔用

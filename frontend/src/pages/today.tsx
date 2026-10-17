@@ -1,9 +1,8 @@
+import { useAskPageContext } from "@/ask/use-page-context"
 import { useEffect, useRef, useState, type CSSProperties, type Ref } from "react"
 import {
   BookOpenText,
   CalendarDays,
-  ChartNoAxesCombined,
-  ChevronRight,
   Flag,
   Loader2,
   Map as MapIcon,
@@ -141,6 +140,9 @@ export function TodayPage() {
   }, [userId, attempt])
 
   // 路線／地圖：沒有站、或用的是手機上的舊行程（連不上，地圖也載不到）就只有路線
+  useAskPageContext({ title: "今日路線", facts: state.status === "ready" ? [
+    `今日拜訪順序：${state.route.stops.map((stop) => `${stop.customer_name}（${stop.customer_id}）`).join("、")}`,
+  ] : ["今日路線尚未載入"] })
   const mappable = state.status === "ready" && !state.cached && state.route.stops.length > 0
   // 內容放得下才並排；窄桌機與大字設定也保留路線／地圖切換。
   const onMap = !split && mappable && params.get("view") === "map"
@@ -337,11 +339,6 @@ export function TodayPage() {
       {/* overflow-x-clip：路線與地圖互相滑進來時，不要短暫多出左右捲軸 */}
       <main ref={layoutRef} className={cn("flex-1 overflow-x-clip px-4 pt-3 pb-48 lg:px-6 lg:pb-24", split && "lg:flex lg:items-start lg:gap-6")}>
         <div className={cn("min-w-0", split && "lg:w-[27.5rem] lg:shrink-0")}>
-        <Link to="/reports" className="mb-3 flex min-h-14 items-center gap-3 rounded-2xl border-2 bg-card px-4 py-3 shadow-lip lg:hidden">
-          <ChartNoAxesCombined className="size-5 shrink-0 text-primary" />
-          <span className="min-w-0 flex-1 text-sm font-semibold">我的報表<span className="ml-2 text-xs font-normal text-muted-foreground">自選指標 · AI 調整</span></span>
-          <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
-        </Link>
         {/* 新人才有的入口卡；自己問自己的資料，載不到就不顯示，跟下面的路線互不影響 */}
         <FirstWeekEntry userId={user.id} />
         {state.status === "ready" && state.cached && (

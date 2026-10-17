@@ -14,6 +14,7 @@ type Props = {
   config: NonNullable<MapsConfig>
   routes: RepRoute[]
   removed?: RemovedStop[]
+  className: string
   onFail: () => void
 }
 
@@ -24,7 +25,7 @@ type Selected = { stop: TeamStop; repName: string }
  * 這支連同 @vis.gl/react-google-maps 只由 map-slot.tsx 用 import() 載入，另外打包，不算進業務首頁的下載量。
  * 金鑰被拒或 Google 的程式載不下來時呼叫 onFail，由外面換成一行「地圖暫時載入不了」。
  */
-export default function RouteMap({ config, routes, removed = [], onFail }: Props) {
+export default function RouteMap({ config, routes, removed = [], className, onFail }: Props) {
   const [selected, setSelected] = useState<Selected | null>(null)
   const skin = useSkin()
   const points = [
@@ -39,7 +40,7 @@ export default function RouteMap({ config, routes, removed = [], onFail }: Props
   return (
     <APIProvider apiKey={config.browser_key} language="zh-TW" region="TW" onError={onFail}>
       <LoadWatch onFail={onFail} />
-      <div className="h-64 overflow-hidden rounded-2xl border-2 shadow-lip">
+      <div className={cn("overflow-hidden rounded-2xl border-2 shadow-lip", className)}>
         {/* 地圖跟著 App 的深淺色：線的顏色是主題色，深色主題的線很淡，畫在淺色地圖上會看不見。
             換配色時重建地圖（colorScheme 只在建立時讀） */}
         <Map

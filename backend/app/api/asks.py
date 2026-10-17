@@ -19,7 +19,7 @@ from app.api.auth import CurrentUser
 from app.api.learning import LearningAiUser
 from app.db import get_session
 from app.models import AppUser, AskRecord, Attachment, Customer, Escalation, QueryTrace
-from app.services import ask_followup, ask_router, attachments
+from app.services import ask_followup, ask_router, attachments, assistant_context
 from app.services.scope import SHARING_LEVEL, Scope
 from app.tasks import visit_queue
 
@@ -42,6 +42,8 @@ class Turn(BaseModel):
 
     question: str = Field(max_length=500)
     answer: str = Field(max_length=4000)
+    page: assistant_context.PageContext | None = None
+    has_file: bool = False
 
 
 class RouteInput(BaseModel):
@@ -52,6 +54,7 @@ class RouteInput(BaseModel):
     earlier: list[Turn] = Field(default_factory=list, max_length=10)
     # 業務自己點了查哪一種：只改寫、不分流
     kind: AskKind | None = None
+    page: assistant_context.PageContext | None = None
 
 
 class RouteOut(BaseModel):
@@ -62,6 +65,9 @@ class RouteOut(BaseModel):
     # 要拿去查的那一句；rewritten 是 true 表示看了前文改寫過
     question: str
     rewritten: bool
+    clarification: str | None = None
+    context_used: bool = False
+    continues_previous: bool = False
 
 
 @dataclass(frozen=True)
@@ -201,12 +207,22 @@ def _load(session: Session, ask_id: str, user: AppUser) -> AskRecord:
     return record
 
 
-@router.post("/route", response_model=RouteOut)
+@router.post("/route", response_model=RouteOut, response_model_exclude_defaults=True)
 def route_ask(body: RouteInput, user: LearningAiUser):
     """送出前先整理這一題：要看前文才懂就改寫（services/ask_followup.py），選「自動」再判斷該查哪一種
     （services/ask_router.py）。不建提問、不算進提問的次數：前端拿回來的那一句再照原本的 POST /api/asks 送"""
     question = body.question.strip()
-    earlier = [turn.model_dump() for turn in body.earlier]
+    if not question:
+        raise HTTPException(422, "請輸入問題")
+    earlier = [turn.model_dump(exclude_none=True, exclude_defaults=True) for turn in body.earlier]
+    if body.page is not None:
+        prepared = assistant_context.prepare(question, body.page, earlier, body.has_file)
+        return RouteOut(
+            kind=prepared.kind, choices=[], confidence=prepared.confidence,
+            question=prepared.question, rewritten=prepared.question != question,
+            clarification=prepared.clarification, context_used=prepared.context_used,
+            continues_previous=prepared.continues_previous,
+        )
     with ThreadPoolExecutor(max_workers=1) as pool:
         # 大多數的問題不用改寫：判斷要不要改寫的同時，先照原話分流，不用改寫就直接用這個結果，不多等一次
         guess = pool.submit(ask_router.route, question, body.has_file) if body.kind is None and earlier else None

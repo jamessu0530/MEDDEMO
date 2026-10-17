@@ -105,6 +105,12 @@ export function getOrderCustomers(signal?: AbortSignal, query = "") {
     { signal }
   )
 }
+export function getOrderCustomer(id: string, signal?: AbortSignal) {
+  return request<{ customer: OrderCustomer; as_of: string }>(
+    `/api/orders/customers/${encodeURIComponent(id)}`,
+    { signal }
+  )
+}
 export function getOrderProducts(
   customerId: string,
   q: string,

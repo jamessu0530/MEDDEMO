@@ -100,9 +100,9 @@ describe("ProposalSheet", () => {
   })
 
   it("電腦版位置：首頁貼著左欄，沒給就對齊中間一欄", () => {
-    expect(render(proposal(), { placement: "home" })).toContain("lg:left-[15.5rem]")
+    expect(render(proposal(), { placement: "home" })).toContain("lg:left-[calc(var(--app-sidebar-width)+1.5rem)]")
     const column = render(proposal())
-    expect(column).toContain("lg:left-56")
-    expect(column).not.toContain("lg:left-[15.5rem]")
+    expect(column).toContain("lg:left-[var(--app-sidebar-width)]")
+    expect(column).not.toContain("lg:left-[calc(var(--app-sidebar-width)+1.5rem)]")
   })
 })

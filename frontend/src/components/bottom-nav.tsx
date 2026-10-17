@@ -1,9 +1,8 @@
 import { useLayoutEffect, useRef } from "react"
 import {
   ClipboardList,
-  MessageCircleQuestion,
+  ChartNoAxesCombined,
   MessagesSquare,
-  Pill,
   Route,
 } from "@/components/icons"
 import { NavLink, useLocation } from "react-router"
@@ -14,11 +13,10 @@ import { useUploadQueue } from "@/lib/offline-queue"
 import { cn } from "@/lib/utils"
 
 const TABS = [
-  { to: "/orders", label: "訂單", icon: ClipboardList },
+  { to: "/orders", label: "銷售", icon: ClipboardList },
   { to: "/route", label: "路線", icon: Route },
   { to: "/channels", label: "頻道", icon: MessagesSquare },
-  { to: "/ask", label: "問答", icon: MessageCircleQuestion },
-  { to: "/products", label: "商品", icon: Pill },
+  { to: "/reports", label: "報表", icon: ChartNoAxesCombined },
 ]
 
 // 膠囊滑動的速度與曲線，跟 CARE 的底部列一樣；字的顏色跟著同一條曲線變
@@ -69,7 +67,7 @@ export function BottomNav() {
   return (
     // 外層不吃點擊，只有那一條列可以按：列的左右和下面露出來的內容照樣捲得動
     <div className="pointer-events-none fixed inset-x-0 bottom-0 z-20 mx-auto max-w-md px-2.5 pb-[calc(0.5rem+env(safe-area-inset-bottom))] lg:hidden">
-      <nav className="pointer-events-auto relative flex rounded-full border bg-card p-1 shadow-lg shadow-black/10 dark:shadow-black/50">
+      <nav aria-label="主要選單" className="pointer-events-auto relative flex rounded-full border bg-card p-1 shadow-lg shadow-black/10 dark:shadow-black/50">
         <span
           ref={pillRef}
           aria-hidden

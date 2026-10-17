@@ -86,11 +86,12 @@ export function runStatus(run: ToolRun) {
   if (run.error) return "查詢失敗"
   if (run.cancelled) return "已停止使用結果"
   if (run.routing) return "正在判斷查詢範圍"
+  if (run.clarification) return "等待補充問題"
   if (run.choices) return "等待選擇查詢類型"
   return run.ask ? STATUS_LABEL[run.ask.status] : "送出查詢中"
 }
 
-/** Only relations present in the authorized query response are drawn; no inferred semantic links. */
+/** Queries share one conversation; evidence links only use the authorized response. */
 export function buildMemoryMap(entries: Entry[]): MemoryMap {
   const all = entries.filter((entry): entry is ToolRun => entry.kind === "tool")
   const runs = all.slice(-24)
@@ -127,6 +128,7 @@ export function buildMemoryMap(entries: Entry[]): MemoryMap {
       !run.error &&
       !run.cancelled &&
       !run.choices &&
+      !run.clarification &&
       (run.routing || !run.ask || !isFinished(run.ask))
     if (active) activeId = id
     const last = run.ask?.trace.at(-1)
@@ -150,24 +152,7 @@ export function buildMemoryMap(entries: Entry[]): MemoryMap {
       },
       run.id
     )
-    if (run.askKind) {
-      const topic = node(
-        {
-          id: `topic:${run.askKind}`,
-          kind: "topic",
-          label: QUERY_LABEL[run.askKind],
-          meta: "查詢範圍",
-          detail: {
-            data: "公司數字、商品與客戶資料",
-            knowledge: "公司文件與另行標示的網路公開資料",
-            memory: "你有權查看的頻道重點與附件",
-          }[run.askKind],
-        },
-        run.id
-      )
-      link(root, topic, "查詢範圍")
-      link(topic, id, "提問")
-    } else link(root, id, "判斷範圍")
+    link(root, id, "對話中的問題")
     if (run.original && previous) link(previous, id, "接續查詢")
     previous = id
 
@@ -339,6 +324,9 @@ export function filterMemoryMap(
         ids.add(edge.source)
         ids.add(edge.target)
       }
+  // Keep the conversation center so search results still form one network.
+  if (scoped.some((node) => node.kind === "question" && ids.has(node.id)))
+    ids.add("conversation")
   const visible = scoped.filter((node) => ids.has(node.id))
   const visibleIds = new Set(visible.map((node) => node.id))
   return {

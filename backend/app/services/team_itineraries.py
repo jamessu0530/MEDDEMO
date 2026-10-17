@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 from sqlalchemy import select
@@ -21,6 +22,9 @@ from app.services import customer_profile, locations, travel
 from app.services import itinerary as itineraries
 from app.services.scope import SHARING_LEVEL, Scope
 from app.services.today_route import SIGNAL_LABEL
+
+# 團隊總覽共用上限，避免每個請求各自開一批執行緒、同時灌滿 Google。
+_route_pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="team-routes")
 
 
 @dataclass
@@ -125,19 +129,69 @@ def find_rep(session: Session, viewer: AppUser, user_id: str) -> AppUser | None:
     return next((rep for rep in reps(session, viewer) if rep.id == user_id), None)
 
 
+@dataclass(frozen=True)
+class _TravelRequest:
+    # 只含座標與交通方式，不把 Session 或 ORM 物件送進執行緒。
+    points: list[travel.Point]
+    modes: list[str]
+    map_points: list[travel.Point]
+    map_modes: list[str]
+
+
+@dataclass
+class _PreparedRoute:
+    rep: AppUser
+    itinerary: Itinerary
+    view: itineraries.PreparedView
+    origin: travel.Point | None
+    customers: dict[str, Customer]
+    request: _TravelRequest
+
+
+def _prepare_route(session: Session, rep: AppUser) -> _PreparedRoute:
+    itinerary = itineraries.get_or_create(session, rep.id)
+    prepared = itineraries.prepare_view(session, itinerary)
+    origin = itineraries.office(session, rep)
+    current = prepared.customers
+    suggested = itinerary.suggested or []
+    customers = _customers(session, [c.id for c in current] + [item["customer_id"] for item in suggested])
+    request = _TravelRequest(
+        prepared.points, prepared.modes,
+        ([origin] if origin else []) + [(c.lat, c.lng) for c in current],
+        prepared.timing.modes if origin else prepared.timing.modes[1:],
+    )
+    return _PreparedRoute(rep, itinerary, prepared, origin, customers, request)
+
+
+def _fetch_travel(request: _TravelRequest) -> tuple[travel.Matrix, list[travel.Line | None] | None]:
+    return travel.along(request.points, request.modes), travel.lines(request.map_points, request.map_modes)
+
+
+def routes(session: Session, people: list[AppUser]) -> list[RepRoute]:
+    """團隊總覽：SQL 留在原執行緒，外部車程與折線查詢最多同時處理四位，結果仍照業務順序。"""
+    prepared = [_prepare_route(session, rep) for rep in people]
+    if len(prepared) < 2:
+        fetched = [_fetch_travel(item.request) for item in prepared]
+    else:
+        fetched = list(_route_pool.map(_fetch_travel, [item.request for item in prepared]))
+    return [_finish_route(session, item, *found) for item, found in zip(prepared, fetched, strict=True)]
+
+
 def route(session: Session, rep: AppUser) -> RepRoute:
     """一位業務今天的行程，給地圖與清單用；今天還沒有就照模型的建議建一份。"""
-    itinerary = itineraries.get_or_create(session, rep.id)
-    view = itineraries.view(session, itinerary)
+    return routes(session, [rep])[0]
+
+
+def _finish_route(
+    session: Session, prepared: _PreparedRoute, matrix: travel.Matrix, lines: list[travel.Line | None] | None,
+) -> RepRoute:
+    rep, itinerary, origin, customers = prepared.rep, prepared.itinerary, prepared.origin, prepared.customers
+    view = itineraries.finish_view(session, prepared.view, matrix)
     suggested = itinerary.suggested or []
     current_ids = [s.customer_id for s in view.stops]
     suggested_ids = [item["customer_id"] for item in suggested]
-    customers = _customers(session, current_ids + suggested_ids)
     stops = [_map_stop(n + 1, stop, customers[stop.customer_id]) for n, stop in enumerate(view.stops)]
-
-    # 跟 itinerary._start 同一個出發點
-    origin = itineraries.office(session, rep)
-    legs = _legs(origin, [(s.lat, s.lng, s.status == "done") for s in stops], _modes(session, itinerary, origin))
+    legs = _map_legs(origin, [(s.lat, s.lng, s.status == "done") for s in stops], lines)
 
     on_route = set(current_ids)
     removed = [_removed(customers[item["customer_id"]], item) for item in suggested if item["customer_id"] not in on_route]
@@ -181,6 +235,12 @@ def _legs(origin: travel.Point | None, stops: list[tuple[float, float, bool]], m
     """從出發點（或第一站）一段一段走到最後一站，每段照它自己的交通方式；stops 是各站的 (緯度, 經度, 跑完了嗎)。"""
     path = ([origin] if origin else []) + [(lat, lng) for lat, lng, _ in stops]
     found = travel.lines(path, modes)
+    return _map_legs(origin, stops, found)
+
+
+def _map_legs(
+    origin: travel.Point | None, stops: list[tuple[float, float, bool]], found: list[travel.Line | None] | None,
+) -> list[Leg]:
     # 第 n 段到 path 的第 n + 1 點：有辦公室時就是第 n 站，沒有時是第 n + 1 站
     ends = stops if origin else stops[1:]
     legs = []

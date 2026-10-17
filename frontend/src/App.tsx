@@ -4,6 +4,8 @@ import { RouterProvider } from "react-router/dom"
 
 import { fetchMe } from "@/api/auth"
 import { AppShell } from "@/components/app-shell"
+import { Assistant } from "@/components/ask/assistant"
+import { openAssistant } from "@/ask/assistant-window"
 import { InkOverlay, InkRoutes } from "@/components/ink-transition"
 import { Mascot } from "@/components/mascot"
 import { Notice } from "@/components/notice"
@@ -17,8 +19,8 @@ import { clearMyPresence, loadMyPresence } from "@/lib/presence"
 import { realtime } from "@/lib/realtime"
 import { useIsDesktop } from "@/lib/use-media-query"
 import { AdminPage } from "@/pages/admin"
-import { AskPage } from "@/pages/ask"
 import { CalendarPage } from "@/pages/calendar"
+import { CalendarReminderHost } from "@/components/calendar/reminder-host"
 import { ChannelPage } from "@/pages/channel"
 import { ChannelThreadsPage } from "@/pages/channel-threads"
 import { ChannelsPage } from "@/pages/channels"
@@ -44,6 +46,7 @@ import { CatalogPage } from "@/pages/catalog"
 import { RidesPage } from "@/pages/rides"
 import { RegisterPage } from "@/pages/register"
 import { ReportsPage } from "@/pages/reports"
+import { SalesPage } from "@/pages/sales"
 import { ManagerPage } from "@/pages/manager"
 import { MethodsPage } from "@/pages/methods"
 import { NegotiationPage } from "@/pages/negotiation"
@@ -62,6 +65,20 @@ function ChannelsEntry() {
   const { channelId } = useParams()
   const desktop = useIsDesktop()
   return channelId === undefined || desktop ? <ChannelsPage /> : <ChannelPage />
+}
+
+function SalesEntry({ newOrder = false }: { newOrder?: boolean }) {
+  return useAuth()?.user.role === "sales" ? <SalesPage newOrder={newOrder} /> : <OrdersPage newOrder={newOrder} />
+}
+
+/** 舊商品連結仍可使用，業務統一進銷售分頁；主管保留原本的型錄入口。 */
+function CatalogEntry() {
+  const session = useAuth()
+  const { search } = useLocation()
+  if (session?.user.role !== "sales") return <CatalogPage />
+  const params = new URLSearchParams(search)
+  params.set("view", params.get("view") === "promotions" ? "promotions" : "products")
+  return <Navigate to={`/orders?${params}`} replace />
 }
 
 /** 沒登入的頁：電腦版也照手機的寬度置中 */
@@ -130,16 +147,24 @@ function RequireAuth() {
       <AppShell user={session.user}>
         <Outlet />
       </AppShell>
+      <Assistant key={session.user.id} />
+      <CalendarReminderHost key={`calendar-${session.user.id}`} />
       {/* FR-11：第一次打開時說明三個主要操作，登入之後才顯示 */}
       <Onboarding />
     </>
   )
 }
 
-/** 首頁：業務進訂單；主管與 IT 各自進主管端與組織管理 */
+/** 首頁：業務進銷售；主管與 IT 各自進主管端與組織管理 */
 function Home() {
   const session = useAuth()
   return <Navigate to={session ? homePath(session.user.role) : "/login"} replace />
+}
+
+/** 舊書籤仍會打開助理，問答不再是獨立頁面。 */
+function AssistantEntry() {
+  useEffect(() => openAssistant(), [])
+  return <Home />
 }
 
 /** 限定角色的頁面；進不去的人（舊的連結、書籤）說明一下並給回首頁的路 */
@@ -200,10 +225,11 @@ function ApplicationRoutes() {
             <Route path="/auth/google/callback" element={<OAuthCallbackPage provider="google" />} />
           </Route>
           <Route element={<RequireAuth />}>
-            {/* 業務首頁是訂單；今日路線獨立放在第二個分頁 /route */}
+            {/* 業務首頁是銷售，預設訂單分頁；今日路線獨立放在第二個分頁 /route */}
             <Route path="/" element={<Home />} />
             <Route path="/customers" element={<CustomerPicker />} />
-            <Route path="/orders" element={<OrdersPage />} />
+            <Route path="/orders" element={<SalesEntry />} />
+            <Route path="/orders/new" element={<SalesEntry newOrder />} />
             <Route path="/orders/demo" element={<PracticeOrderPage />} />
             <Route path="/orders/:orderId" element={<OrderPage />} />
             <Route path="/route" element={<TodayPage />} />
@@ -211,14 +237,14 @@ function ApplicationRoutes() {
             <Route path="/route/edit" element={<RouteEditPage />} />
             <Route path="/route/edit/add" element={<RouteAddPage />} />
             <Route path="/route/habits" element={<RouteHabitsPage />} />
-            <Route path="/ask" element={<AskPage />} />
+            <Route path="/ask" element={<AssistantEntry />} />
             <Route path="/calendar" element={<CalendarPage />} />
             {/* 頻道：業務、主管、IT 都進得去，看得到哪些頻道由後端依組織樹決定 */}
             <Route path="/channels" element={<ChannelsEntry />} />
             <Route path="/channels/search" element={<ChannelSearchPage />} />
             <Route path="/channels/:channelId" element={<ChannelsEntry />} />
             <Route path="/channels/:channelId/threads" element={<ChannelThreadsPage />} />
-            <Route path="/products" element={<CatalogPage />} />
+            <Route path="/products" element={<CatalogEntry />} />
             <Route path="/promotions" element={<Navigate to="/products?view=promotions" replace />} />
             {/* 方法卡：主管寫的做法，登入的人都看得到 */}
             <Route path="/methods" element={<MethodsPage />} />
@@ -227,8 +253,8 @@ function ApplicationRoutes() {
             <Route path="/me" element={<MePage />} />
             <Route path="/mascots" element={<MascotsPage />} />
             <Route path="/reports" element={<ReportsPage />} />
-            {/* 語音併進問答頁了，舊書籤與導覽說明還指得到這個網址 */}
-            <Route path="/voice" element={<Navigate to="/ask" replace />} />
+            {/* 舊語音書籤改為開啟全站助理 */}
+            <Route path="/voice" element={<AssistantEntry />} />
             <Route path="/customers/:customerId" element={<CustomerPage />} />
             <Route path="/customers/:customerId/negotiation" element={<NegotiationPage />} />
             <Route path="/customers/:customerId/quote" element={<QuotePage />} />

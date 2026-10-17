@@ -15,10 +15,10 @@ const item = (role: Role, label: string): SidebarItem => {
 }
 
 describe("sidebarItems", () => {
-  it("業務：商品與促銷共用一個入口，加上日曆、方法卡、申請單、主管回覆", () => {
+  it("業務：銷售整合訂單與型錄，報表列入主要入口", () => {
     expect(labels("sales")).toEqual({
-      main: ["訂單", "路線", "頻道", "問答", "商品與促銷"],
-      more: ["我的報表", "日曆", "方法卡", "我的申請單", "主管回覆"],
+      main: ["銷售", "路線", "頻道", "報表"],
+      more: ["日曆", "方法卡", "我的申請單", "主管回覆"],
     })
   })
 
@@ -31,7 +31,7 @@ describe("sidebarItems", () => {
   })
 
   it("數字掛在對的項目上", () => {
-    expect(item("sales", "訂單").badge).toBe("uploads")
+    expect(item("sales", "銷售").badge).toBe("uploads")
     expect(item("sales", "頻道").badge).toBe("channels")
     expect(item("sales", "主管回覆").badge).toBe("replies")
     expect(item("manager", "風險通報").badge).toBe("notices")
@@ -57,18 +57,18 @@ describe("homePath", () => {
 
 describe("isActiveItem", () => {
   it("訂單和路線各自選中自己的頁面", () => {
-    expect(isActiveItem(item("sales", "訂單"), "/orders", "")).toBe(true)
-    expect(isActiveItem(item("sales", "訂單"), "/route", "")).toBe(false)
+    expect(isActiveItem(item("sales", "銷售"), "/orders", "")).toBe(true)
+    expect(isActiveItem(item("sales", "銷售"), "/route", "")).toBe(false)
     expect(isActiveItem(item("sales", "路線"), "/route/", "?view=map")).toBe(true)
     expect(isActiveItem(item("sales", "路線"), "/route/edit", "")).toBe(true)
     expect(isActiveItem(item("sales", "路線"), "/orders", "")).toBe(false)
   })
 
   it("其他項目連它底下的頁都算（訂單明細算訂單、搜尋算頻道）", () => {
-    expect(isActiveItem(item("sales", "訂單"), "/orders/123", "")).toBe(true)
+    expect(isActiveItem(item("sales", "銷售"), "/orders/123", "")).toBe(true)
     expect(isActiveItem(item("sales", "頻道"), "/channels/search", "")).toBe(true)
     expect(isActiveItem(item("sales", "我的申請單"), "/oa/forms/3/", "")).toBe(true)
-    expect(isActiveItem(item("sales", "商品與促銷"), "/products-old", "")).toBe(false)
+    expect(isActiveItem(item("sales", "銷售"), "/products-old", "")).toBe(false)
   })
 
   it("主管端照 view 判斷，沒帶或不認得的 view 是團隊行程", () => {

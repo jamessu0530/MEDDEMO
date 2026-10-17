@@ -10,7 +10,7 @@ from sqlalchemy import select, text, update  # noqa: E402
 from sqlalchemy.engine import Connection  # noqa: E402
 
 from app.db import make_engine, schema_version, SEMANTIC_LAYER  # noqa: E402
-from app.models import AppSetting, LearningCompletion, MascotCollectible, MascotEncounter, MascotWardrobe, SalesOrder, ReportDataset, ProductBrowseProfile, PublicOutlet  # noqa: E402
+from app.models import AppSetting, LearningCompletion, MascotCollectible, MascotEncounter, MascotWardrobe, SalesOrder, ReportDataset, ProductBrowseProfile, PublicOutlet, PLANNER_TABLES  # noqa: E402
 
 # 保留前一輪的升級起點，同時支援目前已部署版本新增訂單工作區。
 # 未知版本不得自動重灌：新增升級路徑，或由維運明確選擇 workflow 的 reseed。
@@ -20,7 +20,8 @@ ORDERS_VERSION = "e5f5f7ae1005"
 REPORTS_VERSION = "a04a685630e5"
 PRODUCT_BROWSING_VERSION = "6214a6a90ab3"
 PUBLIC_OUTLETS_VERSION = "a0627cc80f56"
-TO_VERSION = "5222ff8c6a9e"
+PRE_CALENDAR_VERSION = "5222ff8c6a9e"
+TO_VERSION = "1fe8ef6529d7"
 
 
 def upgrade(connection: Connection, target: str | None = None) -> str:
@@ -29,9 +30,11 @@ def upgrade(connection: Connection, target: str | None = None) -> str:
     current = connection.scalar(select(AppSetting.value).where(AppSetting.key == "schema_version").with_for_update())
     if current == expected:
         return "資料表已是目前版本，無須更新。"
-    if current not in {FROM_VERSION, PREVIOUS_VERSION, ORDERS_VERSION, REPORTS_VERSION, PRODUCT_BROWSING_VERSION, PUBLIC_OUTLETS_VERSION} or expected != TO_VERSION:
+    if current not in {FROM_VERSION, PREVIOUS_VERSION, ORDERS_VERSION, REPORTS_VERSION, PRODUCT_BROWSING_VERSION, PUBLIC_OUTLETS_VERSION, PRE_CALENDAR_VERSION} or expected != TO_VERSION:
         raise RuntimeError(f"沒有保留資料的升級路徑：{current or '未記錄版本'} → {expected}；停止部署，不重灌。")
     for model in (LearningCompletion, MascotWardrobe, MascotCollectible, MascotEncounter, SalesOrder, ReportDataset, ProductBrowseProfile, PublicOutlet):
+        model.__table__.create(connection, checkfirst=True)
+    for model in PLANNER_TABLES:
         model.__table__.create(connection, checkfirst=True)
     # 只有新匯入的公開通路允許缺業務、評級、付款條件；既有客戶的必要欄位以 CHECK 繼續保護。
     connection.exec_driver_sql("""ALTER TABLE customer
@@ -59,7 +62,7 @@ def upgrade(connection: Connection, target: str | None = None) -> str:
         END IF;
     END $$;""")
     connection.execute(update(AppSetting).where(AppSetting.key == "schema_version").values(value=expected))
-    return f"已升級公開通路、商品偏好、匯入資料、訂單、課程與收藏表：{current} → {expected}；既有資料保留。"
+    return f"已升級一般日曆、公開通路、商品偏好、匯入資料、訂單、課程與收藏表：{current} → {expected}；既有資料保留。"
 
 
 if __name__ == "__main__":

@@ -32,7 +32,7 @@ export function InkOverlay() {
   // 兩頁都沒有：照手機的寬度置中。canvas 是替換元素，w-auto 會依高度的長寬比算出寬度（不會被 left/right 撐開），所以寬度要明寫
   const inkClass =
     shell && shellAt.prev
-      ? "lg:left-56 lg:w-[calc(100%-14rem)] lg:max-w-none lg:translate-x-0"
+      ? "lg:left-[var(--app-sidebar-width)] lg:w-[calc(100%-var(--app-sidebar-width))] lg:max-w-none lg:translate-x-0"
       : shell || shellAt.prev
         ? "lg:left-0 lg:w-full lg:max-w-none lg:translate-x-0"
         : ""

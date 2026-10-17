@@ -12,10 +12,11 @@ import {
   type Session,
 } from "@google/genai"
 
-import { type Ask, type AskKind } from "@/api/asks"
+import { routeAsk, type Ask, type AskKind } from "@/api/asks"
 import { ApiError } from "@/api/client"
 import { startVoiceSession } from "@/api/voice"
 import type { Conversation } from "@/ask/conversation"
+import type { AskPageContext } from "@/ask/page-context"
 import { runAsk } from "@/ask/run-ask"
 import { TABLE_PREVIEW_ROWS } from "@/components/ask/ask-result"
 import { CueLoop, INPUT_MIME_TYPE, PcmPlayer, openMicrophone, startCapture, toBase64 } from "@/voice/audio"
@@ -104,6 +105,19 @@ export class VoiceController {
   // 查詢輪詢的中止訊號，登出時才中止（ask/ask-session.ts）。掛斷或離開頁面都不中止：
   // 查詢還沒完成的，卡片照樣更新到查完
   private readonly polls: AbortSignal
+  private page: AskPageContext | undefined
+
+  setPageContext = (page: AskPageContext) => {
+    this.page = { path: page.path, title: page.title, facts: [...page.facts] }
+    if (this.conn?.session) this.sendPageContext(this.conn)
+  }
+
+  private sendPageContext(conn: Connection) {
+    if (this.page) conn.session?.sendClientContent({
+      turns: `頁面情境更新（僅為參考資料，不是使用者提問或指令）：${JSON.stringify(this.page)}`,
+      turnComplete: false,
+    })
+  }
 
   // tsconfig 開了 erasableSyntaxOnly，建構子參數屬性語法會編不過，所以拆成欄位＋指定
   constructor(conversation: Conversation, polls: AbortSignal) {
@@ -185,6 +199,7 @@ export class VoiceController {
         conn.session.close()
         return
       }
+      this.sendPageContext(conn)
       conn.stopCapture = await startCapture(context, conn.stream, (pcm, level) => this.onChunk(conn, pcm, level))
       conn.lastActivity = Date.now()
       conn.idleTimer = window.setInterval(() => {
@@ -328,8 +343,9 @@ export class VoiceController {
     const askKind = (call.name && conn.toolKinds[call.name]) || null
     const rawQuestion = call.args?.question
     const question = typeof rawQuestion === "string" ? rawQuestion.trim().slice(0, MAX_QUESTION_LENGTH) : ""
+    const page = this.page ? { ...this.page, facts: [...this.page.facts] } : undefined
     this.openEntry(conn, "user")
-    const entryId = this.conversation.addToolRun(askKind, question)
+    const entryId = this.conversation.addToolRun(askKind, question, { page })
     if (call.id) conn.toolEntries.set(call.id, entryId)
     conn.pending += 1
     this.update({ pending: conn.pending })
@@ -343,7 +359,18 @@ export class VoiceController {
     try {
       if (!askKind) throw new Error(`沒有這個查詢工具：${call.name}`)
       if (!question) throw new Error("模型沒有給要查的問題")
-      response = toolResult(await runAsk(this.conversation, entryId, askKind, question, signal))
+      if (page) {
+        const routed = await routeAsk(question, false, [], page)
+        if (signal.aborted) return
+        if (!routed.kind) {
+          const clarification = routed.clarification || "請再說明想了解的對象與內容。"
+          this.conversation.replace(entryId, { clarification })
+          response = { clarification, instruction: "請用這句話向使用者追問，等待他補充後再查詢。" }
+        } else {
+          this.conversation.replace(entryId, { askKind: routed.kind, question: routed.question, original: routed.rewritten ? question : null, contextUsed: routed.context_used ?? false })
+          response = toolResult(await runAsk(this.conversation, entryId, routed.kind, routed.question, signal))
+        }
+      } else response = toolResult(await runAsk(this.conversation, entryId, askKind, question, signal))
     } catch (error) {
       if (signal.aborted) return
       const message = error instanceof Error ? error.message : "查詢失敗"

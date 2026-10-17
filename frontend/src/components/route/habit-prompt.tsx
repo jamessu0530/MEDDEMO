@@ -2,6 +2,7 @@ import { useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { WEEKDAY_LABEL } from "@/lib/itinerary"
+import { FIXED_COLUMN } from "@/lib/desktop-layout"
 import { cn } from "@/lib/utils"
 
 export type HabitChoice = "today" | "weekday" | "always"
@@ -21,7 +22,7 @@ export function HabitPrompt({ text, weekday, onDone }: { text: string; weekday: 
     <div
       role="dialog"
       aria-label="以後也這樣排嗎？"
-      className="fixed inset-x-0 bottom-0 z-30 mx-auto max-w-md animate-in px-2.5 pb-[calc(0.5rem+env(safe-area-inset-bottom))] duration-200 slide-in-from-bottom-4 motion-reduce:animate-none lg:left-56 lg:max-w-2xl"
+      className={cn(FIXED_COLUMN, "bottom-0 z-30 animate-in px-2.5 pb-[calc(0.5rem+env(safe-area-inset-bottom))] duration-200 slide-in-from-bottom-4 motion-reduce:animate-none")}
     >
       <div className="rounded-2xl border-2 bg-card p-4 shadow-lip">
         <p className="text-xs font-semibold text-muted-foreground">以後也這樣排嗎？</p>

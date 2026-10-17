@@ -207,7 +207,7 @@ def _route_out(route: team.RepRoute) -> RepRoute:
 @router.get("/itineraries", response_model=TeamRoutes)
 def team_itineraries(session: SessionDep, manager: ManagerUser):
     """團隊今天的行程：每位業務的路線、進度，以及跟系統早上的建議比改了什麼。"""
-    routes = [team.route(session, rep) for rep in team.reps(session, manager)]
+    routes = team.routes(session, team.reps(session, manager))
     result = TeamRoutes(
         date=customer_profile.app_today(session),
         updated_at=dt.datetime.now(TAIPEI).strftime("%H:%M"),
