@@ -169,7 +169,7 @@ function ReportLayoutBoard({
   }, [])
   useEffect(() => cancel, [editing, readonly, config, compact, cancel])
   useEffect(() => {
-    if (!editing) return
+    if (readonly) return
     const escape = (event: globalThis.KeyboardEvent) => {
       if (event.key !== "Escape" || !gesture.current) return
       event.preventDefault()
@@ -178,7 +178,7 @@ function ReportLayoutBoard({
     }
     window.addEventListener("keydown", escape)
     return () => window.removeEventListener("keydown", escape)
-  }, [editing, cancel])
+  }, [readonly, cancel])
   function select(card: ReportCard, event?: MouseEvent) {
     const members = card.group_id
       ? cards
@@ -199,7 +199,6 @@ function ReportLayoutBoard({
       event.button !== 0 ||
       !event.isPrimary ||
       gesture.current ||
-      !editing ||
       readonly ||
       card.locked
     )
@@ -279,7 +278,6 @@ function ReportLayoutBoard({
   }
   function keyboard(event: KeyboardEvent<HTMLButtonElement>, card: ReportCard) {
     if (
-      !editing ||
       readonly ||
       card.locked ||
       !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)
@@ -364,7 +362,7 @@ function ReportLayoutBoard({
                     draggable: !readonly && !card.locked,
                     onSelect: (event) => select(card, event),
                   })}
-                  {editing && !readonly && !card.locked && (
+                  {!readonly && !card.locked && (
                     <ReportWidgetResizeHandle
                       data-ui-demo="report-widget-resize"
                       aria-label={`調整尺寸：${card.title}`}

@@ -270,17 +270,9 @@ describe("所有頁面的共用 AI 助理", () => {
     "/privacy",
     "/auth/github/callback",
     "/auth/google/callback",
-  ])("%s 未登入時直接顯示底部登入列", (path) => {
-    const closed = render(path, false, false)
-    expect(closed).toContain('data-placement="dock"')
-    expect(closed).toContain('aria-label="AI 助理登入提示"')
-    expect(closed).toContain("登入提問")
-    expect(closed).not.toContain('id="page-assistant-launcher"')
-    expect(closed).not.toContain('id="page-assistant-panel" hidden=""')
-    const opened = render(path, true, false)
-    expect(opened).toContain('aria-label="收起 AI 回覆"')
-    expect(opened).toContain("登入後就能問熊熊滾")
-    expect(opened).toContain('href="/login"')
-    expect(opened).not.toContain('id="page-assistant-input"')
+    "/reports",
+  ])("%s 未登入時不顯示熊熊登入提示或預留面板", (path) => {
+    expect(render(path, false, false)).toBe("")
+    expect(render(path, true, false)).toBe("")
   })
 })

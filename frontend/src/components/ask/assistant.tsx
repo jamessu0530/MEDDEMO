@@ -11,7 +11,7 @@ import {
   type ReactNode,
 } from "react"
 import { ChevronDown, Loader2, Mic, SendHorizontal } from "@/components/icons"
-import { Link, useLocation } from "react-router"
+import { useLocation } from "react-router"
 
 import { askSessionFor } from "@/ask/ask-session"
 import {
@@ -80,7 +80,7 @@ export function Assistant() {
   }
   const { dragging, ...swipe } = useAssistantSwipe(changeMode, Boolean(user) && !sending)
   const placement = pageAssistantPlacement(pathname)
-  const enabled = placement !== "none"
+  const enabled = Boolean(user) && placement !== "none"
   const bare = pageWidth(pathname) === "bare"
   const open = useSyncExternalStore(
     assistantWindow.subscribe,
@@ -211,8 +211,7 @@ export function Assistant() {
           dragging === "new" && "border-2 border-solid border-success",
           open && "h-[var(--assistant-height)]",
           resizing && "select-none",
-          !active && "hidden",
-          !user && "overflow-y-auto overscroll-contain"
+          !active && "hidden"
         )}
       >
         {user && (
@@ -267,43 +266,12 @@ export function Assistant() {
             </div>
           </CardHeader>
         )}
-        {user ? (
-          <LearningAiGate embedded compact active={active}>
-            <AssistantContent key={`${user.id}:${thread.id}`} open={open && active} active={active} />
-          </LearningAiGate>
-        ) : (
-          <SignedOutAssistant />
-        )}
+        <LearningAiGate embedded compact active={active}>
+          <AssistantContent key={`${user?.id}:${thread.id}`} open={open && active} active={active} />
+        </LearningAiGate>
       </Card>
       {fullAnimation && modeAnimation}
     </div>
-  )
-}
-
-function SignedOutAssistant() {
-  const { pathname, search, state } = useLocation()
-  const from =
-    (state as { from?: string } | null)?.from ??
-    (pathname === "/login" ||
-    pathname === "/register" ||
-    pathname.startsWith("/auth/")
-      ? "/"
-      : pathname + search)
-  return (
-    <section
-      className="flex min-h-14 items-center gap-2 p-2"
-      aria-label="AI 助理登入提示"
-    >
-      <Mascot size={28} bust className="shrink-0" />
-      <p className="min-w-0 flex-1 text-sm leading-relaxed text-muted-foreground">
-        登入後就能問熊熊滾
-      </p>
-      <Button asChild className="h-11 shrink-0 px-3">
-        <Link to="/login" state={{ from }}>
-          登入提問
-        </Link>
-      </Button>
-    </section>
   )
 }
 

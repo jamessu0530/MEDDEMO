@@ -34,12 +34,13 @@ const config: ReportConfig = {
     },
   ],
 }
-function board(wide: boolean, editing = true, document = config) {
+function board(wide: boolean, editing = true, document = config, readonly = false) {
   return renderToStaticMarkup(
     createElement(ReportLayoutCanvas, {
       config: document,
       pageId: "overview",
       editing,
+      readonly,
       isDesktop: wide,
       selectedId: "a",
       onSelect: () => undefined,
@@ -76,7 +77,7 @@ describe("報表自動版面", () => {
     expect(board(true)).toContain('data-layout-rect="0,0,12,20"')
     expect(board(false)).toContain('data-layout-rect="0,0,24,20"')
   })
-  it("閱讀模式不含操作把手，兩種螢幕遵守相同的隱藏設定", () => {
+  it("未開啟圖表設定時仍可直接調整大小，兩種螢幕遵守相同的隱藏設定", () => {
     const document = {
       ...config,
       cards: config.cards.map((card) =>
@@ -87,8 +88,27 @@ describe("報表自動版面", () => {
       const html = board(wide, false, document)
       expect(html).toContain('data-layout-card="a"')
       expect(html).not.toContain('data-layout-card="b"')
-      expect(html).not.toContain('aria-label="調整尺寸：')
+      expect(html).toContain('aria-label="調整尺寸：業績"')
+      expect(html).toContain("manager-map-corner-material")
       expect(board(wide, true, document)).toContain('data-layout-card="b"')
+    }
+  })
+  it("唯讀報表與鎖定卡片不顯示調整把手", () => {
+    const document = {
+      ...config,
+      cards: config.cards.map((card) =>
+        card.id === "a" ? { ...card, locked: true } : card
+      ),
+    }
+    for (const wide of [true, false]) {
+      for (const editing of [true, false]) {
+        expect(board(wide, editing, config, true)).not.toContain(
+          'aria-label="調整尺寸：'
+        )
+        const html = board(wide, editing, document)
+        expect(html).not.toContain('aria-label="調整尺寸：業績"')
+        expect(html).toContain('aria-label="調整尺寸：毛利"')
+      }
     }
   })
   it("舊報表未儲存座標時也會自動排列並可直接縮放", () => {
