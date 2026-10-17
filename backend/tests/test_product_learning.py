@@ -87,7 +87,7 @@ def test_learning_progress_belongs_to_the_login_not_the_shared_representative(tx
     assert next(m for m in first["medals"] if m["kind"] == "chronic" and m["tier"] == 1)["unlocked_on"]
     assert all(not m["unlocked_on"] for m in second["medals"] if m["kind"] in CATEGORIES)
     assert client.get("/api/first-week/course", headers=mine).json()["xp"] == 0
-    assert learning.ai_unlocked(tx, tx.get(AppUser, "XMEDAL1")) is False
+    assert learning.course(tx, tx.get(AppUser, "XMEDAL1"))["ai_unlocked"] is True
 
 
 def test_training_is_authenticated_and_invalid_categories_are_rejected(client, auth):

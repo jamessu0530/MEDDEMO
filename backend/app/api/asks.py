@@ -16,7 +16,6 @@ from starlette.datastructures import UploadFile
 
 from app.api.attachments import AttachmentItem, attachment_item
 from app.api.auth import CurrentUser
-from app.api.learning import LearningAiUser
 from app.db import get_session
 from app.models import AppUser, AskRecord, Attachment, Customer, QueryTrace
 from app.services import ask_followup, ask_router, attachments, assistant_context, question_suggestions
@@ -221,7 +220,7 @@ def _load(session: Session, ask_id: str, user: AppUser) -> AskRecord:
 
 
 @router.post("/route", response_model=RouteOut, response_model_exclude_defaults=True)
-def route_ask(body: RouteInput, user: LearningAiUser):
+def route_ask(body: RouteInput, user: CurrentUser):
     """送出前先整理這一題：要看前文才懂就改寫（services/ask_followup.py），選「自動」再判斷該查哪一種
     （services/ask_router.py）。不建提問、不算進提問的次數：前端拿回來的那一句再照原本的 POST /api/asks 送"""
     question = body.question.strip()
@@ -253,13 +252,13 @@ def route_ask(body: RouteInput, user: LearningAiUser):
 
 
 @router.post("/suggestions", response_model=SuggestionsOut)
-async def suggest_questions(body: SuggestionsInput, user: LearningAiUser):
+async def suggest_questions(body: SuggestionsInput, user: CurrentUser):
     earlier = [turn.model_dump(exclude_none=True, exclude_defaults=True) for turn in body.earlier]
     return SuggestionsOut(suggestions=await question_suggestions.suggest(body.page, earlier, body.candidates))
 
 
 @router.post("", status_code=202, response_model=AskDetail)
-def create_ask(session: SessionDep, form: Annotated[AskForm, Depends(ask_form)], user: LearningAiUser):
+def create_ask(session: SessionDep, form: Annotated[AskForm, Depends(ask_form)], user: CurrentUser):
     """提問。查詢要跑好幾輪、呼叫好幾次模型，所以放到背景做，畫面輪詢 GET 看進度（NFR-5）。
     附的檔案先檢查完才建提問；AI 看檔案、算向量在背景工作的第一步做。"""
     body = form.body

@@ -31,7 +31,6 @@ import { EntryView } from "@/components/ask/entry-view"
 import { AccountMemoryStatus } from "@/components/ask/memory-status"
 import type { VoiceSession } from "@/components/ask/voice-dock"
 import { AttachButton, DraftFiles } from "@/components/attachments/draft-files"
-import { LearningAiGate } from "@/components/learning/ai-gate"
 import { Mascot } from "@/components/mascot"
 import { Notice } from "@/components/notice"
 import { Button } from "@/components/ui/button"
@@ -242,9 +241,7 @@ export function Assistant() {
             </div>
           </CardHeader>
         )}
-        <LearningAiGate embedded compact active={active}>
-          <AssistantContent key={`${user?.id}:${thread.id}`} open={open && active} active={active} />
-        </LearningAiGate>
+        <AssistantContent key={`${user?.id}:${thread.id}`} open={open && active} active={active} />
       </AssistantSwipeCard>
       <div
         id="page-assistant-resize"

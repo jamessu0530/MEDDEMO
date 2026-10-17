@@ -37,6 +37,17 @@
 .report-widget-hint {
   padding-top: 0.25rem;
 }
+.report-widget-size-menu {
+  z-index: 60;
+  width: min(22rem, calc(100vw - 2rem));
+  max-height: var(--radix-popover-content-available-height);
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  padding: 0.5rem;
+  background: var(--card);
+  box-shadow: 0 12px 36px rgb(0 0 0 / 16%);
+}
 [data-resizing="both"] > .report-visual {
   box-shadow:
     0 0 0 2px color-mix(in srgb, var(--primary) 25%, transparent),

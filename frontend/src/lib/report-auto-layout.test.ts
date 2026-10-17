@@ -4,7 +4,9 @@ import {
   automaticReportSizes,
   resizeAutomaticReportCard,
   setAutomaticReportSize,
+  setAutomaticReportPreset,
 } from "@/lib/report-auto-layout"
+import { reportWidgetSize } from "@/lib/report-widget"
 import {
   normalizeReportConfig,
   reorderReportPage,
@@ -63,6 +65,22 @@ function expectNoOverlap(cards: ReportCard[], compact: boolean) {
 }
 
 describe("自動排列報表卡片", () => {
+  it("大中小預設在手機、平板與桌面保留相同資訊層級，不改資料查詢", () => {
+    const original = document()
+    for (const size of ["small", "medium", "large"] as const) {
+      const next = setAutomaticReportPreset(original, "a", size)
+      expect(reportDataKey(next)).toBe(reportDataKey(original))
+      expect(next.cards[3]).toBe(original.cards[3])
+      for (const width of [225, 273, 358, 704, 1144, 1600]) {
+        const rect = automaticReportRects([next.cards[0]], width < 560).a
+        expect(
+          reportWidgetSize((width * rect.w) / 24 - 8, rect.h * 24 - 8)
+        ).toBe(size)
+      }
+    }
+    original.cards[0].locked = true
+    expect(setAutomaticReportPreset(original, "a", "large")).toBe(original)
+  })
   it("最大高度、不同寬度、重疊的舊座標都能在兩種螢幕自動讓位", () => {
     const cards = Array.from({ length: 24 }, (_, i) =>
       card(String(i), [4, 6, 8, 12, 24][i % 5], [8, 10, 28, 60][i % 4])

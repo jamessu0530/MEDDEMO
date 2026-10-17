@@ -16,7 +16,6 @@ import {
 import { Link } from "react-router"
 
 import type { Course } from "@/api/learning"
-import { DemoLearningSkip } from "@/components/learning/demo-skip"
 import { Mascot } from "@/components/mascot"
 import { Button } from "@/components/ui/button"
 import { lessonState, nextLesson } from "@/lib/learning"
@@ -30,13 +29,7 @@ const ICONS: LucideIcon[] = [
   MessageCircleQuestion,
 ]
 
-export function CoursePath({
-  course,
-  onCourseChange,
-}: {
-  course: Course
-  onCourseChange: (course: Course) => void
-}) {
+export function CoursePath({ course }: { course: Course }) {
   const next = nextLesson(course)
   const finished = !next
   return (
@@ -91,11 +84,6 @@ export function CoursePath({
               <ChevronRight />
             </Link>
           </Button>
-        )}
-        {!course.ai_unlocked && course.demo_skip_available && (
-          <div className="mt-4 flex justify-center">
-            <DemoLearningSkip onSkipped={onCourseChange} />
-          </div>
         )}
       </div>
 
@@ -171,42 +159,21 @@ export function CoursePath({
         })}
       </div>
 
-      <div
-        className={cn(
-          "flex items-start gap-3 rounded-2xl border-2 p-4",
-          course.ai_unlocked
-            ? "border-success/25 bg-success/10"
-            : "border-dashed bg-card"
-        )}
-      >
-        {course.ai_unlocked ? (
-          <Trophy className="size-6 shrink-0 text-success" />
-        ) : (
-          <LockKeyhole className="size-6 shrink-0 text-muted-foreground" />
-        )}
+      <div className="flex items-start gap-3 rounded-2xl border-2 border-success/25 bg-success/10 p-4">
+        <Trophy className="size-6 shrink-0 text-success" />
         <div>
-          <h3 className="font-semibold">
-            {course.demo_skipped
-              ? "Demo · AI 問答已開啟"
-              : course.ai_unlocked
-                ? "AI 問答已解鎖"
-                : "通關獎勵：AI 問答"}
-          </h3>
+          <h3 className="font-semibold">AI 問答隨時可用</h3>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-            {course.ai_unlocked
-              ? "打字或用語音查數字、查規定，記得核對答案出處。"
-              : `再完成 ${course.lessons.length - course.completed.length} 關，就能用打字與語音問熊熊滾。`}
+            打字或用語音查數字、查規定，記得核對答案出處。課程可隨時回來繼續。
           </p>
-          {course.ai_unlocked && (
-            <button
-              type="button"
-              onClick={openAssistant}
-              className="mt-3 inline-flex min-h-11 items-center gap-1 text-sm font-semibold text-success"
-            >
-              問熊熊滾
-              <ChevronRight className="size-4" />
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={openAssistant}
+            className="mt-3 inline-flex min-h-11 items-center gap-1 text-sm font-semibold text-success"
+          >
+            問熊熊滾
+            <ChevronRight className="size-4" />
+          </button>
         </div>
       </div>
     </section>

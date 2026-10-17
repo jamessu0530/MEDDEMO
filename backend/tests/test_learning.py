@@ -1,4 +1,4 @@
-"""新人操作課程：過關、重送、帳號隔離，以及真正的 AI API 解鎖。"""
+"""新人操作課程：過關、重送、帳號隔離，以及登入後即可使用 AI API。"""
 
 import datetime as dt
 from types import SimpleNamespace
@@ -47,74 +47,59 @@ def demo_enabled(env):
         redis().delete(*keys)
 
 
-def test_demo_skip_opens_all_ai_apis_without_completing_lessons(tx, client, demo_enabled, monkeypatch, env):
+@pytest.mark.parametrize("demo_skip", ["true", "false"])
+def test_new_accounts_can_use_ai_without_courses_or_demo_skip(tx, client, monkeypatch, env, demo_skip):
+    env(DEMO_SKIP_LEARNING=demo_skip, LLM_PROVIDER="gemini")
     headers = new_account(tx)
-    other = new_account(tx, "XLEARN2")
-    assert submit(client, headers, "customer-v1").json()["xp"] == 20
-    assert client.get("/api/first-week/course", headers=headers).json()["demo_skip_available"] is True
-    assert client.post("/api/asks/route", headers=headers, json={"question": "促銷條件？"}).status_code == 403
-
-    skipped = client.post("/api/first-week/course/demo-skip", headers=headers)
-    assert skipped.status_code == 200
-    assert skipped.json()["ai_unlocked"] is True
-    assert skipped.json()["demo_skipped"] is True
-    assert skipped.json()["completed"] == ["customer-v1"]
-    assert skipped.json()["xp"] == 20
-    assert client.post("/api/first-week/course/demo-skip", headers=headers).json()["xp"] == 20
-    assert TestClient(app).get("/api/first-week/course", headers=headers).json()["ai_unlocked"] is True
-    assert client.get("/api/first-week/course", headers=other).json()["ai_unlocked"] is False
-
     monkeypatch.setattr("app.services.ask_followup.standalone", lambda question, earlier: question)
     monkeypatch.setattr("app.services.ask_router.route", lambda *_: SimpleNamespace(kind="knowledge", choices=[], confidence=1.0))
     queued = []
     monkeypatch.setattr("app.api.asks.visit_queue", lambda: SimpleNamespace(enqueue=lambda *args: queued.append(args)))
-    env(LLM_PROVIDER="gemini")
     monkeypatch.setattr("app.services.voice.vocabulary", lambda *_: "")
     monkeypatch.setattr("app.services.voice.create_session", lambda *_: VoiceSession(
         token="demo-token", model="demo-model", api_version="v1beta",
         expires_at=dt.datetime.now(dt.UTC) + dt.timedelta(minutes=30), config={}, tool_kinds={},
     ))
-    assert client.post("/api/asks/route", headers=headers, json={"question": "促銷條件？"}).status_code == 200
-    assert client.post("/api/asks", headers=headers, json={"kind": "knowledge", "question": "促銷條件？"}).status_code == 202
-    assert len(queued) == 1
-    assert client.post("/api/voice/session", headers=headers).status_code == 200
-    assert client.get("/api/first-week/course", headers=headers).json()["completed"] == ["customer-v1"]
-    # 略過只開 AI；課程仍須依序完成。
-    assert submit(client, headers, "route-v1").status_code == 409
-    assert submit(client, headers, "product-v1").json()["xp"] == 40
-
-    # 重新登入不沿用前一次的略過；舊狀態到期後也恢復課程門檻。
-    user = tx.get(AppUser, "XLEARN")
-    key = learning.demo_skip_key(user)
-    assert 0 < redis().ttl(key) <= 24 * 3600
-    user.session_version += 1
-    tx.commit()
-    fresh_headers = {"Authorization": f"Bearer {auth_service.create_token(user)}"}
-    assert client.get("/api/first-week/course", headers=fresh_headers).json()["ai_unlocked"] is False
-    assert client.post("/api/first-week/course/demo-skip", headers=fresh_headers).status_code == 200
-    redis().delete(learning.demo_skip_key(user))
-    assert client.post("/api/voice/session", headers=fresh_headers).status_code == 403
+    for login in range(2):
+        state = client.get("/api/first-week/course", headers=headers).json()
+        assert state["completed"] == []
+        assert state["xp"] == 0
+        assert state["ai_unlocked"] is True
+        assert client.post("/api/asks/route", headers=headers, json={"question": "促銷條件？"}).status_code == 200
+        assert client.post("/api/asks", headers=headers, json={"kind": "knowledge", "question": "促銷條件？"}).status_code == 202
+        assert client.post("/api/voice/session", headers=headers).status_code == 200
+        if login == 0:
+            user = tx.get(AppUser, "XLEARN")
+            user.session_version += 1
+            tx.commit()
+            headers = {"Authorization": f"Bearer {auth_service.create_token(user)}"}
+    assert len(queued) == 2
+    assert tx.scalar(select(func.count()).select_from(LearningCompletion).where(LearningCompletion.user_id == "XLEARN")) == 0
 
 
-def test_demo_skip_requires_login_and_demo_setting(tx, client, auth, demo_enabled, env):
+def test_legacy_demo_skip_preserves_course_progress_and_auth(tx, client, auth, demo_enabled, env):
     headers = new_account(tx)
     assert client.post("/api/first-week/course/demo-skip").status_code == 401
     assert client.post("/api/first-week/course/demo-skip", headers=auth("M01")).status_code == 403
-    assert client.post("/api/first-week/course/demo-skip", headers=headers).status_code == 200
+    assert submit(client, headers, "customer-v1").json()["xp"] == 20
+    skipped = client.post("/api/first-week/course/demo-skip", headers=headers)
+    assert skipped.status_code == 200
+    assert skipped.json()["completed"] == ["customer-v1"]
+    assert skipped.json()["xp"] == 20
+    assert skipped.json()["ai_unlocked"] is True
     env(DEMO_SKIP_LEARNING="false")
-    state = client.get("/api/first-week/course", headers=headers).json()
-    assert state["demo_skip_available"] is False
-    assert state["demo_skipped"] is False
-    assert state["ai_unlocked"] is False
-    assert state["completed"] == []
-    assert state["xp"] == 0
     assert client.post("/api/first-week/course/demo-skip", headers=headers).status_code == 403
-    for path, body in (
-        ("/api/asks", {"kind": "knowledge", "question": "促銷條件？"}),
-        ("/api/asks/route", {"question": "促銷條件？"}),
-        ("/api/voice/session", None),
-    ):
-        assert client.post(path, headers=headers, json=body).status_code == 403
+    assert client.get("/api/first-week/course", headers=headers).json()["ai_unlocked"] is True
+    assert submit(client, headers, "route-v1").status_code == 409
+
+
+@pytest.mark.parametrize("path,body", [
+    ("/api/asks", {"kind": "knowledge", "question": "促銷條件？"}),
+    ("/api/asks/route", {"question": "促銷條件？"}),
+    ("/api/voice/session", None),
+])
+def test_ai_still_requires_login(client, path, body):
+    assert client.post(path, json=body).status_code == 401
 
 
 def test_wrong_answer_and_skipping_do_not_save_progress(tx, client):
@@ -124,7 +109,7 @@ def test_wrong_answer_and_skipping_do_not_save_progress(tx, client):
     state = client.get("/api/first-week/course", headers=headers).json()
     assert state["completed"] == []
     assert state["xp"] == 0
-    assert state["ai_unlocked"] is False
+    assert state["ai_unlocked"] is True
     assert client.post("/api/first-week/course/missing/complete", headers=headers, json={"answer": {}}).status_code == 404
 
 
@@ -139,30 +124,14 @@ def test_progress_is_saved_per_login_and_replaying_does_not_award_again(tx, clie
     assert tx.scalar(select(func.count()).select_from(LearningCompletion).where(LearningCompletion.user_id == "XLEARN")) == 1
 
 
-def test_ai_apis_block_until_all_lessons_are_complete(tx, client, monkeypatch):
+def test_course_progress_is_optional_and_keeps_real_xp(tx, client):
     headers = new_account(tx)
-    monkeypatch.setattr("app.services.ask_followup.standalone", lambda question, earlier: question)
-    routed = []
-    def route(question, has_file):
-        routed.append(question)
-        return SimpleNamespace(kind="knowledge", choices=[], confidence=1.0)
-    monkeypatch.setattr("app.services.ask_router.route", route)
-    for path, body in (
-        ("/api/asks", {"kind": "knowledge", "question": "促銷條件？"}),
-        ("/api/asks/route", {"question": "促銷條件？"}),
-        ("/api/voice/session", None),
-    ):
-        assert client.post(path, headers=headers, json=body).status_code == 403
-    assert routed == []
-    for lesson_id in learning.LESSON_IDS:
+    for index, lesson_id in enumerate(learning.LESSON_IDS, 1):
         response = submit(client, headers, lesson_id)
         assert response.status_code == 200
-        if lesson_id != "ask-v1":
-            assert response.json()["ai_unlocked"] is False
-    assert response.json()["xp"] == 100
-    assert response.json()["ai_unlocked"] is True
-    assert client.post("/api/asks/route", headers=headers, json={"question": "促銷條件？"}).status_code == 200
-    assert routed == ["促銷條件？"]
+        assert response.json()["ai_unlocked"] is True
+        assert response.json()["xp"] == index * 20
+    assert response.json()["completed"] == list(learning.LESSON_IDS)
 
 
 def test_existing_staff_keep_ai_access_and_managers_cannot_take_lessons(client, auth):

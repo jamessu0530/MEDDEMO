@@ -10,7 +10,7 @@ from google.genai import errors
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.api.learning import LearningAiUser
+from app.api.auth import CurrentUser
 from app.config import NotConfigured, settings
 from app.db import get_session
 from app.services import voice
@@ -30,7 +30,7 @@ class VoiceSessionOut(BaseModel):
 
 
 @router.post("/session", response_model=VoiceSessionOut)
-def start_session(session: SessionDep, user: LearningAiUser):
+def start_session(session: SessionDep, user: CurrentUser):
     """開一段語音問答。每次發一把新的臨時金鑰，只能開一段對話；正式的金鑰不會離開伺服器。
 
     要登入：臨時金鑰會花錢；語音裡查資料走問答 API，也要知道是誰才能照權限過濾。

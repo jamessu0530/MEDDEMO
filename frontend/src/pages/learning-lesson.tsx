@@ -148,10 +148,10 @@ function LessonContent({ lessonId }: { lessonId: string }) {
             {!next && (
               <div className="w-full rounded-2xl bg-primary/10 p-4">
                 <p className="font-semibold text-primary">
-                  五關完成，AI 問答已解鎖！
+                  五關完成，拜訪操作更熟練了！
                 </p>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  現在可以用打字和語音問熊熊滾。
+                  隨時可以用打字和語音問熊熊滾。
                 </p>
               </div>
             )}

@@ -1,4 +1,3 @@
-import { openAssistant } from "@/ask/assistant-window"
 import { useEffect, useState } from "react"
 import { ChevronRight, FileText } from "@/components/icons"
 import { Link, useNavigate } from "react-router"
@@ -115,21 +114,12 @@ export function FirstWeekPage() {
         )}
         {data && (
           <>
-            {state.status === "ready" && (
-              <CoursePath
-                course={state.course}
-                onCourseChange={(course) => {
-                  setState((current) =>
-                    current.status === "ready"
-                      ? { ...current, course }
-                      : current
-                  )
-                  openAssistant()
-                }}
-              />
-            )}
+            {state.status === "ready" && <CoursePath course={state.course} />}
             <details className="group rounded-2xl border-2 bg-card shadow-lip">
-              <summary data-ui-demo-open="disclosure" className="cursor-pointer px-4 py-4 text-sm font-semibold">
+              <summary
+                data-ui-demo-open="disclosure"
+                className="cursor-pointer px-4 py-4 text-sm font-semibold"
+              >
                 我的轄區、產品與第一週參考資料
               </summary>
               <div className="flex flex-col gap-6 border-t px-3 py-4">
@@ -161,7 +151,9 @@ export function FirstWeekPage() {
 
                 <section className="flex flex-col gap-2">
                   <div className="flex items-baseline justify-between gap-3">
-                    <h2 className="text-base font-semibold">第一週每天做什麼</h2>
+                    <h2 className="text-base font-semibold">
+                      第一週每天做什麼
+                    </h2>
                   </div>
                   {data.days.map((day) => (
                     <article
@@ -306,9 +298,7 @@ function ProductLines({ data }: { data: FirstWeek }) {
                     )}
                   </div>
                   <div className="shrink-0 text-right">
-                    <p className="text-xs text-muted-foreground">
-                      建議售價
-                    </p>
+                    <p className="text-xs text-muted-foreground">建議售價</p>
                     <p className="text-sm font-medium tabular-nums">
                       {formatMoney(item.unit_price)}
                     </p>

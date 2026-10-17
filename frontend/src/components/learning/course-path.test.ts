@@ -28,28 +28,26 @@ function render(state: Course) {
     createElement(
       MemoryRouter,
       null,
-      createElement(CoursePath, { course: state, onCourseChange: () => {} })
+      createElement(CoursePath, { course: state })
     )
   )
 }
 
-describe("Demo 跳過新人課程", () => {
-  it("展示設定開啟時提供跳過按鈕，關閉時仍須通關", () => {
-    expect(render(course)).toContain("Demo：跳過課程，直接使用 AI")
-    const normal = render({ ...course, demo_skip_available: false })
-    expect(normal).not.toContain("Demo：跳過課程")
-    expect(normal).toContain("通關獎勵：AI 問答")
-    expect(normal).not.toContain("問熊熊滾</button>")
+describe("選修新人課程", () => {
+  it("即使舊伺服器回傳尚未解鎖，零進度仍可直接問 AI", () => {
+    const html = render({ ...course, completed: [], xp: 0, ai_unlocked: false })
+    expect(html).toContain("AI 問答隨時可用")
+    expect(html).toContain("問熊熊滾")
+    expect(html).toContain("開始第一關")
+    expect(html).not.toContain("Demo：跳過課程")
+    expect(html).not.toContain("通關獎勵：AI 問答")
   })
 
-  it("略過後可進 AI，仍顯示真實進度與尚未完成的課程", () => {
-    const skipped = render({ ...course, ai_unlocked: true, demo_skipped: true })
-    expect(skipped).toContain("Demo · AI 問答已開啟")
-    expect(skipped).toContain("問熊熊滾")
-    expect(skipped).not.toContain('href="/ask"')
-    expect(skipped).toContain("20 XP")
-    expect(skipped).toContain("繼續闖關")
-    expect(skipped).not.toContain("第一章完成！")
-    expect(skipped).not.toContain("Demo：跳過課程")
+  it("保留真實課程進度，完成前仍可繼續闖關", () => {
+    const html = render({ ...course, ai_unlocked: true, demo_skipped: true })
+    expect(html).toContain("20 XP")
+    expect(html).toContain("繼續闖關")
+    expect(html).toContain("AI 問答隨時可用")
+    expect(html).not.toContain("第一章完成！")
   })
 })

@@ -45,18 +45,9 @@ def course(session: Session, user: AppUser) -> dict[str, Any]:
     skipped = is_new and len(done) < len(LESSONS) and demo_skipped(user)
     return {
         "available": True, "is_newcomer": is_new, "completed": done, "xp": len(done) * XP_PER_LESSON,
-        "ai_unlocked": not is_new or len(done) == len(LESSONS) or skipped,
+        "ai_unlocked": True,
         "demo_skip_available": settings().demo_skip_learning, "demo_skipped": skipped, "lessons": list(LESSONS),
     }
-
-
-def ai_unlocked(session: Session, user: AppUser) -> bool:
-    # 在職超過 30 天的業務、主管與 IT 沿用原本權限。
-    return (
-        not newcomer(session, user)["is_newcomer"]
-        or len(completed_ids(session, user)) == len(LESSONS)
-        or demo_skipped(user)
-    )
 
 
 def demo_skip_key(user: AppUser) -> str:
@@ -73,7 +64,7 @@ def skip_for_demo(session: Session, user: AppUser) -> dict[str, Any]:
         raise LearningError("目前未開放 Demo 跳過課程，請完成新人課程。", 403)
     if user.role != "sales":
         raise LearningError("新人課程是給業務練習的", 403)
-    # 暫存 AI 通行狀態，不建立過關紀錄、不發 XP；到期或關閉展示設定即失效。
+    # 相容舊版展示入口：只記略過狀態，不建立過關紀錄、不發 XP；AI 已不需課程通行狀態。
     redis().set(demo_skip_key(user), "1", ex=settings().jwt_expire_hours * 3600)
     return course(session, user)
 

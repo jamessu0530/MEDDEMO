@@ -47,6 +47,7 @@ import { BottomNav } from "@/components/bottom-nav"
 import { PageHeader } from "@/components/page-header"
 import { ReportChart } from "@/components/reports/report-chart"
 import { useReportWidgetSize } from "@/components/reports/use-report-widget-size"
+import { ReportWidgetSizeMenu } from "@/components/reports/report-widget"
 import { ReportDocumentControls } from "@/components/reports/report-document-controls"
 import { ReportExportDialog } from "@/components/reports/report-export"
 import { ReportRefreshControls } from "@/components/reports/report-refresh"
@@ -1338,57 +1339,61 @@ function ReportDocument({
         }
       />
       <div className="report-navigation-bar">
-      <nav
-        className="report-page-tabs flex min-w-0 flex-1 items-center overflow-x-auto"
-        aria-label="報表分頁"
-        data-ui-demo="report-page-tabs"
-      >
-        {pages.map((page) => (
-          <button
-            key={page.id}
-            type="button"
-            aria-current={page.id === currentPage.id ? "page" : undefined}
-            onClick={() => {
-              setPageId(page.id)
-              setSelectedId(null)
-              setStudioSelection([])
-              setSelectionGroups([])
-              setNavigation({ page: null, filters: [] })
-              setNavigationStack([])
-            }}
-            className={cn(
-              "report-page-tab min-h-11 shrink-0 px-4 text-sm",
-              page.id === currentPage.id
-                ? "bg-primary/10 font-medium text-primary"
-                : "text-muted-foreground hover:bg-muted"
-            )}
-          >
-            {page.name}
-          </button>
-        ))}
-        {editing && (
-          <>
+        <nav
+          className="report-page-tabs flex min-w-0 flex-1 items-center overflow-x-auto"
+          aria-label="報表分頁"
+          data-ui-demo="report-page-tabs"
+        >
+          {pages.map((page) => (
             <button
+              key={page.id}
               type="button"
-              aria-label="新增報表分頁"
-              disabled={pages.length >= 5}
-              onClick={addPage}
-              className="flex size-11 shrink-0 items-center justify-center text-muted-foreground disabled:opacity-30"
+              aria-current={page.id === currentPage.id ? "page" : undefined}
+              onClick={() => {
+                setPageId(page.id)
+                setSelectedId(null)
+                setStudioSelection([])
+                setSelectionGroups([])
+                setNavigation({ page: null, filters: [] })
+                setNavigationStack([])
+              }}
+              className={cn(
+                "report-page-tab min-h-11 shrink-0 px-4 text-sm",
+                page.id === currentPage.id
+                  ? "bg-primary/10 font-medium text-primary"
+                  : "text-muted-foreground hover:bg-muted"
+              )}
             >
-              <Plus className="size-4" />
+              {page.name}
             </button>
-            <button
-              type="button"
-              aria-label="報表分頁設定"
-              onClick={() => setPageSettings(true)}
-              className="ml-auto flex size-11 shrink-0 items-center justify-center text-muted-foreground"
-            >
-              <Settings2 className="size-4" />
-            </button>
-          </>
-        )}
-      </nav>
-        <div className="report-reading-controls" role="group" aria-label="報表日期與篩選">
+          ))}
+          {editing && (
+            <>
+              <button
+                type="button"
+                aria-label="新增報表分頁"
+                disabled={pages.length >= 5}
+                onClick={addPage}
+                className="flex size-11 shrink-0 items-center justify-center text-muted-foreground disabled:opacity-30"
+              >
+                <Plus className="size-4" />
+              </button>
+              <button
+                type="button"
+                aria-label="報表分頁設定"
+                onClick={() => setPageSettings(true)}
+                className="ml-auto flex size-11 shrink-0 items-center justify-center text-muted-foreground"
+              >
+                <Settings2 className="size-4" />
+              </button>
+            </>
+          )}
+        </nav>
+        <div
+          className="report-reading-controls"
+          role="group"
+          aria-label="報表日期與篩選"
+        >
           <NativeSelect
             aria-label="報表期間"
             data-ui-demo="report-period"
@@ -1415,7 +1420,9 @@ function ReportDocument({
             aria-haspopup="dialog"
           >
             <SlidersHorizontal className="size-4 shrink-0" />
-            <span className="hidden sm:inline">{filtered ? "已套用篩選" : "篩選"}</span>
+            <span className="hidden sm:inline">
+              {filtered ? "已套用篩選" : "篩選"}
+            </span>
             {filtered && (
               <span className="absolute top-2 right-2 size-1.5 rounded-full bg-primary" />
             )}
@@ -2480,7 +2487,7 @@ function CanvasVisual({
       data-selected={editing && selected ? true : undefined}
       data-widget-size={widgetSize}
     >
-      <div className="report-visual-heading flex items-start gap-1.5">
+      <div className="report-visual-heading flex items-start gap-1">
         <div className="min-w-0 flex-1">
           <h3 className="report-visual-title leading-snug wrap-break-word">
             <span
@@ -2510,13 +2517,20 @@ function CanvasVisual({
             </p>
           ) : null}
         </div>
+        {widgetSize && (
+          <ReportWidgetSizeMenu
+            card={card}
+            size={widgetSize}
+            onChange={layout.onSize}
+          />
+        )}
         {layout.draggable && (
           <button
             type="button"
             aria-label={`調整圖表：${card.title}`}
             data-ui-demo="report-visual-edit"
             onClick={onSelect}
-            className="flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted"
+            className="flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted"
           >
             <Settings2 className="size-3.5" />
           </button>

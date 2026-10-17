@@ -32,9 +32,14 @@ import {
   automaticReportSizes,
   resizeAutomaticReportCard,
   setAutomaticReportSize,
+  setAutomaticReportPreset,
   type ReportCardSize,
 } from "@/lib/report-auto-layout"
 import { REPORT_COLUMNS, REPORT_ROW } from "@/lib/report-layout"
+import {
+  REPORT_WIDGET_PRESETS,
+  type ReportWidgetSize,
+} from "@/lib/report-widget"
 import {
   reorderReportPage,
   type ReportCard,
@@ -75,6 +80,7 @@ export type ReportLayoutRender = {
   selected: boolean
   draggable: boolean
   onSelect: (event?: MouseEvent) => void
+  onSize?: (size: ReportWidgetSize) => void
 }
 type Props = {
   config: ReportConfig
@@ -361,6 +367,17 @@ function ReportLayoutBoard({
                     selected: selected.has(card.id),
                     draggable: !readonly && !card.locked,
                     onSelect: (event) => select(card, event),
+                    onSize:
+                      !readonly && !card.locked
+                        ? (size) => {
+                            onChange(
+                              setAutomaticReportPreset(config, card.id, size)
+                            )
+                            setAnnouncement(
+                              `已切換為${REPORT_WIDGET_PRESETS[size].label}尺寸並自動整理版面`
+                            )
+                          }
+                        : undefined,
                   })}
                   {!readonly && !card.locked && (
                     <ReportWidgetResizeHandle

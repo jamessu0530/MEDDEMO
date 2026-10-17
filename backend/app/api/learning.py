@@ -1,4 +1,4 @@
-"""課程的讀取、答案核對與 AI 問答解鎖相依。"""
+"""選修課程的讀取與答案核對；AI 問答不受課程進度限制。"""
 
 from typing import Annotated, Any
 
@@ -8,7 +8,6 @@ from sqlalchemy.orm import Session
 
 from app.api.auth import CurrentUser
 from app.db import get_session
-from app.models import AppUser
 from app.services import learning
 from app.services import product_learning
 
@@ -58,15 +57,6 @@ def skip_course_for_demo(session: SessionDep, user: CurrentUser):
         return learning.skip_for_demo(session, user)
     except learning.LearningError as exc:
         raise HTTPException(exc.status, str(exc)) from None
-
-
-def learning_ai_user(session: SessionDep, user: CurrentUser) -> AppUser:
-    if not learning.ai_unlocked(session, user):
-        raise HTTPException(403, "完成新人課程的五個關卡，就能解鎖 AI 問答。到「新人第一週」繼續練習。")
-    return user
-
-
-LearningAiUser = Annotated[AppUser, Depends(learning_ai_user)]
 
 
 class ProductSubmission(BaseModel):

@@ -46,6 +46,36 @@ function render(
 }
 
 describe("ReportChart", () => {
+  it("所有圖表類型的大中小呈現都保留真實合計且不修改原始資料", () => {
+    const data: CardData = {
+      id: "sales",
+      total: 1234,
+      row_count: 2,
+      note: null,
+      points: [
+        { key: "a", label: "客戶甲", value: 1000 },
+        { key: "b", label: "客戶乙", value: 234 },
+      ],
+    }
+    const snapshot = JSON.stringify(data)
+    for (const visual of Object.keys(VISUALS) as ReportVisual[]) {
+      for (const widgetSize of ["small", "medium", "large"] as const) {
+        const html = renderToStaticMarkup(
+          createElement(ReportChart, {
+            card: card({ visual }),
+            data,
+            widgetSize,
+          })
+        )
+        expect(html).toContain("1,234")
+        if (widgetSize === "small") {
+          expect(html).not.toContain("<table")
+          expect(html).not.toContain("<svg")
+        }
+      }
+    }
+    expect(JSON.stringify(data)).toBe(snapshot)
+  })
   it("同一份資料依 Widget 尺寸切換摘要、圖表與完整明細", () => {
     const originalCard = card({ visual: "column", target: 1000 })
     const data: CardData = {

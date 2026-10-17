@@ -5,8 +5,20 @@ import {
   type DesktopRects,
 } from "@/lib/report-layout"
 import type { ReportCard, ReportConfig } from "@/lib/reports"
+import {
+  REPORT_WIDGET_PRESETS,
+  type ReportWidgetSize,
+} from "@/lib/report-widget"
 
 export type ReportCardSize = { w: number; h: number }
+
+export function setAutomaticReportPreset(
+  config: ReportConfig,
+  id: string,
+  size: ReportWidgetSize
+) {
+  return setAutomaticReportSize(config, id, REPORT_WIDGET_PRESETS[size])
+}
 const clamp = (value: number, minimum: number, maximum: number) =>
   Math.max(minimum, Math.min(maximum, value))
 
