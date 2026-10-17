@@ -246,7 +246,6 @@ export function ReportDetailsDialog({
         {data && (
           <div className="space-y-1 text-xs" aria-live="polite">
             <p>
-              共 {data.total_rows.toLocaleString("zh-TW")} 筆 ·{" "}
               {METRICS[card.metric].label}：
               {formatReportExactValue(data.total, card.metric)}
             </p>
@@ -255,8 +254,7 @@ export function ReportDetailsDialog({
                 ? `快照基準日：${data.as_of}`
                 : data.start > data.end
                   ? "日期條件沒有交集"
-                  : `交易／拜訪日期：${data.start} 至 ${data.end}`}{" "}
-              · CSV／Excel 匯出全部符合條件的資料，不受目前頁碼限制。
+                  : `交易／拜訪日期：${data.start} 至 ${data.end}`}
             </p>
             <p className="text-muted-foreground">{data.note}</p>
           </div>

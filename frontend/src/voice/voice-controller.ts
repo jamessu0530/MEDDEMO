@@ -362,7 +362,11 @@ export class VoiceController {
       if (page) {
         const routed = await routeAsk(question, false, [], page)
         if (signal.aborted) return
-        if (!routed.kind) {
+        if ((routed.intent === "page_help" || routed.intent === "page_demo") && routed.answer?.trim()) {
+          const answer = routed.answer + (routed.intent === "page_demo" ? "\n要看操作示範，請在下方輸入「操作給我看」。" : "")
+          this.conversation.completeWithMessage(entryId, "voice", answer)
+          response = { output: { status: "頁面說明", answer } }
+        } else if (!routed.kind) {
           const clarification = routed.clarification || "請再說明想了解的對象與內容。"
           this.conversation.replace(entryId, { clarification })
           response = { clarification, instruction: "請用這句話向使用者追問，等待他補充後再查詢。" }

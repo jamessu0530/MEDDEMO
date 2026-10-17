@@ -22,7 +22,7 @@ import { PageHeader } from "@/components/page-header"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { useAuth, type AuthUser } from "@/lib/auth"
+import { useAuth } from "@/lib/auth"
 import { OA_STATUS_LABEL, formatProbability, oaDateText } from "@/lib/approval"
 import { formatDateTime } from "@/lib/format"
 import { itemParam, nextAfter, pickItem } from "@/lib/master-detail"
@@ -48,11 +48,6 @@ type LoadState = { status: "loading" } | { status: "error" } | { status: "ready"
 
 // 標頭的圖示按鈕用固定的 44px，不跟著放大字體變大，標題才不會被擠掉（components/channels-link.tsx 同）
 const HEADER_BUTTON = "flex size-[44px] shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
-
-/** 三個分頁看的是誰的事：主管是自己底下的人，IT 是全公司（後端依組織樹過濾，不看轄區） */
-function whose(user: AuthUser) {
-  return user.role === "it" ? "全公司" : "你團隊"
-}
 
 /** 電腦版右邊打開的是哪一張，記在網址的 ?item=：從客戶檔案、申請單回來還停在同一張。換分頁時 switchView 會清掉 */
 function useItemParam(): [number | null, (id: number | null) => void] {
@@ -169,7 +164,6 @@ function EscalationsPanel() {
   const navigate = useNavigate()
   const desktop = useIsDesktop()
   const [requested, select] = useItemParam()
-  const user = useAuth()?.user
   const [tab, setTab] = useState<Tab>("open")
   const [state, setState] = useState<LoadState>({ status: "loading" })
   const [attempt, setAttempt] = useState(0)
@@ -204,9 +198,6 @@ function EscalationsPanel() {
 
   return (
     <>
-      {/* 回覆的身分就是登入的帳號，業務看到的是這個名字 */}
-      {user && <p className="text-xs text-muted-foreground">以 {user.name} 的身分回覆{whose(user)}業務轉來的提問</p>}
-
       <div className="grid grid-cols-2 rounded-lg bg-muted p-1 text-sm" role="tablist">
         {(["open", "answered"] as const).map((value) => (
           <button
@@ -350,7 +341,6 @@ function ReplyForm({ item, onReplied }: { item: Escalation; onReplied: (item: Es
 /** 簽核匣：等簽的出差單、優惠與合約申請；下面另外列模型有把握、系統已經核准的單，給主管事後查 */
 function OaInboxPanel() {
   const navigate = useNavigate()
-  const user = useAuth()?.user
   const [state, setState] = useState<{ status: "loading" } | { status: "error" } | { status: "ready"; items: OaFormItem[] }>({
     status: "loading",
   })
@@ -384,13 +374,6 @@ function OaInboxPanel() {
 
   return (
     <>
-      {user && (
-        <p className="text-xs text-muted-foreground">
-          {user.role === "it"
-            ? "全公司待簽的出差單、優惠、合約與 OA 申請都在這裡，IT 可以代簽"
-            : "團隊的出差單、優惠、合約與 OA 申請，會送到這裡簽核"}
-        </p>
-      )}
       <Link to="/oa/apps" className="self-start text-sm text-primary underline">前往 OA 表單中心</Link>
       {notice && <p className="rounded-lg bg-primary/10 px-3 py-2 text-sm text-primary">{notice}</p>}
       {state.status === "loading" && <p className="py-10 text-center text-sm text-muted-foreground">載入中…</p>}
@@ -421,9 +404,6 @@ function OaInboxPanel() {
           {automatic.length > 0 && (
             <section className="mt-2 flex flex-col gap-2">
               <p className="text-sm font-semibold">系統已核准</p>
-              <p className="text-xs text-muted-foreground">
-                規則上區處主管就能簽、模型有把握會過的申請，由系統直接核准，列在這裡給你事後查（最近 {automatic.length} 張）。
-              </p>
               {automatic.map((item) => (
                 <Link key={item.id} to={`/oa/forms/${item.id}`} className="rounded-xl border-2 bg-card px-4 py-3 shadow-lip press">
                   <AutoApprovedSummary item={item} />
@@ -540,7 +520,6 @@ type Editing = { mode: "new" } | { mode: "edit"; card: MethodCard } | null
 /** 方法卡：主管把「遇到這種情況怎麼談」寫下來，全公司的業務都看得到。這裡列自己寫的（IT 看全部），可以新增、修改、下架 */
 function MethodsPanel() {
   const navigate = useNavigate()
-  const user = useAuth()?.user
   const [state, setState] = useState<MethodsState>({ status: "loading" })
   const [attempt, setAttempt] = useState(0)
   const [editing, setEditing] = useState<Editing>(null)
@@ -572,19 +551,9 @@ function MethodsPanel() {
 
   return (
     <>
-      {user && (
-        <p className="text-xs text-muted-foreground">
-          {user.role === "it"
-            ? "全公司主管寫的方法卡都在這裡，IT 可以修改或下架"
-            : `以 ${user.name} 的名字寫給全公司的業務看，不分區`}
-        </p>
-      )}
       <Button className="h-11" disabled={state.status !== "ready"} onClick={() => setEditing({ mode: "new" })}>
         新增方法卡
       </Button>
-      <p className="text-xs leading-relaxed text-muted-foreground">
-        可以從任何可查看的對話頻道選取經理發言，或在訊息旁按「存成方法卡」。
-      </p>
       {notice && <p className="rounded-lg bg-primary/10 px-3 py-2 text-sm text-primary">{notice}</p>}
       {state.status === "loading" && <p className="py-10 text-center text-sm text-muted-foreground">載入中…</p>}
       {state.status === "error" && (
@@ -602,7 +571,7 @@ function MethodsPanel() {
       )}
       {state.status === "ready" && state.cards.length === 0 && (
         <p className="py-10 text-center text-sm text-muted-foreground">
-          還沒有寫過方法卡。把你平常教業務的做法寫下來，人調走了也還留著。
+            目前沒有方法卡。
         </p>
       )}
       {state.status === "ready" &&

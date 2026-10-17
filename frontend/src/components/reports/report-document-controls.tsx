@@ -9,7 +9,6 @@ import {
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
@@ -162,12 +161,12 @@ export function ReportDocumentControls({
     <>
       <details className="mb-3 rounded-lg border bg-muted/20">
         <summary className="min-h-10 cursor-pointer px-3 py-2.5 text-xs font-medium">
-          報表與書籤 · {library.documents.length} 份報表
+          報表與書籤
         </summary>
         <div className="space-y-2 p-2.5 pt-0" aria-label="報表管理">
           <div className="flex flex-wrap items-center gap-2">
             <label className="min-w-0 flex-[1_1_12rem] space-y-1 text-sm text-muted-foreground">
-              <span>我的報表（{library.documents.length}／20）</span>
+              <span>我的報表</span>
               <select
                 className={INPUT}
                 aria-label="切換命名報表"
@@ -228,7 +227,7 @@ export function ReportDocumentControls({
               }}
             >
               <option value="">
-                檢視書籤（{library.bookmarks.length}／20）
+                檢視書籤
               </option>
               {library.bookmarks.map((item) => (
                 <option key={item.id} value={item.id}>
@@ -259,10 +258,6 @@ export function ReportDocumentControls({
               </button>
             )}
           </div>
-          <p className="text-xs leading-relaxed text-muted-foreground">
-            書籤保存日期、篩選、下鑽、選取與物件顯示狀態。
-            {dirty && "請先儲存報表再新增書籤或共享。"}
-          </p>
           {error && !mode && !bookmarkDialog && (
             <p role="alert" className="text-xs text-destructive">
               {error}
@@ -273,7 +268,6 @@ export function ReportDocumentControls({
       {shareDialog && (
         <ReportShareDialog
           reportId={library.active_report_id}
-          name={library.config.name}
           revision={library.revision}
           onClose={() => setShareDialog(false)}
         />
@@ -284,7 +278,7 @@ export function ReportDocumentControls({
           if (!open && !busy) setMode(null)
         }}
       >
-        <DialogContent className="max-w-md">
+        <DialogContent aria-describedby={undefined} className="max-w-md">
           <DialogHeader>
             <DialogTitle>
               {mode === "new"
@@ -293,11 +287,6 @@ export function ReportDocumentControls({
                   ? "複製目前報表"
                   : "另存為新報表"}
             </DialogTitle>
-            <DialogDescription>
-              {mode === "new"
-                ? "建立一張銷售指標卡，再加入所需圖表。現有報表會保留。"
-                : "保存目前編輯內容，並複製圖表、桌機／手機版面與檢視書籤。原報表保持原值。"}
-            </DialogDescription>
           </DialogHeader>
           <label className="space-y-1.5 text-sm">
             <span>新報表名稱</span>
@@ -340,12 +329,9 @@ export function ReportDocumentControls({
           if (!busy) setBookmarkDialog(open)
         }}
       >
-        <DialogContent className="max-w-md">
+        <DialogContent aria-describedby={undefined} className="max-w-md">
           <DialogHeader>
             <DialogTitle>儲存檢視書籤</DialogTitle>
-            <DialogDescription>
-              保存目前分頁、篩選、下鑽、選取、矩陣展開及物件顯示狀態。同名書籤會被更新。
-            </DialogDescription>
           </DialogHeader>
           <label className="space-y-1.5 text-sm">
             <span>書籤名稱</span>

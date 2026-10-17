@@ -15,6 +15,10 @@ monitoring:
   # 比賽展示：Alloy 收集與 IT 儀表板共用同一個節奏。
   intervalSeconds: 5
   alloyImage: grafana/alloy:v1.20.1
+  # 三個 GRAFANA_CLOUD_LOKI_* Secrets 齊全時，部署流程自動啟用。
+  logs:
+    enabled: false
+    secretName: meddemo-logging
   resources:
     requests:
       cpu: 25m

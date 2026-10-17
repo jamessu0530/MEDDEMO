@@ -90,12 +90,17 @@ describe("所有頁面的共用 AI 助理", () => {
     "/customers/C01/record",
     "/privacy",
     "/auth/google/callback",
-  ])("%s 收合時仍顯示入口，展開後可在當頁提問", (path) => {
+  ])("%s 收合只隱藏回覆，保留可直接輸入的底部詢問欄", (path) => {
     const closed = render(path, false)
-    expect(closed).toContain('aria-label="開啟 AI 助理"')
+    expect(closed).toContain('data-placement="dock"')
+    expect(closed).toContain('id="page-assistant-input"')
+    expect(closed).toContain('aria-label="展開共用對話"')
     expect(closed).toContain('aria-expanded="false"')
+    expect(closed).toContain('id="page-assistant-answers" hidden=""')
+    expect(closed).not.toContain('id="page-assistant-panel" hidden=""')
+    expect(closed).not.toContain('aria-label="開啟 AI 助理"')
     const opened = render(path, true)
-    expect(opened).toContain('aria-label="收起 AI 助理"')
+    expect(opened).toContain('aria-label="收起 AI 回覆"')
     expect(opened).not.toContain('id="page-assistant-launcher"')
     expect(opened).toContain('aria-expanded="true"')
     expect(opened).toContain('id="page-assistant-input"')
@@ -146,14 +151,15 @@ describe("所有頁面的共用 AI 助理", () => {
     expect(calendar).not.toContain('aria-label="接著可以問"')
   })
 
-  it("浮動入口收起時只顯示助理入口", () => {
+  it("報表收合時保持輸入欄，不顯示浮動按鈕或額外提示", () => {
     const html = render("/reports", false)
-    expect(html).toContain('aria-label="開啟 AI 助理"')
+    expect(html).toContain('id="page-assistant-input"')
+    expect(html).not.toContain('id="page-assistant-launcher"')
     expect(html).not.toContain("在報表可以問")
     expect(html).not.toContain("這份報表應該先看哪些數字？")
   })
 
-  it("浮動面板整體依鍵盤上方可見空間縮小", () => {
+  it("底部面板與輸入欄整體依鍵盤上方可見空間縮小", () => {
     const html = render("/channels/2", true)
     expect(html).toContain("bottom:428px")
     expect(html).toContain(
@@ -168,11 +174,16 @@ describe("所有頁面的共用 AI 助理", () => {
     "/privacy",
     "/auth/github/callback",
     "/auth/google/callback",
-  ])("%s 未登入時有入口及登入說明", (path) => {
-    expect(render(path, false, false)).toContain('aria-label="開啟 AI 助理"')
+  ])("%s 未登入時直接顯示底部登入列", (path) => {
+    const closed = render(path, false, false)
+    expect(closed).toContain('data-placement="dock"')
+    expect(closed).toContain('aria-label="AI 助理登入提示"')
+    expect(closed).toContain("登入提問")
+    expect(closed).not.toContain('id="page-assistant-launcher"')
+    expect(closed).not.toContain('id="page-assistant-panel" hidden=""')
     const opened = render(path, true, false)
-    expect(opened).toContain('aria-label="收起 AI 助理"')
-    expect(opened).toContain("登入使用 AI 助理")
+    expect(opened).toContain('aria-label="收起 AI 回覆"')
+    expect(opened).toContain("登入後就能問熊熊滾")
     expect(opened).toContain('href="/login"')
     expect(opened).not.toContain('id="page-assistant-input"')
   })

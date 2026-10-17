@@ -5,7 +5,7 @@ import type { Product } from "@/api/products"
 import { productPhoto } from "@/lib/product-photos"
 
 type ProductPhotoProps = {
-  product: Pick<Product, "sku" | "name">
+  product: Pick<Product, "sku" | "name" | "photo">
   size?: "default" | "compact"
   showSource?: boolean
 }
@@ -15,12 +15,14 @@ export function ProductPhoto({
   size = "default",
   showSource = true,
 }: ProductPhotoProps) {
-  const photo = productPhoto(product.sku)
+  const photo = product.photo ?? productPhoto(product.sku)
   const [failedSrc, setFailedSrc] = useState<string | null>(null)
   const available =
     photo &&
     failedSrc !== photo.src &&
-    (photo.kind === "exact" || photo.kind === "series")
+    (photo.kind === "exact" ||
+      photo.kind === "series" ||
+      photo.kind === "illustrative")
 
   return (
     <figure
@@ -33,7 +35,9 @@ export function ProductPhoto({
             alt={
               photo.kind === "exact"
                 ? `${product.name} 商品照片`
-                : `${product.name} 同系列商品照，照片商品：${photo.title}；容量、尺寸與包裝以商品名稱為準`
+                : photo.kind === "illustrative"
+                  ? `${product.name} Demo參考照；${photo.note ?? photo.title}`
+                  : `${product.name} 同系列商品照，照片商品：${photo.title}；容量、尺寸與包裝以商品名稱為準`
             }
             width={112}
             height={112}
@@ -59,7 +63,7 @@ export function ProductPhoto({
               ? "商品照片"
               : photo.kind === "series"
                 ? "同系列商品照"
-                : "同名商品參考照"}
+                : "Demo 參考照"}
             {showSource && (
               <>
                 {" "}

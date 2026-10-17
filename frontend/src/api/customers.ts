@@ -1,6 +1,7 @@
 import { jsonBody, request } from "@/api/client"
 import type { MethodCard } from "@/api/methods"
 import { readUser } from "@/lib/auth"
+import type { StoredStorefrontPhoto } from "@/lib/storefront"
 
 export type Customer = {
   id: string
@@ -17,6 +18,8 @@ export type Customer = {
   source_url?: string | null
   retrieved_on?: string | null
   review_notes?: string[]
+  storefront_photo?: StoredStorefrontPhoto | null
+  google_place_id?: string | null
   last_visit_date: string | null
 }
 
@@ -47,7 +50,10 @@ function readCachedCustomers(): Customer[] | null {
 /** 登入者看得到的客戶清單（後端依登入身分篩過）；連不上伺服器時改用上次載入的清單（cached 為 true） */
 export async function listCustomers(signal?: AbortSignal, query = "") {
   try {
-    const customers = await request<Customer[]>(`/api/customers${query ? `?q=${encodeURIComponent(query)}` : ""}`, { signal })
+    const customers = await request<Customer[]>(
+      `/api/customers${query ? `?q=${encodeURIComponent(query)}` : ""}`,
+      { signal }
+    )
     try {
       if (!query) localStorage.setItem(cacheKey(), JSON.stringify(customers))
     } catch {
@@ -56,7 +62,11 @@ export async function listCustomers(signal?: AbortSignal, query = "") {
     return { customers, cached: false }
   } catch (error) {
     const cached = signal?.aborted ? null : readCachedCustomers()
-    if (cached) return { customers: cached.filter(c => c.name.includes(query.trim())), cached: true }
+    if (cached)
+      return {
+        customers: cached.filter((c) => c.name.includes(query.trim())),
+        cached: true,
+      }
     throw error
   }
 }
@@ -66,7 +76,9 @@ export function cachedCustomer(id: string) {
 }
 
 export function getCustomer(id: string, signal?: AbortSignal) {
-  return request<Customer>(`/api/customers/${encodeURIComponent(id)}`, { signal })
+  return request<Customer>(`/api/customers/${encodeURIComponent(id)}`, {
+    signal,
+  })
 }
 
 export type ProfileStats = {
@@ -114,7 +126,12 @@ export type CustomerProfile = {
     overdue: boolean
   }[]
   complaints: { visit_id: string; visit_date: string; text: string }[]
-  competitors: { name: string; mentions: number; last_date: string; detail: string | null }[]
+  competitors: {
+    name: string
+    mentions: number
+    last_date: string
+    detail: string | null
+  }[]
 }
 
 // 談判卡（FR-3）：每種客戶都有，圍繞下一個節慶。
@@ -124,7 +141,13 @@ export type NegotiationCard = {
   customer: Customer
   orientation: "customer" | "cost"
   // 行事曆裡沒有之後的節慶就是 null。note 是設定檔裡人寫的一句話，連鎖與其他客戶看到的不同
-  festival: { name: string; date: string; days_left: number; categories: string[]; note: string } | null
+  festival: {
+    name: string
+    date: string
+    days_left: number
+    categories: string[]
+    note: string
+  } | null
   // 還來得及申請檔期的那個節慶；missed 是排在它前面、申請期限已過的節慶名稱
   campaign: {
     festival_name: string
@@ -136,10 +159,17 @@ export type NegotiationCard = {
   } | null
   // scoped：是不是限定在節慶的主推品類；主推品類裡沒有東西可列時退回全部品類
   shelf: {
-    items: { sku: string; name: string; orders_per_month: number; region_orders_per_month: number | null }[]
+    items: {
+      sku: string
+      name: string
+      orders_per_month: number
+      region_orders_per_month: number | null
+    }[]
     scoped: boolean
   } | null
-  gaps: { sku: string; name: string; peers_with: number; peers_total: number }[] | null
+  gaps:
+    | { sku: string; name: string; peers_with: number; peers_total: number }[]
+    | null
   margin: {
     listing_fee_rate: number
     channel_reward_rate: number
@@ -176,17 +206,29 @@ export type NegotiationCard = {
     amount_last_90d: number
     avg_order_amount: number | null
   } | null
-  tips: { reason: string; doc_title: string; section: string; content: string; source_name: string }[]
+  tips: {
+    reason: string
+    doc_title: string
+    section: string
+    content: string
+    source_name: string
+  }[]
   // 主管教的做法：照這家的情況帶出來的方法卡，最多兩張；my_feedback 是我在這家客戶按過什麼。沒有相關的就是空的
   methods: MethodCard[]
 }
 
 export function getCustomerProfile(id: string, signal?: AbortSignal) {
-  return request<CustomerProfile>(`/api/customers/${encodeURIComponent(id)}/profile`, { signal })
+  return request<CustomerProfile>(
+    `/api/customers/${encodeURIComponent(id)}/profile`,
+    { signal }
+  )
 }
 
 export function getNegotiationCard(id: string, signal?: AbortSignal) {
-  return request<NegotiationCard>(`/api/customers/${encodeURIComponent(id)}/negotiation`, { signal })
+  return request<NegotiationCard>(
+    `/api/customers/${encodeURIComponent(id)}/negotiation`,
+    { signal }
+  )
 }
 
 // 開報價（原型客戶檔案的「開報價」）：這家近半年常進的品項，unit_price 已經是給這家客戶的供貨價
@@ -201,7 +243,14 @@ export type QuoteItem = {
 
 // 開報價時這一期的促銷：依品項列出每一口。supply_price 是這家的供貨價，給「不走促銷」那一列；
 // usual 是這個品項已經在常進品項裡，不重複列「不走促銷」
-export type QuotePack = { code: string; name: string; deal: string; buy_qty: number; free_qty: number; deal_price: number }
+export type QuotePack = {
+  code: string
+  name: string
+  deal: string
+  buy_qty: number
+  free_qty: number
+  deal_price: number
+}
 export type QuotePromotion = {
   name: string
   // PM 提醒原文：滿額贈這類看整張訂單的活動，系統不算
@@ -219,7 +268,8 @@ export type QuotePromotion = {
 }
 
 // 報價的一列：品項 × 數量，或是促銷的某一口 × 口數
-export type QuoteLineInput = { sku: string; qty: number } | { promo_code: string; packs: number }
+export type QuoteLineInput =
+  { sku: string; qty: number } | { promo_code: string; packs: number }
 
 // 送出優惠或續約之後的簽核結果：系統核准了（auto_approved），或是現在等誰簽（waiting_for）
 export type Approval = {
@@ -257,29 +307,55 @@ export type Quote = {
 }
 
 export function getQuoteItems(id: string, signal?: AbortSignal) {
-  return request<QuoteItem[]>(`/api/customers/${encodeURIComponent(id)}/quote-items`, { signal })
+  return request<QuoteItem[]>(
+    `/api/customers/${encodeURIComponent(id)}/quote-items`,
+    { signal }
+  )
 }
 
 /** 沒有進行中的一期是 null */
 export function getQuotePromotion(id: string, signal?: AbortSignal) {
-  return request<QuotePromotion | null>(`/api/customers/${encodeURIComponent(id)}/quote-promotion`, { signal })
+  return request<QuotePromotion | null>(
+    `/api/customers/${encodeURIComponent(id)}/quote-promotion`,
+    { signal }
+  )
 }
 
 /**
  * 開 SAP 報價草稿；數量或口數 0 的列不要送（後端對沒有列或 ≤ 0 回 422）。
  * 折扣只套在沒促銷的列，超過 3% 要附理由，後端會開優惠申請單
  */
-export function createQuote(id: string, items: QuoteLineInput[], discountPct = 0, reason = "") {
+export function createQuote(
+  id: string,
+  items: QuoteLineInput[],
+  discountPct = 0,
+  reason = ""
+) {
   return request<Quote>(
     `/api/customers/${encodeURIComponent(id)}/quotes`,
-    jsonBody("POST", { items, discount_pct: discountPct, reason: reason || null })
+    jsonBody("POST", {
+      items,
+      discount_pct: discountPct,
+      reason: reason || null,
+    })
   )
 }
 
 // 上次訂的（後端 services/last_order.py）：上一次進貨與上一張報價合起來，上次走口的列跟這一期比
-export type LastOrderPack = { code: string; name: string; deal: string; buy_qty: number; free_qty: number; deal_price: number }
+export type LastOrderPack = {
+  code: string
+  name: string
+  deal: string
+  buy_qty: number
+  free_qty: number
+  deal_price: number
+}
 // terms：同一口條件變了；pack_gone：這一口沒了；promo_gone：這期沒有促銷。text 寫在那一列下面
-export type LastOrderChange = { kind: "terms" | "pack_gone" | "promo_gone"; text: string; short: string }
+export type LastOrderChange = {
+  kind: "terms" | "pack_gone" | "promo_gone"
+  text: string
+  short: string
+}
 export type LastOrderLine = {
   sku: string
   name: string
@@ -306,7 +382,10 @@ export type LastOrder = {
 
 /** 這家還沒訂過是 null */
 export function getLastOrder(id: string, signal?: AbortSignal) {
-  return request<LastOrder | null>(`/api/customers/${encodeURIComponent(id)}/last-order`, { signal })
+  return request<LastOrder | null>(
+    `/api/customers/${encodeURIComponent(id)}/last-order`,
+    { signal }
+  )
 }
 
 export type OrderPlaced = { order_no: string; date: string; amount: number }
@@ -344,9 +423,15 @@ export type ContractRequest = {
 
 /** 不是連鎖客戶回 409 */
 export function getContract(id: string, signal?: AbortSignal) {
-  return request<Contract>(`/api/customers/${encodeURIComponent(id)}/contract`, { signal })
+  return request<Contract>(
+    `/api/customers/${encodeURIComponent(id)}/contract`,
+    { signal }
+  )
 }
 
 export function createContractRequest(id: string, body: ContractRequest) {
-  return request<Approval>(`/api/customers/${encodeURIComponent(id)}/contract-requests`, jsonBody("POST", body))
+  return request<Approval>(
+    `/api/customers/${encodeURIComponent(id)}/contract-requests`,
+    jsonBody("POST", body)
+  )
 }

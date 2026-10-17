@@ -21,6 +21,7 @@ import {
   type StorefrontCustomer,
 } from "@/lib/storefront"
 import { cn } from "@/lib/utils"
+import { storefrontPlaceIds } from "@/lib/storefront-place-ids"
 
 type SearchState =
   | { status: "loading" }
@@ -62,6 +63,7 @@ function StorefrontSearch({
   const [state, setState] = useState<SearchState>({ status: "loading" })
   const { name, city, area, address } = customer
   const query = storefrontQuery(customer)
+  const knownPlaceId = customer.id ? storefrontPlaceIds[customer.id] : undefined
 
   // 連 Google 程式或 Places library 都載不下來時，也不能讓這一區一直轉圈。
   useEffect(() => {
@@ -78,33 +80,54 @@ function StorefrontSearch({
   useEffect(() => {
     if (!places) return
     let cancelled = false
-    places.Place.searchByText({
-      textQuery: query,
-      fields: [
-        "id",
-        "displayName",
-        "formattedAddress",
-        "location",
-        "googleMapsURI",
-      ],
-      maxResultCount: 5,
-      language: "zh-TW",
-      region: "tw",
-    })
-      .then(async ({ places: candidates }) => {
-        if (cancelled) return
-        const place = findStorefront({ name, city, area, address }, candidates)
-        if (!place) {
-          setState({ status: "missing" })
-          return
+    const find = async () => {
+      if (knownPlaceId) {
+        const place = new places.Place({ id: knownPlaceId })
+        try {
+          await place.fetchFields({
+            fields: [
+              "displayName",
+              "formattedAddress",
+              "location",
+              "googleMapsURI",
+              "photos",
+            ],
+          })
+          return place
+        } catch {
+          // A removed Place ID can be found again through the current shop identity.
+          if (cancelled) return null
         }
+      }
+      const { places: candidates } = await places.Place.searchByText({
+        textQuery: query,
+        fields: [
+          "id",
+          "displayName",
+          "formattedAddress",
+          "location",
+          "googleMapsURI",
+        ],
+        maxResultCount: 5,
+        language: "zh-TW",
+        region: "tw",
+      })
+      if (cancelled) return null
+      const place = findStorefront({ name, city, area, address }, candidates)
+      if (place) {
         // 只拿核對過的這一家照片；不下載、不存資料庫或 localStorage。
         try {
           await place.fetchFields({ fields: ["photos"] })
         } catch {
           // 照片失敗仍可用核對過的 Google 店址看街景。
         }
-        if (!cancelled) setState({ status: "ready", place })
+      }
+      return place
+    }
+    find()
+      .then((place) => {
+        if (!cancelled)
+          setState(place ? { status: "ready", place } : { status: "missing" })
       })
       .catch(() => {
         if (!cancelled) setState({ status: "error" })
@@ -112,7 +135,7 @@ function StorefrontSearch({
     return () => {
       cancelled = true
     }
-  }, [places, query, name, city, area, address])
+  }, [places, query, name, city, area, address, knownPlaceId])
 
   if (compact)
     return state.status === "ready" ? (

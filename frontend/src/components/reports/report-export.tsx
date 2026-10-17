@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button"
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
@@ -106,19 +105,10 @@ export function ReportExportDialog({
         if (!open) close()
       }}
     >
-      <DialogContent className="max-h-[92dvh] max-w-lg overflow-y-auto">
+      <DialogContent aria-describedby={undefined} className="max-h-[92dvh] max-w-lg overflow-y-auto">
         <DialogHeader>
           <DialogTitle>完整匯出報表</DialogTitle>
-          <DialogDescription>
-            匯出目前篩選與權限範圍內的全部資料，包含其他頁碼。
-          </DialogDescription>
         </DialogHeader>
-        {!!config.objects?.length && (
-          <p className="rounded border bg-muted/30 p-2 text-xs text-muted-foreground">
-            此處匯出系統業務圖表的實際資料。畫布文字、圖片與操作元件不包含在資料檔案；匯入來源請從「資料匯入」匯出
-            CSV。預測值只供畫面情境參考。
-          </p>
-        )}
         <div className="grid min-w-0 grid-cols-2 gap-3">
           <label className="min-w-0 space-y-1.5 text-sm">
             <span>檔案格式</span>
@@ -166,7 +156,7 @@ export function ReportExportDialog({
             onChange={(event) => setScope(event.target.value as typeof scope)}
           >
             <option value="all">
-              整份報表（{pages.length} 頁、{config.cards.length} 張圖表）
+              整份報表
             </option>
             <option value="page">目前分頁：{currentPage.name}</option>
             <option value="card" disabled={!config.cards.length}>
@@ -214,20 +204,6 @@ export function ReportExportDialog({
             </select>
           </label>
         )}
-        <div className="space-y-2 rounded-md bg-muted/50 p-3 text-xs leading-relaxed text-muted-foreground">
-          <p>
-            {data === "summary"
-              ? "包含完整實際分組、各層小計與總計；比率、平均及去重數不能跨列直接加總。"
-              : "每列是實際交易品項、拜訪或目前快照。不同圖表可能包含同筆紀錄；明細只匯出本期資料。"}
-          </p>
-          <p>
-            {format === "pdf"
-              ? "PDF 以數值摘要圖與完整表格重排所有分頁；不保留畫布座標，包含在手機隱藏的圖表。"
-              : format === "csv"
-                ? "CSV 含資料類型及每張圖的匯出條件列，數值使用完整原始單位；百分比 0.5 代表 50%。"
-                : "每張圖獨立工作表，附完整篩選條件、數值及日期格式。百分比儲存比例並以百分比顯示。"}
-          </p>
-        </div>
         {empty && (
           <p role="alert" className="text-xs text-destructive">
             {scope === "page"

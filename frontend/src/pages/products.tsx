@@ -12,16 +12,14 @@ import { ChevronLeft, ChevronRight, Search, Sparkles } from "@/components/icons"
 import { listProducts, type Product } from "@/api/products"
 import { Notice } from "@/components/notice"
 import { ProductPhoto } from "@/components/product-photo"
-import { ContextHelp } from "@/components/context-help"
+import { ProductAppearanceSearch } from "@/components/product-appearance-search"
+
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { catalogProducts } from "@/lib/product-search"
-import {
-  discoverProducts,
-  horizontalSwap,
-  PRODUCT_BATCH,
-} from "@/lib/product-discovery"
+import { horizontalSwap, PRODUCT_BATCH } from "@/lib/product-discovery"
+import type { ProductCatalogQuery } from "@/lib/product-catalog-work"
+import { usePageWork } from "@/lib/use-page-work"
 import { useProductBrowsing } from "@/lib/use-product-browsing"
 import { FIXED_COLUMN } from "@/lib/desktop-layout"
 import { cn } from "@/lib/utils"
@@ -50,14 +48,19 @@ export function ProductsPanel({
   const [selection, setSelection] = useState<{
     key: string
     seed: string
-    order: string[]
     direction: "left" | "right"
+    discovery: NonNullable<ProductCatalogQuery["discovery"]>
   } | null>(null)
   const [idle, setIdle] = useState(false)
   const listRef = useRef<HTMLUListElement>(null)
   const sentinelRef = useRef<HTMLDivElement>(null)
   const drag = useRef<{ x: number; y: number; captured: boolean } | null>(null)
-  const anchor = useRef<{ index: number; top: number } | null>(null)
+  const anchor = useRef<{
+    index: number
+    top: number
+    scrollY: number
+    seed: string
+  } | null>(null)
   const filterKey = `${query}\u0000${category ?? ""}`
 
   useEffect(() => {
@@ -74,39 +77,63 @@ export function ProductsPanel({
     () => (state.status === "ready" ? state.products : []),
     [state]
   )
-  const categories = useMemo(() => {
-    const counts = new Map<string, number>()
-    for (const product of products)
-      counts.set(product.category, (counts.get(product.category) ?? 0) + 1)
-    return [...counts]
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => a.name.localeCompare(b.name, "zh-TW"))
-  }, [products])
-  const found = useMemo(
-    () => catalogProducts(products, query, category),
-    [products, query, category]
+  const workInput = useMemo(
+    () => ({
+      kind: "products" as const,
+      source: products,
+      query: {
+        query,
+        category,
+        discovery: selection?.key === filterKey ? selection.discovery : null,
+      },
+    }),
+    [products, query, category, selection, filterKey]
   )
-  const ordered = useMemo(() => {
-    if (!selection || selection.key !== filterKey) return found
-    const bySku = new Map(found.map((product) => [product.sku, product]))
-    return selection.order.flatMap((sku) =>
-      bySku.has(sku) ? [bySku.get(sku)!] : []
-    )
-  }, [found, selection, filterKey])
-  useAskPageContext({ title: `${category || "全部商品"}${query.trim() ? ` · ${query.trim()}` : ""} · 商品型錄`, facts: [
-    `商品分類：${category || "全部"}`, `搜尋：${query.trim() || "無"}`,
-    ...(state.status === "ready" ? [`符合篩選共 ${found.length} 項商品`, ...(found.length === 1 ? [`唯一符合商品：${found[0].name}（料號 ${found[0].sku}）`] : [])] : ["商品資料尚未載入"]),
-  ] }, active)
+  const task = usePageWork(
+    workInput,
+    active && state.status === "ready" && products.length > 0
+  )
+  const categories =
+    task.result?.kind === "products" ? task.result.value.categories : []
+  const found = useMemo(() => {
+    if (task.input?.kind !== "products" || task.result?.kind !== "products")
+      return []
+    const source = task.input.source
+    return task.result.value.indices.map((index) => source[index])
+  }, [task.input, task.result])
+  const ordered = found
+  const displayedSeed =
+    task.input?.kind === "products"
+      ? task.input.query.discovery?.seed
+      : undefined
+  useAskPageContext(
+    {
+      title: `${category || "全部商品"}${query.trim() ? ` · ${query.trim()}` : ""} · 商品型錄`,
+      facts: [
+        `商品分類：${category || "全部"}`,
+        `搜尋：${query.trim() || "無"}`,
+        ...(state.status === "ready" && !task.pending
+          ? [
+              `符合篩選共 ${found.length} 項商品`,
+              ...(found.length === 1
+                ? [`唯一符合商品：${found[0].name}（料號 ${found[0].sku}）`]
+                : []),
+            ]
+          : ["商品資料整理中"]),
+      ],
+    },
+    active
+  )
   const browsing = useProductBrowsing(
     listRef,
-    active,
+    active && !task.pending,
     `${products.length}/${filterKey}/${limit}/${selection?.seed ?? ""}`
   )
   const shown = ordered.slice(0, limit)
 
   useEffect(() => {
     const node = sentinelRef.current
-    if (!active || !node || limit >= ordered.length) return
+    if (!active || task.pending || !node || limit >= ordered.length) return
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries.some((entry) => entry.isIntersecting))
@@ -116,7 +143,7 @@ export function ProductsPanel({
     )
     observer.observe(node)
     return () => observer.disconnect()
-  }, [active, limit, ordered.length, state.status])
+  }, [active, task.pending, limit, ordered.length, state.status])
 
   useEffect(() => {
     if (!active) return
@@ -135,17 +162,22 @@ export function ProductsPanel({
 
   useLayoutEffect(() => {
     const saved = anchor.current
+    if (!saved || task.pending || saved.seed !== displayedSeed) return
     const node = saved && listRef.current?.children[saved.index]
     if (node && saved)
       window.scrollBy({
-        top: node.getBoundingClientRect().top - saved.top,
+        top:
+          node.getBoundingClientRect().top -
+          saved.top +
+          (window.scrollY - saved.scrollY),
         behavior: "instant",
       })
     anchor.current = null
-  }, [selection])
+  }, [task.result, task.pending, displayedSeed])
 
   function swap(direction: "left" | "right") {
-    if (found.length < 2) return
+    if (task.pending || found.length < 2) return
+    const seed = crypto.randomUUID()
     const nodes = [...(listRef.current?.children ?? [])]
     const headerBottom =
       listRef.current
@@ -156,28 +188,29 @@ export function ProductsPanel({
       (node) => node.getBoundingClientRect().bottom > headerBottom
     )
     if (index >= 0)
-      anchor.current = { index, top: nodes[index].getBoundingClientRect().top }
+      anchor.current = {
+        index,
+        top: nodes[index].getBoundingClientRect().top,
+        scrollY: window.scrollY,
+        seed,
+      }
     const visibleSkus = nodes
       .filter((node) => {
         const rect = node.getBoundingClientRect()
         return rect.bottom > headerBottom && rect.top < window.innerHeight
       })
       .map((node) => (node as HTMLElement).dataset.productSku!)
-    const seed = crypto.randomUUID()
-    const nextOrder = discoverProducts(
-      found,
-      browsing.profile(),
-      seed,
-      visibleSkus
-    ).map((product) => product.sku)
-    // 搜尋結果很少時，也確保這次換批真的有換順序。
-    if (nextOrder.every((sku, i) => sku === ordered[i]?.sku))
-      nextOrder.push(nextOrder.shift()!)
     setSelection({
       key: filterKey,
       seed,
       direction,
-      order: nextOrder,
+      discovery: {
+        seed,
+        profile: browsing.profile(),
+        visibleSkus,
+        previousSkus: ordered.map((product) => product.sku),
+        now: Date.now(),
+      },
     })
     setIdle(false)
   }
@@ -188,6 +221,7 @@ export function ProductsPanel({
   }
 
   function clear() {
+    anchor.current = null
     setQuery("")
     setCategory(null)
     setLimit(PRODUCT_BATCH)
@@ -196,8 +230,15 @@ export function ProductsPanel({
 
   return (
     <div data-product-panel className="flex min-h-svh flex-col">
-      <header className={cn("sticky top-0 z-10 border-b bg-background/95 px-4 backdrop-blur", heading ? "py-5 lg:px-6" : "pt-4 pb-3")}>
-        {heading ?? <h1 className="mt-0.5 text-xl font-semibold">商品與促銷</h1>}
+      <header
+        className={cn(
+          "sticky top-0 z-10 border-b bg-background/95 px-4 backdrop-blur",
+          heading ? "py-5 lg:px-6" : "pt-4 pb-3"
+        )}
+      >
+        {heading ?? (
+          <h1 className="mt-0.5 text-xl font-semibold">商品與促銷</h1>
+        )}
         {navigation}
         {state.status === "ready" && (
           <>
@@ -206,6 +247,7 @@ export function ProductsPanel({
               <Input
                 value={query}
                 onChange={(event) => {
+                  anchor.current = null
                   setQuery(event.target.value)
                   setLimit(PRODUCT_BATCH)
                   setSelection(null)
@@ -220,12 +262,13 @@ export function ProductsPanel({
               className="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 pb-1.5"
             >
               {[{ name: null, count: products.length }, ...categories].map(
-                ({ name, count }) => (
+                ({ name }) => (
                   <button
                     key={name ?? "all"}
                     type="button"
                     aria-pressed={category === name}
                     onClick={() => {
+                      anchor.current = null
                       setCategory(name)
                       setLimit(PRODUCT_BATCH)
                       setSelection(null)
@@ -237,7 +280,7 @@ export function ProductsPanel({
                         : "bg-card text-muted-foreground shadow-lip"
                     )}
                   >
-                    {name ?? "全部"} · {count.toLocaleString()}
+                    {name ?? "全部"}
                   </button>
                 )
               )}
@@ -247,6 +290,7 @@ export function ProductsPanel({
       </header>
 
       <main className="flex-1 overflow-x-clip px-4 pt-3 pb-32">
+        {state.status === "ready" && products.length > 0 && <ProductAppearanceSearch />}
         {state.status === "loading" && (
           <p className="py-10 text-center text-sm text-muted-foreground">
             載入商品型錄中…
@@ -263,22 +307,13 @@ export function ProductsPanel({
         )}
         {state.status === "ready" && products.length > 0 && (
           <>
-            <div className="mb-3 flex items-center justify-between gap-2">
+            {task.pending && (
               <p role="status" className="text-xs text-muted-foreground">
-                {query.trim() || category
-                  ? `找到 ${found.length.toLocaleString()} 個品項`
-                  : `共 ${products.length.toLocaleString()} 個品項`}
-                {found.length > 0 && ` · 已顯示 ${shown.length} 個`}
-                {shown.length < ordered.length && "，往下看更多"}
-                {selection && " · 換了一批商品"}
+                正在整理商品…
               </p>
-              <ContextHelp label="商品瀏覽與推薦方式">
-                <p>
-                  往下捲動會自動載入更多商品；左右滑會將整排商品換一批，也可以先聚焦商品清單再按左右方向鍵。會依登入帳號記錄前景中商品的有效停留時間與主動展開紀錄，用來調整之後換批的排序。閒置、背景與熊熊滾示範不計入；滑動方向不代表喜歡或不喜歡。
-                </p>
-              </ContextHelp>
-            </div>
-            {found.length === 0 && (
+            )}
+            {task.error && <Notice text={task.error} />}
+            {!task.pending && !task.error && found.length === 0 && (
               <Notice
                 text="沒有符合搜尋條件的商品。"
                 action={{ label: "清除篩選", onClick: clear }}
@@ -287,6 +322,8 @@ export function ProductsPanel({
             <div
               role="group"
               aria-label="商品清單，可往下瀏覽或左右滑換一批"
+              aria-busy={task.pending}
+              inert={task.pending}
               tabIndex={0}
               className="rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-primary"
               onDragStart={(event) => event.preventDefault()}
@@ -350,10 +387,12 @@ export function ProductsPanel({
             >
               <ul
                 ref={listRef}
-                key={selection?.seed ?? "original"}
+                key={displayedSeed ?? "original"}
                 className={cn(
                   "catalog-product-list grid grid-cols-1 gap-3 sm:grid-cols-2",
-                  selection && `catalog-swap-${selection.direction}`
+                  selection &&
+                    selection.seed === displayedSeed &&
+                    `catalog-swap-${selection.direction}`
                 )}
               >
                 {shown.map((product) => (

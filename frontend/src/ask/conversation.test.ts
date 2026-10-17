@@ -6,6 +6,25 @@ import { createConversation, type Entry } from "@/ask/conversation"
 const ask = (id: string) => ({ id }) as unknown as import("@/api/asks").Ask
 
 describe("conversation", () => {
+  it("頁面說明在原位置完成為一般訊息，保留 id、頁面與訂閱通知", () => {
+    const c = createConversation()
+    const page = { path: "/calendar", title: "日曆", facts: [] }
+    const id = c.addToolRun(null, "這頁能做什麼？", { routing: true, page })
+    const next = c.addUtterance("user", "voice", "下一句")
+    const listener = vi.fn()
+    c.subscribe(listener)
+    c.completeWithMessage(id, "typed", "可以建立行程和提醒。")
+    expect(c.getSnapshot()).toMatchObject([
+      { id, kind: "model", text: "可以建立行程和提醒。", page },
+      { id: next, kind: "user" },
+    ])
+    expect(listener).toHaveBeenCalledTimes(1)
+    const before = c.getSnapshot()
+    c.replace(id, { error: "遲到的查詢" })
+    c.completeWithMessage(id, "typed", "重複完成")
+    c.completeWithMessage(id + 999, "typed", "不存在")
+    expect(c.getSnapshot()).toBe(before)
+  })
   it("依序附加，id 不重複", () => {
     const c = createConversation()
     const a = c.addUtterance("user", "typed", "北區為什麼掉？")
@@ -21,7 +40,11 @@ describe("conversation", () => {
     c.addToolRun("data", "北區為什麼掉？")
     c.addUtterance("user", "voice", "那康泰呢？")
     c.addUtterance("model", "voice", "康泰這一季…")
-    expect(c.getSnapshot().map((e) => [e.kind, e.kind === "tool" ? "tool" : e.source])).toEqual([
+    expect(
+      c
+        .getSnapshot()
+        .map((e) => [e.kind, e.kind === "tool" ? "tool" : e.source])
+    ).toEqual([
       ["user", "typed"],
       ["tool", "tool"],
       ["user", "voice"],
@@ -91,7 +114,11 @@ describe("conversation", () => {
     const user = c.addUtterance("user", "typed", "這個上個月賣多少")
     const tool = c.addToolRun("data", "這個上個月賣多少")
     const model = c.addUtterance("model", "voice", "好")
-    const file = { id: 7, kind: "image", filename: "box.jpg" } as unknown as import("@/api/attachments").Attachment
+    const file = {
+      id: 7,
+      kind: "image",
+      filename: "box.jpg",
+    } as unknown as import("@/api/attachments").Attachment
     c.attach(user, file)
     c.attach(tool, file)
     c.attach(model, file)

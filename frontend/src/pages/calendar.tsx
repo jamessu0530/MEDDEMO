@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useAskPageContext } from "@/ask/use-page-context"
 import {
   DndContext,
@@ -33,6 +33,7 @@ import {
 } from "@/components/calendar/calendar-views"
 import { EventDialog } from "@/components/calendar/event-dialog"
 import { useCalendarViewTransition } from "@/components/calendar/use-calendar-view-transition"
+import { useCalendarLayout } from "@/components/calendar/use-calendar-layout"
 import { NoteDialog } from "@/components/note-dialog"
 import { NoteRow } from "@/components/note-row"
 import { Notice } from "@/components/notice"
@@ -53,7 +54,6 @@ import {
   eventKey,
   message,
   moveEvent,
-  onDay,
   shiftDay,
   viewDays,
   zonedIso,
@@ -74,6 +74,21 @@ const VIEWS: [CalendarView, string][] = [
   ["day", "日"],
   ["list", "清單"],
 ]
+function visibleEvents(
+  items: api.CalendarEvent[],
+  visible: Set<string>,
+  showInvitations: boolean
+) {
+  return items.filter(
+    (event) =>
+      (event.calendar_id === "invitations"
+        ? showInvitations
+        : visible.has(event.calendar_id)) &&
+      !event.attendees.some(
+        (attendee) => attendee.is_me && attendee.status === "declined"
+      )
+  )
+}
 
 export function CalendarPage() {
   const [params] = useSearchParams()
@@ -143,7 +158,7 @@ function CalendarWorkspacePage({
     useSensor(PointerSensor, { activationConstraint: { distance: 7 } }),
     useSensor(KeyboardSensor)
   )
-  const days = viewDays(anchor, view)
+  const days = useMemo(() => viewDays(anchor, view), [anchor, view])
   const start = zonedIso(days[0]),
     end = zonedIso(shiftDay(days.at(-1)!, 1))
   const refresh = () => setRevision((value) => value + 1)
@@ -265,18 +280,30 @@ function CalendarWorkspacePage({
     }
   }, [])
 
-  const calendars =
-    workspace?.calendars.filter((c) => c.status === "accepted") ?? []
-  const visible = new Set(calendars.filter((c) => c.visible).map((c) => c.id))
-  const visibleEvents = (items: api.CalendarEvent[]) =>
-    items.filter(
-      (e) =>
-        (e.calendar_id === "invitations"
-          ? showInvitations
-          : visible.has(e.calendar_id)) &&
-        !e.attendees.some((a) => a.is_me && a.status === "declined")
-    )
-  const shownEvents = visibleEvents(events)
+  const calendars = useMemo(
+    () => workspace?.calendars.filter((c) => c.status === "accepted") ?? [],
+    [workspace?.calendars]
+  )
+  const visible = useMemo(
+    () => new Set(calendars.filter((c) => c.visible).map((c) => c.id)),
+    [calendars]
+  )
+  const shownEvents = useMemo(
+    () => visibleEvents(events, visible, showInvitations),
+    [events, visible, showInvitations]
+  )
+  const searchEvents = useMemo(
+    () => visibleEvents(search?.events ?? [], visible, showInvitations),
+    [search, visible, showInvitations]
+  )
+  const {
+    layout,
+    pending: layoutPending,
+    error: layoutError,
+  } = useCalendarLayout(
+    query.trim() ? searchEvents : shownEvents,
+    anchor.slice(0, 7)
+  )
   useAskPageContext({
     facts: [
       `日曆檢視：${VIEWS.find(([value]) => value === view)?.[1] ?? view}`,
@@ -296,7 +323,7 @@ function CalendarWorkspacePage({
       ...(requestedEvent ? [`選取行程編號：${requestedEvent}`] : []),
     ],
   })
-  const dayEvents = shownEvents.filter((e) => onDay(e, anchor))
+  const dayEvents = layout?.days[anchor]?.events ?? []
   const today = workspace?.today ?? dateKey(new Date())
   const canCreate = calendars.some((c) => c.can_edit)
   function create(date: string, minutes = 9 * 60) {
@@ -436,7 +463,6 @@ function CalendarWorkspacePage({
     >
       <PageHeader
         title="日曆"
-        subtitle="安排每一天"
         backTo="/"
         trailing={
           <div className="flex gap-1 pr-2">
@@ -505,9 +531,6 @@ function CalendarWorkspacePage({
             >
               管理與共享
             </Button>
-            <p className="text-xs text-muted-foreground">
-              拖曳行程右側可改期。日／週檢視可拖曳底部調整結束時間。
-            </p>
           </aside>
           <div className="planner-workspace min-w-0 flex-1 space-y-4">
             <div className="planner-toolbar planner-navigation">
@@ -630,7 +653,7 @@ function CalendarWorkspacePage({
                 data-ui-demo-open="disclosure"
                 className="cursor-pointer text-sm"
               >
-                顯示的日曆（{calendars.filter((c) => c.visible).length}）
+                顯示的日曆
               </summary>
               <div className="pt-3">{filters}</div>
             </details>
@@ -724,7 +747,9 @@ function CalendarWorkspacePage({
               >
                 <div
                   key={view}
-                  className="planner-view-stage"
+                  className="planner-view-stage relative"
+                  aria-busy={layoutPending}
+                  inert={layoutPending && !!layout}
                   data-view={view}
                   data-transition={
                     typeof document.startViewTransition === "function"
@@ -732,20 +757,24 @@ function CalendarWorkspacePage({
                       : "fallback"
                   }
                 >
-                  {query.trim() ? (
+                  {layoutError ? (
+                    <Notice text={layoutError} />
+                  ) : !layout || (layoutPending && query.trim()) ? (
+                    <p
+                      role="status"
+                      className="py-10 text-center text-sm text-muted-foreground"
+                    >
+                      正在整理行程…
+                    </p>
+                  ) : query.trim() ? (
                     searchError ? (
                       <Notice text={searchError} />
                     ) : search?.query === query.trim() ? (
                       <>
-                        <p className="text-xs text-muted-foreground">
-                          {search.truncated
-                            ? "顯示前 100 個行程系列"
-                            : `${visibleEvents(search.events).length} 個符合的行程`}
-                        </p>
                         <CalendarListView
                           days={[]}
                           today={today}
-                          events={visibleEvents(search.events)}
+                          layout={layout}
                           selected={anchor}
                           onOpen={open}
                           onCreate={create}
@@ -763,7 +792,7 @@ function CalendarWorkspacePage({
                   ) : view === "month" ? (
                     <CalendarMonthView
                       days={days}
-                      events={shownEvents}
+                      layout={layout}
                       today={today}
                       selected={anchor}
                       onSelect={setAnchor}
@@ -774,7 +803,7 @@ function CalendarWorkspacePage({
                   ) : view === "week" || view === "day" ? (
                     <CalendarTimeView
                       days={days}
-                      events={shownEvents}
+                      layout={layout}
                       today={today}
                       selected={anchor}
                       onSelect={setAnchor}
@@ -787,13 +816,21 @@ function CalendarWorkspacePage({
                         d.startsWith(anchor.slice(0, 7))
                       )}
                       today={today}
-                      events={shownEvents}
+                      layout={layout}
                       selected={anchor}
                       onOpen={open}
                       onCreate={create}
                     />
                   )}
-                  {!query.trim() && view === "month" && (
+                  {layout && layoutPending && !query.trim() && (
+                    <p
+                      role="status"
+                      className="pointer-events-none absolute top-2 right-2 z-30 rounded-lg bg-card/90 px-3 py-1 text-xs text-muted-foreground shadow-sm"
+                    >
+                      正在更新行程…
+                    </p>
+                  )}
+                  {layout && !query.trim() && view === "month" && (
                     <section className="mt-4 space-y-3 rounded-2xl border bg-card p-4">
                       <div className="flex items-center justify-between gap-2">
                         <h3

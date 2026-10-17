@@ -370,6 +370,10 @@
     background: var(--background);
   }
 
+  :root[data-keyboard-open="true"][data-keyboard-owner="assistant"] [data-keyboard-page] {
+    height: max(0px, calc(var(--app-visual-height, 100dvh) - var(--page-assistant-dock-height, 5rem)));
+  }
+
   :root[data-keyboard-open="true"] [data-route-ask] {
     bottom: var(--app-keyboard-inset, 0px);
   }

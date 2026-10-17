@@ -39,7 +39,6 @@ import {
   Dialog,
   DialogClose,
   DialogContent,
-  DialogDescription,
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
@@ -103,11 +102,6 @@ export function AskMemoryMap({
             <p className="truncate text-xs font-medium">
               {current?.label || "把查過的問題串起來"}
             </p>
-            <p className="mt-0.5 truncate text-xs text-muted-foreground">
-              {current
-                ? `${current.meta} · ${graph.total} 題查詢`
-                : "問題、文件與頻道記憶的關聯"}
-            </p>
           </div>
           <DialogTrigger asChild>
             <Button variant="outline" size="sm" className="shrink-0 gap-1.5">
@@ -117,7 +111,7 @@ export function AskMemoryMap({
           </DialogTrigger>
         </div>
       )}
-      <DialogContent
+      <DialogContent aria-describedby={undefined}
         showCloseButton={false}
         className="memory-map-dialog"
         onCloseAutoFocus={(event) => {
@@ -132,9 +126,6 @@ export function AskMemoryMap({
             <DialogTitle className="flex items-center gap-2 text-lg">
               記憶地圖
             </DialogTitle>
-            <DialogDescription className="mt-2 text-xs">
-              把問題與線索，連成一張網絡。
-            </DialogDescription>
           </div>
           <DialogClose asChild>
             <Button variant="ghost" size="icon" aria-label="關閉記憶地圖">
@@ -344,7 +335,6 @@ function MapExplorer({
                         ? "3D 地圖載入失敗。重新整理會清空這段對話。"
                         : "這個裝置暫時無法顯示 3D 地圖。"}
                     </p>
-                    <p>仍可從節點清單查看問題與依據。</p>
                     <Button
                       variant="outline"
                       size="sm"
@@ -372,7 +362,6 @@ function MapExplorer({
                       <Waypoints className="size-8" strokeWidth={1.5} />
                     </span>
                     <p>從一個問題開始</p>
-                    <p>查詢後，問題與引用資料會自動連起來。</p>
                   </>
                 ) : (
                   <>
@@ -587,11 +576,7 @@ function MapExplorer({
                 )}
               </>
             ) : (
-              <p className="text-sm text-muted-foreground">
-                {visible.nodes.length
-                  ? "選取節點，查看內容與關聯。"
-                  : "換個關鍵字看看。"}
-              </p>
+              null
             )}
             <details
               className="mt-5 border-t pt-3"
@@ -641,12 +626,8 @@ function MapExplorer({
           </button>
         </div>
       )}
-      <div className="memory-map-footer border-t px-4 py-3 text-xs text-muted-foreground">
-        <p>
-          {graph.total > graph.shown ? `顯示最近 ${graph.shown} 題。` : ""}
-          地圖與筆記保留於這段對話 · 重新整理會清空
-        </p>
-        {changes.deleted.length > 0 && (
+      {changes.deleted.length > 0 && (
+        <div className="memory-map-footer border-t px-4 py-3 text-xs text-muted-foreground">
           <button
             type="button"
             onClick={() => {
@@ -656,8 +637,8 @@ function MapExplorer({
           >
             還原已刪除的 {changes.deleted.length} 個節點
           </button>
-        )}
-      </div>
+        </div>
+      )}
     </>
   )
 }
@@ -702,7 +683,6 @@ function NodeEditor({
           onChange={(event) => setNote(event.target.value)}
         />
       </label>
-      <p>名稱與筆記顯示在地圖，引用原文保留於原回答。</p>
       <div>
         <Button type="button" variant="ghost" onClick={onCancel}>
           取消

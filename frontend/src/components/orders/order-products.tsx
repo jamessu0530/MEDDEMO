@@ -20,7 +20,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
 } from "@/components/ui/dialog"
 import { orderMoney } from "@/lib/orders"
 import { cn } from "@/lib/utils"
@@ -129,12 +128,9 @@ export function OrderProducts({
   return (
     <>
       <Dialog open onOpenChange={(open) => !open && onClose()}>
-        <DialogContent className="flex h-[min(48rem,90dvh)] max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl">
+        <DialogContent aria-describedby={undefined} className="flex h-[min(48rem,90dvh)] max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl">
           <DialogHeader className="shrink-0 border-b px-5 py-4 pr-12">
             <DialogTitle>新增產品</DialogTitle>
-            <DialogDescription>
-              直接查看照片、名稱與規格再勾選產品。跨頁搜尋會保留已選項目。
-            </DialogDescription>
           </DialogHeader>
           <div className="shrink-0 space-y-3 border-b p-4">
             {!selectedOnly && (
@@ -171,10 +167,6 @@ export function OrderProducts({
                   已選清單（{chosen.length}）
                 </button>
               </div>
-              <p role="status" className="text-xs text-muted-foreground">
-                訂單已有 {existing.length} 項 · 尚可選{" "}
-                {Math.max(0, capacity - chosen.length)} 項
-              </p>
             </div>
             {!selectedOnly && chosen.length > 0 && (
               <div
@@ -351,11 +343,6 @@ export function OrderProducts({
                   <p className="text-sm font-medium">
                     {selectedOnly ? "尚未選取產品" : "找不到符合條件的產品"}
                   </p>
-                  <p className="text-xs text-muted-foreground">
-                    {selectedOnly
-                      ? "回到商品型錄，勾選想加入的產品。"
-                      : "試試產品名稱、料號，或清除搜尋。"}
-                  </p>
                   <Button
                     variant="outline"
                     onClick={() =>
@@ -373,7 +360,7 @@ export function OrderProducts({
               <span>
                 {busy
                   ? "查詢中…"
-                  : `共 ${result?.total ?? 0} 項 · 第 ${page}／${Math.max(1, Math.ceil((result?.total ?? 0) / (result?.page_size ?? 25)))} 頁`}
+                  : `第 ${page}／${Math.max(1, Math.ceil((result?.total ?? 0) / (result?.page_size ?? 25)))} 頁`}
               </span>
               <div className="flex gap-1">
                 <Button

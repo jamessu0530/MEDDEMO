@@ -6,15 +6,16 @@ describe("各頁的 AI 輸入方式", () => {
     for (const path of ["/route", "/route/", "/route/edit", "/route/edit/"])
       expect(pageAssistantPlacement(path)).toBe("none")
   })
-  it("報表與頻道可用浮動入口開啟共用助理", () => {
+  it("報表與頻道一律使用底部詢問欄", () => {
     for (const path of [
       "/reports",
+      "/reports/",
       "/channels",
       "/channels/2",
       "/channels/search",
       "/channels/2/threads",
     ])
-      expect(pageAssistantPlacement(path)).toBe("floating")
+      expect(pageAssistantPlacement(path)).toBe("dock")
   })
   it("一般頁面與主管各分頁使用相同的底部詢問欄", () => {
     for (const path of [
@@ -35,7 +36,7 @@ describe("各頁的 AI 輸入方式", () => {
     ])
       expect(pageAssistantPlacement(path)).toBe("dock")
   })
-  it("公開頁和錄音頁也保留助理入口", () => {
+  it("公開頁和錄音頁也使用底部詢問欄", () => {
     for (const path of [
       "/login",
       "/register",
@@ -44,6 +45,6 @@ describe("各頁的 AI 輸入方式", () => {
       "/auth/github/callback",
       "/customers/C01/record",
     ])
-      expect(pageAssistantPlacement(path)).toBe("floating")
+      expect(pageAssistantPlacement(path)).toBe("dock")
   })
 })

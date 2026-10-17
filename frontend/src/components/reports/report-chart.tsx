@@ -12,6 +12,7 @@ import {
 import { BarChart3, ChevronDown } from "@/components/icons"
 import { ReportMatrix } from "@/components/reports/report-matrix"
 import { ReportFormattedValue } from "@/components/reports/report-formatted-value"
+import type { ReportWidgetSize } from "@/lib/report-widget"
 import {
   reportCellStyle,
   reportDisplayValue,
@@ -56,6 +57,7 @@ import {
 } from "@/components/reports/report-chart-math"
 
 type ChartProps = {
+  widgetSize?: ReportWidgetSize
   summary?: boolean
   plotOnly?: boolean
   card: ReportCard
@@ -166,12 +168,14 @@ function Total({
   data,
   large = false,
   summary = false,
+  showTarget = true,
 }: {
   card: ReportCard
   total: number | null
   data: CardData
   large?: boolean
   summary?: boolean
+  showTarget?: boolean
 }) {
   const display = reportDisplayValue(card, total, card.metric, "compact")
   const formatted =
@@ -219,7 +223,7 @@ function Total({
             {exact}
           </p>
         )}
-      {large && typeof card.target === "number" && (
+      {showTarget && large && typeof card.target === "number" && (
         <p className="mt-3 text-xs text-muted-foreground">
           目標 {reportDisplayValue(card, card.target, card.metric)}
           {card.target > 0 && total != null && (
@@ -236,7 +240,6 @@ function EmptyChart() {
     <div className="flex min-h-28 flex-col items-center justify-center gap-2 rounded-xl bg-muted/30 px-4 py-6 text-center text-sm text-muted-foreground">
       <BarChart3 className="size-6 opacity-60" aria-hidden="true" />
       <p>目前範圍沒有資料</p>
-      <p className="text-xs">可以調整期間或篩選條件。</p>
     </div>
   )
 }
@@ -628,7 +631,10 @@ function DataDetails(props: ChartProps) {
   const matrix = !!props.data.series?.length
   if (props.expanded) return <ValueTable {...props} matrix={matrix} />
   return (
-    <details className="group rounded-xl border border-border bg-muted/10">
+    <details
+      open={props.widgetSize === "large" ? true : undefined}
+      className="group rounded-xl border border-border bg-muted/10"
+    >
       <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-xl px-3 py-2 text-xs font-medium text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
         查看分組彙總數值
         <ChevronDown
@@ -955,11 +961,6 @@ function BarChart(props: PlotProps) {
         percentage={percentage}
       />
       <Legend card={card} colors={colors} items={series} />
-      {percentage && (
-        <p className="text-xs text-muted-foreground">
-          每個分類合計為 100%；合計為 0 的分類顯示 0%。
-        </p>
-      )}
     </div>
   )
 }
@@ -1493,11 +1494,6 @@ function ColumnChart(props: PlotProps) {
         <AxisTitles card={card} frame={frame} />
       </svg>
       <Legend card={card} colors={colors} items={series} />
-      {percentage && (
-        <p className="text-xs text-muted-foreground">
-          各分類合計為 100%；零合計分類顯示 0%。
-        </p>
-      )}
     </div>
   )
 }
@@ -1945,11 +1941,6 @@ function ShareChart(props: PlotProps) {
         </svg>
       )}
       <Legend card={card} colors={colors} items={data.points} />
-      {sum > 0 && (
-        <p className="text-xs text-muted-foreground">
-          占比以圖中分類合計計算；上方合計包含完整範圍。
-        </p>
-      )}
     </div>
   )
 }
@@ -2361,6 +2352,19 @@ function ScatterChart(props: PlotProps) {
 function HighlightSummary(props: ChartProps) {
   const highlight = props.data.highlight
   if (!highlight) return null
+  if (props.widgetSize && props.widgetSize !== "large")
+    return (
+      <p role="status" className="text-xs text-primary">
+        聯動選取
+        {NON_ADDITIVE_METRICS.includes(props.card.metric) ? "指標" : "合計"}：
+        {reportDisplayValue(
+          props.card,
+          highlight.total,
+          props.card.metric,
+          "compact"
+        )}
+      </p>
+    )
   return (
     <div
       className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-xs"
@@ -2371,19 +2375,6 @@ function HighlightSummary(props: ChartProps) {
         {NON_ADDITIVE_METRICS.includes(props.card.metric) ? "指標" : "合計"}：
         {reportDisplayValue(props.card, highlight.total, props.card.metric)}
       </p>
-      <p className="mt-1 text-xs text-muted-foreground">
-        圖表保留完整範圍；淡色分類沒有聯動資料，數值明細同時列出選取數值。
-      </p>
-      {props.card.metric === "net_margin" && (
-        <p className="mt-1 text-xs text-muted-foreground">
-          淨毛利的正負數值可能互相抵銷，請以明細的實際選取數值比較。
-        </p>
-      )}
-      {NON_ADDITIVE_METRICS.includes(props.card.metric) && (
-        <p className="mt-1 text-xs text-muted-foreground">
-          選取值以子集重新計算，比率與平均值可大於完整範圍；請以實際數值比較。
-        </p>
-      )}
       <ReportComparisonSummary
         card={props.card}
         comparison={highlight.comparison}
@@ -2394,9 +2385,60 @@ function HighlightSummary(props: ChartProps) {
   )
 }
 
-export function ReportChart(props: ChartProps) {
+function WidgetTarget({ card, data }: ChartProps) {
+  if (
+    card.target == null ||
+    card.target <= 0 ||
+    data.total == null ||
+    data.total < 0
+  )
+    return null
+  const percent = (data.total / card.target) * 100
+  return (
+    <div className="report-widget-target">
+      <div className="mb-1.5 flex flex-wrap justify-between gap-1 text-xs text-muted-foreground">
+        <span>
+          目標 {reportDisplayValue(card, card.target, card.metric, "compact")}
+        </span>
+        <span>
+          {percent.toLocaleString("zh-TW", { maximumFractionDigits: 1 })}%
+        </span>
+      </div>
+      <div
+        role="progressbar"
+        aria-label="目標達成率"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.min(100, percent)}
+        aria-valuetext={`${percent.toLocaleString("zh-TW", { maximumFractionDigits: 1 })}%`}
+        className="h-1.5 overflow-hidden rounded-full bg-muted"
+      >
+        <div
+          className="h-full rounded-full bg-primary"
+          style={{ width: `${Math.min(100, percent)}%` }}
+        />
+      </div>
+    </div>
+  )
+}
+
+export function ReportChart(input: ChartProps) {
+  // Presentation overrides never alter the saved visual, fields, or query data.
+  const props = input.widgetSize
+    ? {
+        ...input,
+        summary: input.widgetSize !== "large",
+        card: {
+          ...input.card,
+          height:
+            input.widgetSize === "large"
+              ? ("tall" as const)
+              : ("compact" as const),
+        },
+      }
+    : input
   const { card, data } = props
-  if (card.visual === "kpi")
+  if (card.visual === "kpi" || props.widgetSize === "small")
     return (
       <div className="space-y-2">
         <Total
@@ -2405,13 +2447,19 @@ export function ReportChart(props: ChartProps) {
           data={data}
           large
           summary={props.summary}
+          showTarget={!props.widgetSize}
         />
         <ReportComparisonSummary
           card={card}
           comparison={data.comparison}
           metric={card.metric}
+          compact={!!props.widgetSize && props.widgetSize !== "large"}
         />
         <HighlightSummary {...props} />
+        {props.widgetSize && <WidgetTarget {...props} />}
+        {props.widgetSize === "large" && data.points.length > 0 && (
+          <DataDetails {...props} />
+        )}
       </div>
     )
   const series = chartSeries(data, METRICS[card.metric].label)
@@ -2557,18 +2605,12 @@ export function ReportChart(props: ChartProps) {
           card={card}
           comparison={data.comparison}
           metric={card.metric}
+          compact={props.widgetSize === "medium"}
         />
-      )}
-      {(data.points.some((point) => point.value == null) ||
-        data.series?.some((series) =>
-          series.points.some((point) => point.value == null)
-        )) && (
-        <p role="status" className="text-xs text-muted-foreground">
-          無法計算的資料點保留在分組彙總，趨勢圖在該處留空。
-        </p>
       )}
       <HighlightSummary {...props} />
       {chart}
+      {props.widgetSize && <WidgetTarget {...props} />}
       {typeof card.target === "number" &&
         !percentage &&
         !share &&

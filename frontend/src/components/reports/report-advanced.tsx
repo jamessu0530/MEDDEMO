@@ -83,9 +83,6 @@ export function StageChart(props: Props) {
             )}
           </button>
         ))}
-        <p className="text-xs text-muted-foreground">
-          依指定階段或目前排序呈現。聚合值之比不等同實際轉換率。
-        </p>
       </div>
     )
   }
@@ -369,10 +366,6 @@ export function ReportMap(props: Props) {
             : "正在載入地圖…"}
         </p>
       )}
-      <p className="text-xs text-muted-foreground">
-        位置來自客戶座標，供區域分布參考。顯示 {points.length}／
-        {props.data.points.length} 筆分組。
-      </p>
       <details className="text-xs">
         <summary className="min-h-9 cursor-pointer">客戶座標與數值</summary>
         {points.map((point) => (

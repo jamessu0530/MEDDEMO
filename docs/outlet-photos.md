@@ -2,7 +2,29 @@
 
 對象是 `data/public-outlets/cenra-20261016.json` 的 4,642 筆公開通路。照片目標為店面外觀或招牌；使用者選擇繼續從官網和公開網頁查找。
 
-最新筆數與可點選的逐店來源見 [照片查找進度](../data/public-outlets/photo-sources-summary.md)，完整每店資料見 `data/public-outlets/photo-sources.json`。照片候選尚未全部通過外觀檢查，沒有自動加入客戶畫面。
+最新筆數與可點選的逐店來源見 [照片查找進度](../data/public-outlets/photo-sources-summary.md)，完整每店資料見 `data/public-outlets/photo-sources.json`。依使用者授權，照片候選直接匯入資料庫並顯示，不經人工審核。
+
+## 資料庫照片與零 Places 呼叫
+
+`outlet_storefront` 以公開通路 ID 保存照片來源網址、來源頁、攝影者／授權標示，以及 Google Place ID。現有目錄共 4,642 間，其中 2,472 間有 4,229 個非 Google 照片網址；全部候選直接匯入，不以 `identity_verified` 或外觀複核狀態擋住。已核對身分的候選優先顯示，原有匹配狀態仍保留供追溯。這是保存網址與來源資料，沒有下載或重製圖片檔。
+
+```sh
+backend/.venv/bin/python backend/scripts/import_storefront_photos.py
+```
+
+匯入在交易中執行，重跑只更新有變動的紀錄，不建立或修改業務客戶。部署時 `upgrade_schema.py` 保留原資料新增此表，`sync_customer_search.py` 一併匯入照片目錄。
+
+客戶清單與客戶檔案直接使用 API 回傳的 `storefront_photo`。有圖、缺圖、圖片失效與離線情況都不自動讀取 Maps 設定、不載入 Places SDK，也不回退至 Places 查詢。Google 地圖連結僅在使用者點擊時開啟外部網頁。
+
+Google 查詢結果只保存可永久保存的 Place ID／候選 ID，不保存 Google 照片內容或照片參照。[Google 官方照片文件](https://developers.google.com/maps/documentation/places/web-service/place-photos) 說明照片名稱會過期且不得快取。只有 Google 照片的店家，仍需另有非 Google 照片來源才能在此流程顯示。
+
+### 2026-10-17 正式站發布
+
+已透過既有 GCP 連線，在 `care-vm` 的 `meddemo` namespace 直接新增照片表並匯入：4,642 間目錄、2,472 間有圖、4,229 個照片網址、804 個已配對 Place ID。重跑異動為 0，原有 4,895 筆客戶保留。正式 API 實測回傳 2,472 間照片資料，客戶清單與檔案皆已驗證能顯示來源網站圖片，沒有載入 Google Maps SDK。
+
+發布以正式版本 `489ef695c6aab0cdf96405390f73b4fc24c1535f` 為基底，只覆蓋照片功能；前端來源逐檔比對確認只有客戶 API 型別、照片工具、照片元件、客戶清單與客戶檔案五個檔案變更。API 使用 `docker.io/library/meddemo-storefront-api:20261017-db`，網頁使用 `docker.io/library/meddemo-storefront-web:20261017-db2`，映像已載入該 VM 的 k3s。
+
+完整 schema 升級未執行，正式站 `schema_version` 保留 `04fd21a6ec6e`；照片表已獨立新增，API 正常使用。後續正常整站發布可使用程式中已測試的保留資料升級路徑。此手動發布尚未改動 Helm 的映像設定；再次執行 Helm 發布前須包含照片功能原始碼，以免切回舊照片流程。
 
 ## 已使用來源
 
@@ -18,9 +40,21 @@
 
 `candidate_images` 只表示有照片連結；`identity_verified` 只表示來源頁店名與地址符合；`verified_exterior_images` 才表示已檢視圖中外觀。人工複核紀錄另存 `photo-manual-review.json`。現行來源名稱、地址有差異時保留待核對，沒有改動原始客戶地址。
 
-公開可見和可再利用是不同欄位，目前沒有完成重製／再發布授權查驗。照片未批次匯入應用程式，也沒有下載或永久快取 Google Places 照片。
+公開可見和可再利用是不同欄位，目前沒有完成重製／再發布授權查驗。應用程式直接顯示來源網站的照片網址並保留來源標示，沒有下載或永久快取 Google Places 照片。
 
 ## 接續查找
+
+Google Places 缺圖補查使用 `backend/scripts/collect_google_outlet_photos.py`，以目前追蹤檔中沒有 `candidate_images` 的店家為範圍。每筆完成即保存至 `data/public-outlets/google-storefronts.json`，重跑跳過已完成店家；認證、服務未啟用、配額或網路錯誤會停止整批，尚未查詢的店家不會被標為沒有照片。記錄僅保留 Place ID 與查找狀態，不保存 Google 照片名稱、網址或影像，也不將「找到照片」標成「已檢查外觀」。
+
+2026-10-17 已完成全部 2,170 間缺圖店家的 Google 查詢，並重核名稱寫法差異：676 間店名／店址比對通過且有照片、128 間比對通過但沒有照片、1,358 間身分或店址待核對、8 間沒有搜尋結果。已發布 804 個比對通過的 Place ID，包含沒有照片但可使用店址／街景的店家。原始通路名單與 Google 的門牌或分店衝突時保留待核對，沒有自動修改客戶地址或套用其他分店照片。
+
+```sh
+backend/.venv/bin/python backend/scripts/collect_google_outlet_photos.py --limit 2170 --workers 4 --publish
+```
+
+金鑰由執行環境的 `GOOGLE_MAPS_SERVER_KEY` 提供，不寫入結果。Google Cloud 必須先在對應專案啟用 Places API（New），並允許該金鑰呼叫。店名、行政區與主要門牌都必須相符；里名或單側括號註記有差異時另查電話，電話不能覆蓋道路／門牌衝突；Watsons／Cosmed 品牌英文可正規化，分店名稱仍須核對。多個結果符合時只保留待核對的 Place ID。`--retry-review` 可重新核對先前待確認的結果。
+
+`--publish` 可產生歷史查找用的 `frontend/src/lib/storefront-place-ids.ts`，只包含已比對通過的客戶 ID／Place ID；目前客戶照片流程已改讀資料庫，不再使用此索引即時查 Google。執行 `import_storefront_photos.py` 即可把現有結果中的 Place ID 與候選 ID 存入資料庫。
 
 先從既有結果恢復，無網路請求：
 

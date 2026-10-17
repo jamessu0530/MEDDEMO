@@ -14,7 +14,6 @@ const timeLabel = (timestamp: number) =>
 export function MetricChart({
   data,
   title,
-  description,
   series,
   unit,
   multiplier = 1,
@@ -22,7 +21,6 @@ export function MetricChart({
 }: {
   data: CloudMetrics
   title: string
-  description: string
   series: ChartSeries[]
   unit: string
   multiplier?: number
@@ -72,9 +70,6 @@ export function MetricChart({
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h3 className="text-sm font-semibold">{title}</h3>
-          <p className="mt-1 text-[11px] text-muted-foreground">
-            {description}
-          </p>
         </div>
         <span className="text-xs text-muted-foreground tabular-nums">
           {selectedTime == null ? "最新" : timeLabel(selectedTime)} · {unit}

@@ -91,9 +91,6 @@ export function DatasetChart({
     <div className="min-w-0 space-y-3">
       <p className="text-2xl font-semibold text-primary">
         {dataValue(result.total)}
-        <span className="ml-2 text-xs font-normal text-muted-foreground">
-          完整範圍 · {result.row_count.toLocaleString()} 列
-        </span>
       </p>
       {!result.row_count && (
         <p className="text-sm text-muted-foreground">
@@ -223,7 +220,7 @@ export function DatasetChart({
           className="rounded border p-2 text-xs"
         >
           <summary className="min-h-8 cursor-pointer">
-            精確數值 · 顯示 {points.length}／{result.group_count} 組
+            精確數值
           </summary>
           <div className="max-h-64 overflow-auto">
             <table className="w-full">

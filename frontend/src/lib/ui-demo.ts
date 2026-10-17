@@ -115,25 +115,11 @@ export const REPORT_DEMO_STEPS: readonly DemoStep[] = [
     text: "按「完成」收起篩選面板，回到數據。",
   },
   {
-    target: "report-visual-focus",
-    page: "/reports",
-    action: "click",
-    optional: true,
-    text: "點圖表右上角，查看精確數值與更多操作。",
-  },
-  {
-    target: "report-focused-content",
+    target: "report-page-tabs",
     page: "/reports",
     action: "point",
     optional: true,
-    text: "這裡能查看完整數值、進入逐筆明細；日期圖表還能切換下鑽選項。",
-  },
-  {
-    target: "report-focus-close",
-    page: "/reports",
-    action: "click",
-    optional: true,
-    text: "先關閉圖表檢視，看看編輯入口。",
+    text: "報表分頁在最上方；手機可以左右滑動切換，不必捲到最下面。",
   },
   {
     target: "report-start-editing",
@@ -147,7 +133,14 @@ export const REPORT_DEMO_STEPS: readonly DemoStep[] = [
     page: "/reports",
     action: "click",
     optional: true,
-    text: "選取圖表，就能調整這張圖的指標、格式和版面。",
+    text: "選取圖表，就能調整這張圖的指標與格式；拖曳標題即可排序，版面會自動整理。",
+  },
+  {
+    target: "report-widget-resize",
+    page: "/reports",
+    action: "point",
+    optional: true,
+    text: "拖曳卡片右下角的毛玻璃把手調整大小，內容會依空間自動切換。這次只指出位置。",
   },
   {
     target: "report-inspector",
@@ -472,6 +465,8 @@ export function requestedUiDemo(
   question: string,
   pagePath = ""
 ): UiDemoKind | null {
+  // 要求文字解釋時讓後端以完整語意判斷，避免「說明怎麼用」直接啟動示範。
+  if (/解釋|說明|介紹|講一下|告訴我/.test(question)) return null
   if (wantsReportDemo(question, pagePath)) return "report-tour"
   if (wantsOaDemo(question, pagePath)) return "oa-tour"
   if (wantsOrderDemo(question)) return "create-order"

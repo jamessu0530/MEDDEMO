@@ -1,7 +1,20 @@
-import type { LatLng, RemovedStop, RepRoute, StopSource, TeamLocations, TeamRoutes, TeamStop } from "@/api/team-routes"
+import type {
+  RemovedStop,
+  RepRoute,
+  StopSource,
+  TeamLocations,
+  TeamRoutes,
+  TeamStop,
+} from "@/api/team-routes"
 import { formatDayLabel } from "@/lib/format"
 import { avatarTone } from "@/lib/presence"
 import { routeSource, TRAVEL_MODE_LABEL } from "@/lib/travel-mode"
+export {
+  boundsOf,
+  decodePolyline,
+  legPaths,
+  type LegPiece,
+} from "@/lib/route-geometry-work"
 
 /*
  * 主管端行程分頁的文字與地圖資料（docs/superpowers/specs/2026-10-01-itinerary-planning-design.md〈主管端：行程分頁〉）。
@@ -10,7 +23,13 @@ import { routeSource, TRAVEL_MODE_LABEL } from "@/lib/travel-mode"
 
 // 路線的顏色跟頭像底色同一套、同一個順序（components/user-avatar.tsx 的 AVATAR_TONES）：地圖上的線一看就知道是誰。
 // 寫成 CSS 變數，深色配色下跟著換；Google 地圖的線畫在 canvas 上，要用時再換成實際的顏色
-export const ROUTE_COLOR_VARS = ["--primary", "--chart-4", "--chart-5", "--warning", "--muted-foreground"] as const
+export const ROUTE_COLOR_VARS = [
+  "--primary",
+  "--chart-4",
+  "--chart-5",
+  "--warning",
+  "--muted-foreground",
+] as const
 
 export function routeColorVar(userId: string) {
   return ROUTE_COLOR_VARS[avatarTone(userId, ROUTE_COLOR_VARS.length)]
@@ -24,7 +43,10 @@ export function headerLine(data: TeamRoutes) {
 
 /** 「1/3 站 · 共 18.2 公里 · 約 16:40 收工」。公里數跟業務自己看到的總里程同一個數字；跑完了就沒有收工時間 */
 export function progressLine(route: RepRoute) {
-  const parts = [`${route.done}/${route.total} 站`, `共 ${route.travel_km} 公里`]
+  const parts = [
+    `${route.done}/${route.total} 站`,
+    `共 ${route.travel_km} 公里`,
+  ]
   if (route.finish_time) parts.push(`約 ${route.finish_time} 收工`)
   return parts.join(" · ")
 }
@@ -32,7 +54,9 @@ export function progressLine(route: RepRoute) {
 /** 「下一站：第 2 站 德安藥局 · 大安 · 10:40 到」；都跑完了是 null */
 export function nextStopLine(stops: TeamStop[]) {
   const next = stops.find((stop) => stop.status === "next")
-  return next ? `下一站：第 ${next.number} 站 ${next.customer_name} · ${next.planned_time} 到` : null
+  return next
+    ? `下一站：第 ${next.number} 站 ${next.customer_name} · ${next.planned_time} 到`
+    : null
 }
 
 /** 紅字：「拿掉系統排的 1 站：和康藥局 · 松山（帳款逾期）」 */
@@ -43,10 +67,14 @@ export function removedLine(removed: RemovedStop[]) {
 
 /** 琥珀色：還沒跑、約的時間趕不上的站。「1 站會晚到 25 分鐘」；兩站以上「2 站會晚到，最多 25 分鐘」 */
 export function lateLine(stops: TeamStop[]) {
-  const late = stops.filter((stop) => stop.status !== "done" && stop.late_minutes > 0)
+  const late = stops.filter(
+    (stop) => stop.status !== "done" && stop.late_minutes > 0
+  )
   if (!late.length) return null
   const most = Math.max(...late.map((stop) => stop.late_minutes))
-  return late.length === 1 ? `1 站會晚到 ${most} 分鐘` : `${late.length} 站會晚到，最多 ${most} 分鐘`
+  return late.length === 1
+    ? `1 站會晚到 ${most} 分鐘`
+    : `${late.length} 站會晚到，最多 ${most} 分鐘`
 }
 
 /** 85 → 「1 小時 25 分」 */
@@ -68,7 +96,9 @@ function sourceMode(route: RepRoute) {
 /** 詳細頁地圖下面那一行：「共 18.2 公里 · 機車 1 小時 25 分（Google 機車路線測試版）」或「（估計）」 */
 export function totalsLine(route: RepRoute) {
   // 還沒跑的站全部用整天的預設就寫那種交通方式，有任何一段不一樣就只寫「路上」
-  const mixed = route.stops.some((stop) => stop.status !== "done" && stop.travel_mode !== route.travel_mode)
+  const mixed = route.stops.some(
+    (stop) => stop.status !== "done" && stop.travel_mode !== route.travel_mode
+  )
   const mode = mixed ? "路上" : TRAVEL_MODE_LABEL[route.travel_mode]
   return `共 ${route.travel_km} 公里 · ${mode} ${formatDriveTime(route.travel_minutes)}${routeSource(sourceMode(route), route.estimated)}`
 }
@@ -95,66 +125,16 @@ export const TAIWAN = { north: 25.35, south: 21.85, east: 122.05, west: 119.95 }
 export const DONE_OPACITY = 0.95
 export const TODO_OPACITY = 0.55
 
-/** Google 的編碼折線（Encoded Polyline Algorithm Format）解成經緯度 */
-export function decodePolyline(encoded: string): LatLng[] {
-  const points: LatLng[] = []
-  let index = 0
-  let lat = 0
-  let lng = 0
-  while (index < encoded.length) {
-    const deltas: number[] = []
-    for (let axis = 0; axis < 2; axis += 1) {
-      let result = 0
-      let shift = 0
-      let byte: number
-      do {
-        byte = encoded.charCodeAt(index) - 63
-        index += 1
-        result |= (byte & 0x1f) << shift
-        shift += 5
-      } while (byte >= 0x20)
-      deltas.push(result & 1 ? ~(result >> 1) : result >> 1)
-    }
-    lat += deltas[0]
-    lng += deltas[1]
-    points.push({ lat: lat / 1e5, lng: lng / 1e5 })
-  }
-  return points
-}
-
-/** 地圖要框住的範圍；沒有任何點是 null */
-export function boundsOf(points: LatLng[]) {
-  if (!points.length) return null
-  const lats = points.map((point) => point.lat)
-  const lngs = points.map((point) => point.lng)
-  return { north: Math.max(...lats), south: Math.min(...lats), east: Math.max(...lngs), west: Math.min(...lngs) }
-}
-
-// 一段路裡要畫的一小段：walk 是大眾運輸的走路（畫虛線），其他（開車、機車、搭車）畫實線
-export type LegPiece = { path: LatLng[]; walk: boolean }
-
-/** 一位業務沿路的每一段要畫的線：大眾運輸照走路與搭車分成幾小段；其他有折線用折線，
- *  沒有（沒設金鑰、Google 失敗、搭不到車）就從上一點直接連到這一站。
- *  第 n 段從「出發點加各站」的第 n 點到第 n + 1 點（後端 services/team_itineraries.py 同一個規則）。
- *  主管頁與業務首頁的地圖都用 */
-export function legPaths(
-  route: Pick<RepRoute, "origin" | "legs"> & { stops: LatLng[] }
-): { done: boolean; pieces: LegPiece[] }[] {
-  const points: LatLng[] = [
-    ...(route.origin ? [route.origin] : []),
-    ...route.stops.map(({ lat, lng }) => ({ lat, lng })),
-  ]
-  return route.legs.map((leg, n) => ({
-    done: leg.done,
-    pieces: leg.steps.length
-      ? leg.steps.map((step) => ({ path: decodePolyline(step.polyline), walk: step.walk }))
-      : [{ path: leg.polyline ? decodePolyline(leg.polyline) : [points[n], points[n + 1]], walk: false }],
-  }))
-}
-
 /** 收到位置的通知時只重拿位置：換掉每位業務的位置與頁首的更新時間，行程不動 */
-export function withLocations(data: TeamRoutes, update: TeamLocations): TeamRoutes {
-  return { ...data, updated_at: update.updated_at, reps: data.reps.map((route) => withLocation(route, update)) }
+export function withLocations(
+  data: TeamRoutes,
+  update: TeamLocations
+): TeamRoutes {
+  return {
+    ...data,
+    updated_at: update.updated_at,
+    reps: data.reps.map((route) => withLocation(route, update)),
+  }
 }
 
 export function withLocation(route: RepRoute, update: TeamLocations): RepRoute {

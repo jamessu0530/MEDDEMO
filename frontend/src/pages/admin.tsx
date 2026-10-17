@@ -143,9 +143,6 @@ export function AdminPage() {
 
         <div className="rounded-2xl border-2 bg-card p-4 shadow-lip">
           <h2 className="text-base font-semibold">共用業務的今日行程</h2>
-          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-            帳號共用業務行程。重置後會還原行程與排序習慣。
-          </p>
           {!resetConfirming ? (
             <Button
               variant="outline"
@@ -190,9 +187,6 @@ export function AdminPage() {
           )}
         </div>
 
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          組織異動會立即調整資料權限與申請單的簽核對象。
-        </p>
 
         {flash && (
           <p className="rounded-xl bg-primary/10 px-3 py-2.5 text-sm leading-relaxed text-primary">
@@ -796,12 +790,9 @@ function CreateAccountDialog({
 
   return (
     <Dialog open onOpenChange={(open) => !open && !busy && onClose()}>
-      <DialogContent>
+      <DialogContent aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle>新增帳號</DialogTitle>
-          <DialogDescription>
-            公司帳號用 Email 與密碼登入。初始密碼請自己告訴對方。
-          </DialogDescription>
         </DialogHeader>
         <form className="flex flex-col gap-4" onSubmit={submit}>
           <div

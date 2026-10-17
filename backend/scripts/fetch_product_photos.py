@@ -349,7 +349,13 @@ def download(source: dict) -> dict:
     asset_id = hashlib.sha256(source["imageUrl"].encode()).hexdigest()[:16]
     target = ASSETS / (asset_id + ".webp")
     if not target.exists():
-        with Image.open(BytesIO(fetch(source["imageUrl"]))) as original:
+        raw = fetch(source["imageUrl"])
+        if "pdfPage" in source:
+            from pypdf import PdfReader
+            original = PdfReader(BytesIO(raw)).pages[source["pdfPage"]].images[source["pdfImageIndex"]].image
+        else:
+            original = Image.open(BytesIO(raw))
+        with original:
             picture = ImageOps.exif_transpose(original).convert("RGBA")
             if min(picture.size) < 45:
                 raise ValueError("Photo is smaller than a product thumbnail")

@@ -3,6 +3,7 @@
 SKU/name matches are preferred. Shared family/model photos are marked series.
 Medicine matches require a matching brand and strength, or an explicit SKU.
 """
+import argparse
 import csv
 from collections import Counter
 from decimal import Decimal
@@ -201,6 +202,15 @@ def choose(product, sources):
     medicine = product['category'] in ('慢性處方', '一般用藥')
     ranked = []
     for source in sources:
+        # Manually checked supplements are scoped to the exact catalog row.
+        # In particular, a reviewed medicine cannot leak to another strength.
+        if 'reviewedProducts' in source:
+            review = next((row for row in source['reviewedProducts']
+                           if row['sku'] == sku and row['name'] == name
+                           and row['category'] == product['category']), None)
+            if review:
+                ranked.append((1100, review['kind'], review['note'], source))
+            continue
         title = source['title']
         if re.search(r'(?<![a-z0-9])' + re.escape(sku) + r'(?![a-z0-9])', title + ' ' + source.get('keywords', ''), re.I):
             ranked.append((1000, 'series', '原廠頁面明列料號', source))
@@ -234,16 +244,21 @@ def choose(product, sources):
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--output', type=Path, default=ROOT / 'data/seed/product-photo-plan-20261016.json')
+    args = parser.parse_args()
     sources = json.loads((ROOT / 'data/seed/product-photo-sources.json').read_text())
-    sources += json.loads((ROOT / 'data/seed/product-photo-sources-verified-20261016.json').read_text())
+    for inventory in sorted((ROOT / 'data/seed').glob('product-photo-sources-verified-*.json')):
+        sources += json.loads(inventory.read_text())
     # Prefer new structured source metadata for the same URL.
-    sources = list({(source['pageUrl'], source['imageUrl']): source for source in sources}.values())
+    sources = list({(source['pageUrl'], source['imageUrl'], 'reviewedProducts' in source): source
+                    for source in sources}.values())
     planned, missing = [], []
     for product in products():
         match = choose(product, sources)
         (planned if match else missing).append(match or product)
     output = {'matched': planned, 'missing': missing}
-    path = ROOT / 'data/seed/product-photo-plan-20261016.json'
+    path = args.output
     path.write_text(json.dumps(output, ensure_ascii=False, indent=2) + '\n')
     print(json.dumps({'matched': len(planned), 'missing': len(missing), 'categories': dict(Counter(item['category'] for item in planned)), 'uniqueImages': len({item['source']['imageUrl'] for item in planned})}, ensure_ascii=False))
 

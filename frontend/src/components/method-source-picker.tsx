@@ -145,9 +145,6 @@ export function MethodSourcePicker({
             disabled={disabled}
           />
         </div>
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          只列出你可見頻道中，經理本人寫下的訊息。
-        </p>
       </div>
       {!active && (
         <p

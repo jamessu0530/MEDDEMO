@@ -90,7 +90,7 @@ export function ChannelsPage() {
 
   const sales = user?.role === "sales"
   return (
-    <div data-keyboard-page className="flex h-svh flex-col">
+    <div data-keyboard-page className="flex h-[calc(100svh-var(--page-assistant-dock-space,5rem))] flex-col">
       <PageHeader
         title="頻道"
         backTo={sales || !user ? undefined : homePath(user.role)}

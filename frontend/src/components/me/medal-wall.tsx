@@ -3,11 +3,26 @@ import { Link } from "react-router"
 
 import type { Medal } from "@/api/me"
 import { FlatMedal } from "@/components/me/flat-medal"
-import { ContextHelp } from "@/components/context-help"
+
 import "@/components/me/medal-wall.css"
 import type { MedalScene } from "@/components/me/medal-scene"
 import {
-  freshIds, isProductMedal, lockedHint, markSeen, MEDAL_KINDS, MEDAL_KIND_LABEL, MEDAL_UNIT, medalAction, medalBack, medalCondition, medalId, medalName, medalProgress, medalStatus, readSeen, TIER_NAME,
+  freshIds,
+  isProductMedal,
+  lockedHint,
+  markSeen,
+  MEDAL_KINDS,
+  MEDAL_KIND_LABEL,
+  MEDAL_UNIT,
+  medalAction,
+  medalBack,
+  medalCondition,
+  medalId,
+  medalName,
+  medalProgress,
+  medalStatus,
+  readSeen,
+  TIER_NAME,
 } from "@/lib/medals"
 import { cn } from "@/lib/utils"
 
@@ -112,7 +127,7 @@ export function MedalWall({ medals, userId }: { medals: Medal[]; userId: string 
           if (!row.length) return null
           return (
             <div key={kind}>
-              <div className="mt-4 mb-2 flex items-center justify-between gap-2"><h3 className="text-base font-medium">{MEDAL_KIND_LABEL[kind]} · {row[0]?.have ?? 0} {MEDAL_UNIT[kind]}</h3><ContextHelp label={`${MEDAL_KIND_LABEL[kind]}達成條件`}>{row.map((medal) => <p key={medalId(medal)}><b>{TIER_NAME[medal.tier]}：</b>{medalCondition(medal)}</p>)}</ContextHelp></div>
+              <div className="mt-4 mb-2 flex items-center justify-between gap-2"><h3 className="text-base font-medium">{MEDAL_KIND_LABEL[kind]} · {row[0]?.have ?? 0} {MEDAL_UNIT[kind]}</h3></div>
               <div className={cn("grid gap-1.5", row.length === 1 ? "grid-cols-1" : "grid-cols-3")}>
                 {row.map((m) => {
                   const progress = medalProgress(m)
@@ -147,7 +162,6 @@ export function MedalWall({ medals, userId }: { medals: Medal[]; userId: string 
           )
         })}
       </div>
-      <p className="mt-3 text-xs leading-relaxed text-muted-foreground">{medals.every(m => isProductMedal(m.kind)) ? "品類成就依你的課程過關紀錄解鎖。" : "路線成就算首頁點過的不同站點；品類成就依你的課程過關紀錄解鎖。"}</p>
       {hint && (
         <p role="status" className="mt-2 rounded-xl bg-muted px-3 py-2 text-sm">
           {hint}

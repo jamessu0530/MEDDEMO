@@ -54,9 +54,6 @@ export function CoursePath({
         <div className="mt-3 flex items-center gap-3">
           <div className="flex-1">
             <h2 className="text-xl font-semibold">跟熊熊滾，練一趟拜訪</h2>
-            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-              每關練一個操作，做對就往前走。五關完成，解鎖 AI 問答。
-            </p>
           </div>
           <Mascot
             state={finished ? "yay" : "hi"}
@@ -212,9 +209,6 @@ export function CoursePath({
           )}
         </div>
       </div>
-      <p className="text-center text-xs leading-relaxed text-muted-foreground">
-        練習使用虛構情境，不會送出正式紀錄。過關進度跟著帳號保存。
-      </p>
     </section>
   )
 }

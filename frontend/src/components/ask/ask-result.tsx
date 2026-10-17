@@ -7,6 +7,7 @@ import { ApiError } from "@/api/client"
 import { addStopsToToday } from "@/api/route"
 import { AttachmentThumbs } from "@/components/attachments/attachment-thumbs"
 import { Mascot } from "@/components/mascot"
+import { ProductPhotoMatches } from "@/components/product-appearance-search"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/lib/auth"
 import { cn } from "@/lib/utils"
@@ -50,6 +51,7 @@ export function AskAnswer({ ask, onChange, compact = false }: { ask: Ask; onChan
       {ask.status === "no_evidence" && <p className="text-sm font-medium">查無依據</p>}
       {ask.status === "not_converged" && <p className="text-sm font-medium">查了三輪還答不完整，以下是已經查到的部分</p>}
       <p className="text-sm leading-relaxed whitespace-pre-line">{ask.answer}</p>
+      {ask.evidence?.product_photos && <ProductPhotoMatches matches={ask.evidence.product_photos} />}
       {compact && hasEvidence ? (
         <details className="text-xs text-muted-foreground">
           <summary className="cursor-pointer py-1">查看依據與相關操作</summary>

@@ -44,6 +44,10 @@ spec:
               value: {{ .Values.monitoring.environment | quote }}
             - name: GRAFANA_CLOUD_REFRESH_SECONDS
               value: {{ .Values.monitoring.intervalSeconds | quote }}
+            {{- if .Values.monitoring.logs.enabled }}
+            - name: REQUEST_LOG_PATH
+              value: /var/log/meddemo/api.jsonl
+            {{- end }}
             {{- if .Values.monitoring.enabled }}
             - name: METRICS_TOKEN
               valueFrom:
@@ -60,6 +64,11 @@ spec:
               path: /health
               port: 8000
             periodSeconds: 5
+          {{- if .Values.monitoring.logs.enabled }}
+          volumeMounts:
+            - name: api-logs
+              mountPath: /var/log/meddemo
+          {{- end }}
         {{- if .Values.monitoring.enabled }}
         - name: alloy
           image: {{ .Values.monitoring.alloyImage | quote }}
@@ -72,6 +81,10 @@ spec:
           envFrom:
             - secretRef:
                 name: {{ .Values.monitoring.secretName }}
+            {{- if .Values.monitoring.logs.enabled }}
+            - secretRef:
+                name: {{ .Values.monitoring.logs.secretName }}
+            {{- end }}
           env:
             - name: POD_NAME
               valueFrom:
@@ -96,6 +109,11 @@ spec:
               readOnly: true
             - name: alloy-data
               mountPath: /var/lib/alloy
+            {{- if .Values.monitoring.logs.enabled }}
+            - name: api-logs
+              mountPath: /var/log/meddemo
+              readOnly: true
+            {{- end }}
       volumes:
         - name: alloy-config
           configMap:
@@ -103,4 +121,9 @@ spec:
         - name: alloy-data
           emptyDir:
             sizeLimit: 256Mi
+        {{- if .Values.monitoring.logs.enabled }}
+        - name: api-logs
+          emptyDir:
+            sizeLimit: 32Mi
+        {{- end }}
         {{- end }}

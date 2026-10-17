@@ -2,7 +2,13 @@ import { useState } from "react"
 
 import { submitTranscript, type Visit } from "@/api/visits"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 
 type TranscriptDialogProps = {
@@ -33,10 +39,9 @@ export function TranscriptDialog({ visit, open, onOpenChange, onSubmitted }: Tra
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle>手動輸入逐字稿</DialogTitle>
-          <DialogDescription>把剛剛講的內容打進來，系統一樣會整理成五個欄位。</DialogDescription>
         </DialogHeader>
         <Textarea
           value={text}

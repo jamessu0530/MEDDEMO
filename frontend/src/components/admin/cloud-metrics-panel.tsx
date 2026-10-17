@@ -302,9 +302,6 @@ export function CloudMetricsPanel() {
               >
                 系統監控中心
               </h2>
-              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                服務品質、功能流量與 API 資源，一起掌握。
-              </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <NativeSelect
@@ -526,7 +523,6 @@ export function CloudMetricsPanel() {
                 <MetricChart
                   data={visibleData}
                   title="API 請求流量"
-                  description="觀察操作與壓測帶來的每秒請求變化"
                   series={[
                     {
                       key: "requests_per_second",
@@ -539,7 +535,6 @@ export function CloudMetricsPanel() {
                 <MetricChart
                   data={visibleData}
                   title="回應時間分位數"
-                  description="同時比較一般請求與長尾延遲"
                   series={[
                     { key: "p50_seconds", label: "p50", color: "#0ea5e9" },
                     { key: "p95_seconds", label: "p95", color: "#8b5cf6" },
@@ -552,7 +547,6 @@ export function CloudMetricsPanel() {
                 <MetricChart
                   data={visibleData}
                   title="HTTP 錯誤比率"
-                  description="分開觀察請求錯誤與伺服器錯誤"
                   series={[
                     {
                       key: "client_error_percent",
@@ -566,7 +560,6 @@ export function CloudMetricsPanel() {
                 <MetricChart
                   data={visibleData}
                   title="處理中請求"
-                  description="觀察同時處理的請求是否持續堆積"
                   series={[
                     { key: "in_progress", label: "處理中", color: "#0ea5e9" },
                   ]}
@@ -576,7 +569,6 @@ export function CloudMetricsPanel() {
                 <MetricChart
                   data={visibleData}
                   title="API CPU 用量"
-                  description="所有 API process 使用核心數的合計"
                   series={[
                     { key: "cpu_cores", label: "CPU", color: "#8b5cf6" },
                   ]}
@@ -586,7 +578,6 @@ export function CloudMetricsPanel() {
                 <MetricChart
                   data={visibleData}
                   title="API 記憶體用量"
-                  description="觀察常駐記憶體的變化與成長趨勢"
                   series={[
                     { key: "memory_bytes", label: "記憶體", color: "#10b981" },
                   ]}
@@ -603,17 +594,6 @@ export function CloudMetricsPanel() {
                   <StatusDistribution data={visibleData} />
                   <InstanceStatus data={visibleData} />
                 </div>
-              </div>
-              <div className="flex flex-wrap justify-between gap-x-4 gap-y-1 border-t pt-3 text-[10px] leading-relaxed text-muted-foreground">
-                <p>
-                  查詢 {CLOCK.format(new Date(visibleData.fetched_at))} · 每點{" "}
-                  {visibleData.step_seconds} 秒 · 與 Grafana 讀取相同 Cloud
-                  Metrics
-                </p>
-                <p>
-                  — 為缺少樣本；無流量時不估算成功率。CPU／記憶體僅涵蓋 API
-                  process。
-                </p>
               </div>
             </>
           )}

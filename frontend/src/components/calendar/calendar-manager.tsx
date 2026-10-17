@@ -12,7 +12,6 @@ import { Button } from "@/components/ui/button"
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
@@ -38,12 +37,9 @@ export function CalendarManager({ workspace, onClose, onChanged }: Props) {
   )
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="planner-dialog max-h-[90svh] overflow-y-auto sm:max-w-3xl">
+      <DialogContent aria-describedby={undefined} className="planner-dialog max-h-[90svh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>日曆與設定</DialogTitle>
-          <DialogDescription>
-            管理分類、共享權限、外部連接與通知。
-          </DialogDescription>
         </DialogHeader>
         <div className="planner-form grid gap-5 sm:grid-cols-[180px_minmax(0,1fr)]">
           <nav className="flex flex-col gap-1" aria-label="日曆設定選單">
@@ -307,10 +303,6 @@ function CalendarSettings({
             </label>
           )}
         </div>
-        <p className="text-xs text-muted-foreground">
-          ICS 檔案可與 Apple、Google 等行事曆交換；重複匯入相同 UID
-          會更新原行程。
-        </p>
       </section>
       {owner && (
         <section className="space-y-2 border-t pt-4">
@@ -737,10 +729,6 @@ function ConnectCalendar({ onSaved }: { onSaved: () => void }) {
       </label>
       {body.source === "ics" ? (
         <>
-          <p className="text-xs text-muted-foreground">
-            支援 Apple 公開行事曆、Google 秘密 ICS
-            網址與節日訂閱。每五分鐘檢查更新，可隨時手動同步。
-          </p>
           <Button
             type="button"
             size="sm"
@@ -776,11 +764,6 @@ function ConnectCalendar({ onSaved }: { onSaved: () => void }) {
               onChange={(e) => patch({ password: e.target.value })}
             />
           </label>
-          <p className="text-xs text-muted-foreground">
-            iCloud 請使用 Apple 帳號與 App
-            專用密碼。先取得日曆清單，再選擇一本連接；Google 可使用上方 ICS
-            訂閱。
-          </p>
           <Button
             type="button"
             variant="outline"
@@ -852,15 +835,8 @@ function NotificationSettings({
   return (
     <section className="space-y-4">
       <h3 className="font-semibold">行程通知</h3>
-      <p className="text-sm">
-        每個行程可以設定多次提醒。登入期間，站內提醒會在任何頁面出現。
-      </p>
       <div className="space-y-2 rounded-xl border p-3">
         <h4 className="font-medium">背景推播</h4>
-        <p className="text-xs text-muted-foreground">
-          啟用後，即使關閉日曆頁面也能收到通知。iPhone
-          需將網站加入主畫面，並從主畫面開啟。
-        </p>
         {!pushSupported() ? (
           <p className="text-xs text-muted-foreground">
             目前瀏覽器尚無法啟用背景推播。

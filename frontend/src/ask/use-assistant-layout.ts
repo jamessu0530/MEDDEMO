@@ -2,8 +2,8 @@ import { useEffect, useState } from "react"
 import { useLocation } from "react-router"
 import { assistantLayout } from "@/ask/assistant-layout"
 
-/** 面板與輸入列一起放在可見範圍內；只讓收合入口避讓頁面上的輸入列。 */
-export function useAssistantLayout(active = true, avoidObstacles = false) {
+/** 底部助理避開固定操作列，並將回覆與輸入欄一起限制在鍵盤上方。 */
+export function useAssistantLayout(active = true) {
   const { pathname, search } = useLocation()
   const [layout, setLayout] = useState<{
     inset: number
@@ -15,7 +15,6 @@ export function useAssistantLayout(active = true, avoidObstacles = false) {
     const resize = new ResizeObserver(() => schedule())
     const update = () => {
       const footers: DOMRect[] = []
-      const obstacles: DOMRect[] = []
       document
         .querySelectorAll<HTMLElement>("[data-page-footer]")
         .forEach((element) => {
@@ -29,21 +28,10 @@ export function useAssistantLayout(active = true, avoidObstacles = false) {
           )
             footers.push(bounds)
         })
-      if (avoidObstacles) {
-        document
-          .querySelectorAll<HTMLElement>("[data-assistant-obstacle]")
-          .forEach((element) => {
-            if (element.closest('[role="dialog"]')) return
-            resize.observe(element)
-            const bounds = element.getBoundingClientRect()
-            if (bounds.width && bounds.height) obstacles.push(bounds)
-          })
-      }
       const next = assistantLayout({
         layoutHeight: window.innerHeight,
         viewport: window.visualViewport,
         footers,
-        obstacles,
       })
       setLayout((current) =>
         current.inset === next.inset &&
@@ -72,6 +60,6 @@ export function useAssistantLayout(active = true, avoidObstacles = false) {
       window.visualViewport?.removeEventListener("resize", schedule)
       window.visualViewport?.removeEventListener("scroll", schedule)
     }
-  }, [pathname, search, active, avoidObstacles])
+  }, [pathname, search, active])
   return layout
 }

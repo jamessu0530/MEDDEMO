@@ -150,9 +150,6 @@ function Bounds({
           請輸入有效範圍；下限小於上限{bars ? "，資料條範圍須包含零" : ""}。
         </p>
       )}
-      <p className="text-xs text-muted-foreground">
-        留空使用自動範圍。超界數值使用邊界色彩／長度，原值仍可查閱。
-      </p>
     </fieldset>
   )
 }
@@ -373,9 +370,6 @@ export function ReportFormatFields({
           value={number.show_unit ?? true}
           onChange={(show_unit) => updateNumber({ show_unit })}
         />
-        <p className="text-xs text-muted-foreground">
-          僅改變顯示。Tooltip 與逐筆明細保留完整原值；各指標可分別設定。
-        </p>
       </fieldset>
       <fieldset className="space-y-2 rounded border p-2">
         <legend className="px-1 text-xs font-medium">
@@ -437,9 +431,6 @@ export function ReportFormatFields({
         )}
         {conditional.color_mode === "rules" && (
           <>
-            <p className="text-xs text-muted-foreground">
-              由上往下套用第一條符合規則；下限包含、上限不包含。留空表示不限。
-            </p>
             {conditional.rules?.map((rule, index) => (
               <RuleEditor
                 key={`${index}-${rule.minimum}-${rule.maximum}`}
@@ -556,18 +547,6 @@ export function ReportFormatFields({
             )}
           </>
         )}
-        <p className="text-xs text-muted-foreground">
-          {card.visual === "matrix"
-            ? "自動範圍使用完整最低層分組，換頁與收合不改變刻度。"
-            : "自動範圍使用圖表顯示的分組。"}
-          空值不著色、不畫資料條。條件式色彩優先於系列配色；折線依各資料點與連線終點著色。
-        </p>
-        {card.visual === "scatter" && (
-          <p className="text-xs text-muted-foreground">
-            散佈點先套用主指標規則，未符合時使用第二指標規則。第二指標顏色也套用
-            Y 軸標籤。
-          </p>
-        )}
       </fieldset>
       <fieldset className="space-y-2 rounded border p-2">
         <legend className="px-1 text-xs font-medium">
@@ -621,9 +600,6 @@ export function ReportFormatFields({
         >
           恢復自動配色
         </button>
-        <p className="text-xs text-muted-foreground">
-          顏色依分組編號保存，排序或篩選後仍使用相同顏色。
-        </p>
       </fieldset>
       {cartesian && (
         <fieldset className="space-y-2 rounded border p-2">
@@ -715,10 +691,6 @@ export function ReportFormatFields({
               }
             />
           ))}
-        <p className="text-xs text-muted-foreground">
-          顯示完整分組路徑、指標名稱與原始單位；關閉 Tooltip
-          仍保留鍵盤操作與明細入口。
-        </p>
       </fieldset>
     </div>
   )

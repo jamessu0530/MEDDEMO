@@ -60,9 +60,6 @@ export function RegisterPage() {
         <CompanyLogo className="mb-3 w-40" />
         <p className="text-xs text-muted-foreground">中化裕民 · 業務 AI 助理</p>
         <h1 className="mt-1 text-2xl font-semibold">建立帳號</h1>
-        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-          建好就直接登入，查看客戶資料與今日路線。
-        </p>
       </header>
 
       <form className="flex flex-col gap-4" onSubmit={submit}>

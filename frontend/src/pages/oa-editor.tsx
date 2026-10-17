@@ -211,29 +211,11 @@ function OaEditor({ code, id }: { code?: string; id?: number }) {
       {ready && template && catalog && (
         <main className="mx-auto grid max-w-6xl gap-6 px-4 py-6 lg:grid-cols-[minmax(0,1fr)_20rem] lg:px-8">
           <div className="flex min-w-0 flex-col gap-5">
-            <div className="rounded-2xl border bg-muted/50 p-4 text-sm leading-relaxed">
-              <p className="font-semibold">
-                {template.display_code ? `${template.display_code} · ` : ""}
-                OA 申請表單
-              </p>
-              <p className="mt-1 text-muted-foreground">
-                填妥申請資料，核對後送主管簽核。
-              </p>
-              {template.sap_origin && (
-                <p className="mt-2 font-medium text-amber-700 dark:text-amber-400">
-                  PR／PO 須由 SAP 起單；此處可先整理申請資料，無法代建 SAP
-                  單據。
-                </p>
-              )}
-            </div>
             <section className="rounded-2xl border-2 bg-card p-4 shadow-lip sm:p-5">
               <h2 className="flex items-center gap-2 font-semibold">
                 <Sparkles className="size-5 text-primary" />
                 助理幫你填
               </h2>
-              <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                貼上申請內容，助理只整理有提供的資料；每個欄位都能修改。未提供的資料會保留空白。
-              </p>
               <Textarea
                 aria-label="申請內容"
                 data-ui-demo="oa-assistant-content"
@@ -278,7 +260,6 @@ function OaEditor({ code, id }: { code?: string; id?: number }) {
               <p className="mb-4 text-sm text-muted-foreground">
                 申請人：{user?.acting_as?.name ?? user?.name} ·{" "}
                 {user?.acting_as?.id ?? user?.id}
-                <span className="ml-2 text-xs">依登入身分帶入</span>
               </p>
               <fieldset
                 disabled={Boolean(busy)}
@@ -394,20 +375,13 @@ function OaEditor({ code, id }: { code?: string; id?: number }) {
                   ? `還缺 ${missing.length} 項資料`
                   : "必填資料已齊全"}
               </p>
-              {missing.length > 0 ? (
+              {missing.length > 0 && (
                 <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
                   {missing.map((label) => (
                     <li key={label}>{label}</li>
                   ))}
                 </ul>
-              ) : (
-                <p className="mt-2 text-sm text-muted-foreground">
-                  請再核對金額、日期、單號與申請內容。
-                </p>
               )}
-              <p className="mt-4 border-t pt-3 text-xs leading-relaxed text-muted-foreground">
-                簽核流程：申請人 → 直屬主管。退回後可修改再送。
-              </p>
               {error && (
                 <p
                   role="alert"
@@ -438,9 +412,6 @@ function OaEditor({ code, id }: { code?: string; id?: number }) {
                 </Button>
               </div>
             </section>
-            <p className="px-2 text-xs leading-relaxed text-muted-foreground">
-              缺少正式欄位、附件或簽核規則？回到「我的應用」可複製待補資料清單給業務。
-            </p>
           </aside>
         </main>
       )}

@@ -30,7 +30,6 @@ export function ConfirmView({ visit, onChange }: ConfirmViewProps) {
   const promotions = usePromotions()
   const packs = Object.fromEntries(promotions.flatMap((p) => p.items).map((pack) => [pack.code, pack]))
 
-  const filled = FIELD_ORDER.filter((key) => visit.fields[key] !== null).length
   const otherCustomers = (visit.customer_candidates ?? []).filter((candidate) => candidate.id !== visit.customer_id)
 
   async function switchCustomer() {
@@ -90,7 +89,6 @@ export function ConfirmView({ visit, onChange }: ConfirmViewProps) {
         </section>
       )}
 
-      <p className="text-sm text-muted-foreground">已整理出 {filled} 個欄位 · 點欄位可以修改</p>
       <ul className="flex flex-col gap-2">
         {FIELD_ORDER.map((key) => {
           // 有給就取代純文字摘要：競品要標「首次」，意向照上次展開時一項一行、寫變了什麼
@@ -114,7 +112,6 @@ export function ConfirmView({ visit, onChange }: ConfirmViewProps) {
         })}
       </ul>
 
-      <p className="text-xs text-muted-foreground">確認後會同時寫入 CRM · SAP · OA</p>
       {problem && <p className="text-sm text-destructive">{problem}</p>}
       <Button className="h-12 text-base" onClick={confirm} disabled={confirming || switching}>
         {confirming ? "寫入中…" : "確認並回寫"}

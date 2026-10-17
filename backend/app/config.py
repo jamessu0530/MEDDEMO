@@ -51,6 +51,8 @@ class Settings(BaseSettings):
     redis_url: str = "redis://127.0.0.1:6379/0"
     # Alloy 專用的抓取金鑰；留空時 /metrics 回 404，不開放匿名讀取。
     metrics_token: str = ""
+    # 僅輸出允許的 HTTP 診斷欄位，由同 Pod 的 Alloy 送至 Loki。留空停用。
+    request_log_path: str = ""
     # IT 頁面由後端讀 Cloud Metrics；與 Alloy 的 metrics:write token 分開。
     grafana_cloud_query_url: str = ""
     grafana_cloud_prometheus_username: str = ""

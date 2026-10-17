@@ -1,8 +1,19 @@
+export type StoredStorefrontPhoto = {
+  image_url: string
+  source_url: string
+  credit?: string | null
+  license_name?: string | null
+  license_url?: string | null
+}
+
 export type StorefrontCustomer = {
+  id?: string
   name: string
   city: string
   area: string
   address?: string | null
+  storefront_photo?: StoredStorefrontPhoto | null
+  google_place_id?: string | null
 }
 export type StorefrontCandidate = {
   displayName?: string | null
@@ -32,7 +43,13 @@ export function storefrontQuery(customer: StorefrontCustomer) {
 }
 
 export function storefrontSearchUrl(customer: StorefrontCustomer) {
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(storefrontQuery(customer))}`
+  const params = new URLSearchParams({
+    api: "1",
+    query: storefrontQuery(customer),
+  })
+  if (customer.google_place_id)
+    params.set("query_place_id", customer.google_place_id)
+  return `https://www.google.com/maps/search/?${params}`
 }
 
 /** 同時核對完整店名（含分店）與行政區。多個結果都符合時，留給使用者在 Google 確認。 */

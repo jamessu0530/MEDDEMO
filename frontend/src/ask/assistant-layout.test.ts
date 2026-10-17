@@ -2,14 +2,13 @@ import { describe, expect, it } from "vitest"
 import { assistantLayout } from "./assistant-layout"
 
 describe("手機助理的可見空間", () => {
-  it("保留底部分頁列，收合入口再避讓頻道輸入列", () => {
+  it("底部輸入欄保留分頁列的操作空間", () => {
     expect(
       assistantLayout({
         layoutHeight: 844,
         footers: [{ top: 764, bottom: 844 }],
-        obstacles: [{ top: 640, bottom: 764 }],
       })
-    ).toEqual({ inset: 212, availableHeight: 632 })
+    ).toEqual({ inset: 80, availableHeight: 764 })
   })
 
   it("鍵盤打開且 Safari 平移畫面時，面板高度仍不超過可見範圍", () => {
@@ -48,17 +47,16 @@ describe("手機助理的可見空間", () => {
     })
   })
 
-  it("頁面輸入列的掃描順序不改變避讓結果", () => {
-    const obstacles = [
+  it("固定操作列的掃描順序不改變避讓結果", () => {
+    const footers = [
       { top: 600, bottom: 764 },
       { top: 680, bottom: 764 },
     ]
     const args = {
       layoutHeight: 844,
-      footers: [{ top: 764, bottom: 844 }],
     }
-    expect(assistantLayout({ ...args, obstacles })).toEqual(
-      assistantLayout({ ...args, obstacles: [...obstacles].reverse() })
+    expect(assistantLayout({ ...args, footers })).toEqual(
+      assistantLayout({ ...args, footers: [...footers].reverse() })
     )
   })
 })

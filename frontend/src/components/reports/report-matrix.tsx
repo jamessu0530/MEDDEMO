@@ -1,17 +1,12 @@
+import { useMemo } from "react"
 import { ChevronDown, ChevronRight } from "@/components/icons"
 import { NativeSelect } from "@/components/ui/native-select"
 import { ReportPointComparison } from "@/components/reports/report-comparison"
 import { ReportFormattedValue } from "@/components/reports/report-formatted-value"
+import { reportDisplayValue, reportTooltip } from "@/lib/report-format"
 import {
-  reportDisplayValue,
-  reportMatrixFormatDomain,
-  reportTooltip,
-} from "@/lib/report-format"
-import {
-  MATRIX_ROOT,
   matrixAllDepth,
   matrixFilters,
-  matrixHeaders,
   matrixPathExpanded,
   matrixSelection,
   toggleMatrixPath,
@@ -27,8 +22,79 @@ import {
   type ReportMatrixView,
   type ReportSelectionPoint,
 } from "@/lib/reports"
+import { finishWork } from "@/lib/background-work"
+import {
+  reportMatrixWork,
+  type MatrixWorkResult,
+} from "@/lib/report-matrix-work"
+import { usePageWork } from "@/lib/use-page-work"
 
-export function ReportMatrix({
+const EMPTY_VIEW: ReportMatrixView = {}
+type MatrixProps = Omit<Parameters<typeof MatrixContent>[0], "prepared">
+
+export function ReportMatrix(props: MatrixProps) {
+  const { card, data, highlight, view = EMPTY_VIEW } = props
+  const input = useMemo(
+    () => ({
+      kind: "matrix" as const,
+      source: { data, highlight },
+      query: { card, view },
+    }),
+    [card, data, highlight, view]
+  )
+  // Small matrices render immediately; large matrices share the bounded worker pool.
+  const inline = useMemo(
+    () =>
+      data.cells.length + (highlight?.cells.length ?? 0) <= 400
+        ? finishWork(reportMatrixWork(input.source, input.query))
+        : null,
+    [data, highlight, input]
+  )
+  const task = usePageWork(input, !inline)
+  const prepared =
+    inline ?? (task.result?.kind === "matrix" ? task.result.value : null)
+  const resolved = inline
+    ? input
+    : task.input?.kind === "matrix"
+      ? task.input
+      : null
+  if (task.error)
+    return (
+      <p role="alert" className="p-3 text-sm text-destructive">
+        {task.error}
+      </p>
+    )
+  if (!prepared || !resolved)
+    return (
+      <p role="status" className="p-3 text-sm text-muted-foreground">
+        正在整理矩陣…
+      </p>
+    )
+  return (
+    <div className="relative" aria-busy={task.pending}>
+      {task.pending && (
+        <p
+          role="status"
+          className="pointer-events-none absolute top-0 right-0 z-10 rounded bg-card/90 px-2 py-1 text-xs text-muted-foreground"
+        >
+          正在整理矩陣…
+        </p>
+      )}
+      <div inert={task.pending}>
+        <MatrixContent
+          {...props}
+          card={resolved.query.card}
+          data={resolved.source.data}
+          highlight={resolved.source.highlight}
+          view={resolved.query.view}
+          prepared={prepared}
+        />
+      </div>
+    </div>
+  )
+}
+
+function MatrixContent({
   card,
   data,
   highlight,
@@ -36,6 +102,7 @@ export function ReportMatrix({
   onViewChange,
   onSelect,
   selections = [],
+  prepared,
 }: {
   card: ReportCard
   data: ReportMatrixData
@@ -44,23 +111,16 @@ export function ReportMatrix({
   onViewChange?: (view: ReportMatrixView) => void
   onSelect?: (point: ReportSelectionPoint) => void
   selections?: ReportSelectionPoint[]
+  prepared: MatrixWorkResult
 }) {
   const options = reportMatrixOptions(card)
-  const columns = [
-    ...data.columns,
-    ...(options.show_grand_total || !data.columns.length ? [MATRIX_ROOT] : []),
-  ]
-  const rows = [
-    ...data.rows,
-    ...(options.show_grand_total ? [MATRIX_ROOT] : []),
-  ]
-  const headers = matrixHeaders(card, columns, view)
-  const index = new Map(
-    data.cells.map((cell) => [`${cell.row_id}|${cell.column_id}`, cell])
+  const { columns, rows, headers, index, selectedIndex, domains } = prepared
+  const selectedKeys = useMemo(
+    () => new Set(selections.map(selectionPointKey)),
+    [selections]
   )
-  const selectedIndex = new Map(
-    highlight?.cells.map((cell) => [`${cell.row_id}|${cell.column_id}`, cell])
-  )
+  const highlightedCell = (key: string) =>
+    highlight?.cells[selectedIndex.get(key) ?? -1]
   const move = (axis: "row" | "column", page: number) =>
     onViewChange?.({ ...view, [`${axis}_page`]: page })
   return (
@@ -92,13 +152,6 @@ export function ReportMatrix({
         </div>
       )}
       <p className="text-xs text-muted-foreground">{data.note}</p>
-      {Object.values(card.format?.conditional ?? {}).some(
-        (format) => format?.data_bars
-      ) && (
-        <p className="text-xs text-muted-foreground">
-          資料條共用零軸，自動刻度使用完整最低層分組。三角記號表示超出刻度，數字仍為原值。
-        </p>
-      )}
       <div
         className="max-h-[60dvh] max-w-full min-w-0 overflow-auto rounded-md border"
         aria-label={`${card.title}階層矩陣`}
@@ -251,16 +304,13 @@ export function ReportMatrix({
                 </th>
                 {columns.flatMap((column) =>
                   options.metrics.map((metric) => {
-                    const cell = index.get(`${row.id}|${column.id}`)
+                    const cell =
+                      data.cells[index.get(`${row.id}|${column.id}`) ?? -1]
                     const amount =
                       cell?.values[metric] ?? emptyMetricValue(metric)
                     const point = matrixSelection(row, column, metric)
                     const selected =
-                      point &&
-                      selections.some(
-                        (entry) =>
-                          selectionPointKey(entry) === selectionPointKey(point)
-                      )
+                      point && selectedKeys.has(selectionPointKey(point))
                     const show = row.show_values && column.show_values
                     const comparison = cell?.comparisons[metric]
                     const context =
@@ -280,7 +330,7 @@ export function ReportMatrix({
                         ...(highlight
                           ? {
                               highlight:
-                                selectedIndex.get(`${row.id}|${column.id}`)
+                                highlightedCell(`${row.id}|${column.id}`)
                                   ?.values[metric] ?? emptyMetricValue(metric),
                             }
                           : {}),
@@ -297,7 +347,7 @@ export function ReportMatrix({
                             card={card}
                             value={amount}
                             metric={metric}
-                            domain={reportMatrixFormatDomain(data, metric)}
+                            domain={domains[metric]!}
                             total={
                               row.depth === 0 ||
                               (column.depth === 0 &&
@@ -341,7 +391,7 @@ export function ReportMatrix({
                                 選取{" "}
                                 {reportDisplayValue(
                                   card,
-                                  selectedIndex.get(`${row.id}|${column.id}`)
+                                  highlightedCell(`${row.id}|${column.id}`)
                                     ?.values[metric] ??
                                     emptyMetricValue(metric),
                                   metric
@@ -379,8 +429,7 @@ export function ReportMatrix({
             className="flex flex-wrap items-center justify-between gap-2 text-xs"
           >
             <span>
-              {name} {total ? (page - 1) * size + 1 : 0}–
-              {Math.min(total, page * size)} / {total} 個分組
+              {name} · 第 {page}／{pages} 頁
             </span>
             {onViewChange && (
               <div className="flex flex-wrap items-center gap-1">

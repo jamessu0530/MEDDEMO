@@ -34,7 +34,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
 } from "@/components/ui/dialog"
 import { formatDate, formatTaipeiDateTime } from "@/lib/format"
 import { ORDER_STATUS, PAYMENT_TERMS, orderMoney } from "@/lib/orders"
@@ -130,12 +129,11 @@ export function OrdersPage({
           <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
             <div>
               <h2 className="font-semibold">訂單清單</h2>
-              <p role="status" className="mt-1 text-xs text-muted-foreground">
-                {result
-                  ? `${result.total} 筆訂單 · 資料基準日 ${result.as_of}`
-                  : "載入訂單中…"}
-                {busy && result && " · 更新中…"}
-              </p>
+              {busy && (
+                <p role="status" className="mt-1 text-xs text-muted-foreground">
+                  {result ? "更新中…" : "載入訂單中…"}
+                </p>
+              )}
             </div>
             <Button
               variant="ghost"
@@ -304,11 +302,6 @@ export function OrdersPage({
                   ? "沒有符合條件的訂單"
                   : "從第一張訂單開始"}
               </h3>
-              <p className="text-sm text-muted-foreground">
-                {query || status !== "all"
-                  ? "調整搜尋或狀態，看看其他訂單。"
-                  : "先選擇客戶建立草稿，再加入需要的產品。"}
-              </p>
               <Button
                 variant="outline"
                 onClick={() => {
@@ -494,14 +487,9 @@ function CreateOrderDialog({
   }
   return (
     <Dialog open onOpenChange={(open) => !open && !busy && onClose()}>
-      <DialogContent>
+      <DialogContent aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle>新增訂單</DialogTitle>
-          <DialogDescription>
-            {practice
-              ? "依現有客戶與商品練習操作，內容只保留在此頁。"
-              : "先選擇客戶建立草稿，之後再加入產品與出貨資料。"}
-          </DialogDescription>
         </DialogHeader>
         {loadingCustomer && (
           <p role="status" className="text-sm text-muted-foreground">

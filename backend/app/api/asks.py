@@ -21,6 +21,7 @@ from app.db import get_session
 from app.models import AppUser, AskRecord, Attachment, Customer, Escalation, QueryTrace
 from app.services import ask_followup, ask_router, attachments, assistant_context, question_suggestions
 from app.services.scope import SHARING_LEVEL, Scope
+from app.services.product_appearance import is_appearance_question
 from app.tasks import visit_queue
 
 log = logging.getLogger(__name__)
@@ -68,6 +69,10 @@ class RouteOut(BaseModel):
     clarification: str | None = None
     context_used: bool = False
     continues_previous: bool = False
+    # 頁面說明直接回覆；不建立 AskRecord、不送檢索。只有明確要求示範才帶 demo_path。
+    intent: Literal["query", "page_help", "page_demo"] = "query"
+    answer: str | None = None
+    demo_path: str | None = None
 
 
 class SuggestionsInput(BaseModel):
@@ -224,6 +229,8 @@ def route_ask(body: RouteInput, user: LearningAiUser):
     question = body.question.strip()
     if not question:
         raise HTTPException(422, "請輸入問題")
+    if body.kind is None and not body.has_file and is_appearance_question(question):
+        return RouteOut(kind="data", choices=[], confidence=1.0, question=question, rewritten=False)
     earlier = [turn.model_dump(exclude_none=True, exclude_defaults=True) for turn in body.earlier]
     if body.page is not None:
         prepared = assistant_context.prepare(question, body.page, earlier, body.has_file)
@@ -232,6 +239,8 @@ def route_ask(body: RouteInput, user: LearningAiUser):
             question=prepared.question, rewritten=prepared.question != question,
             clarification=prepared.clarification, context_used=prepared.context_used,
             continues_previous=prepared.continues_previous,
+            intent="page_demo" if prepared.demo_path else "page_help" if prepared.answer else "query",
+            answer=prepared.answer, demo_path=prepared.demo_path,
         )
     with ThreadPoolExecutor(max_workers=1) as pool:
         # 大多數的問題不用改寫：判斷要不要改寫的同時，先照原話分流，不用改寫就直接用這個結果，不多等一次

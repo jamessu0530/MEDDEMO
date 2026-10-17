@@ -6,7 +6,7 @@ import { ApiError } from "@/api/client"
 import { createContractRequest, getContract, getCustomer, type Contract, type Customer } from "@/api/customers"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
-import { ContextHelp } from "@/components/context-help"
+
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -136,7 +136,7 @@ export function ContractPage() {
         {contract && (
           <>
             <section className="rounded-2xl border-2 bg-card px-4 py-3 shadow-lip">
-              <div className="flex items-center justify-between"><h2 className="text-base font-semibold">目前條件</h2><ContextHelp label="費率計算方式"><p>依近 90 天交易計算，上架費率與通路獎勵率分別為該項費用除以進貨金額。</p></ContextHelp></div>
+              <div className="flex items-center justify-between"><h2 className="text-base font-semibold">目前條件</h2></div>
               <dl className="mt-2 grid grid-cols-3 gap-2 text-center">
                 <Term label="到期日" value={contract.contract_end_date?.replaceAll("-", "/") ?? "—"} warn={contract.ending_soon} />
                 <Term label="上架費率" value={formatRate(contract.listing_fee_rate)} />

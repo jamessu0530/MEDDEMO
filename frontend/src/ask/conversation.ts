@@ -66,6 +66,12 @@ export type Conversation = {
   ) => number
   appendText: (id: number, chunk: string) => void
   replace: (id: number, patch: Partial<Omit<ToolRun, "id" | "kind">>) => void
+  completeWithMessage: (
+    id: number,
+    source: UtteranceSource,
+    text: string,
+    options?: Pick<Utterance, "demo" | "demoPath">
+  ) => void
   attach: (id: number, attachment: Attachment) => void
 }
 
@@ -138,6 +144,19 @@ export function createConversation(): Conversation {
       commit(
         entries.map((e) =>
           e.id === id && e.kind === "user" ? { ...e, attachment } : e
+        )
+      )
+    },
+
+    completeWithMessage: (id, source, text, options = {}) => {
+      const target = entries.find((entry) => entry.id === id)
+      if (!target || target.kind !== "tool") return
+      // 在原本的「理解問題」位置顯示一般回覆，不留下查詢卡或改動對話順序。
+      commit(
+        entries.map((entry) =>
+          entry.id === id
+            ? { id, kind: "model", source, text, page: target.page, ...options }
+            : entry
         )
       )
     },

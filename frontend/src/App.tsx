@@ -88,7 +88,7 @@ function CatalogEntry() {
 /** 沒登入的頁：電腦版也照手機的寬度置中 */
 function PhoneColumn() {
   return (
-    <div data-ui-demo-page className="lg:mx-auto lg:max-w-md">
+    <div data-ui-demo-page className="pb-[var(--page-assistant-dock-space,5rem)] lg:mx-auto lg:max-w-md">
       <Outlet />
     </div>
   )

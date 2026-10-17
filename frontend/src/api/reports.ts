@@ -19,7 +19,7 @@ export type ReportWorkspace = {
   templates: Record<"sales" | "manager", ReportConfig>
   owners: OwnerOption[]
   ai_available: boolean
-  filter_options?: ReportFilterOptions
+  filter_options?: ReportFilterOptions | null
   as_of?: string
   account_id?: string
   active_report_id?: string
@@ -108,16 +108,20 @@ export type ReportAdjustment = {
 }
 
 export function getReports(signal?: AbortSignal) {
-  return request<ReportWorkspace>("/api/reports", { signal }).then(
-    (workspace) => ({
-      ...workspace,
-      config: normalizeReportConfig(workspace.config),
-      templates: {
-        sales: normalizeReportConfig(workspace.templates.sales),
-        manager: normalizeReportConfig(workspace.templates.manager),
-      },
-    })
-  )
+  return request<ReportWorkspace>("/api/reports?include_filters=false", {
+    signal,
+  }).then((workspace) => ({
+    ...workspace,
+    config: normalizeReportConfig(workspace.config),
+    templates: {
+      sales: normalizeReportConfig(workspace.templates.sales),
+      manager: normalizeReportConfig(workspace.templates.manager),
+    },
+  }))
+}
+
+export function getReportFilterOptions(signal?: AbortSignal) {
+  return request<ReportFilterOptions>("/api/reports/filter-options", { signal })
 }
 
 export function saveReportConfig(config: ReportConfig, signal?: AbortSignal) {

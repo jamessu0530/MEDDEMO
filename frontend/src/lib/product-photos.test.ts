@@ -44,7 +44,8 @@ describe("商品型錄照片", () => {
     for (const sku of skus) {
       const photo = productPhoto(sku)
       expect(!!photo !== missing.has(sku), sku).toBe(true)
-      if (photo) expect(["exact", "series"]).toContain(photo.kind)
+      if (photo)
+        expect(["exact", "series", "illustrative"]).toContain(photo.kind)
     }
     for (const source of Object.values(manifest.sources)) {
       const file = new URL(`../../public${source.file}`, import.meta.url)
@@ -57,14 +58,18 @@ describe("商品型錄照片", () => {
     }
   })
 
-  it("共用包裝照片保留同系列標記，示範商品與不同劑量不套用替代照片", () => {
+  it("共用包裝保留同系列標記，明確指定的Demo參考照記錄規格差異", () => {
     const photo = productPhoto("C130068")
     expect(photo?.kind).toBe("series")
     expect(photo?.title).toContain("金舒胃得")
     expect(photo?.src).toMatch(/^\/product-photos\/[^/]+\.webp$/)
     expect(photo?.sourceUrl).toMatch(/^https:\/\//)
     expect(productPhoto("HS-FO30")).toBeNull()
-    expect(productPhoto("C490191")).toBeNull() // 5mg 不使用 20mg 的照片
+    const demo = productPhoto("C490191")
+    expect(demo?.kind).toBe("illustrative")
+    expect(demo?.note).toContain("Demo參考照：")
+    expect(demo?.note).toContain("20mg")
+    expect(demo?.note).toContain("5mg")
   })
 
   it("新增但尚未配圖的商品正常使用缺圖狀態", () => {

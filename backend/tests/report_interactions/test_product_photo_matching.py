@@ -33,6 +33,16 @@ def test_same_brand_different_dosage_form_or_volume_never_matches():
     assert matcher.choose(product("AGGLUTEX INJ. 5000U 5ML*10V"), [injection])["kind"] == "series"
 
 
+def test_reviewed_photo_only_applies_to_unchanged_catalog_row():
+    medicine = product("5-HTP CAP. 100MG 50C/BTL")
+    photo = source("5-羥基色氨酸膠囊100公絲", "5-HTP Capsules 100mg")
+    photo['reviewedProducts'] = [{**medicine, 'kind': 'series', 'note': '原廠100mg膠囊；未呈現50粒瓶裝'}]
+    assert matcher.choose(medicine, [photo])['kind'] == 'series'
+    assert matcher.choose({**medicine, 'sku': 'ANOTHER-SKU'}, [photo]) is None
+    assert matcher.choose(product("5-HTP CAP. 50MG 50C/BTL"), [photo]) is None
+    assert matcher.choose({**medicine, 'category': '日用品'}, [photo]) is None
+
+
 def test_device_accessory_cannot_use_main_device_photo():
     device = source("低週波治療器 HV-F127")
     assert matcher.choose(product("HV-F127 貼片", "醫材"), [device]) is None

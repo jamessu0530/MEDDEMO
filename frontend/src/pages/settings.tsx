@@ -19,7 +19,7 @@ import { LocationShareSection } from "@/components/route/location-share"
 import { TravelModeIcon } from "@/components/route/travel-mode-icon"
 import { NotReadyButton, RedirectButton } from "@/components/oauth-buttons"
 import { PageHeader } from "@/components/page-header"
-import { ContextHelp } from "@/components/context-help"
+
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -32,7 +32,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { playInk } from "@/ink/ink"
-import { canManage, homePath, refreshUser, signIn, useAuth, type AuthUser } from "@/lib/auth"
+import { canManage, homePath, refreshUser, signIn, useAuth, type AccountProfile } from "@/lib/auth"
 import { PROVIDER_LABEL, useProviders, type OAuthProvider } from "@/lib/oauth"
 import { openGuide } from "@/lib/onboarding"
 import { chooseSkin, chooseTextSize } from "@/lib/preferences"
@@ -160,8 +160,7 @@ function TravelModePicker({ userId }: { userId: string }) {
   return (
     <section className="flex flex-col gap-3">
       <div className="flex flex-col gap-1">
-        <div className="flex items-center justify-between"><h2 className="text-base font-semibold">預設交通方式</h2><ContextHelp label="交通方式如何套用"><p>路段時間、地圖路線與排順路會依交通方式計算；個別路段也可以另外調整。</p><p>想重新排序，請到「調整行程」選擇「幫我排順一點」。</p></ContextHelp></div>
-        <p className="text-sm text-muted-foreground">變更後不會重新排列今天的行程。</p>
+        <div className="flex items-center justify-between"><h2 className="text-base font-semibold">預設交通方式</h2></div>
       </div>
       <div role="radiogroup" aria-label="交通方式" className="grid grid-cols-3 gap-2">
         {TRAVEL_MODES.map((option) => (
@@ -188,7 +187,7 @@ function TravelModePicker({ userId }: { userId: string }) {
 }
 
 /** 名字：自己開的帳號可以改（照 flutterproject4 的改暱稱）；公司帳號只顯示 */
-function NameEditor({ user }: { user: AuthUser }) {
+function NameEditor({ user }: { user: AccountProfile }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(user.name)
   const [busy, setBusy] = useState(false)
@@ -273,7 +272,7 @@ function NameEditor({ user }: { user: AuthUser }) {
  * 綁定的登入方式：公司給的 Email 帳號可以在這裡綁第三方帳號，之後在登入頁用它登入就回到這個帳號。
  * Google、GitHub 一律列出來；伺服器還沒設定的那家按「綁定」說明還沒開放。
  */
-function LinkedAccounts({ user, providers }: { user: AuthUser; providers: OAuthProviders }) {
+function LinkedAccounts({ user, providers }: { user: AccountProfile; providers: OAuthProviders }) {
   const location = useLocation()
   const navigate = useNavigate()
   // Google、GitHub 綁定是整頁導走再回來，callback 頁用 location.state 告訴這裡成功了
@@ -317,9 +316,6 @@ function LinkedAccounts({ user, providers }: { user: AuthUser; providers: OAuthP
     <section className="flex flex-col gap-3">
       <div>
         <h2 className="text-base font-semibold">綁定的登入方式</h2>
-        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-          可用以下帳號登入。
-        </p>
       </div>
 
       <ul className="divide-y rounded-2xl border-2 bg-card shadow-lip">
@@ -480,6 +476,7 @@ export function SettingsPage() {
   const [done, setDone] = useState(false)
 
   if (!user) return null // 沒登入進不來（App.tsx 會導去登入頁），這行只是讓型別成立
+  const account = user.demo?.account ?? user
 
   async function submit(event: FormEvent) {
     event.preventDefault()
@@ -509,33 +506,22 @@ export function SettingsPage() {
     }
   }
 
-  if (user.demo?.role) {
-    return (
-      <div className="flex min-h-svh flex-col">
-        <PageHeader title="帳號設定" backTo={homePath(user.role)} />
-        <section className="m-4 rounded-2xl border-2 bg-card p-4 text-sm leading-relaxed shadow-lip">
-          目前使用{ROLE_LABEL[user.role]}「{user.name}」。示範身分下無法修改{user.demo.account.name}的帳號設定。
-        </section>
-      </div>
-    )
-  }
-
   return (
     <div className="flex min-h-svh flex-col">
       <PageHeader title="帳號設定" backTo={homePath(user.role)} />
       <main className="flex flex-1 flex-col gap-5 px-4 pt-4 pb-10">
+        {user.demo?.role && (
+          <p className="rounded-2xl border-2 bg-card p-4 text-sm leading-relaxed shadow-lip">
+            目前示範{ROLE_LABEL[user.role]}「{user.name}」。帳號資料與登入方式會套用至原登入帳號「{account.name}」；其他設定套用至目前的示範身分。
+          </p>
+        )}
         {user.role !== "sales" && <PersonalMemory />}
         <section className="rounded-2xl border-2 bg-card p-4 shadow-lip">
-          <NameEditor user={user} />
+          <NameEditor key={account.id} user={account} />
           <p className="mt-1 text-sm text-muted-foreground">
-            {user.region} · {ROLE_LABEL[user.role]}
+            {account.region} · {ROLE_LABEL[account.role]}
           </p>
-          {user.email && <p className="mt-0.5 text-sm break-all text-muted-foreground">{user.email}</p>}
-          {user.acting_as && (
-            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-              這是自己建立的帳號，名下沒有客戶，今日路線與客戶看的是示範業務{user.acting_as.name}的資料。
-            </p>
-          )}
+          {account.email && <p className="mt-0.5 text-sm break-all text-muted-foreground">{account.email}</p>}
         </section>
 
         <ProfilePhotoSection />
@@ -592,9 +578,9 @@ export function SettingsPage() {
         <SkinPicker />
         <TextSizePicker />
 
-        {providers && <LinkedAccounts user={user} providers={providers} />}
+        {providers && <LinkedAccounts key={account.id} user={account} providers={providers} />}
 
-        {user.has_password === false ? (
+        {account.has_password === false ? (
           <section className="flex flex-col gap-1">
             <h2 className="text-base font-semibold">密碼</h2>
             <p className="text-sm leading-relaxed text-muted-foreground">這個帳號用第三方登入，沒有密碼。</p>
@@ -665,7 +651,7 @@ export function SettingsPage() {
           登出
         </Button>
 
-        {user.can_rename && <DeleteAccount />}
+        {account.can_rename && <DeleteAccount />}
 
         <p className="text-center text-xs text-muted-foreground">
           <Link to="/privacy" className="inline-flex min-h-11 items-center underline underline-offset-2">

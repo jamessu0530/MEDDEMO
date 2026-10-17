@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useState } from "react"
-import { AdvancedMarker, APIProvider, ColorScheme, Map, Polyline, useMap } from "@vis.gl/react-google-maps"
+import {
+  AdvancedMarker,
+  APIProvider,
+  ColorScheme,
+  Map,
+  Polyline,
+  useMap,
+} from "@vis.gl/react-google-maps"
 import { Check, Loader2, LocateFixed } from "@/components/icons"
 
 import type { MapsConfig } from "@/api/maps"
@@ -11,9 +18,10 @@ import { TravelModeIcon } from "@/components/route/travel-mode-icon"
 import { cssColor } from "@/lib/css-color"
 import { shownStop } from "@/lib/home-map"
 import { useLocationShare } from "@/lib/location-share"
-import { drawPlan, revealed, stopsShown } from "@/lib/route-draw"
+import { revealed, stopsShown } from "@/lib/route-draw"
+import { useRouteGeometry } from "@/lib/use-route-geometry"
 import { useSkin } from "@/lib/skin"
-import { boundsOf, DONE_OPACITY, legPaths, TAIWAN, TODO_OPACITY } from "@/lib/team-routes"
+import { boundsOf, DONE_OPACITY, TAIWAN, TODO_OPACITY } from "@/lib/team-routes"
 import { TRAVEL_MODE_LABEL, TRAVEL_MODES } from "@/lib/travel-mode"
 import { cn } from "@/lib/utils"
 
@@ -49,16 +57,33 @@ type Props = {
  * 這支連同 @vis.gl/react-google-maps 只由 map-slot.tsx 用 import() 載入：切到地圖才下載，首頁本身不多載。
  * 金鑰被拒或 Google 的程式載不下來時呼叫 onFail，由外面換成一行「地圖暫時載入不了」。
  */
-export default function HomeMap({ config, map, stops, estimated, mode, switching, onMode, className, onFail }: Props) {
+export default function HomeMap({
+  config,
+  map,
+  stops,
+  estimated,
+  mode,
+  switching,
+  onMode,
+  className,
+  onFail,
+}: Props) {
   const skin = useSkin()
   const { position } = useLocationShare()
   const [pickedId, setPickedId] = useState<string | null>(null)
   // 底圖載好了才開始畫線，不然線在一片空白上畫完了地圖才出來
   const [ready, setReady] = useState(false)
   const shown = shownStop(map, pickedId)
-  const bounds = boundsOf([...(map.origin ? [map.origin] : []), ...map.stops]) ?? TAIWAN
-  const plan = useMemo(() => drawPlan(legPaths(map)), [map])
-  const progress = useDraw(ready ? `${map.version}:${map.travel_mode}` : null)
+  const bounds = useMemo(
+    () =>
+      boundsOf([...(map.origin ? [map.origin] : []), ...map.stops]) ?? TAIWAN,
+    [map.origin, map.stops]
+  )
+  const geometry = useRouteGeometry(map)
+  const plan = geometry.plan
+  const progress = useDraw(
+    ready && !geometry.pending ? `${map.version}:${map.travel_mode}` : null
+  )
   const pen = progress * plan.total
   const visible = stopsShown(plan, pen, map.origin !== null, map.stops.length)
   // 線畫在 canvas 上要實際的顏色；換配色時 useSkin 會重畫，跟著換
@@ -72,9 +97,19 @@ export default function HomeMap({ config, map, stops, estimated, mode, switching
   }, [])
 
   return (
-    <APIProvider apiKey={config.browser_key} language="zh-TW" region="TW" onError={onFail}>
+    <APIProvider
+      apiKey={config.browser_key}
+      language="zh-TW"
+      region="TW"
+      onError={onFail}
+    >
       <LoadWatch onFail={onFail} />
-      <div className={cn("relative overflow-hidden rounded-2xl border-2 shadow-lip", className)}>
+      <div
+        className={cn(
+          "relative overflow-hidden rounded-2xl border-2 shadow-lip",
+          className
+        )}
+      >
         {/* 地圖跟著 App 的深淺色（colorScheme 只在建立時讀，換配色時重建）。整塊都是地圖，一根手指就能拖 */}
         <Map
           key={skin}
@@ -97,12 +132,28 @@ export default function HomeMap({ config, map, stops, estimated, mode, switching
                 key={n}
                 path={path}
                 strokeOpacity={0}
-                icons={[{ icon: { ...WALK_DASH, strokeColor: color, strokeOpacity: opacity }, offset: "0", repeat: "12px" }]}
+                icons={[
+                  {
+                    icon: {
+                      ...WALK_DASH,
+                      strokeColor: color,
+                      strokeOpacity: opacity,
+                    },
+                    offset: "0",
+                    repeat: "12px",
+                  },
+                ]}
                 zIndex={2}
                 clickable={false}
               />
             ) : (
-              <RouteLine key={n} path={path} color={color} casing={casing} opacity={opacity} />
+              <RouteLine
+                key={n}
+                path={path}
+                color={color}
+                casing={casing}
+                opacity={opacity}
+              />
             )
           })}
           {map.stops.slice(0, visible).map((stop) => (
@@ -115,13 +166,28 @@ export default function HomeMap({ config, map, stops, estimated, mode, switching
           ))}
           {position && <HereDot position={position} />}
         </Map>
-        <ModePicker mode={mode} switching={switching} onMode={onMode} hasLocation={Boolean(position)} />
+        <ModePicker
+          mode={mode}
+          switching={switching}
+          onMode={onMode}
+          hasLocation={Boolean(position)}
+        />
+        {(geometry.pending || geometry.error) && (
+          <p
+            role="status"
+            className="pointer-events-none absolute top-16 left-3 rounded-lg bg-card/90 px-3 py-1 text-xs text-muted-foreground"
+          >
+            {geometry.error ?? "正在整理路線…"}
+          </p>
+        )}
         {position && <LocateButton position={position} />}
         {/* 卡片離底 2rem：左下角 Google 的標誌與地圖資料的版權列要露出來（Google 的使用條款） */}
         {shown && (
           <MapStopCard
             stop={shown}
-            detail={stops.find((stop) => stop.customer_id === shown.customer_id)}
+            detail={stops.find(
+              (stop) => stop.customer_id === shown.customer_id
+            )}
             estimated={estimated}
             mode={mode}
             className="absolute inset-x-2.5 bottom-8"
@@ -137,7 +203,10 @@ export default function HomeMap({ config, map, stops, estimated, mode, switching
  * 系統設定「減少動態效果」就直接畫好。key 是 null（還沒準備好）時什麼都不畫
  */
 function useDraw(key: string | null) {
-  const [reduced] = useState(() => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false)
+  const [reduced] = useState(
+    () =>
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false
+  )
   // 記著是哪一個 key 的進度：換 key 的那一刻還沒開始跑，不要先閃一下上一次畫完的整條線
   const [drawn, setDrawn] = useState({ key: "", progress: 0 })
 
@@ -160,11 +229,35 @@ function useDraw(key: string | null) {
 }
 
 /** 一段實線：底下先墊一層比較寬的底色，路線才不會跟 Google 底圖上彩色的捷運線、公路混在一起 */
-function RouteLine({ path, color, casing, opacity }: { path: LatLng[]; color: string; casing: string; opacity: number }) {
+function RouteLine({
+  path,
+  color,
+  casing,
+  opacity,
+}: {
+  path: LatLng[]
+  color: string
+  casing: string
+  opacity: number
+}) {
   return (
     <>
-      <Polyline path={path} strokeColor={casing} strokeOpacity={0.9} strokeWeight={9} zIndex={1} clickable={false} />
-      <Polyline path={path} strokeColor={color} strokeOpacity={opacity} strokeWeight={5} zIndex={2} clickable={false} />
+      <Polyline
+        path={path}
+        strokeColor={casing}
+        strokeOpacity={0.9}
+        strokeWeight={9}
+        zIndex={1}
+        clickable={false}
+      />
+      <Polyline
+        path={path}
+        strokeColor={color}
+        strokeOpacity={opacity}
+        strokeWeight={5}
+        zIndex={2}
+        clickable={false}
+      />
     </>
   )
 }
@@ -182,7 +275,16 @@ function ModePicker({
   hasLocation: boolean
 }) {
   return (
-    <div role="radiogroup" aria-label="交通方式" className={cn("absolute top-2.5 left-2.5 flex gap-0.5 overflow-x-auto overscroll-x-contain rounded-xl border-2 bg-card p-0.5 shadow-lip", hasLocation ? "max-w-[calc(100%-4.75rem)]" : "max-w-[calc(100%-1.25rem)]")}>
+    <div
+      role="radiogroup"
+      aria-label="交通方式"
+      className={cn(
+        "absolute top-2.5 left-2.5 flex gap-0.5 overflow-x-auto overscroll-x-contain rounded-xl border-2 bg-card p-0.5 shadow-lip",
+        hasLocation
+          ? "max-w-[calc(100%-4.75rem)]"
+          : "max-w-[calc(100%-1.25rem)]"
+      )}
+    >
       {TRAVEL_MODES.map((option) => {
         const active = (switching ?? mode) === option
         return (
@@ -195,10 +297,16 @@ function ModePicker({
             onClick={() => onMode(option)}
             className={cn(
               "flex h-10 shrink-0 items-center gap-1 rounded-[0.6rem] px-2 text-xs font-semibold whitespace-nowrap transition-colors",
-              active ? "bg-primary text-primary-foreground" : "text-muted-foreground"
+              active
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground"
             )}
           >
-            {switching === option ? <Loader2 className="size-4 animate-spin" /> : <TravelModeIcon mode={option} className="size-4" />}
+            {switching === option ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <TravelModeIcon mode={option} className="size-4" />
+            )}
             {TRAVEL_MODE_LABEL[option]}
           </button>
         )
@@ -209,7 +317,15 @@ function ModePicker({
 
 /** 一站的圓點：跑完的實心打勾、下一站實心外面一圈、還沒去的空心寫站號；底下卡片寫的那一站放大一點。
  *  路線畫到這一站時才掛上，彈一下冒出來 */
-function StopPin({ stop, picked, onPick }: { stop: MapStop; picked: boolean; onPick: () => void }) {
+function StopPin({
+  stop,
+  picked,
+  onPick,
+}: {
+  stop: MapStop
+  picked: boolean
+  onPick: () => void
+}) {
   const done = stop.status === "done"
   const next = stop.status === "next"
   return (
@@ -225,12 +341,18 @@ function StopPin({ stop, picked, onPick }: { stop: MapStop; picked: boolean; onP
         <span
           className={cn(
             "flex size-7 items-center justify-center rounded-full border-2 text-xs font-bold tabular-nums shadow-sm transition-transform",
-            done || next ? "border-background bg-primary text-primary-foreground" : "border-primary bg-background text-primary",
+            done || next
+              ? "border-background bg-primary text-primary-foreground"
+              : "border-primary bg-background text-primary",
             next && "ring-4 ring-primary/30",
             picked && "scale-125"
           )}
         >
-          {done ? <Check className="size-3.5" strokeWidth={3.5} /> : stop.number}
+          {done ? (
+            <Check className="size-3.5" strokeWidth={3.5} />
+          ) : (
+            stop.number
+          )}
         </span>
       </span>
     </AdvancedMarker>
@@ -240,9 +362,21 @@ function StopPin({ stop, picked, onPick }: { stop: MapStop; picked: boolean; onP
 /** 自己的位置：藍點加一圈淡藍 */
 function HereDot({ position }: { position: LatLng }) {
   return (
-    <AdvancedMarker position={{ lat: position.lat, lng: position.lng }} title="你的位置" anchorLeft="-50%" anchorTop="-50%" zIndex={10}>
-      <span className="flex size-7 items-center justify-center rounded-full" style={{ background: `${HERE_COLOR}33` }}>
-        <span className="size-3.5 rounded-full border-2 border-white shadow-sm" style={{ background: HERE_COLOR }} />
+    <AdvancedMarker
+      position={{ lat: position.lat, lng: position.lng }}
+      title="你的位置"
+      anchorLeft="-50%"
+      anchorTop="-50%"
+      zIndex={10}
+    >
+      <span
+        className="flex size-7 items-center justify-center rounded-full"
+        style={{ background: `${HERE_COLOR}33` }}
+      >
+        <span
+          className="size-3.5 rounded-full border-2 border-white shadow-sm"
+          style={{ background: HERE_COLOR }}
+        />
       </span>
     </AdvancedMarker>
   )
@@ -256,7 +390,7 @@ function LocateButton({ position }: { position: LatLng }) {
       type="button"
       aria-label="回到我的位置"
       onClick={() => googleMap?.panTo({ lat: position.lat, lng: position.lng })}
-      className="absolute top-2.5 right-2.5 flex size-11 items-center justify-center rounded-xl border-2 bg-card shadow-lip press"
+      className="absolute top-2.5 right-2.5 flex size-11 press items-center justify-center rounded-xl border-2 bg-card shadow-lip"
     >
       <LocateFixed className="size-5" />
     </button>

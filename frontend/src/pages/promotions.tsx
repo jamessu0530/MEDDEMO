@@ -8,7 +8,7 @@ import {
   type PromotionItem,
 } from "@/api/promotions"
 import { Notice } from "@/components/notice"
-import { ContextHelp } from "@/components/context-help"
+
 import { ProductPhoto } from "@/components/product-photo"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -324,16 +324,8 @@ export function PromotionsPanel({ heading, navigation, active = true }: { headin
                   只看各類別最高折扣
                 </label>
               </div>
-              {filters.bestOnly && (
-                <p className="mt-3 text-xs text-muted-foreground">
-                  比較這一期各類別全部品項，折扣並列最高的都會顯示。
-                </p>
-              )}
             </section>
 
-            <p role="status" className="mt-4 text-xs text-muted-foreground">
-              顯示 {found.length} / {current.items.length} 個促銷品項
-            </p>
             {found.length === 0 && (
               <div className="mt-3">
                 <Notice
@@ -374,15 +366,12 @@ export function PromotionsPanel({ heading, navigation, active = true }: { headin
             )}
 
             {groups.length > 0 && (
-              <div className="mt-4 flex items-center justify-between"><h2 className="text-base font-semibold">促銷品項</h2><ContextHelp label="促銷價格計算方式"><p>一口是一個購買單位。平均每個＝每口售價 ÷ 買加送的數量。</p><p>折扣以原出貨價計算；另外加贈的其他品項與滿額贈不列入平均單價。</p></ContextHelp></div>
+              <div className="mt-4 flex items-center justify-between"><h2 className="text-base font-semibold">促銷品項</h2></div>
             )}
             {groups.map((group) => (
               <section key={group.name} className="mt-4">
                 <h2 className="mb-2 flex items-baseline justify-between text-base font-semibold">
                   {group.name}
-                  <span className="text-xs font-normal text-muted-foreground">
-                    {group.items.length} 項
-                  </span>
                 </h2>
                 <ul className="flex flex-col gap-2">
                   {group.items.map((item) => (

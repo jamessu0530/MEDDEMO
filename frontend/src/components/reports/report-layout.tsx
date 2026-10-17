@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -10,6 +11,9 @@ import {
 } from "react"
 import {
   DndContext,
+  closestCenter,
+  pointerWithin,
+  type CollisionDetection,
   KeyboardSensor,
   PointerSensor,
   useSensor,
@@ -20,75 +24,56 @@ import {
   rectSortingStrategy,
   sortableKeyboardCoordinates,
 } from "@dnd-kit/sortable"
-import { ArrowDown, ArrowUp, MoveDiagonal2 } from "@/components/icons"
+import { ReportWidgetResizeHandle } from "@/components/reports/report-widget"
 import {
-  desktopReportRects,
-  mobileReportCards,
-  defaultMobileLayout,
-  REPORT_ROW,
-  translateDesktopRects,
-  resizeDesktopRect,
-  alignDesktopRects,
-  distributeDesktopRects,
-  reorderMobileReport,
-  setDesktopReportRects,
-  setMobileReportLayout,
-  moveMobileReport,
-  type DesktopRects,
-  type ReportAlignment,
-} from "@/lib/report-layout"
+  automaticReportRects,
+  automaticReportSizes,
+  resizeAutomaticReportCard,
+  setAutomaticReportSize,
+  type ReportCardSize,
+} from "@/lib/report-auto-layout"
+import { REPORT_COLUMNS, REPORT_ROW } from "@/lib/report-layout"
 import {
-  reportPages,
   reorderReportPage,
   type ReportCard,
   type ReportConfig,
 } from "@/lib/reports"
-import { cn } from "@/lib/utils"
 import "./report-layout.css"
 
-const CONTROL =
-  "min-h-9 rounded-md border bg-background px-2 text-xs disabled:opacity-40"
+// Pointer sorting follows the finger; keyboard sorting aligns card origins so
+// a large card can move over a small card without colliding with itself.
+const automaticCollision: CollisionDetection = (args) => {
+  if (args.pointerCoordinates) {
+    const hits = pointerWithin(args)
+    return hits.length ? hits : closestCenter(args)
+  }
+  return args.droppableContainers
+    .flatMap((container) => {
+      const rect = args.droppableRects.get(container.id)
+      return rect
+        ? [
+            {
+              id: container.id,
+              data: {
+                droppableContainer: container,
+                value: Math.hypot(
+                  rect.left - args.collisionRect.left,
+                  rect.top - args.collisionRect.top
+                ),
+              },
+            },
+          ]
+        : []
+    })
+    .sort((a, b) => a.data.value - b.data.value)
+}
+
 export type ReportLayoutRender = {
-  fixedHeight?: number
-  mobile: boolean
-  customMove: boolean
+  fixedHeight: number
   selected: boolean
   onSelect: (event?: MouseEvent) => void
-  moveHandle?: {
-    onPointerDown: (event: PointerEvent<HTMLButtonElement>) => void
-    onPointerMove: (event: PointerEvent<HTMLButtonElement>) => void
-    onPointerUp: (event: PointerEvent<HTMLButtonElement>) => void
-    onPointerCancel: () => void
-    onLostPointerCapture: () => void
-    onKeyDown: (event: KeyboardEvent<HTMLButtonElement>) => void
-  }
 }
-
-function ReportLayoutVisual({
-  card,
-  layout,
-  renderCard,
-}: {
-  card: ReportCard
-  layout: ReportLayoutRender
-  renderCard: (card: ReportCard, layout: ReportLayoutRender) => ReactNode
-}) {
-  return renderCard(card, layout)
-}
-
-export function ReportLayoutCanvas({
-  config,
-  pageId,
-  editing,
-  isDesktop,
-  selectedId,
-  onSelect,
-  onChange,
-  renderCard,
-  onMobileChange,
-  selectionIds,
-  onSelectionChange,
-}: {
+type Props = {
   config: ReportConfig
   pageId: string
   editing: boolean
@@ -96,32 +81,14 @@ export function ReportLayoutCanvas({
   selectedId: string | null
   onSelect: (id: string) => void
   onChange: (config: ReportConfig) => void
-  onMobileChange: (value: boolean) => void
   selectionIds?: string[]
   onSelectionChange?: (ids: string[]) => void
   renderCard: (card: ReportCard, layout: ReportLayoutRender) => ReactNode
-}) {
-  const [mobilePreview, setMobilePreview] = useState(false)
-  const mobile = !isDesktop || mobilePreview
-  useEffect(() => onMobileChange(mobile), [mobile, onMobileChange])
+}
+
+export function ReportLayoutCanvas(props: Props) {
   return (
-    <ReportLayoutBoard
-      key={`${pageId}/${mobile}`}
-      {...{
-        config,
-        pageId,
-        editing,
-        isDesktop,
-        selectedId,
-        onSelect,
-        onChange,
-        renderCard,
-        mobile,
-        selectionIds,
-        onSelectionChange,
-      }}
-      onPreviewChange={setMobilePreview}
-    />
+    <ReportLayoutBoard key={`${props.pageId}/${props.isDesktop}`} {...props} />
   )
 }
 
@@ -133,620 +100,230 @@ function ReportLayoutBoard({
   selectedId,
   onSelect,
   onChange,
-  renderCard,
-  mobile,
-  onPreviewChange,
   selectionIds,
   onSelectionChange,
-}: {
-  config: ReportConfig
-  pageId: string
-  editing: boolean
-  isDesktop: boolean
-  selectedId: string | null
-  onSelect: (id: string) => void
-  onChange: (config: ReportConfig) => void
-  renderCard: (card: ReportCard, layout: ReportLayoutRender) => ReactNode
-  mobile: boolean
-  onPreviewChange: (value: boolean) => void
-  selectionIds?: string[]
-  onSelectionChange?: (ids: string[]) => void
-}) {
+  renderCard,
+}: Props) {
+  const [compact, setCompact] = useState(!isDesktop)
   const cards = config.cards.filter(
-    (card) => (card.page_id ?? "overview") === pageId
+    (card) =>
+      (card.page_id ?? "overview") === pageId && (editing || !card.hidden)
   )
-  const automaticMobileLayout = cards.every((card) => !card.mobile_layout)
-  const page = reportPages(config).find((page) => page.id === pageId)!
-  const free = !mobile && page.desktop_layout === "free"
-  const baseRects = desktopReportRects(cards)
-  const [preview, setPreview] = useState<DesktopRects | null>(null)
-  const [extraIds, setExtraIds] = useState<string[]>([])
-  const [grid, setGrid] = useState(true)
-  const [snap, setSnap] = useState(true)
+  const baseSizes = automaticReportSizes(cards)
+  const [preview, setPreview] = useState<Record<string, ReportCardSize>>({})
+  const [resizingId, setResizingId] = useState<string | null>(null)
   const [announcement, setAnnouncement] = useState("")
+  const sizes = { ...baseSizes, ...preview }
+  const rects = automaticReportRects(cards, compact, sizes)
   const board = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    const element = board.current
+    if (!element) return
+    const measure = () => setCompact(element.clientWidth < 560)
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
   const gesture = useRef<{
-    id: number
-    mode: "move" | "resize"
+    pointer: number
     cardId: string
-    ids: string[]
-    startX: number
-    startY: number
-    startScroll: number
+    x: number
+    y: number
+    scroll: number
     width: number
-    rects: DesktopRects
-    latest: DesktopRects
+    initial: ReportCardSize
+    latest: ReportCardSize
   } | null>(null)
-  const rects = preview ?? baseRects
-  const selectedIds =
-    selectionIds && selectedId && selectionIds.includes(selectedId)
-      ? selectionIds.filter((id) => cards.some((card) => card.id === id))
-      : [
-          ...new Set([
-            ...(selectedId && cards.some((card) => card.id === selectedId)
-              ? [selectedId]
-              : []),
-            ...extraIds.filter((id) => cards.some((card) => card.id === id)),
-          ]),
-        ]
-  const selected = new Set(selectedIds)
-  const canvasHeight =
-    Math.max(24, ...Object.values(rects).map((rect) => rect.y + rect.h)) +
-    (editing ? 4 : 0)
+  const selected = new Set(
+    selectionIds?.length ? selectionIds : selectedId ? [selectedId] : []
+  )
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
-  const ordered = (mobile ? mobileReportCards(cards) : cards).filter(
-    (card) => editing || !card.hidden
-  )
   function cancel() {
     gesture.current = null
-    setPreview(null)
+    setPreview({})
+    setResizingId(null)
   }
   useEffect(() => {
-    if (!editing || !free) return
+    if (!editing) return
     const escape = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape" && gesture.current) {
-        event.preventDefault()
-        cancel()
-        setAnnouncement("已取消版面調整")
-      }
+      if (event.key !== "Escape" || !gesture.current) return
+      event.preventDefault()
+      cancel()
+      setAnnouncement("已取消大小調整")
     }
     window.addEventListener("keydown", escape)
     return () => window.removeEventListener("keydown", escape)
-  }, [editing, free])
-  function select(id: string, event?: MouseEvent) {
-    if (onSelectionChange) {
-      const card = cards.find((item) => item.id === id)
-      const group = card?.group_id
-      const members = group
-        ? cards.filter((item) => item.group_id === group).map((item) => item.id)
-        : [id]
-      const multiple =
-        event && (event.shiftKey || event.ctrlKey || event.metaKey)
-      const next = multiple
-        ? selected.has(id)
-          ? selectedIds.filter((item) => !members.includes(item))
-          : [...new Set([...selectedIds, ...members])]
-        : members
-      onSelectionChange(next)
-      onSelect(next.includes(id) ? id : (next[0] ?? ""))
-      return
-    }
+  }, [editing])
+  function select(card: ReportCard, event?: MouseEvent) {
+    const members = card.group_id
+      ? cards
+          .filter((item) => item.group_id === card.group_id)
+          .map((item) => item.id)
+      : [card.id]
+    const multiple = event && (event.shiftKey || event.ctrlKey || event.metaKey)
+    const next = multiple
+      ? selected.has(card.id)
+        ? [...selected].filter((id) => !members.includes(id))
+        : [...new Set([...selected, ...members])]
+      : members
+    onSelectionChange?.(next)
+    onSelect(next.includes(card.id) ? card.id : (next[0] ?? ""))
+  }
+  function start(event: PointerEvent<HTMLButtonElement>, card: ReportCard) {
     if (
-      free &&
-      event &&
-      (event.shiftKey || event.ctrlKey || event.metaKey) &&
-      selectedId
-    ) {
-      if (id !== selectedId)
-        setExtraIds((current) =>
-          current.includes(id)
-            ? current.filter((item) => item !== id)
-            : [...current, id]
-        )
-    } else {
-      setExtraIds([])
-      onSelect(id)
-    }
-  }
-  function commit(next: DesktopRects) {
-    for (const card of cards)
-      if (card.locked && baseRects[card.id])
-        next = { ...next, [card.id]: baseRects[card.id] }
-    onChange(setDesktopReportRects(config, pageId, next))
-    setPreview(null)
-  }
-  function start(
-    event: PointerEvent<HTMLButtonElement>,
-    card: ReportCard,
-    mode: "move" | "resize"
-  ) {
-    if (event.button !== 0 || !editing || !free || card.locked) return
-    event.preventDefault()
-    const width = board.current?.getBoundingClientRect().width ?? 0
+      event.button !== 0 ||
+      !event.isPrimary ||
+      gesture.current ||
+      !editing ||
+      card.locked
+    )
+      return
+    const width = board.current?.clientWidth ?? 0
     if (!width) return
-    const ids =
-      mode === "move" && selected.has(card.id)
-        ? [
-            card.id,
-            ...selectedIds.filter(
-              (id) =>
-                id !== card.id && !cards.find((item) => item.id === id)?.locked
-            ),
-          ]
-        : [card.id]
-    if (!selected.has(card.id)) {
-      setExtraIds([])
-      onSelect(card.id)
-    }
+    event.preventDefault()
+    event.stopPropagation()
+    event.currentTarget.focus()
     event.currentTarget.setPointerCapture(event.pointerId)
     gesture.current = {
-      id: event.pointerId,
-      mode,
+      pointer: event.pointerId,
       cardId: card.id,
-      ids,
-      startX: event.clientX,
-      startY: event.clientY,
-      startScroll: window.scrollY,
+      x: event.clientX,
+      y: event.clientY,
+      scroll: window.scrollY,
       width,
-      rects: baseRects,
-      latest: baseRects,
+      initial: baseSizes[card.id],
+      latest: baseSizes[card.id],
     }
+    setResizingId(card.id)
   }
   function move(event: PointerEvent<HTMLButtonElement>) {
     const active = gesture.current
-    if (!active || active.id !== event.pointerId) return
-    const dx = ((event.clientX - active.startX) * 24) / active.width
-    const dy =
-      (event.clientY - active.startY + window.scrollY - active.startScroll) /
-      REPORT_ROW
-    const next =
-      active.mode === "move"
-        ? translateDesktopRects(active.rects, active.ids, dx, dy, snap)
-        : {
-            ...active.rects,
-            [active.cardId]: resizeDesktopRect(
-              active.rects[active.cardId],
-              dx,
-              dy,
-              snap
-            ),
-          }
-    active.latest = next
-    setPreview(next)
+    if (!active || active.pointer !== event.pointerId) return
+    active.latest = resizeAutomaticReportCard(
+      active.initial,
+      event.clientX - active.x,
+      event.clientY - active.y + window.scrollY - active.scroll,
+      active.width,
+      compact
+    )
+    setPreview({ [active.cardId]: active.latest })
   }
   function finish(event: PointerEvent<HTMLButtonElement>) {
     const active = gesture.current
-    if (!active || active.id !== event.pointerId) return
-    gesture.current = null
-    commit(active.latest)
-    const rect = active.latest[active.cardId]
-    setAnnouncement(
-      `位置 ${rect.x}, ${rect.y}；尺寸 ${rect.w} × ${rect.h}，已套用`
+    if (!active || active.pointer !== event.pointerId) return
+    if (
+      active.initial.w !== active.latest.w ||
+      active.initial.h !== active.latest.h
     )
+      onChange(setAutomaticReportSize(config, active.cardId, active.latest))
+    cancel()
+    setAnnouncement("已調整卡片大小並自動整理版面")
   }
-  function keyboard(
-    event: KeyboardEvent<HTMLButtonElement>,
-    card: ReportCard,
-    mode: "move" | "resize"
-  ) {
+  function keyboard(event: KeyboardEvent<HTMLButtonElement>, card: ReportCard) {
     if (
       !editing ||
-      !free ||
       card.locked ||
       !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)
     )
       return
     event.preventDefault()
-    const step = event.shiftKey ? 5 : snap ? 1 : 0.1
-    const dx =
-      event.key === "ArrowRight" ? step : event.key === "ArrowLeft" ? -step : 0
-    const dy =
-      event.key === "ArrowDown" ? step : event.key === "ArrowUp" ? -step : 0
-    const ids = selected.has(card.id)
-      ? [
-          card.id,
-          ...selectedIds.filter(
-            (id) =>
-              id !== card.id && !cards.find((item) => item.id === id)?.locked
-          ),
-        ]
-      : [card.id]
-    const next =
-      mode === "move"
-        ? translateDesktopRects(baseRects, ids, dx, dy, snap)
-        : {
-            ...baseRects,
-            [card.id]: resizeDesktopRect(baseRects[card.id], dx, dy, snap),
-          }
-    commit(next)
-    setAnnouncement(`已${mode === "move" ? "移動" : "調整尺寸"}：${card.title}`)
-  }
-  const alignmentLabels: Record<ReportAlignment, string> = {
-    left: "靠左",
-    center: "水平置中",
-    right: "靠右",
-    top: "靠上",
-    middle: "垂直置中",
-    bottom: "靠下",
+    event.stopPropagation()
+    const width = board.current?.clientWidth ?? 0
+    const step = event.shiftKey ? 5 : 1
+    const horizontal = compact ? width / 2 : (width / REPORT_COLUMNS) * step
+    const next = resizeAutomaticReportCard(
+      baseSizes[card.id],
+      event.key === "ArrowRight"
+        ? horizontal
+        : event.key === "ArrowLeft"
+          ? -horizontal
+          : 0,
+      event.key === "ArrowDown"
+        ? REPORT_ROW * step
+        : event.key === "ArrowUp"
+          ? -REPORT_ROW * step
+          : 0,
+      width,
+      compact
+    )
+    onChange(setAutomaticReportSize(config, card.id, next))
+    setAnnouncement(`已調整大小並自動整理：${card.title}`)
   }
   return (
     <>
-      {editing && (
-        <div
-          className="mb-3 space-y-3 rounded-lg border bg-card p-3"
-          aria-label="報表版面工具"
-        >
-          <div className="flex flex-wrap items-center gap-2">
-            <div
-              className="flex rounded-md border p-0.5"
-              role="group"
-              aria-label="編輯版面裝置"
-            >
-              <button
-                type="button"
-                className={cn(
-                  CONTROL,
-                  "border-0",
-                  !mobile && "bg-primary/10 text-primary"
-                )}
-                aria-pressed={!mobile}
-                disabled={!isDesktop}
-                onClick={() => onPreviewChange(false)}
-              >
-                桌機版面
-              </button>
-              <button
-                type="button"
-                className={cn(
-                  CONTROL,
-                  "border-0",
-                  mobile && "bg-primary/10 text-primary"
-                )}
-                aria-pressed={mobile}
-                onClick={() => onPreviewChange(true)}
-              >
-                手機版面
-              </button>
-            </div>
-            {!mobile && (
-              <select
-                aria-label="桌機版面方式"
-                className={CONTROL}
-                value={page.desktop_layout ?? "flow"}
-                onChange={(event) =>
-                  onChange(
-                    event.target.value === "free"
-                      ? setDesktopReportRects(config, pageId, {})
-                      : {
-                          ...config,
-                          pages: reportPages(config).map((page) =>
-                            page.id === pageId
-                              ? { ...page, desktop_layout: "flow" }
-                              : page
-                          ),
-                        }
-                  )
-                }
-              >
-                <option value="flow">自動格線（原版）</option>
-                <option value="free">自由位置與尺寸</option>
-              </select>
-            )}
-            {free && (
-              <>
-                <label className="flex min-h-9 items-center gap-1.5 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={grid}
-                    onChange={(event) => setGrid(event.target.checked)}
-                  />
-                  顯示格線
-                </label>
-                <label className="flex min-h-9 items-center gap-1.5 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={snap}
-                    onChange={(event) => setSnap(event.target.checked)}
-                  />
-                  吸附格線
-                </label>
-                <button
-                  type="button"
-                  className={CONTROL}
-                  onClick={() => commit(desktopReportRects(cards, true))}
-                >
-                  自動整理桌機
-                </button>
-              </>
-            )}
-          </div>
-          <details open={selectedIds.length > 1}>
-            <summary className="min-h-9 cursor-pointer py-2 text-xs font-medium">
-              對齊、等距與操作說明（已選 {selectedIds.length}）
-            </summary>
-            {free && (
-              <div
-                className="flex flex-wrap items-center gap-1.5"
-                role="group"
-                aria-label="圖表對齊與分布"
-              >
-                <span className="mr-1 text-xs text-muted-foreground">
-                  已選 {selectedIds.length} 張
-                </span>
-                {(Object.keys(alignmentLabels) as ReportAlignment[]).map(
-                  (alignment) => (
-                    <button
-                      key={alignment}
-                      type="button"
-                      className={CONTROL}
-                      disabled={!selectedIds.length}
-                      onClick={() =>
-                        commit(
-                          alignDesktopRects(
-                            baseRects,
-                            selectedIds,
-                            alignment,
-                            canvasHeight - (editing ? 4 : 0)
-                          )
-                        )
-                      }
-                    >
-                      {alignmentLabels[alignment]}
-                    </button>
-                  )
-                )}
-                <button
-                  type="button"
-                  className={CONTROL}
-                  disabled={selectedIds.length < 3}
-                  onClick={() =>
-                    commit(distributeDesktopRects(baseRects, selectedIds, "x"))
-                  }
-                >
-                  水平等距
-                </button>
-                <button
-                  type="button"
-                  className={CONTROL}
-                  disabled={selectedIds.length < 3}
-                  onClick={() =>
-                    commit(distributeDesktopRects(baseRects, selectedIds, "y"))
-                  }
-                >
-                  垂直等距
-                </button>
-              </div>
-            )}
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              {mobile
-                ? "手機順序、尺寸與隱藏狀態獨立儲存。拖曳把手或使用清單的上下移動；隱藏圖表可從清單恢復。"
-                : free
-                  ? "拖曳把手移動、右下角調整尺寸；方向鍵微調，Shift 加速，Esc 取消拖曳。Shift／Ctrl／⌘ 點標題可多選；單張對齊畫布，多張對齊選取範圍。"
-                  : "原有格線會依寬度自動排列。切換自由位置後，可拖曳、縮放與對齊。"}
-            </p>
-          </details>
-          <details>
-            <summary className="cursor-pointer py-1 text-xs font-medium">
-              版面清單（{cards.length} 張）
-            </summary>
-            <div className="mt-2 space-y-1">
-              {(mobile ? mobileReportCards(cards, true) : cards).map(
-                (card, index, all) => (
-                  <div
-                    key={card.id}
-                    className="flex min-w-0 flex-wrap items-center gap-1 rounded border p-1.5"
-                  >
-                    <button
-                      type="button"
-                      className={cn(
-                        "min-h-9 min-w-0 flex-1 truncate rounded px-2 text-left text-xs",
-                        selected.has(card.id) && "bg-primary/10 text-primary"
-                      )}
-                      aria-label={`選取版面圖表：${card.title}`}
-                      aria-pressed={selected.has(card.id)}
-                      onClick={(event) => select(card.id, event)}
-                    >
-                      {card.title}
-                    </button>
-                    {mobile && (
-                      <>
-                        <button
-                          type="button"
-                          className={CONTROL}
-                          aria-label={`手機上移：${card.title}`}
-                          disabled={index === 0}
-                          onClick={() =>
-                            onChange(moveMobileReport(config, card.id, -1))
-                          }
-                        >
-                          <ArrowUp className="size-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          className={CONTROL}
-                          aria-label={`手機下移：${card.title}`}
-                          disabled={index === all.length - 1}
-                          onClick={() =>
-                            onChange(moveMobileReport(config, card.id, 1))
-                          }
-                        >
-                          <ArrowDown className="size-3.5" />
-                        </button>
-                        <label className="flex min-h-9 shrink-0 items-center gap-1 px-1 text-sm">
-                          <input
-                            type="checkbox"
-                            aria-label={`手機顯示：${card.title}`}
-                            checked={
-                              !defaultMobileLayout(card, cards.indexOf(card))
-                                .hidden
-                            }
-                            onChange={(event) =>
-                              onChange(
-                                setMobileReportLayout(config, card.id, {
-                                  hidden: !event.target.checked,
-                                })
-                              )
-                            }
-                          />
-                          顯示
-                        </label>
-                      </>
-                    )}
-                  </div>
-                )
-              )}
-            </div>
-          </details>
-        </div>
-      )}
       <p className="sr-only" role="status" aria-live="polite">
         {announcement}
       </p>
       <DndContext
         sensors={sensors}
+        collisionDetection={automaticCollision}
         onDragEnd={({ active, over }) => {
-          if (!editing || free || !over || active.id === over.id) return
+          if (!editing || gesture.current || !over || active.id === over.id)
+            return
+          const card = cards.find((item) => item.id === active.id)
+          if (!card || card.locked) return
           onChange(
-            mobile
-              ? reorderMobileReport(config, String(active.id), String(over.id))
-              : reorderReportPage(config, String(active.id), String(over.id))
+            reorderReportPage(config, String(active.id), String(over.id))
           )
+          setAnnouncement("已移動卡片並自動整理版面")
         }}
       >
         <SortableContext
-          items={ordered.map((card) => card.id)}
+          items={cards.map((card) => card.id)}
           strategy={rectSortingStrategy}
         >
           <div
             ref={board}
             aria-label="報表畫布"
-            data-report-layout={
-              free ? "desktop-free" : mobile ? "mobile" : "desktop-flow"
-            }
-            className={cn(
-              "min-w-0",
-              free ? "relative" : "grid gap-3",
-              mobile
-                ? "mx-auto w-full max-w-[420px] grid-cols-2"
-                : !free && "grid-cols-2 lg:grid-cols-12"
-            )}
-            style={
-              free
-                ? {
-                    minHeight: canvasHeight * REPORT_ROW,
-                    ...(editing && grid
-                      ? {
-                          backgroundImage:
-                            "linear-gradient(to right, var(--border) 1px, transparent 1px), linear-gradient(to bottom, var(--border) 1px, transparent 1px)",
-                          backgroundSize: `${100 / 24}% ${REPORT_ROW}px`,
-                        }
-                      : {}),
-                  }
-                : undefined
-            }
+            data-report-layout="automatic"
+            className="grid w-full min-w-0"
+            style={{
+              gridTemplateColumns: `repeat(${REPORT_COLUMNS}, minmax(0, 1fr))`,
+              gridAutoRows: REPORT_ROW,
+            }}
           >
-            {ordered.map((card) => {
-              const phone = defaultMobileLayout(card, cards.indexOf(card))
-              // Reading can emphasize default sales/customer cards without saving a layout change.
-              const readingFullWidth =
-                mobile &&
-                !editing &&
-                automaticMobileLayout &&
-                card.visual === "kpi" &&
-                (card.metric === "sales" || card.metric === "customers")
+            {cards.map((card) => {
               const rect = rects[card.id]
-              const fixedHeight = free
-                ? rect.h * REPORT_ROW - 8
-                : mobile && card.mobile_layout
-                  ? phone.height * REPORT_ROW
-                  : undefined
-              const style: CSSProperties | undefined = free
-                ? {
-                    position: "absolute",
-                    left: `${(rect.x / 24) * 100}%`,
-                    top: rect.y * REPORT_ROW,
-                    width: `${(rect.w / 24) * 100}%`,
-                    height: rect.h * REPORT_ROW,
-                    padding: 4,
-                    zIndex:
-                      preview && selected.has(card.id)
-                        ? 2000
-                        : selected.has(card.id) && editing
-                          ? 1500
-                          : (card.layer ?? 0),
-                  }
-                : undefined
               return (
                 <div
                   key={card.id}
-                  className={cn(
-                    "min-w-0",
-                    free
-                      ? "group relative"
-                      : mobile &&
-                          (phone.width === "half" && !readingFullWidth
-                            ? "col-span-1"
-                            : "col-span-2"),
-                    !free && !mobile && "contents"
-                  )}
-                  style={style}
+                  className="relative min-w-0 self-start p-1"
                   data-layout-card={card.id}
-                  data-layout-rect={
-                    free ? `${rect.x},${rect.y},${rect.w},${rect.h}` : undefined
+                  data-layout-rect={`${rect.x},${rect.y},${rect.w},${rect.h}`}
+                  data-resizing={resizingId === card.id ? "both" : undefined}
+                  style={
+                    {
+                      gridColumn: `${rect.x + 1} / span ${rect.w}`,
+                      gridRow: `${rect.y + 1} / span ${rect.h}`,
+                      zIndex: resizingId === card.id ? 20 : undefined,
+                    } as CSSProperties
                   }
                 >
-                  <ReportLayoutVisual
-                    card={card}
-                    renderCard={renderCard}
-                    layout={{
-                      fixedHeight,
-                      mobile,
-                      customMove: free,
-                      selected: selected.has(card.id),
-                      onSelect: (event) => select(card.id, event),
-                      moveHandle:
-                        free && editing && !card.locked
-                          ? {
-                              onPointerDown: (event) =>
-                                start(event, card, "move"),
-                              onPointerMove: move,
-                              onPointerUp: finish,
-                              onPointerCancel: cancel,
-                              onLostPointerCapture: cancel,
-                              onKeyDown: (event) =>
-                                keyboard(event, card, "move"),
-                            }
-                          : undefined,
-                    }}
-                  />
-                  {free && editing && !card.locked && (
-                    <button
-                      type="button"
-                      onPointerDown={(event) => start(event, card, "resize")}
+                  {renderCard(card, {
+                    fixedHeight: rect.h * REPORT_ROW - 8,
+                    selected: selected.has(card.id),
+                    onSelect: (event) => select(card, event),
+                  })}
+                  {editing && !card.locked && (
+                    <ReportWidgetResizeHandle
+                      data-ui-demo="report-widget-resize"
+                      aria-label={`調整尺寸：${card.title}`}
+                      title="拖曳調整大小，版面會自動整理；方向鍵微調、Esc 取消"
+                      onPointerDown={(event) => start(event, card)}
                       onPointerMove={move}
                       onPointerUp={finish}
                       onPointerCancel={cancel}
                       onLostPointerCapture={cancel}
-                      onKeyDown={(event) => keyboard(event, card, "resize")}
-                      aria-label={`調整尺寸：${card.title}`}
-                      title="拖曳或使用方向鍵調整尺寸"
-                      className="absolute right-1 bottom-1 z-30 flex size-8 touch-none items-center justify-center rounded-tl-md border border-primary/30 bg-background/95 text-primary focus-visible:outline-2"
-                    >
-                      <MoveDiagonal2 className="size-4" />
-                    </button>
+                      onKeyDown={(event) => keyboard(event, card)}
+                    />
                   )}
                 </div>
               )
             })}
-            {mobile && !ordered.length && cards.length > 0 && (
-              <p className="col-span-2 rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-                這一頁的手機版沒有顯示圖表。
-                {editing && "可在版面清單勾選顯示。"}
-              </p>
-            )}
           </div>
         </SortableContext>
       </DndContext>

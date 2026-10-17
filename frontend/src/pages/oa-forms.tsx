@@ -83,7 +83,6 @@ export function OaFormsPage() {
     return () => controller.abort()
   }, [filter, attempt, queryString])
 
-  const counts = state.status === "ready" ? state.data.counts : {}
   useAskPageContext(
     {
       title: "我的 OA 申請單",
@@ -103,7 +102,6 @@ export function OaFormsPage() {
     <div className="flex min-h-svh flex-col">
       <PageHeader
         title="我的申請單"
-        subtitle="OA 表單 · 申請與進度"
         backTo="/"
         trailing={
           <Button asChild size="sm" variant="outline" className="mr-3 min-h-11">
@@ -116,11 +114,6 @@ export function OaFormsPage() {
       <OaNav />
       <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-4 px-4 pt-5 pb-10 lg:px-8">
         <div className="flex justify-end">
-        </div>
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-sm text-muted-foreground">
-            出差、優惠、合約與 OA 申請表單
-          </p>
           <button
             type="button"
             className="shrink-0 text-sm text-primary underline"
@@ -135,7 +128,6 @@ export function OaFormsPage() {
         </div>
         <div data-ui-demo="oa-statuses" className="grid grid-cols-5 gap-1">
           {STATUSES.map((item) => {
-            const n = counts[item.id] ?? 0
             const active = filter === item.id
             return (
               <button
@@ -149,16 +141,13 @@ export function OaFormsPage() {
                   setState({ status: "loading" })
                 }}
                 className={cn(
-                  "flex min-h-16 press flex-col items-center justify-center rounded-xl border-2 px-1 py-2 text-center",
+                  "flex min-h-11 press items-center justify-center rounded-xl border-2 px-1 py-2 text-center",
                   active
                     ? "border-primary bg-primary/5 shadow-lip-primary-soft"
                     : "bg-card shadow-lip"
                 )}
               >
-                <span className="text-sm font-semibold tabular-nums">
-                  {n > 99 ? "99+" : n}
-                </span>
-                <span className="text-xs text-muted-foreground">
+                <span className="text-sm font-medium">
                   {item.label}
                 </span>
               </button>
@@ -310,14 +299,6 @@ export function OaFormsPage() {
           state.data.items.map((item) => (
             <FormCard key={item.id} item={item} />
           ))}
-        {state.status === "ready" && (
-          <p className="text-xs text-muted-foreground">
-            共 {state.data.total ?? state.data.items.length} 筆
-            {(state.data.total ?? 0) > state.data.items.length
-              ? `，顯示最近 ${state.data.items.length} 筆，請縮小篩選範圍`
-              : ""}
-          </p>
-        )}
       </main>
     </div>
   )

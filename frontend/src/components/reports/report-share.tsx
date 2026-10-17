@@ -5,17 +5,14 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
 } from "@/components/ui/dialog"
 
 export function ReportShareDialog({
   reportId,
-  name,
   revision,
   onClose,
 }: {
   reportId: string
-  name: string
   revision: number
   onClose: () => void
 }) {
@@ -76,17 +73,10 @@ export function ReportShareDialog({
         if (!value) onClose()
       }}
     >
-      <DialogContent className="max-h-[90dvh] max-w-md overflow-y-auto">
+      <DialogContent aria-describedby={undefined} className="max-h-[90dvh] max-w-md overflow-y-auto">
         <DialogHeader>
           <DialogTitle>共享唯讀報表設定</DialogTitle>
-          <DialogDescription>
-            「{name}」已儲存版本 {revision}
-            。接收者取得這一版設定快照，原報表往後修改時需再次共享才會更新。
-          </DialogDescription>
         </DialogHeader>
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          只共享名稱、圖表、版面及固定條件；查詢結果、草稿與暫時選取不會複製。接收者以自己的資料權限重新查詢，可探索、刷新及匯出，需另存才能編輯。不會寄送通知或建立公開連結。
-        </p>
         <label className="min-w-0 space-y-2 text-sm">
           既有帳號
           <select
@@ -113,9 +103,6 @@ export function ReportShareDialog({
             ))}
           </select>
         </label>
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          清單限同團隊既有帳號；管理帳號依既有組織範圍提供。示範代理帳號不提供共享。
-        </p>
         {error && (
           <p role="alert" className="text-xs text-destructive">
             {error}

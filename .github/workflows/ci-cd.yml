@@ -195,15 +195,21 @@ jobs:
       - run: helm template meddemo deploy/helm/meddemo --namespace meddemo --set image.tag=ci > /dev/null
       - run: helm lint deploy/helm/meddemo --set monitoring.enabled=true
       - run: helm template meddemo deploy/helm/meddemo --namespace meddemo --set monitoring.enabled=true > /dev/null
+      - run: helm lint deploy/helm/meddemo --set monitoring.enabled=true --set monitoring.logs.enabled=true
+      - run: helm template meddemo deploy/helm/meddemo --namespace meddemo --set monitoring.enabled=true --set monitoring.logs.enabled=true > /dev/null
       - name: 驗證 Alloy 設定
         run: |
-          helm template meddemo deploy/helm/meddemo --set monitoring.enabled=true --show-only templates/alloy.yaml \
-            | awk '/^  config.alloy: \|/ { capture=1; next } capture { sub(/^    /, ""); print }' > "$RUNNER_TEMP/config.alloy"
-          docker run --rm -v "$RUNNER_TEMP/config.alloy:/etc/alloy/config.alloy:ro" \
-            -e GRAFANA_CLOUD_PROMETHEUS_URL=https://example.grafana.net/api/prom/push \
-            -e GRAFANA_CLOUD_PROMETHEUS_USERNAME=ci -e GRAFANA_CLOUD_TOKEN=ci \
-            -e METRICS_TOKEN=ci -e POD_NAME=ci -e POD_NAMESPACE=meddemo \
-            grafana/alloy:v1.20.1 validate /etc/alloy/config.alloy
+          for logs in false true; do
+            helm template meddemo deploy/helm/meddemo --set monitoring.enabled=true --set monitoring.logs.enabled="$logs" --show-only templates/alloy.yaml \
+              | awk '/^  config.alloy: \|/ { capture=1; next } capture { sub(/^    /, ""); print }' > "$RUNNER_TEMP/config.alloy"
+            docker run --rm -v "$RUNNER_TEMP/config.alloy:/etc/alloy/config.alloy:ro" \
+              -e GRAFANA_CLOUD_PROMETHEUS_URL=https://example.grafana.net/api/prom/push \
+              -e GRAFANA_CLOUD_PROMETHEUS_USERNAME=ci -e GRAFANA_CLOUD_TOKEN=ci \
+              -e GRAFANA_CLOUD_LOKI_URL=https://example.grafana.net/loki/api/v1/push \
+              -e GRAFANA_CLOUD_LOKI_USERNAME=ci -e GRAFANA_CLOUD_LOKI_TOKEN=ci \
+              -e METRICS_TOKEN=ci -e POD_NAME=ci -e POD_NAMESPACE=meddemo \
+              grafana/alloy:v1.20.1 validate /etc/alloy/config.alloy
+          done
 
   build:
     needs: [test-backend, test-frontend, typecheck-frontend, k6-smoke, lint-chart]
@@ -310,6 +316,9 @@ jobs:
           GRAFANA_CLOUD_PROMETHEUS_USERNAME: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USERNAME }}
           GRAFANA_CLOUD_TOKEN: ${{ secrets.GRAFANA_CLOUD_TOKEN }}
           GRAFANA_CLOUD_READ_TOKEN: ${{ secrets.GRAFANA_CLOUD_READ_TOKEN }}
+          GRAFANA_CLOUD_LOKI_URL: ${{ secrets.GRAFANA_CLOUD_LOKI_URL }}
+          GRAFANA_CLOUD_LOKI_USERNAME: ${{ secrets.GRAFANA_CLOUD_LOKI_USERNAME }}
+          GRAFANA_CLOUD_LOKI_TOKEN: ${{ secrets.GRAFANA_CLOUD_LOKI_TOKEN }}
         run: |
           # Secret 不放進 chart（跟 CARE 的 care-backend-secret 一樣），要比 chart 先建好，pod 一啟動就讀得到
           kubectl create namespace meddemo --dry-run=client -o yaml | kubectl apply -f -
@@ -357,9 +366,33 @@ jobs:
               --dry-run=client -o yaml | kubectl apply -f -
             monitoring_enabled=true
           fi
+          logging_enabled=false
+          if [ -n "$GRAFANA_CLOUD_LOKI_URL$GRAFANA_CLOUD_LOKI_USERNAME$GRAFANA_CLOUD_LOKI_TOKEN" ]; then
+            for key in GRAFANA_CLOUD_LOKI_URL GRAFANA_CLOUD_LOKI_USERNAME GRAFANA_CLOUD_LOKI_TOKEN; do
+              if [ -z "${!key}" ]; then
+                echo "::error::Loki 設定不完整：缺少 $key"
+                exit 1
+              fi
+            done
+            if [ "$monitoring_enabled" != true ]; then
+              echo "::error::Loki 需要先設定完整的 Alloy 指標監控 Secrets"
+              exit 1
+            fi
+            case "$GRAFANA_CLOUD_LOKI_URL" in
+              https://*.grafana.net/loki/api/v1/push) ;;
+              *) echo "::error::Loki URL 必須是 Grafana Cloud 的 HTTPS /loki/api/v1/push 端點"; exit 1 ;;
+            esac
+            kubectl create secret generic meddemo-logging --namespace meddemo \
+              --from-literal=GRAFANA_CLOUD_LOKI_URL="$GRAFANA_CLOUD_LOKI_URL" \
+              --from-literal=GRAFANA_CLOUD_LOKI_USERNAME="$GRAFANA_CLOUD_LOKI_USERNAME" \
+              --from-literal=GRAFANA_CLOUD_LOKI_TOKEN="$GRAFANA_CLOUD_LOKI_TOKEN" \
+              --dry-run=client -o yaml | kubectl apply -f -
+            logging_enabled=true
+          fi
           # --wait：所有 pod 就緒才算成功。上限放寬到 10 分鐘，因為第一次部署要從 Docker Hub 下載 Postgres 與 Redis 的映像
           helm upgrade --install meddemo deploy/helm/meddemo --namespace meddemo \
-            --set image.tag="$GITHUB_SHA" --set monitoring.enabled="$monitoring_enabled" --wait --timeout 10m
+            --set image.tag="$GITHUB_SHA" --set monitoring.enabled="$monitoring_enabled" \
+            --set monitoring.logs.enabled="$logging_enabled" --wait --timeout 10m
           # 手動觸發多半是換了金鑰；Secret 改了 pod 不會自己重讀，要重啟才生效
           if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
             $KC rollout restart deployment/api deployment/worker
@@ -403,6 +436,9 @@ jobs:
 
       - name: 匯入公開通路並同步內網搜尋索引
         run: $KC exec deployment/api -- python /srv/backend/scripts/sync_customer_search.py
+
+      - name: 匯入已核對的商品照片與來源
+        run: $KC exec deployment/api -- python /srv/backend/scripts/import_product_photos.py
 
       # 跟 CARE 共用同一個 Traefik：打到別人的 /health 一樣是 200（以前就被 CARE 的後端接走過），
       # 所以要看到 MEDDEMO 自己的回應才算過。剛部署完 Traefik 可能還沒換上新規則，等一下再試

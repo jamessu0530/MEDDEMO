@@ -558,9 +558,6 @@ function OrderEditor({
                       <p className="text-sm font-medium">
                         草稿已建立，還沒有加入產品
                       </p>
-                      <p className="text-xs text-muted-foreground">
-                        加入產品後，再填寫出貨資料與確認金額。
-                      </p>
                       {!readonly && (
                         <Button
                           variant="outline"
@@ -960,11 +957,6 @@ function OrderEditor({
                 onChange={(event) => update({ note: event.target.value })}
               />
             </label>
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              {readonly
-                ? "生效訂單保留成交紀錄。再次訂購可用「照舊帶出」建立新草稿。"
-                : "草稿可隨時儲存。送出後會建立交易與應收帳款，訂單轉為生效。"}
-            </p>
           </aside>
         </div>
       </main>

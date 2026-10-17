@@ -2,6 +2,7 @@
 
 from secrets import compare_digest
 from time import perf_counter
+from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from prometheus_client import (
@@ -18,6 +19,7 @@ from prometheus_client import (
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.config import settings
+from app.request_logs import RequestLog
 
 METHODS = frozenset({"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "TRACE", "CONNECT"})
 
@@ -45,9 +47,10 @@ class HttpMetrics:
 
 
 class MetricsMiddleware:
-    def __init__(self, app: ASGIApp, metrics: HttpMetrics):
+    def __init__(self, app: ASGIApp, metrics: HttpMetrics, request_log: RequestLog | None = None):
         self.app = app
         self.metrics = metrics
+        self.request_log = request_log
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send):
         # Health probes and scrapes must not dominate application latency and traffic.
@@ -55,28 +58,51 @@ class MetricsMiddleware:
             return await self.app(scope, receive, send)
         started = perf_counter()
         status = 500  # Includes exceptions before response headers have been sent.
+        response_complete = False
+        error = None
+        request_id = uuid4().hex if self.request_log is not None else ""
         self.metrics.in_progress.inc()
 
         async def observed_send(message: Message):
-            nonlocal status
+            nonlocal status, response_complete
             if message["type"] == "http.response.start":
                 status = message["status"]
+                if request_id:
+                    message = dict(message)
+                    message["headers"] = [
+                        (key, value) for key, value in message.get("headers", [])
+                        if key.lower() != b"x-request-id"
+                    ] + [(b"x-request-id", request_id.encode("ascii"))]
             await send(message)
+            if message["type"] == "http.response.body" and not message.get("more_body", False):
+                response_complete = True
 
         try:
             await self.app(scope, receive, observed_send)
+        except Exception as exc:
+            error = exc
+            raise
         finally:
             self.metrics.in_progress.dec()
             route = getattr(scope.get("route"), "path", "unmatched")
             method = scope["method"] if scope["method"] in METHODS else "OTHER"
             self.metrics.requests.labels(method, route, str(status)).inc()
-            self.metrics.duration.labels(method, route).observe(perf_counter() - started)
+            duration = perf_counter() - started
+            self.metrics.duration.labels(method, route).observe(duration)
+            if self.request_log is not None:
+                self.request_log.write(
+                    method=method, route=route, status=status, duration=duration,
+                    request_id=request_id, response_complete=response_complete, error=error,
+                )
 
 
 def install_metrics(app: FastAPI) -> None:
     metrics = HttpMetrics()
     app.state.http_metrics = metrics
-    app.add_middleware(MetricsMiddleware, metrics=metrics)
+    path = settings().request_log_path
+    request_log = RequestLog(path) if path else None
+    app.state.request_log = request_log
+    app.add_middleware(MetricsMiddleware, metrics=metrics, request_log=request_log)
 
     @app.get("/metrics", include_in_schema=False)
     def prometheus_metrics(request: Request) -> Response:

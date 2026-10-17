@@ -170,19 +170,6 @@ export function OaFormView({
 function FormTab({ form }: { form: OaFormDetail }) {
   return (
     <>
-      {form.kind === "legacy" && (
-        <div className="rounded-xl border bg-primary/5 p-4 text-sm leading-relaxed">
-          <p className="font-medium">OA 申請資料</p>
-          <p className="mt-1 text-muted-foreground">
-            可查看申請內容、附件、簽核流程與處理紀錄。
-          </p>
-          {(form.payload as LegacyPayload).sap_origin && (
-            <p className="mt-2 text-amber-700 dark:text-amber-400">
-              正式 PR／PO 須由 SAP 起單。
-            </p>
-          )}
-        </div>
-      )}
       <div
         data-ui-demo="oa-detail-summary"
         className="rounded-2xl bg-muted px-4 py-3 text-sm"

@@ -239,7 +239,7 @@ def test_snapshot_comparison_rejected(metric):
 def test_new_metrics_comparison_settings_and_nulls_roundtrip_through_authenticated_api(interaction_session):
     client = TestClient(app)
     headers = {"Authorization": f"Bearer {auth.create_token(interaction_session.get(AppUser, 'M1'))}"}
-    body = reports.ReportConfig.model_validate(config("net_margin_rate", card={"comparison": "previous_year"}).model_dump(exclude={"selection_groups", "drill_filters", "matrix_views", "canvas_selections", "navigation_page", "navigation_filters"}))
+    body = reports.ReportConfig.model_validate(config("net_margin_rate", card={"comparison": "previous_year"}).model_dump(exclude={"selection_groups", "drill_filters", "matrix_views", "canvas_selections", "navigation_page", "navigation_filters", "requested_card_ids"}))
     assert client.put("/api/reports/config", headers=headers, json=body.model_dump(mode="json")).status_code == 200
     stored = client.get("/api/reports", headers=headers).json()["config"]
     assert stored["cards"][0]["metric"] == "net_margin_rate" and stored["cards"][0]["comparison"] == "previous_year"

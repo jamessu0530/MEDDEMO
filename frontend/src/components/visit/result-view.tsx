@@ -95,7 +95,6 @@ export function ResultView({ visit, onChange }: { visit: Visit; onChange: (visit
         })}
       </ul>
 
-      {!complete && <p className="text-sm text-muted-foreground">其他幾套已經寫進去了，重送只會補上失敗的那一套。</p>}
       {visit.fields.competitor?.length ? (
         <div className="flex items-start gap-3 rounded-xl border-2 bg-card px-4 py-3 text-sm shadow-lip">
           <span className="w-10 shrink-0 text-muted-foreground">競品</span>

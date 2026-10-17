@@ -428,18 +428,10 @@ export function CustomerPriorityPanel() {
                       <option value="lower">數值低的優先</option>
                     </NativeSelect>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    {m.description}
-                  </p>
                 </div>
               )
             })}
           </div>
-          <p className="text-xs leading-relaxed text-muted-foreground">
-            各指標先依團隊範圍轉成 0～100
-            分，再按權重加總。缺資料或整組數值相同時採中性 50
-            分。分數表示這份策略的優先程度。
-          </p>
           <div className="flex flex-wrap gap-2">
             <Button
               disabled={!validStrategy(draft)}
@@ -492,29 +484,6 @@ export function CustomerPriorityPanel() {
               第 {settings.revision} 版 · {settings.updated_by} 更新
             </p>
           )}
-          <details className="text-xs text-muted-foreground">
-            <summary className="cursor-pointer">評分方法與研究參考</summary>
-            <p className="mt-2 leading-relaxed">
-              採用可調權重的多準則評分，參考加權 RFM。直接調權重與 AHP
-              的兩兩比較流程不同。
-            </p>
-            <a
-              className="mt-2 block underline"
-              href="https://ieeexplore.ieee.org/document/10825251/"
-              target="_blank"
-              rel="noreferrer"
-            >
-              IEEE BigData 2024：RFMI 客戶分群
-            </a>
-            <a
-              className="mt-1 block underline"
-              href="https://doi.org/10.3390/math9161836"
-              target="_blank"
-              rel="noreferrer"
-            >
-              2021：依商業目標調整 RFM 權重
-            </a>
-          </details>
         </fieldset>
         <div className="min-w-0 space-y-5">
           {!preview ? (
@@ -527,7 +496,7 @@ export function CustomerPriorityPanel() {
                 <div>
                   <h3 className="font-semibold">客戶排名</h3>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {preview.data.date} · 共 {rows.length} 家
+                    {preview.data.date}
                     {!currentPreview && " · 設定已改，請重新預覽"}
                   </p>
                 </div>
@@ -553,9 +522,6 @@ export function CustomerPriorityPanel() {
                   </NativeSelect>
                 </div>
               </div>
-              <p className="text-xs text-muted-foreground">
-                主管指定優先納入每日名單；實際走訪順序仍會考慮約定時間與車程。
-              </p>
               <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
                 {draft.metrics
                   .filter((m) => m.weight > 0)
@@ -604,11 +570,6 @@ export function CustomerPriorityPanel() {
                 {!visibleRows.length && (
                   <p className="py-6 text-center text-sm text-muted-foreground">
                     沒有符合的客戶。
-                  </p>
-                )}
-                {visibleRows.length > 50 && (
-                  <p className="text-xs text-muted-foreground">
-                    顯示前 50 家，可用搜尋或業務篩選找到其他客戶。
                   </p>
                 )}
               </div>

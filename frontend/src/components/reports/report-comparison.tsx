@@ -43,11 +43,13 @@ export function ReportComparisonSummary({
   metric,
   label,
   card,
+  compact = false,
 }: {
   comparison?: ReportComparison | null
   metric: ReportMetric
   label?: string
   card?: ReportCard
+  compact?: boolean
 }) {
   if (!comparison) return null
   const formatter = (amount: number | null, unit: ReportMetric) =>
@@ -56,7 +58,11 @@ export function ReportComparisonSummary({
       : formatReportExactValue(amount, unit)
   return (
     <div
-      className="space-y-1 rounded-md border bg-muted/20 px-2 py-2 text-xs"
+      className={
+        compact
+          ? "report-widget-comparison text-xs"
+          : "space-y-1 rounded-md border bg-muted/20 px-2 py-2 text-xs"
+      }
       aria-label={label ?? "期間比較"}
     >
       <p className="wrap-break-word">
@@ -67,23 +73,22 @@ export function ReportComparisonSummary({
           formatValue: formatter,
         })}
       </p>
-      <p className="text-xs text-muted-foreground">
-        前期 {comparisonPrevious(comparison.value, metric, formatter)}
-        {comparison.value.status === "ok" &&
-          metric !== "net_margin_rate" &&
-          comparison.value.delta != null &&
-          ` · 差額 ${formatter(comparison.value.delta, metric)}`}
-      </p>
-      {comparison.start && comparison.end && (
+      {!compact && (
+        <p className="text-xs text-muted-foreground">
+          前期 {comparisonPrevious(comparison.value, metric, formatter)}
+          {comparison.value.status === "ok" &&
+            metric !== "net_margin_rate" &&
+            comparison.value.delta != null &&
+            ` · 差額 ${formatter(comparison.value.delta, metric)}`}
+        </p>
+      )}
+      {!compact && comparison.start && comparison.end && (
         <p className="text-xs text-muted-foreground">
           {comparison.start > comparison.end
             ? "比較日期條件沒有交集"
             : `比較日期：${comparison.start} 至 ${comparison.end}`}
         </p>
       )}
-      <p className="text-xs text-muted-foreground">
-        {comparison.note} 日期條件同步平移，其餘條件與權限相同。
-      </p>
     </div>
   )
 }

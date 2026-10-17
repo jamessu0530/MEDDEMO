@@ -372,9 +372,8 @@ describe("新版報表操作求助", () => {
     const missing = [
       "report-finish-editing",
       "report-start-editing",
-      "report-visual-focus",
-      "report-focused-content",
-      "report-focus-close",
+      "report-page-tabs",
+      "report-widget-resize",
       "report-visual-edit",
       "report-inspector",
       "report-inspector-close",

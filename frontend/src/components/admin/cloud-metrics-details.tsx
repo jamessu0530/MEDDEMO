@@ -39,9 +39,6 @@ export function StatusDistribution({ data }: { data: CloudMetrics }) {
   return (
     <article className="rounded-2xl border bg-card p-4">
       <h3 className="text-sm font-semibold">HTTP 回應分布</h3>
-      <p className="mt-1 text-[11px] text-muted-foreground">
-        所選時間範圍 · 依狀態碼統計請求數
-      </p>
       <div className="mt-5 flex flex-wrap items-center justify-center gap-x-8 gap-y-5">
         <div
           className="relative grid size-36 shrink-0 place-items-center rounded-full"
@@ -51,7 +48,7 @@ export function StatusDistribution({ data }: { data: CloudMetrics }) {
           }}
           role="img"
           aria-label={
-            hasSamples ? `共 ${metricNumber(total)} 次請求` : "尚無狀態碼樣本"
+            hasSamples ? `${metricNumber(total)} 次請求` : "尚無狀態碼樣本"
           }
         >
           <div className="grid size-28 place-content-center rounded-full bg-card text-center">
@@ -129,9 +126,6 @@ export function RouteRanking({ data }: { data: CloudMetrics }) {
             <ArrowDownWideNarrow className="size-4 text-primary" />
             API 功能排行
           </h3>
-          <p className="mt-1 text-[11px] text-muted-foreground">
-            請求量與錯誤數依所選範圍；延遲為近一分鐘 p95
-          </p>
         </div>
         <NativeSelect
           aria-label="API 排行方式"
@@ -221,10 +215,6 @@ export function RouteRanking({ data }: { data: CloudMetrics }) {
           </p>
         )}
       </div>
-      <p className="mt-2 text-[10px] text-muted-foreground">
-        顯示前 10 項 · 共 {data.routes.length} 個路由 ·
-        路徑使用樣板，不含個人識別資訊
-      </p>
     </article>
   )
 }
@@ -236,9 +226,6 @@ export function InstanceStatus({ data }: { data: CloudMetrics }) {
         <Server className="size-4 text-primary" />
         API 實例狀態
       </h3>
-      <p className="mt-1 text-[11px] text-muted-foreground">
-        Cloud 收集的 API process 資源與運行時間
-      </p>
       <div className="mt-4 space-y-3">
         {data.instances.map((instance) => (
           <div

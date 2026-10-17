@@ -91,11 +91,6 @@ export function RideCard({
       </div>
       <p className="mt-1 text-sm font-semibold">{TRAVEL_MODE_LABEL[mode]}</p>
       <p className="text-xs text-muted-foreground">{ridden ? `${formatTaipeiDateTime(riddenAt)} 第一次騎` : "還沒騎過"}</p>
-      {!ridden && active && (
-        <p className="mt-1 text-xs text-primary">
-          在{city}選{TRAVEL_MODE_LABEL[mode]}就能收集
-        </p>
-      )}
     </button>
   )
 }

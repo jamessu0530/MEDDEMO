@@ -3,10 +3,25 @@ import type { CalendarEvent, EventBody, EventFields } from "@/api/planner"
 export const DISPLAY_ZONE = "Asia/Taipei"
 export type CalendarView = "month" | "week" | "day" | "list"
 const pad = (value: number) => String(value).padStart(2, "0")
+// Intl formatter 建立成本高，日曆格子、行程標籤與 worker 都重用同一組。
+const dateFormats = new Map<string, Intl.DateTimeFormat>()
+const timeFormats = new Map<string, Intl.DateTimeFormat>()
+function cachedFormat(
+  cache: Map<string, Intl.DateTimeFormat>,
+  zone: string,
+  options: Intl.DateTimeFormatOptions
+) {
+  let format = cache.get(zone)
+  if (!format) {
+    format = new Intl.DateTimeFormat("en-CA", { ...options, timeZone: zone })
+    if (cache.size >= 32) cache.delete(cache.keys().next().value!)
+    cache.set(zone, format)
+  }
+  return format
+}
 
 export function dateKey(value: string | Date, zone = DISPLAY_ZONE) {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: zone,
+  const parts = cachedFormat(dateFormats, zone, {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -45,8 +60,7 @@ export function viewDays(anchor: string, view: CalendarView) {
       : monthDays(anchor)
 }
 export function localInput(value: string, zone = DISPLAY_ZONE) {
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: zone,
+  const parts = cachedFormat(timeFormats, zone, {
     hourCycle: "h23",
     year: "numeric",
     month: "2-digit",
@@ -146,62 +160,88 @@ export function moveEvent(
   }
 }
 
-export type EventPlacement = {
-  event: CalendarEvent
+export type CalendarEventTiming = Pick<
+  CalendarEvent,
+  "id" | "starts_at" | "ends_at" | "timezone" | "all_day"
+>
+export type EventPlacement<T = CalendarEvent> = {
+  event: T
   top: number
   height: number
   column: number
   columns: number
 }
-export function layoutTimedEvents(
-  events: CalendarEvent[],
+/** Shared by the worker and the time-sliced fallback, including dense overlap groups. */
+export function* layoutTimedEventsWork<T extends CalendarEventTiming>(
+  events: T[],
   date: string
-): EventPlacement[] {
+): Generator<void, EventPlacement<T>[]> {
   const start = new Date(zonedIso(date)).getTime(),
     end = new Date(zonedIso(shiftDay(date, 1))).getTime()
-  const placements: EventPlacement[] = events
-    .filter((e) => !e.all_day && onDay(e, date))
-    .map((event) => {
-      const top = Math.max(
-        0,
-        (new Date(event.starts_at).getTime() - start) / 60000
-      )
-      const finish = Math.min(
-        1440,
-        (Math.min(end, new Date(event.ends_at).getTime()) - start) / 60000
-      )
-      return {
+  const placements: EventPlacement<T>[] = []
+  let work = 0
+  for (const event of events) {
+    const begins = Date.parse(event.starts_at),
+      finishes = Date.parse(event.ends_at)
+    if (!event.all_day && begins < end && finishes > start) {
+      const top = Math.max(0, (begins - start) / 60000)
+      const finish = Math.min(1440, (Math.min(end, finishes) - start) / 60000)
+      placements.push({
         event,
         top,
         height: Math.max(30, finish - top),
         column: 0,
         columns: 1,
-      }
-    })
-    .sort(
-      (a, b) =>
-        a.top - b.top ||
-        b.height - a.height ||
-        a.event.id.localeCompare(b.event.id)
-    )
-  let group: EventPlacement[] = [],
+      })
+    }
+    if (++work % 128 === 0) yield
+  }
+  placements.sort(
+    (a, b) =>
+      a.top - b.top ||
+      b.height - a.height ||
+      a.event.id.localeCompare(b.event.id)
+  )
+  let group: EventPlacement<T>[] = [],
     groupEnd = 0
-  const finishGroup = () => {
-    const columns = Math.max(1, ...group.map((p) => p.column + 1))
-    group.forEach((p) => {
+  let columns = 1
+  function* finishGroup() {
+    for (const p of group) {
       p.columns = columns
-    })
+      if (++work % 128 === 0) yield
+    }
     group = []
+    columns = 1
+    groupEnd = 0
   }
   for (const placement of placements) {
-    if (placement.top >= groupEnd) finishGroup()
-    const active = group.filter((p) => p.top + p.height > placement.top)
-    while (active.some((p) => p.column === placement.column)) placement.column++
+    if (placement.top >= groupEnd) yield* finishGroup()
+    const occupied = new Set<number>()
+    for (const p of group) {
+      if (p.top + p.height > placement.top) occupied.add(p.column)
+      if (++work % 128 === 0) yield
+    }
+    while (occupied.has(placement.column)) {
+      placement.column++
+      if (++work % 128 === 0) yield
+    }
     group.push(placement)
-    groupEnd = Math.max(...group.map((p) => p.top + p.height))
+    groupEnd = Math.max(groupEnd, placement.top + placement.height)
+    columns = Math.max(columns, placement.column + 1)
+    if (++work % 128 === 0) yield
   }
-  finishGroup()
+  yield* finishGroup()
   return placements
+}
+
+export function layoutTimedEvents<T extends CalendarEventTiming>(
+  events: T[],
+  date: string
+): EventPlacement<T>[] {
+  const work = layoutTimedEventsWork(events, date)
+  let result = work.next()
+  while (!result.done) result = work.next()
+  return result.value
 }
 
 export const eventKey = (event: CalendarEvent) =>

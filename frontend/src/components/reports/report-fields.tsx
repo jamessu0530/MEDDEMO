@@ -150,9 +150,6 @@ export function ReportDataFields({
           placeholder="搜尋欄位"
         />
       </label>
-      <p className="text-xs leading-relaxed text-muted-foreground">
-        拖放至「值、軸、圖例」；點選欄位也能套用。資料範圍沿用你的權限。
-      </p>
       <details open>
         <summary className="min-h-9 cursor-pointer text-xs font-medium">
           Σ 業務指標
@@ -191,7 +188,7 @@ export function ReportDataFields({
       </button>
       <details open>
         <summary className="min-h-9 cursor-pointer text-xs font-medium">
-          匯入資料表（{sources.length}）
+          匯入資料表
         </summary>
         {error && <p className="text-xs text-muted-foreground">{error}</p>}
         {sources.map((source) => (

@@ -34,7 +34,7 @@ import { Card, CardFooter, CardHeader } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
 import { addDraftFiles, shrinkPhoto, type DraftFile } from "@/lib/attachments"
 import { useAuth } from "@/lib/auth"
-import { FIXED_COLUMN } from "@/lib/desktop-layout"
+import { FIXED_COLUMN, pageWidth } from "@/lib/desktop-layout"
 import { cn } from "@/lib/utils"
 import { uiDemo } from "@/lib/ui-demo-browser"
 import { useStartUiDemo } from "@/lib/use-start-ui-demo"
@@ -49,46 +49,58 @@ export function Assistant() {
   const { pathname } = useLocation()
   const placement = pageAssistantPlacement(pathname)
   const enabled = placement !== "none"
-  const floating = placement === "floating"
+  const bare = pageWidth(pathname) === "bare"
   const open = useSyncExternalStore(
     assistantWindow.subscribe,
     assistantWindow.getSnapshot,
     assistantWindow.getSnapshot
   )
-  const { inset, availableHeight } = useAssistantLayout(
-    enabled,
-    floating && !open
-  )
+  const { inset, availableHeight } = useAssistantLayout(enabled)
   const demo = useSyncExternalStore(
     uiDemo.subscribe,
     uiDemo.getSnapshot,
     uiDemo.getSnapshot
   )
-  const active = enabled && (!floating || open)
+  const active = enabled
   const dockRef = useRef<HTMLDivElement>(null)
+  const collapsedHeight = useRef(80)
   useEffect(() => {
-    if (!enabled || floating) {
+    if (!enabled) {
       document.documentElement.style.removeProperty(
         "--page-assistant-dock-space"
       )
+      document.documentElement.style.removeProperty(
+        "--page-assistant-dock-height"
+      )
       return
     }
-    if (open || !dockRef.current) return
+    if (!dockRef.current) return
     const element = dockRef.current
-    const update = () =>
+    const update = () => {
+      const height = element.getBoundingClientRect().height
+      // 展開回覆不推動整個頁面；鍵盤與底部分頁列的位移仍即時更新。
+      if (!open && height) collapsedHeight.current = Math.ceil(height)
+      document.documentElement.style.setProperty(
+        "--page-assistant-dock-height",
+        `${collapsedHeight.current}px`
+      )
       document.documentElement.style.setProperty(
         "--page-assistant-dock-space",
-        `${Math.ceil(element.getBoundingClientRect().height + inset)}px`
+        `${collapsedHeight.current + inset}px`
       )
+    }
     const observer = new ResizeObserver(update)
     observer.observe(element)
     update()
     return () => observer.disconnect()
-  }, [enabled, floating, open, inset])
+  }, [enabled, open, inset])
   useEffect(
     () => () => {
       document.documentElement.style.removeProperty(
         "--page-assistant-dock-space"
+      )
+      document.documentElement.style.removeProperty(
+        "--page-assistant-dock-height"
       )
     },
     []
@@ -105,29 +117,27 @@ export function Assistant() {
         closeAssistant()
         requestAnimationFrame(() =>
           document
-            .getElementById(
-              floating ? "page-assistant-launcher" : "page-assistant-input"
-            )
+            .getElementById("page-assistant-input")
             ?.focus({ preventScroll: true })
         )
       }
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [open, active, floating])
+  }, [open, active])
   if (!enabled) return null
   return (
     <div
       ref={dockRef}
       data-page-assistant
       hidden={demo.status === "running"}
-      data-placement={floating ? "floating" : "dock"}
+      data-placement="dock"
       className={cn(
-        "pointer-events-none flex flex-col",
+        "pointer-events-none flex flex-col pt-2 pb-[max(env(safe-area-inset-bottom),0.5rem)] pl-[max(env(safe-area-inset-left),0.625rem)] pr-[max(env(safe-area-inset-right),0.625rem)]",
         demo.status === "running" && "hidden",
-        floating
-          ? "fixed right-2.5 z-40 w-[calc(100%-1.25rem)] max-w-md pb-[max(env(safe-area-inset-bottom),0.5rem)]"
-          : cn(FIXED_COLUMN, "z-30 px-2.5 py-2 lg:max-w-xl")
+        bare
+          ? "fixed inset-x-0 z-30 mx-auto max-w-md"
+          : cn(FIXED_COLUMN, "z-30 lg:max-w-xl")
       )}
       style={
         {
@@ -161,20 +171,14 @@ export function Assistant() {
                 size="icon"
                 variant="ghost"
                 className="size-11 shrink-0 rounded-xl text-muted-foreground"
-                aria-label={floating ? "收起 AI 助理" : "收起 AI 回覆"}
+                aria-label="收起 AI 回覆"
                 aria-expanded={true}
                 aria-controls="page-assistant-panel"
                 onClick={() => {
-                  if (floating)
-                    document.getElementById("page-assistant-input")?.blur()
                   closeAssistant()
                   requestAnimationFrame(() =>
                     document
-                      .getElementById(
-                        floating
-                          ? "page-assistant-launcher"
-                          : "page-assistant-input"
-                      )
+                      .getElementById("page-assistant-input")
                       ?.focus({ preventScroll: true })
                   )
                 }}
@@ -192,22 +196,6 @@ export function Assistant() {
           <SignedOutAssistant />
         )}
       </Card>
-      {floating && !open && (
-        <div className="flex items-center justify-end gap-2">
-          <Button
-            id="page-assistant-launcher"
-            type="button"
-            className="pointer-events-auto h-12 gap-2 rounded-full px-4 shadow-lg"
-            aria-label="開啟 AI 助理"
-            aria-expanded={false}
-            aria-controls="page-assistant-panel"
-            onClick={openAssistant}
-          >
-            <Mascot size={28} bust />
-            AI 助理
-          </Button>
-        </div>
-      )}
     </div>
   )
 }
@@ -222,13 +210,14 @@ function SignedOutAssistant() {
       ? "/"
       : pathname + search)
   return (
-    <section className="p-4" aria-label="AI 助理登入提示">
-      <p className="text-sm leading-relaxed text-muted-foreground">
-        登入後就能在每個頁面問熊熊滾，查詢你有權限查看的公司資料。
+    <section className="flex min-h-14 items-center gap-2 p-2" aria-label="AI 助理登入提示">
+      <Mascot size={28} bust className="shrink-0" />
+      <p className="min-w-0 flex-1 text-sm leading-relaxed text-muted-foreground">
+        登入後就能問熊熊滾
       </p>
-      <Button asChild className="mt-3 w-full">
+      <Button asChild className="h-11 shrink-0 px-3">
         <Link to="/login" state={{ from }}>
-          登入使用 AI 助理
+          登入提問
         </Link>
       </Button>
     </section>
@@ -383,11 +372,6 @@ function AssistantContent({
         )}
       >
         <div className="flex flex-col gap-4 px-3 py-3 [overflow-wrap:anywhere]">
-          {entries.length === 0 && (
-            <p className="text-sm text-muted-foreground">
-              直接輸入問題就可以。
-            </p>
-          )}
           {entries.map((entry) => (
             <div
               key={entry.id}
@@ -513,7 +497,7 @@ function AssistantContent({
                     : "輸入問題…"
             }
             aria-label="輸入問題"
-            className="max-h-24 min-h-11 min-w-0 flex-1 resize-none overflow-y-auto rounded-lg border-0 bg-transparent px-1 py-2.5 text-base shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0"
+            className="max-h-[min(6rem,24dvh)] min-h-11 min-w-0 flex-1 resize-none overflow-y-auto rounded-lg border-0 bg-transparent px-1 py-2.5 text-base shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0"
           />
           <div className="flex shrink-0 items-center">
             {!session && (

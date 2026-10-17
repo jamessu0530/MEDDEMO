@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react"
+import { useSortable } from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
 import {
   Eye,
   EyeOff,
@@ -53,6 +55,17 @@ export function StudioVisual({
   onValues: (id: string, keys: string[]) => void
   onAction: (action: StudioAction) => void
 }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+  } = useSortable({
+    id: object.id,
+    disabled: !editing || object.locked,
+  })
   const selected = object.slicer ? (values[object.id] ?? []) : []
   const options =
     object.slicer && object.slicer.dimension in filterOptions
@@ -60,6 +73,7 @@ export function StudioVisual({
       : []
   return (
     <article
+      ref={setNodeRef}
       data-studio-object={object.id}
       aria-label={object.title}
       onClick={() => {
@@ -67,17 +81,20 @@ export function StudioVisual({
       }}
       className={`col-span-2 min-w-0 overflow-hidden rounded-lg border bg-card lg:col-span-12 ${layout.selected && editing ? "ring-2 ring-primary" : ""} ${object.hidden && editing ? "opacity-40" : ""}`}
       style={{
-        height: layout.fixedHeight ?? (layout.customMove ? "100%" : undefined),
-        minHeight: layout.customMove ? undefined : 160,
+        transform: CSS.Transform.toString(transform),
+        transition,
+        height: layout.fixedHeight,
         background: object.background,
       }}
     >
       {editing && (
         <div className="flex min-h-10 items-center gap-1 border-b bg-muted/30 px-2">
           <button
+            ref={setActivatorNodeRef}
             type="button"
             aria-label={`拖曳物件：${object.title}`}
-            {...layout.moveHandle}
+            {...attributes}
+            {...listeners}
             disabled={object.locked}
             onClick={(event) => {
               event.stopPropagation()
@@ -220,9 +237,7 @@ export function StudioVisual({
                 </div>
               )
             ) : (
-              <p className="text-xs text-muted-foreground">
-                日期條件請使用報表日期切片器；此畫布元件可改選客戶、商品、業務或類型。
-              </p>
+              null
             )}
             <button
               className="min-h-9 text-sm text-primary"
@@ -327,9 +342,6 @@ export function StudioLayers({
   return (
     <div className="space-y-2">
       <h2 className="text-base font-semibold">選取與圖層</h2>
-      <p className="text-xs text-muted-foreground">
-        清單由上層到下層排列；鎖定會保護位置與尺寸。
-      </p>
       <div className="flex flex-wrap gap-1">
         <Button
           variant="outline"
@@ -559,9 +571,6 @@ export function StudioObjectInspector({
               event.target.value = ""
             }}
           />
-          <p className="text-xs text-muted-foreground">
-            圖片隨報表保存與分享，會先縮小並移除照片中繼資料。
-          </p>
         </>
       )}
       {object.kind === "shape" && (

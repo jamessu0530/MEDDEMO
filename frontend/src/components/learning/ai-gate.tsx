@@ -132,10 +132,6 @@ function SalesGate({
               完成課程就能解鎖
             </span>
             <h2 className="text-xl font-semibold">先練一趟，再問熊熊滾</h2>
-            <p className="max-w-sm text-sm leading-relaxed text-muted-foreground">
-              五個短關卡帶你操作客戶檔案、促銷、路線和拜訪確認，也練習核對 AI
-              的答案出處。
-            </p>
             <p className="text-sm font-semibold">
               已完成 {course.completed.length} / {course.lessons.length} 關 · 再{" "}
               {course.lessons.length - course.completed.length} 關就解鎖

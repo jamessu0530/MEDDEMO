@@ -42,11 +42,14 @@ def test_every_account_can_switch_without_changing_accounts(client, auth, tx, en
     target = tx.get(AppUser, target_id)
     before = {user.id: (user.role, user.session_version, user.password_hash, user.org_path) for user in (account, target)}
     authorization = auth(account_id)
+    original_profile = client.get("/api/auth/me", headers=authorization).json()
     claims = auth_service.token_claims(authorization["Authorization"].removeprefix("Bearer "))
     result = switch(client, authorization, role)
     assert result["user"]["id"] == target_id
     assert result["user"]["role"] == role
-    assert result["user"]["demo"]["account"] == {"id": account_id, "name": account.name}
+    assert result["user"]["demo"]["account"] == {
+        key: value for key, value in original_profile.items() if key != "demo"
+    }
     switched_claims = auth_service.token_claims(result["token"])
     assert (switched_claims["sub"], switched_claims["sv"], switched_claims["exp"]) == (
         account_id, claims["sv"], claims["exp"],
@@ -107,19 +110,36 @@ def test_logout_invalidates_real_account_only(client, auth, tx, env):
     assert tx.get(AppUser, "U02").session_version == account_version + 1
 
 
-def test_registered_accounts_can_demo_and_account_edits_stay_personal(client, tx, env):
+@pytest.mark.parametrize("role,target_id", [("sales", "U01"), ("manager", "M01"), ("it", "A01")])
+def test_registered_accounts_can_demo_and_account_edits_stay_personal(client, tx, env, monkeypatch, role, target_id):
     env(DEMO_ROLE_SWITCH="true")
     registered = client.post("/api/auth/register", json={
         "name": "展示評審", "email": "demo-judge@example.test", "password": "judge-demo-1234",
     })
     assert registered.status_code == 201
     original = registered.json()
-    demo = switch(client, headers(original["token"]), "it")
+    target = tx.get(AppUser, target_id)
+    target_name, target_password = target.name, target.password_hash
+    demo = switch(client, headers(original["token"]), role)
+    assert demo["user"]["demo"]["account"]["email"] == "demo-judge@example.test"
+    assert demo["user"]["demo"]["account"]["has_password"] is True
+    assert demo["user"]["demo"]["account"]["can_rename"] is True
     authorization = headers(demo["token"])
     renamed = client.patch("/api/auth/me/profile", headers=authorization, json={"name": "新評審名稱"})
     assert renamed.status_code == 200
     assert renamed.json()["demo"]["account"]["name"] == "新評審名稱"
-    it_password = tx.get(AppUser, "A01").password_hash
+    assert renamed.json()["id"] == target_id
+    assert renamed.json()["name"] == target_name
+    monkeypatch.setattr(oauth, "verify_google", lambda credential: oauth.ExternalIdentity(
+        "google", credential, "judge-linked@example.test", "評審 Google",
+    ))
+    linked = client.post("/api/auth/oauth/google/link", headers=authorization, json={"credential": "judge-google"})
+    assert linked.status_code == 200
+    assert linked.json()["id"] == target_id
+    assert linked.json()["demo"]["account"]["linked"][0]["email"] == "judge-linked@example.test"
+    unlinked = client.delete("/api/auth/oauth/google", headers=authorization)
+    assert unlinked.status_code == 200
+    assert unlinked.json()["demo"]["account"]["linked"] == []
     changed = client.post("/api/auth/change-password", headers=authorization, json={
         "current_password": "judge-demo-1234", "new_password": "judge-new-1234",
     })
@@ -127,8 +147,8 @@ def test_registered_accounts_can_demo_and_account_edits_stay_personal(client, tx
     assert changed.json()["user"]["id"] == original["user"]["id"]
     assert changed.json()["user"]["demo"]["role"] is None
     tx.expire_all()
-    assert tx.get(AppUser, "A01").name == "James"
-    assert tx.get(AppUser, "A01").password_hash == it_password
+    assert tx.get(AppUser, target_id).name == target_name
+    assert tx.get(AppUser, target_id).password_hash == target_password
     assert tx.get(AppUser, original["user"]["id"]).role == "sales"
 
 
@@ -181,6 +201,8 @@ def test_google_account_can_demo_and_bindings_belong_to_real_account(client, tx,
     demo = switch(client, headers(original["token"]), "it")
     assert client.get("/api/admin/org", headers=headers(demo["token"])).status_code == 200
     assert demo["user"]["demo"]["account"]["id"] == original["user"]["id"]
+    assert demo["user"]["demo"]["account"]["has_password"] is False
+    assert demo["user"]["demo"]["account"]["linked"][0]["email"] == "demo-google-judge@example.test"
     # 不能因為目前展示 IT 就把另一個 Google 綁到 A01。
     linked = client.post("/api/auth/oauth/google/link", headers=headers(demo["token"]), json={"credential": "demo-another-google"})
     assert linked.status_code == 409

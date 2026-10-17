@@ -180,9 +180,6 @@ export function ReportMatrixFields({
           </NativeSelect>
         </label>
       ))}
-      <p className="text-xs text-muted-foreground">
-        每軸最多三層。客戶及應收使用目前快照。
-      </p>
     </div>
   )
 }

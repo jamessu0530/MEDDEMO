@@ -46,6 +46,76 @@ function render(
 }
 
 describe("ReportChart", () => {
+  it("同一份資料依 Widget 尺寸切換摘要、圖表與完整明細", () => {
+    const originalCard = card({ visual: "column", target: 1000 })
+    const data: CardData = {
+      id: "sales",
+      total: 1500,
+      row_count: 8,
+      note: null,
+      points: [
+        { key: "C1", label: "診所一", value: 1200 },
+        { key: "C2", label: "診所二", value: 300 },
+      ],
+      comparison: {
+        mode: "previous_month",
+        start: "2026-09-01",
+        end: "2026-09-30",
+        note: "比較說明",
+        value: {
+          previous: 1000,
+          delta: 500,
+          relative_change: 0.5,
+          status: "ok",
+          previous_rows: 6,
+        },
+      },
+    }
+    const snapshot = JSON.stringify({ originalCard, data })
+    const renderSize = (widgetSize: "small" | "medium" | "large") =>
+      renderToStaticMarkup(
+        createElement(ReportChart, { card: originalCard, data, widgetSize })
+      )
+    const small = renderSize("small")
+    const medium = renderSize("medium")
+    const large = renderSize("large")
+    expect(small).toContain("1,500 元")
+    expect(small).toContain("+50%")
+    expect(small).toContain('aria-valuenow="100"')
+    expect(small).toContain('aria-valuetext="150%"')
+    expect(small).not.toContain("<svg")
+    expect(small).not.toContain("<table")
+    expect(medium).toContain("<svg")
+    expect(medium).toContain("+50%")
+    expect(medium).not.toContain("<table")
+    expect(medium).not.toContain("比較日期：")
+    expect(large).toContain("<svg")
+    expect(large).toContain("<table")
+    expect(large).toContain("比較日期：")
+    expect(large).toContain("<details open=")
+    expect(JSON.stringify({ originalCard, data })).toBe(snapshot)
+  })
+
+  it("小卡保留無法計算、負值與聯動子集的真實含義", () => {
+    for (const total of [null, -50]) {
+      const html = renderToStaticMarkup(
+        createElement(ReportChart, {
+          card: card({ metric: "net_margin", target: 100 }),
+          widgetSize: "small",
+          data: {
+            id: "sales",
+            total,
+            points: [],
+            note: null,
+            highlight: { total: -20, points: [] },
+          },
+        })
+      )
+      expect(html).toContain(total == null ? "無法計算" : "−50 元")
+      expect(html).toContain("聯動選取合計：−20 元")
+      expect(html).not.toContain('role="progressbar"')
+    }
+  })
   it("資料點的可讀名稱說明目前是下鑽或逐筆明細動作", () => {
     for (const label of ["下鑽", "查看逐筆明細"]) {
       const html = renderToStaticMarkup(
@@ -135,10 +205,10 @@ describe("ReportChart", () => {
       expect(bars.every(([, , width]) => Number(width) === 0)).toBe(true)
   })
 
-  it("沒有資料時顯示可操作的空狀態，合計仍為零", () => {
+  it("沒有資料時顯示空狀態，合計仍為零", () => {
     const html = render([])
     expect(html).toContain("目前範圍沒有資料")
-    expect(html).toContain("可以調整期間或篩選條件")
+    expect(html).not.toContain("可以調整期間或篩選條件")
     expect(html).toContain("0 元")
     expect(html).not.toContain("<ol")
   })
@@ -314,7 +384,7 @@ describe("Power BI 圖表呈現", () => {
     expect(percent).toContain("診所 · 業績：75 元 · 圖中占比 75%")
     expect(percent).toContain("連鎖藥局 · 業績：50 元 · 圖中占比 25%")
     expect(percent).toContain("診所 · 業績：150 元 · 圖中占比 75%")
-    expect(percent).toContain("每個分類合計為 100%")
+    expect(percent).not.toContain("每個分類合計為 100%")
     const stacked = visualHtml("stacked_column")
     expect(stacked.match(/<rect /g)).toHaveLength(4)
     expect(stacked).toContain("50 元")
@@ -386,7 +456,7 @@ describe("Power BI 圖表呈現", () => {
     expect(html).toContain("33.3%")
     expect(html).toContain("66.7%")
     expect(html).toContain("600 元")
-    expect(html).toContain("占比以圖中分類合計計算")
+    expect(html).not.toContain("占比以圖中分類合計計算")
   })
 
   it("組合圖具有兩個獨立數值軸，使用真實負值第二指標", () => {

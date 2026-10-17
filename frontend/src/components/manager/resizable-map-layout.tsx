@@ -137,12 +137,10 @@ function MapLayout({ accountId, map, children }: Props & { accountId: string }) 
       >
         <div className="manager-map-widget sticky top-[4.5rem] min-w-0 p-2" data-resizing={resizing || undefined}>
           <div id={`${id}-map`} className={cn("manager-map-content", resizing && "pointer-events-none")}>{map}</div>
-          <p id={`${id}-hint`} className="sr-only">拖曳右下角調整大小，或按方向鍵微調。</p>
           <button
             type="button"
             aria-label="調整地圖大小"
             aria-controls={`${id}-map`}
-            aria-describedby={`${id}-hint`}
             title="拖曳調整寬高；方向鍵微調，Shift 加快，Esc 取消拖曳"
             className="manager-map-corner absolute -right-3 -bottom-3 z-20 size-20 touch-none cursor-nwse-resize border-0 bg-transparent p-0 outline-none"
             onPointerDown={(event) => startResize("both", event)}

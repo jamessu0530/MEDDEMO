@@ -1,4 +1,5 @@
 import type { BrowseProfile, Product } from "@/api/products"
+import { finishWork, sortWork, type Work } from "@/lib/background-work"
 
 export const PRODUCT_BATCH = 24
 export const BROWSE_IDLE_MS = 30_000
@@ -24,14 +25,16 @@ export function effectiveBrowseTime({
 }
 
 /** 有效閱讀與主動展開是正向訊號；左右滑不帶正負標籤。近期偏好逐漸衰減，長時間停著不會無限加分。 */
-export function productAffinities(
+function* productAffinitiesWork(
   products: Product[],
   profile: BrowseProfile,
-  now = Date.now()
-) {
+  now: number
+): Work<Map<string, number>> {
   const own = new Map<string, number>()
   const categories = new Map<string, { sum: number; count: number }>()
+  let work = 0
   for (const product of products) {
+    if (++work % 128 === 0) yield
     const signal = profile[product.sku]
     if (!signal) continue
     const age = Math.max(0, now - (Date.parse(signal.last_seen) || now))
@@ -45,19 +48,28 @@ export function productAffinities(
     category.count++
     categories.set(product.category, category)
   }
-  return new Map(
-    products.map((product) => {
-      const category = categories.get(product.category)
-      return [
-        product.sku,
-        Math.min(
-          8,
-          (own.get(product.sku) ?? 0) * 0.25 +
-            (category ? category.sum / category.count : 0) * 0.6
-        ),
-      ]
-    })
-  )
+  const result = new Map<string, number>()
+  for (const product of products) {
+    const category = categories.get(product.category)
+    result.set(
+      product.sku,
+      Math.min(
+        8,
+        (own.get(product.sku) ?? 0) * 0.25 +
+          (category ? category.sum / category.count : 0) * 0.6
+      )
+    )
+    if (++work % 128 === 0) yield
+  }
+  return result
+}
+
+export function productAffinities(
+  products: Product[],
+  profile: BrowseProfile,
+  now = Date.now()
+) {
+  return finishWork(productAffinitiesWork(products, profile, now))
 }
 
 function randomFor(seed: string, sku: string) {
@@ -68,6 +80,39 @@ function randomFor(seed: string, sku: string) {
 }
 
 /** 有偏好的隨機抽樣：保留所有搜尋結果，少看過的優先，也留空間遇見新類別。 */
+export function* discoverProductsWork(
+  products: Product[],
+  profile: BrowseProfile,
+  seed: string,
+  visibleSkus: string[] = [],
+  now = Date.now()
+): Work<Product[]> {
+  const affinity = yield* productAffinitiesWork(products, profile, now)
+  const visible = new Set(visibleSkus)
+  const weighted = []
+  let work = 0
+  for (const product of products) {
+    weighted.push({
+      product,
+      key:
+        (-Math.log(randomFor(seed, product.sku)) *
+          (visible.has(product.sku) ? 3 : 1)) /
+        (1 + (affinity.get(product.sku) ?? 0)),
+    })
+    if (++work % 128 === 0) yield
+  }
+  const sorted = yield* sortWork(
+    weighted,
+    (a, b) => a.key - b.key || a.product.sku.localeCompare(b.product.sku)
+  )
+  const result: Product[] = []
+  for (const { product } of sorted) {
+    result.push(product)
+    if (++work % 128 === 0) yield
+  }
+  return result
+}
+
 export function discoverProducts(
   products: Product[],
   profile: BrowseProfile,
@@ -75,18 +120,9 @@ export function discoverProducts(
   visibleSkus: string[] = [],
   now = Date.now()
 ) {
-  const affinity = productAffinities(products, profile, now)
-  const visible = new Set(visibleSkus)
-  return products
-    .map((product) => ({
-      product,
-      key:
-        (-Math.log(randomFor(seed, product.sku)) *
-          (visible.has(product.sku) ? 3 : 1)) /
-        (1 + (affinity.get(product.sku) ?? 0)),
-    }))
-    .sort((a, b) => a.key - b.key || a.product.sku.localeCompare(b.product.sku))
-    .map(({ product }) => product)
+  return finishWork(
+    discoverProductsWork(products, profile, seed, visibleSkus, now)
+  )
 }
 
 export function horizontalSwap(

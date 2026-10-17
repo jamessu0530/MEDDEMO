@@ -1,5 +1,6 @@
 .venv/
 __pycache__/
+/data/seed/product-appearance-index.json.gz.partial*
 .pytest_cache/
 .env
 .DS_Store

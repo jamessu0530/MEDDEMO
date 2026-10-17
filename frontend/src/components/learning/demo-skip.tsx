@@ -39,9 +39,6 @@ export function DemoLearningSkip({
       >
         {pending ? "正在開啟 AI 問答…" : "Demo：跳過課程，直接使用 AI"}
       </Button>
-      <p className="text-xs leading-relaxed text-muted-foreground">
-        這次登入可先體驗文字與語音問答，課程進度與 XP 保留。
-      </p>
       {error && (
         <p role="alert" className="text-sm text-destructive">
           {error}

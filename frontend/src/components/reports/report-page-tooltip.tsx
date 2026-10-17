@@ -92,9 +92,6 @@ export function ReportPageTooltip({
           <p className="text-xs font-semibold">
             {page?.name} · {point.label}
           </p>
-          <p className="text-xs text-muted-foreground">
-            帶入此資料點條件，依你的權限查詢。
-          </p>
         </div>
         <button
           type="button"

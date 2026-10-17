@@ -2,7 +2,6 @@ import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 import { describe, expect, it } from "vitest"
 import { ReportLayoutCanvas } from "@/components/reports/report-layout"
-import { ReportLayoutFields } from "@/components/reports/report-layout-fields"
 import { type ReportConfig } from "@/lib/reports"
 
 const config: ReportConfig = {
@@ -11,11 +10,11 @@ const config: ReportConfig = {
   period: "this_month",
   owner_id: null,
   customer_type: null,
-  pages: [{ id: "overview", name: "總覽", desktop_layout: "free" }],
+  pages: [{ id: "overview", name: "總覽", desktop_layout: "flow" }],
   cards: [
     {
       id: "a",
-      title: "桌機保留",
+      title: "業績",
       metric: "sales",
       visual: "bar",
       dimension: "owner",
@@ -25,27 +24,26 @@ const config: ReportConfig = {
     },
     {
       id: "b",
-      title: "手機優先",
-      metric: "sales",
+      title: "毛利",
+      metric: "net_margin",
       visual: "kpi",
       dimension: "none",
       limit: 5,
-      desktop_layout: { x: 15, y: 0, w: 9, h: 12 },
+      desktop_layout: { x: 15, y: 0, w: 6, h: 10 },
       mobile_layout: { order: 0, width: "half", height: 8, hidden: false },
     },
   ],
 }
-function board(desktop: boolean, editing = true) {
+function board(wide: boolean, editing = true, document = config) {
   return renderToStaticMarkup(
     createElement(ReportLayoutCanvas, {
-      config,
+      config: document,
       pageId: "overview",
       editing,
-      isDesktop: desktop,
+      isDesktop: wide,
       selectedId: "a",
       onSelect: () => undefined,
       onChange: () => undefined,
-      onMobileChange: () => undefined,
       renderCard: (card, layout) =>
         createElement(
           "article",
@@ -56,42 +54,57 @@ function board(desktop: boolean, editing = true) {
   )
 }
 
-describe("報表版面顯示", () => {
-  it("桌機自由位置依儲存座標呈現，手機隱藏不影響桌機", () => {
-    const html = board(true)
-    expect(html).toContain('data-report-layout="desktop-free"')
-    expect(html).toContain('data-layout-rect="3,5,12,20"')
-    expect(html).toContain("left:12.5%;top:120px;width:50%;height:480px")
-    expect(html).toContain('data-test-height="472"')
-    expect(html).toContain('aria-label="調整尺寸：桌機保留"')
-    expect(html).toContain('aria-label="圖表對齊與分布"')
+describe("報表自動版面", () => {
+  it("兩種螢幕共用卡片順序與高度，不再提供版面設定工具", () => {
+    for (const wide of [true, false]) {
+      const html = board(wide)
+      expect(html).toContain('data-report-layout="automatic"')
+      expect(html).toContain('data-layout-card="a"')
+      expect(html).toContain('data-layout-card="b"')
+      expect(html.indexOf('data-layout-card="a"')).toBeLessThan(
+        html.indexOf('data-layout-card="b"')
+      )
+      expect(html).toContain('data-test-height="472"')
+      expect(html).toContain('data-test-height="232"')
+      expect(html).toContain('aria-label="調整尺寸：業績"')
+      expect(html).not.toContain('aria-label="報表版面工具"')
+      expect(html).not.toContain('aria-label="編輯版面裝置"')
+      expect(html).not.toContain("<select")
+      expect(html).not.toContain("<details")
+      expect(html).not.toContain('type="checkbox"')
+    }
+    expect(board(true)).toContain('data-layout-rect="0,0,12,20"')
+    expect(board(false)).toContain('data-layout-rect="0,0,24,20"')
   })
-  it("手機只在版面清單提供隱藏圖表恢復入口，檢視模式沒有編輯控制", () => {
-    const html = board(false)
-    expect(html).toContain('aria-label="手機顯示：桌機保留"')
-    expect(html).not.toContain('data-layout-card="a"')
-    expect(html).toContain('data-layout-card="b"')
-    expect(html).toContain('data-test-height="192"')
-    expect(html).not.toContain('aria-label="調整尺寸：')
-    const view = board(false, false)
-    expect(view).not.toContain('aria-label="報表版面工具"')
-    expect(view).not.toContain("桌機保留")
-    expect(view).toContain("手機優先")
+  it("閱讀模式不含操作把手，兩種螢幕遵守相同的隱藏設定", () => {
+    const document = {
+      ...config,
+      cards: config.cards.map((card) =>
+        card.id === "b" ? { ...card, hidden: true } : card
+      ),
+    }
+    for (const wide of [true, false]) {
+      const html = board(wide, false, document)
+      expect(html).toContain('data-layout-card="a"')
+      expect(html).not.toContain('data-layout-card="b"')
+      expect(html).not.toContain('aria-label="調整尺寸：')
+      expect(board(wide, true, document)).toContain('data-layout-card="b"')
+    }
   })
-  it("手機與桌機設定面板使用各自的尺寸及顯示控制", () => {
-    const props = { card: config.cards[0], config, onChange: () => undefined }
-    const phone = renderToStaticMarkup(
-      createElement(ReportLayoutFields, { ...props, mobile: true })
-    )
-    expect(phone).toContain('aria-label="在手機顯示此圖表"')
-    expect(phone).toContain('aria-label="手機圖表高度（格）"')
-    expect(phone).toContain('value="18"')
-    expect(phone).not.toContain('aria-label="桌機寬度（格）"')
-    const desktop = renderToStaticMarkup(
-      createElement(ReportLayoutFields, { ...props, mobile: false })
-    )
-    expect(desktop).toContain('aria-label="桌機水平位置（格）"')
-    expect(desktop).toContain('value="3"')
-    expect(desktop).not.toContain('aria-label="手機圖表高度（格）"')
+  it("舊報表未儲存座標時也會自動排列並可直接縮放", () => {
+    const document = {
+      ...config,
+      cards: config.cards.map((card) => ({
+        ...card,
+        desktop_layout: null,
+        mobile_layout: null,
+      })),
+    }
+    for (const wide of [true, false]) {
+      const html = board(wide, true, document)
+      expect(html).toContain('data-report-layout="automatic"')
+      expect(html).toContain('aria-label="調整尺寸：業績"')
+      expect(html).toContain('aria-label="調整尺寸：毛利"')
+    }
   })
 })

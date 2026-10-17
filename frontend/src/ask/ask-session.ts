@@ -6,7 +6,7 @@ import { createMapEditsStore, type MapEditsStore } from "@/ask/memory-map-edits"
 import type { AskPageContext } from "@/ask/page-context"
 import { runAsk } from "@/ask/run-ask"
 import { onAuthChange, readUser } from "@/lib/auth"
-import { requestedUiDemo } from "@/lib/ui-demo"
+import { requestedUiDemo, uiDemoKindForPage } from "@/lib/ui-demo"
 import { requestedPageDemoPath } from "@/lib/page-demo"
 import { oaPageHelp } from "@/ask/oa-page-help"
 
@@ -119,6 +119,26 @@ function create(userId: string): NonNullable<typeof current> {
           snapshot
         )
         if (controller.signal.aborted) return
+        if (
+          (routed.intent === "page_help" || routed.intent === "page_demo") &&
+          routed.answer?.trim()
+        ) {
+          const demoPath =
+            routed.intent === "page_demo" ? routed.demo_path : null
+          const [path, search] = demoPath?.split("?") ?? []
+          conversation.completeWithMessage(
+            entryId,
+            "typed",
+            demoPath ? "好，現在操作給你看。" : routed.answer,
+            path
+              ? {
+                  demo: uiDemoKindForPage(path, search ? `?${search}` : ""),
+                  demoPath: demoPath ?? undefined,
+                }
+              : {}
+          )
+          return
+        }
         const asked = routed.question.trim() || question
         const original =
           routed.rewritten && asked !== question ? question : null

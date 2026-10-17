@@ -94,7 +94,8 @@ describe("矩陣介面", () => {
       expect(html).toContain(text)
     expect(html).toContain('aria-label="展開列：業務甲"')
     expect(html).toContain('aria-label="下一頁列"')
-    expect(html).toContain("列 1–25 / 46 個分組")
+    expect(html).toContain("列 · 第 1／2 頁")
+    expect(html).not.toContain("46 個分組")
     expect(html).toContain("overflow-auto")
   })
   it("編輯器列出多層軸與所有相容交易指標，最後一個指標不能刪除", () => {

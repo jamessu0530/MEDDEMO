@@ -1,4 +1,4 @@
-# Grafana Cloud 與 k6
+# Grafana Cloud、Loki 與 k6
 
 Stack：<https://zealousdaffodil871.grafana.net/>。
 
@@ -46,7 +46,71 @@ kubectl -n meddemo logs deployment/api -c alloy --tail=50
 
 指標只記 HTTP 方法、路由樣板及狀態碼；不記原始 URL、query、客戶編號、帳號、請求內容或 token。未知路由統一記 `unmatched`。網站 Nginx 封鎖 `/metrics`，後端端點另外要求 `Authorization: Bearer <METRICS_TOKEN>`；沒設定 token 時回 404。
 
-目前 Dockerfile 每個 API 容器只有一個 Uvicorn process；若未來加 `--workers`，需先導入 Prometheus multiprocess 模式。CPU／記憶體是 Linux API process 的指標，macOS 本機不提供 `/proc` 指標。此版本未收集 worker、資料庫、整台 VM、日誌或 traces。Alloy WAL 使用暫存磁碟，Pod 重建會遺失尚未送出的資料。
+目前 Dockerfile 每個 API 容器只有一個 Uvicorn process；若未來加 `--workers`，需先導入 Prometheus multiprocess 模式，並重新設計共用檔案日誌的多行程寫入。CPU／記憶體是 Linux API process 的指標，macOS 本機不提供 `/proc` 指標。目前未收集 worker、資料庫、整台 VM 或 traces；API 日誌需另外啟用下節的 Loki。Alloy WAL 使用暫存磁碟，Pod 重建會遺失尚未送出的資料。
+
+## Loki：API 診斷日誌
+
+流程：**API → Pod 內的 JSONL 共用檔案 → 既有 Alloy → Grafana Cloud Logs（Loki）→ Grafana**。使用現有 Stack 的 Cloud Logs，不在 VM 加裝另一個 Loki server，也不需要 Kubernetes API 權限或主機目錄掛載。
+
+程式與 Helm 已提供此整合；三個 Loki Secrets 未設定時，日誌輸出與收集維持停用，指標監控照常運作。**2026-10-17 已建立三個 GitHub Secrets，仍須部署這批程式才會正式啟用。**
+
+### 連線設定
+
+從 Grafana Cloud Portal 的此 Stack → **Loki / Logs → Details** 取得 push URL 與數字使用者名稱。Loki username 與 Prometheus username 是各自的服務識別值，請分別取得。建立限定此 Stack、僅有 **`logs:write`** 的 Cloud Access Policy token；既有的 `metrics:write` 金鑰不能代替。
+
+新增以下 GitHub Actions Secrets：
+
+| 名稱 | 內容 |
+| --- | --- |
+| `GRAFANA_CLOUD_LOKI_URL` | Portal 顯示的完整 `https://…grafana.net/loki/api/v1/push` |
+| `GRAFANA_CLOUD_LOKI_USERNAME` | 此 Stack 的 Loki 數字使用者名稱 |
+| `GRAFANA_CLOUD_LOKI_TOKEN` | 僅具 `logs:write` 的 Cloud Access Policy token |
+
+2026-10-17 已於 `jamessu0530/MEDDEMO` 設定完成上述三個 Secrets。此 Stack 的 push URL 為 `https://logs-prod-030.grafana.net/loki/api/v1/push`、Loki username 為 `1806199`（這兩項不是金鑰）。政策 **`meddemo-loki-write`** 限定 Stack `1848419`、僅有 `logs:write`；金鑰名稱為 **MEDDEMO Loki Write**，有效期 90 天，於 **2027-01-15** 到期。金鑰值只存入 GitHub Secrets，未寫進版控或本文。
+
+已使用這把金鑰向 Cloud Loki Push API 寫入一筆 `environment="local-validation"` 的合成連線驗收日誌，回應 **204**。該筆只含測試欄位、不含客戶資料；這個結果確認雲端端點與寫入權限可用，不代表正式 API 已開始收集。
+
+CI/CD 在三個 Secrets 齊全，且既有四個指標監控 Secrets 也齊全時，建立 `meddemo-logging` Secret 並設定 `monitoring.logs.enabled=true`。部分缺漏或非 Cloud HTTPS push URL 都會中止部署，不會靜默略過。日誌 Secret 僅注入 Alloy，API 與前端都拿不到 Cloud 日誌金鑰。
+
+手動部署時先建立相同 Secret，再使用 `--set monitoring.enabled=true --set monitoring.logs.enabled=true`。日誌不能在 Alloy 指標收集停用時單獨啟用。更換金鑰後需重新啟動 API Pod，讓 Alloy 重讀環境變數。
+
+### 日誌內容與範圍
+
+每個 HTTP 請求完成或發生例外後，寫一筆結構化 JSON，欄位為 UTC `timestamp`、`event`、`level`、HTTP 方法、**路由樣板**、狀態碼、耗時（毫秒）、伺服器產生的 `request_id`、回應是否完整送出。正常請求為 `info`，4xx 為 `warn`，5xx 與未捕捉例外為 `error`。例外另外附類型與最多八個程式位置（檔名、函式、行號），不附原始錯誤訊息、原始碼行或區域變數。
+
+不輸出原始 URL、query、動態路徑值、IP、帳號、客戶編號、請求／回應內容、標頭、Cookie 或 token。不直接轉送 Uvicorn access log 或任意 Python logger 的內容。未知路徑統一記為 `unmatched`，`/health`、`/metrics` 與 WebSocket 不記錄。這是 **HTTP 請求診斷日誌**，不是全部業務事件、背景工作或服務啟動日誌。
+
+Alloy 只把 `job`、`service_name`、`environment`、`namespace`、Pod `instance` 與日誌等級作為主要標籤；路由、狀態碼、request ID 留在 JSON 內查詢，避免大量標籤組合。Alloy 使用事件內的時間戳記，不把檔案讀取時間當成請求發生時間。
+
+API 檔案每 5 MiB 輪替，保留兩份備份，與 Alloy 共用 32 MiB 的 `emptyDir`，Alloy 以唯讀方式掛載。讀取位置存在原有的 Alloy 資料目錄。磁碟寫入失敗時，API 仍可回應，程序只提醒一次。檔案與讀取位置都是暫存儲存，Pod 重建會遺失未送出的日誌；雲端斷線過久也可能因輪替丟失資料，此配置不提供日誌不遺失保證。
+
+### 在 Grafana 查看
+
+匯入 [`deploy/observability/grafana-logs-dashboard.json`](../deploy/observability/grafana-logs-dashboard.json)，選擇此 Stack 的 Loki 資料來源。儀表板名稱為 **MEDDEMO API 日誌**，提供分等級日誌量、所選期間錯誤數、錯誤明細與全部請求；可切換環境並連到既有的系統指標儀表板。
+
+2026-10-17 已匯入[線上日誌儀表板](https://zealousdaffodil871.grafana.net/d/meddemo-api-logs/meddemo-api-e697a5-e8aa8c)，使用 `grafanacloud-zealousdaffodil871-logs` 資料來源，並確認可查到上述合成連線驗收日誌。目前只有 `local-validation` 日誌時，環境選單會選取該環境；正式 API 部署後選擇 `production` 即可查看正式樣本。
+
+也可以在 Grafana **Explore → Loki** 使用：
+
+```logql
+# 所有正式環境 API 診斷日誌
+{job="meddemo/api", environment="production"} | json
+
+# 錯誤與串流中斷
+{job="meddemo/api", environment="production", level="error"} | json
+
+# 超過一秒的請求
+{job="meddemo/api", environment="production"} | json | duration_ms > 1000
+
+# 藉由 request ID 尋找某個請求
+{job="meddemo/api", environment="production"} | json | request_id = "要查的ID"
+```
+
+部署後操作網站，確認上述查詢出現近期樣本。`X-Request-ID` 在 middleware 正常送出的回應標頭中提供；若例外發生在回應標頭送出前，由框架產生的 500 回應可能沒有該標頭，可用時間與路由搜尋。這裡沒有新增 Cloud 告警規則。
+
+本機可將 `REQUEST_LOG_PATH` 指向暫存的 JSONL 檔案驗證輸出；留空停用。Alloy 元件依照官方 [`loki.source.file`](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.source.file/) 與 [`loki.write`](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.write/) 文件設定。
+
+2026-10-17 本機驗證：監控、HTTP 日誌與 Cloud Metrics 共 **31 項測試通過**；Helm 三種有效組合通過渲染，禁止單獨開日誌的組合正確失敗；部署腳本的完整、部分缺漏與非 HTTPS 端點檢查通過。Alloy v1.20.1 已實際將測試 API 的 200／404／500 三筆日誌送到本機 Loki Push API 接收端，驗證 Basic auth、標籤、JSON 與敏感值排除。這是本機傳送驗證，尚未驗收正式 Cloud Logs。
 
 ## IT 頁面的 Cloud 數值
 

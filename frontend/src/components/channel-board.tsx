@@ -5,7 +5,7 @@ import { ApiError } from "@/api/client"
 import type { Channel } from "@/api/channels"
 import { deleteMemory, editMemory, getBoard, withdrawMemory, type Board, type MemoryCategory, type OwnItem } from "@/api/memory"
 import { AttachmentThumbs } from "@/components/attachments/attachment-thumbs"
-import { ContextHelp } from "@/components/context-help"
+
 import { Notice } from "@/components/notice"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -67,7 +67,7 @@ export function ChannelBoard({ channel, onJump }: { channel: Channel; onJump: (m
   const { own, below } = state.board
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between"><h2 className="text-base font-semibold">頻道重點</h2><ContextHelp label="看板整理方式"><p>熊熊會在發言兩分鐘後整理重點，對其他組有用的內容會往上層看板彙整。</p></ContextHelp></div>
+      <div className="flex items-center justify-between"><h2 className="text-base font-semibold">頻道重點</h2></div>
       {error && <p className="text-sm text-destructive">{error}</p>}
       <section className="flex flex-col gap-2">
         {own.length === 0 && (

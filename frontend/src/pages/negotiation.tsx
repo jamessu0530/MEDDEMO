@@ -8,7 +8,7 @@ import type { MethodCard } from "@/api/methods"
 import { MethodCardItem } from "@/components/method-card"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
-import { ContextHelp } from "@/components/context-help"
+
 import { ProductPhoto } from "@/components/product-photo"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -110,7 +110,6 @@ export function NegotiationPage() {
               <section className="rounded-2xl border-2 bg-card p-4 shadow-lip">
                 <p className="text-sm font-semibold">我方底線</p>
                 <p className="mt-1.5 text-sm leading-relaxed text-foreground/80">{card.margin.summary}。</p>
-                <p className="mt-1 text-xs text-muted-foreground">近 90 天，淨毛利＝毛利－上架費－通路獎勵</p>
               </section>
             )}
             {card.deals && <DealsBlock deals={card.deals} festival={card.festival} />}
@@ -274,7 +273,7 @@ function DealsBlock({ deals, festival }: { deals: Deals; festival: Festival | nu
   return (
     <section>
       <div className="flex items-baseline justify-between gap-2">
-        <div className="flex items-center gap-1"><h2 className="text-base font-semibold">這一檔的進價</h2><ContextHelp label="進價比較方式"><p>每個品項取搭贈後平均單價最低的購買單位，依建議售價計算毛利率後排序。</p><p>另外加贈的品項與滿額贈不列入平均單價。</p></ContextHelp></div>
+        <div className="flex items-center gap-1"><h2 className="text-base font-semibold">這一檔的進價</h2></div>
         {deals.promotion_name && <p className="truncate text-xs text-muted-foreground">{deals.promotion_name}</p>}
       </div>
       {!deals.promotion_name && <p className="mt-2 text-sm text-muted-foreground">這一期沒有促銷。</p>}

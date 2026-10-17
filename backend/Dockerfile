@@ -17,6 +17,8 @@ RUN uv sync --locked --no-dev --no-install-project
 
 COPY backend/ ./
 COPY data/seed/ /srv/data/seed/
+COPY frontend/src/data/product-photos.json /srv/data/seed/product-photo-manifest.json
+COPY frontend/public/product-photos/ /srv/data/seed/product-photos/
 COPY data/public-outlets/ /srv/data/public-outlets/
 COPY data/documents/ /srv/data/documents/
 RUN uv sync --locked --no-dev

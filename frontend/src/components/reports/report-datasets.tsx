@@ -323,7 +323,7 @@ function DatasetWorkspace({ onClose }: { onClose: () => void }) {
           if (!open) close()
         }}
       >
-        <DialogContent
+        <DialogContent aria-describedby={undefined}
           className="flex h-[94dvh] w-[calc(100vw-1rem)] max-w-6xl flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl"
           onInteractOutside={(event) => {
             if (busy || dirty) event.preventDefault()
@@ -334,7 +334,6 @@ function DatasetWorkspace({ onClose }: { onClose: () => void }) {
               <Database className="size-5 text-primary" />
               匯入資料與 AI 分析
             </DialogTitle>
-            <DialogDescription>資料僅供目前登入帳號使用。</DialogDescription>
           </DialogHeader>
           <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-5">
             <div className="mb-4 space-y-3 rounded-xl border bg-muted/20 p-3">
@@ -522,10 +521,6 @@ function DatasetWorkspace({ onClose }: { onClose: () => void }) {
                 )}
                 {inspection.preview && (
                   <>
-                    <p className="text-xs">
-                      讀取 {inspection.preview.row_count.toLocaleString()} 列 ×{" "}
-                      {inspection.preview.columns.length} 欄；先顯示前 50 列。
-                    </p>
                     <DataTable preview={inspection.preview} />
                   </>
                 )}
@@ -564,9 +559,6 @@ function DatasetWorkspace({ onClose }: { onClose: () => void }) {
               <div className="rounded-xl border border-dashed px-4 py-10 text-center">
                 <Upload className="mx-auto mb-3 size-9 text-primary" />
                 <p className="font-medium">尚未匯入資料</p>
-                <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-muted-foreground">
-                  選擇 Excel、CSV 或 TSV 開始分析。
-                </p>
               </div>
             )}
             {source && recipe && (
@@ -766,9 +758,6 @@ function DatasetWorkspace({ onClose }: { onClose: () => void }) {
                   )}
                   {tab === "clean" && (
                     <div className="space-y-4">
-                      <p className="text-xs leading-relaxed text-muted-foreground">
-                        修改後先預覽再儲存。識別碼會保留前導零。
-                      </p>
                       <div className="max-h-80 overflow-auto rounded-lg border">
                         <table className="w-full min-w-[520px] text-xs">
                           <thead className="sticky top-0 bg-muted">
@@ -1000,10 +989,6 @@ function DatasetWorkspace({ onClose }: { onClose: () => void }) {
                   )}
                   {tab === "ai" && (
                     <div className="space-y-4">
-                      <p className="text-xs leading-relaxed text-muted-foreground">
-                        AI 會讀取已儲存資料的欄位、全表統計與最多 60
-                        列分散取樣；可請它解釋內容、找資料品質問題或建議報表。整理草稿請先儲存。
-                      </p>
                       <label className="block space-y-2 text-sm">
                         <span>想請 AI 看什麼？</span>
                         <textarea
@@ -1380,9 +1365,6 @@ function MergePanel({
   const right = sources.find((item) => item.id === rightId)
   return (
     <div className="space-y-3">
-      <p className="text-xs leading-relaxed text-muted-foreground">
-        合併後另存為新資料。「往下附加」依欄名對齊；「依欄位對應」保留左側資料，右側鍵值須唯一。
-      </p>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="右側資料來源">
           <select
@@ -1835,11 +1817,6 @@ function DatasetReports({
           </article>
         ))}
       </div>
-      {!source.charts.length && (
-        <p className="py-5 text-center text-sm text-muted-foreground">
-          選擇欄位與計算方式後，按「加入分析報表」。也可讓 AI 建議圖表。
-        </p>
-      )}
     </div>
   )
 }

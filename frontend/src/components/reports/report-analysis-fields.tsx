@@ -66,9 +66,6 @@ export function ReportAnalysisFields({
               ))}
           </select>
         </label>
-        <p className="text-xs text-muted-foreground">
-          先在分頁設定啟用提示頁；跨頁分析需在檢視模式選擇「點選：跨頁分析」。條件仍受帳號權限限制。
-        </p>
         <label className="flex min-h-9 items-center gap-2 text-sm">
           <input
             type="checkbox"
@@ -108,9 +105,6 @@ export function ReportAnalysisFields({
             ))}
           </select>
         </label>
-        <p className="text-xs text-muted-foreground">
-          單序列日期圖可加趨勢；銷售、淨毛利、拜訪數可預測。預測至少需要六個完整連續區間。
-        </p>
         {card.visual === "funnel" && (
           <label className="block space-y-1 text-sm">
             階段順序（每行一個分類編號）

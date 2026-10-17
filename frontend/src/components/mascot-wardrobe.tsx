@@ -4,7 +4,7 @@ import { Check, LockKeyhole, MapPin, Sparkles, Shirt } from "@/components/icons"
 import { Mascot } from "@/components/mascot"
 import { MascotPlay } from "@/components/mascot-play"
 import { Mascot3D } from "@/components/mascot-3d"
-import { ContextHelp } from "@/components/context-help"
+
 import { canWear, mascotOutfit, mascotPalette, type MascotCollection, type MascotEncounter, type MascotLook } from "@/lib/mascot-collection"
 
 import "./mascot-wardrobe.css"
@@ -44,7 +44,7 @@ export function MascotWardrobe({ collection, onEquip, onEncounter, showHeading =
 
   return <div className="mascot-wardrobe">
     {showHeading && <div className="wardrobe-heading"><h1>熊熊衣櫃</h1></div>}
-    <div className="wardrobe-stats"><span><MapPin size={16} />縣市款 <b>{cities.filter((item) => item.owned).length} / {cities.length}</b></span><span><Sparkles size={16} />異色 <b>{rares.filter((item) => item.owned).length} / {rares.length}</b></span><ContextHelp label="收藏方式"><p>到訪縣市內任一站，就能收藏該縣市的服裝。</p><p>連續戳熊熊六下會分裂，有 1/{collection.shiny_odds} 機會遇見異色；最多連續 {collection.shiny_odds} 次一定遇見。</p><p>拖曳熊熊可以轉身。收藏的色彩和服裝可以自由搭配，也能設為頭像。</p></ContextHelp></div>
+    <div className="wardrobe-stats"><span><MapPin size={16} />縣市款 <b>{cities.filter((item) => item.owned).length} / {cities.length}</b></span><span><Sparkles size={16} />異色 <b>{rares.filter((item) => item.owned).length} / {rares.length}</b></span></div>
     <div className="wardrobe-layout">
       <section className="wardrobe-dressing" aria-label="試穿與換裝">
         <div className="wardrobe-stage-top"><span>{wearing ? "目前穿搭" : "試穿中"}</span><div className="wardrobe-view-toggle" role="group" aria-label="熊熊滾檢視方式"><button type="button" aria-pressed={view === "3d"} onClick={() => setView("3d")}>立體</button><button type="button" aria-pressed={view === "flat"} onClick={() => setView("flat")}>平面</button></div>{!wearing && <button type="button" onClick={() => { setLook(collection.equipped); setMessage(""); setError("") }}>還原穿搭</button>}</div>

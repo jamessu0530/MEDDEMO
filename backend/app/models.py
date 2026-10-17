@@ -266,6 +266,17 @@ class PublicOutlet(Base):
     snapshot_sha256: Mapped[str]
 
 
+class OutletStorefront(Base):
+    """公開照片目錄可先於客戶匯入；只存來源網址與可永久保存的 Place ID。"""
+    __tablename__ = "outlet_storefront"
+
+    outlet_id: Mapped[str] = mapped_column(primary_key=True)
+    photos: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    google_place_id: Mapped[str | None]
+    google_candidate_ids: Mapped[list[str]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Product(Base):
     __tablename__ = "product"
 
@@ -281,6 +292,30 @@ class Product(Base):
     # 常用品項：錄音整理給 AI 的品項清單、語音辨識的熱詞、確認頁挑品項的預設選單只列這些。
     # 真實型錄有一千多樣（data/seed/products.tsv），全部給 AI 會變慢又容易對錯
     common: Mapped[bool] = mapped_column(server_default=false())
+
+
+class ProductPhoto(Base):
+    """已核對的商品照片原檔與來源；一個料號一張，與商品一起備份。"""
+
+    __tablename__ = "product_photo"
+    __table_args__ = (
+        one_of("kind", ("exact", "series", "illustrative"), "kind"),
+        CheckConstraint("octet_length(content) > 0", name="content"),
+        CheckConstraint("length(sha256) = 64", name="sha256"),
+    )
+
+    sku: Mapped[str] = mapped_column(ForeignKey("product.sku", ondelete="CASCADE"), primary_key=True)
+    catalog_name: Mapped[str]
+    source_id: Mapped[str]
+    title: Mapped[str]
+    page_url: Mapped[str]
+    image_url: Mapped[str]
+    kind: Mapped[str]
+    note: Mapped[str]
+    retrieved_on: Mapped[dt.date]
+    sha256: Mapped[str]
+    content: Mapped[bytes] = mapped_column(LargeBinary, deferred=True)
+    updated_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
 
 
 class SalesOrder(Base):

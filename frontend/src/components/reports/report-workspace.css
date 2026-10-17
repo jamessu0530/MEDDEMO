@@ -155,9 +155,6 @@
   font-size: 0.8125rem;
   text-align: left;
 }
-.report-focus-button {
-  transition: background-color 120ms;
-}
 .report-footer {
   display: grid;
   gap: 0.25rem;
@@ -209,7 +206,24 @@
   font-size: 1rem;
 }
 .report-page-tabs {
-  border-block: 1px solid var(--border);
+  position: sticky;
+  top: 3.5rem;
+  z-index: 10;
+  gap: 0.375rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--background);
+  padding: 0.375rem 1rem;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+}
+.report-page-tab {
+  border-radius: 0.875rem;
+  white-space: nowrap;
+  touch-action: pan-x pan-y;
+}
+.report-page-tab:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
 }
 .report-reading-tools {
   display: grid;
@@ -324,9 +338,6 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .report-focus-button {
-    transition: none;
-  }
 }
 
 .report-demo-start {

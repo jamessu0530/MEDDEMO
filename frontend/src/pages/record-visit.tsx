@@ -294,11 +294,6 @@ export function RecordVisit() {
           <>
             <div className="max-w-sm space-y-2">
               <p className="font-medium">華語、台語都可以說</p>
-              <p className="text-sm text-muted-foreground">
-                錄完後自動辨識，拜訪紀錄整理成繁體中文。每段最多{" "}
-                {Math.floor(options.taiwanese_max_seconds / 60)}{" "}
-                分鐘，到時會自動送出。
-              </p>
               {!options.taiwanese_available && (
                 <p className="text-xs text-muted-foreground">
                   台語辨識暫時無法使用，仍可錄華語；請在確認頁核對逐字稿。
@@ -315,9 +310,6 @@ export function RecordVisit() {
             </button>
             <div className="space-y-1">
               <p className="font-medium">按下開始錄音</p>
-              <p className="text-sm text-muted-foreground">
-                想到什麼講什麼：競品、抱怨、客戶想進的貨、答應的事、什麼時候再來。說完系統會自己整理成欄位。
-              </p>
             </div>
           </>
         )}
@@ -330,10 +322,6 @@ export function RecordVisit() {
             </div>
             <p className="font-mono text-5xl font-semibold tabular-nums">
               {formatElapsed(elapsed)}
-            </p>
-            <p className="max-w-sm text-sm text-muted-foreground">
-              說完後自動辨識華語／台語，再整理成繁體中文紀錄。每段最多{" "}
-              {Math.floor(options.taiwanese_max_seconds / 60)} 分鐘。
             </p>
             <Button className="h-12 w-full max-w-xs text-base" onClick={finish}>
               說完了，整理成紀錄
@@ -460,16 +448,7 @@ function SavedOnPhone({
             </span>
           </div>
         ))}
-        <div className="flex min-h-12 items-center justify-between">
-          <span className="text-sm text-muted-foreground">待送出合計</span>
-          <span className="text-sm font-semibold">{pending.length} 筆</span>
-        </div>
       </div>
-      <p className="w-full rounded-xl border-2 bg-card px-4 py-3 text-left text-sm text-muted-foreground shadow-lip">
-        {reason
-          ? "錄音先存在手機，稍後會自動重試，不需要再操作一次。"
-          : "回到有收訊的地方會自動送出，不需要再操作一次。"}
-      </p>
       <Button className="h-12 w-full text-base" onClick={onContinue}>
         繼續跑下一站
       </Button>

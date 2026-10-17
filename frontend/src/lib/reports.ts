@@ -132,6 +132,7 @@ export type ReportSelectionGroup = {
   points: ReportSelectionPoint[]
 }
 export type ReportQuery = ReportConfig & {
+  requested_card_ids?: string[]
   selection_groups?: ReportSelectionGroup[]
   drill_filters?: Record<string, ReportFilter[]>
   matrix_views?: Record<string, ReportMatrixView>
@@ -739,6 +740,9 @@ function slicerDataKey(slicers: ReportSlicer[]) {
 
 export function reportDataKey(config: ReportQuery): string {
   return JSON.stringify({
+    requested_card_ids: config.requested_card_ids
+      ? [...config.requested_card_ids].sort()
+      : null,
     canvas_selections: config.canvas_selections ?? [],
     canvas_slicers: (config.objects ?? [])
       .filter((object) => object.slicer)

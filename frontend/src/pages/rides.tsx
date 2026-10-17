@@ -34,7 +34,7 @@ export function RidesPage() {
 
   return (
     <div className="flex min-h-svh flex-col">
-      <PageHeader title="座騎圖鑑" subtitle="熊熊滾騎過的座騎" backTo="/route" />
+      <PageHeader title="座騎圖鑑" backTo="/route" />
       <main className="flex flex-1 flex-col gap-3 px-4 pt-3 pb-10">
         {state.status === "loading" && <p className="py-10 text-center text-sm text-muted-foreground">載入圖鑑中…</p>}
         {state.status === "error" && (

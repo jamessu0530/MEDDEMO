@@ -1,21 +1,34 @@
 """正式商品清單：商品頁與確認頁共用，排除舊版示範品項。"""
 
 import datetime as dt
+import logging
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, undefer
 
 from app.db import get_session
 from app.api.auth import CurrentUser
-from app.models import Product, ProductBrowseProfile
+from app.config import NotConfigured
+from app.embeddings import optional_embedder
+from app.models import Product, ProductBrowseProfile, ProductPhoto
+from app.services import product_appearance, product_photos
 from app.services.product_catalog import visible_catalog_products
 
 router = APIRouter(prefix="/api/products", tags=["products"])
+log = logging.getLogger(__name__)
+
+
+class PhotoItem(BaseModel):
+    src: str
+    title: str
+    sourceUrl: str
+    kind: Literal["exact", "series", "illustrative"]
+    note: str
 
 
 class ProductItem(BaseModel):
@@ -26,15 +39,57 @@ class ProductItem(BaseModel):
     unit: str
     aliases: list[str]
     common: bool
+    photo: PhotoItem | None = None
 
 
 @router.get("", response_model=list[ProductItem])
 def list_products(session: Annotated[Session, Depends(get_session)]):
     rows = session.execute(
-        select(Product.sku, Product.name, Product.category, Product.spec, Product.unit, Product.aliases, Product.common)
+        select(Product, ProductPhoto).outerjoin(ProductPhoto, and_(
+            ProductPhoto.sku == Product.sku, ProductPhoto.catalog_name == Product.name,
+        ))
         .where(visible_catalog_products()).order_by(Product.sku)
     )
-    return [ProductItem(**row._mapping) for row in rows]
+    return [ProductItem(
+        **{key: getattr(product, key) for key in ("sku", "name", "category", "spec", "unit", "aliases", "common")},
+        photo=product_photos.photo_metadata(photo) if photo else None,
+    ) for product, photo in rows]
+
+
+@router.get("/{sku}/photo/{version}.webp")
+def get_product_photo(sku: str, version: str, session: Annotated[Session, Depends(get_session)]):
+    photo = session.scalar(
+        select(ProductPhoto).join(Product, Product.sku == ProductPhoto.sku)
+        .where(ProductPhoto.sku == sku, ProductPhoto.sha256 == version,
+               ProductPhoto.catalog_name == Product.name, visible_catalog_products())
+        .options(undefer(ProductPhoto.content))
+    )
+    if photo is None:
+        raise HTTPException(404, "找不到這張商品照片")
+    return Response(photo.content, media_type="image/webp", headers={
+        "Cache-Control": "public, max-age=31536000, immutable", "ETag": f'"{photo.sha256}"',
+        "X-Content-Type-Options": "nosniff",
+    })
+
+
+class AppearanceSearch(BaseModel):
+    query: str = Field(min_length=1, max_length=200)
+    drugs_only: bool = True
+
+
+@router.post("/appearance-search")
+def appearance_search(body: AppearanceSearch, session: Annotated[Session, Depends(get_session)], user: CurrentUser):
+    query = body.query.strip()
+    if not query:
+        raise HTTPException(422, "請描述商品的顏色、形狀或包裝")
+    try:
+        hits = product_appearance.search_photos(session, optional_embedder(), query, drugs_only=body.drugs_only)
+    except (NotConfigured, product_appearance.AppearanceUnavailable) as exc:
+        raise HTTPException(503, str(exc)) from None
+    except Exception:
+        log.exception("商品外觀搜尋失敗")
+        raise HTTPException(503, "外觀搜尋暫時無法使用，請稍後重試") from None
+    return {"matches": hits, "message": product_appearance.appearance_answer(hits)}
 
 
 class BrowseSignal(BaseModel):

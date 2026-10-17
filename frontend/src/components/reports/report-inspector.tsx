@@ -14,8 +14,6 @@ import { ReportVisualIcon } from "@/components/reports/report-visual-icon"
 import { ReportFieldWells } from "@/components/reports/report-fields"
 import { ReportMatrixFields } from "@/components/reports/report-matrix-fields"
 import { ReportFormatFields } from "@/components/reports/report-format-fields"
-import { ReportLayoutFields } from "@/components/reports/report-layout-fields"
-import { mobileReportCards } from "@/lib/report-layout"
 import {
   ReportDateRangeEditor,
   ReportFilterChips,
@@ -65,7 +63,6 @@ type ReportInspectorProps = {
   onMove: (direction: -1 | 1) => void
   onClose?: () => void
   hideHeading?: boolean
-  mobileLayout?: boolean
 }
 
 const CONTROL =
@@ -102,7 +99,6 @@ const TABS = [
   { id: "build", label: "建立圖表" },
   { id: "format", label: "格式" },
   { id: "filters", label: "篩選" },
-  { id: "layout", label: "版面" },
 ] as const
 type InspectorTab = (typeof TABS)[number]["id"]
 
@@ -186,12 +182,10 @@ function Field({
   label,
   htmlFor,
   children,
-  help,
 }: {
   label: string
   htmlFor: string
   children: ReactNode
-  help?: string
 }) {
   return (
     <div className="min-w-0 space-y-1.5">
@@ -202,9 +196,6 @@ function Field({
         {label}
       </label>
       {children}
-      {help && (
-        <p className="text-xs leading-relaxed text-muted-foreground">{help}</p>
-      )}
     </div>
   )
 }
@@ -312,7 +303,6 @@ export function ReportInspector({
   onMove,
   onClose,
   hideHeading = false,
-  mobileLayout = false,
 }: ReportInspectorProps) {
   const [tab, setTab] = useState<InspectorTab>("build")
   const id = useId()
@@ -321,9 +311,7 @@ export function ReportInspector({
   const pageCards = config.cards.filter(
     (item) => (item.page_id ?? pages[0]?.id ?? "overview") === pageId
   )
-  const orderedCards = mobileLayout
-    ? mobileReportCards(pageCards, true)
-    : pageCards
+  const orderedCards = pageCards
   const index = orderedCards.findIndex((item) => item.id === card?.id)
   const dimensions = card ? validDimensions(card.metric) : []
   const options = filterOptions ?? {
@@ -388,9 +376,6 @@ export function ReportInspector({
             <div className="px-4 pt-3">
               <p className="truncate text-xs font-medium" title={card.title}>
                 {card.title || METRICS[card.metric].label}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                正在編輯所選圖表，變更立即顯示。
               </p>
             </div>
           )}
@@ -505,11 +490,6 @@ export function ReportInspector({
                   <Field
                     label="月增／年增比較"
                     htmlFor={`${id}-comparison`}
-                    help={
-                      card.metric === "customers" || card.metric === "overdue"
-                        ? "目前快照不產生歷史比較。"
-                        : "同區間前移一個月或一年；月底對齊月底。淨毛利率以百分點比較。"
-                    }
                   >
                     <select
                       id={`${id}-comparison`}
@@ -541,11 +521,6 @@ export function ReportInspector({
                         card.visual === "scatter" ? "資料點分組" : "軸 / 分組"
                       }
                       htmlFor={`${id}-dimension`}
-                      help={
-                        isTrend
-                          ? "趨勢圖依年、季或月呈現，保留所選期間內的日期順序。"
-                          : undefined
-                      }
                     >
                       <select
                         id={`${id}-dimension`}
@@ -603,7 +578,6 @@ export function ReportInspector({
                         card.visual === "scatter" ? "Y 軸數值" : "折線數值"
                       }
                       htmlFor={`${id}-secondary`}
-                      help="兩個交易指標使用同一批品項與條件，左右軸分別標示單位。"
                     >
                       <select
                         id={`${id}-secondary`}
@@ -656,11 +630,6 @@ export function ReportInspector({
                   <Field
                     label="顯示筆數"
                     htmlFor={`${id}-limit`}
-                    help={
-                      card.visual === "matrix"
-                        ? "矩陣以分頁顯示全部分組，不使用前 N 筆限制。"
-                        : undefined
-                    }
                   >
                     <select
                       id={`${id}-limit`}
@@ -796,13 +765,6 @@ export function ReportInspector({
                 <Field
                   label={`目標值${METRICS[card.metric].unit === "currency" ? "（元）" : METRICS[card.metric].unit === "percent" ? "（%）" : card.metric === "order_count" ? "（張）" : card.metric === "visits" ? "（次）" : "（家）"}`}
                   htmlFor={`${id}-target`}
-                  help={
-                    TARGET_VISUALS.includes(card.visual)
-                      ? METRICS[card.metric].unit === "percent"
-                        ? "留空可移除目標；輸入 50 代表 50%。"
-                        : "留空可移除目標；金額請輸入完整元數。"
-                      : "此圖表不顯示目標線。"
-                  }
                 >
                   <TargetInput
                     key={`${card.id}-${card.metric}`}
@@ -859,14 +821,6 @@ export function ReportInspector({
                 </Field>
               </>
             )}
-            {tab === "layout" && (
-              <ReportLayoutFields
-                card={card}
-                config={config}
-                mobile={mobileLayout}
-                onChange={onChange}
-              />
-            )}
             {tab === "filters" && (
               <>
                 <div className="space-y-3">
@@ -874,7 +828,6 @@ export function ReportInspector({
                   <Field
                     label="接收其他圖表的聯動"
                     htmlFor={`${id}-interaction`}
-                    help="固定的報表與單圖篩選仍會生效。醒目提示保留完整範圍並顯示選取部分。"
                   >
                     <select
                       id={`${id}-interaction`}
@@ -948,9 +901,6 @@ export function ReportInspector({
                       清除此圖表的篩選
                     </button>
                   ) : null}
-                  <p className="text-xs leading-relaxed text-muted-foreground">
-                    圖表篩選會與報表篩選同時生效。
-                  </p>
                 </div>
                 <div className="space-y-2 border-t border-border pt-4">
                   <h3 className="text-sm font-semibold">整份報表的篩選</h3>
@@ -990,14 +940,6 @@ export function ReportInspector({
                     slicers={pages.find((page) => page.id === pageId)?.slicers}
                     filters={pages.find((page) => page.id === pageId)?.filters}
                   />
-                  {pages.find((page) => page.id === pageId)?.date_range && (
-                    <p className="text-xs text-muted-foreground">
-                      目前分頁另設日期，與報表及單圖日期取交集。
-                    </p>
-                  )}
-                  <p className="text-xs leading-relaxed text-muted-foreground">
-                    整份報表的條件可在畫布上方的篩選列調整。
-                  </p>
                 </div>
               </>
             )}
@@ -1042,11 +984,7 @@ export function ReportInspector({
         </>
       ) : (
         <div className="space-y-4 p-4">
-          <p className="text-xs leading-relaxed text-muted-foreground">
-            選取圖表以編輯，或新增圖表。
-          </p>
           <ReportVisualGallery onSelect={onAdd} />
-          <p className="text-xs text-muted-foreground">每頁最多 12 個圖表。</p>
         </div>
       )}
     </div>

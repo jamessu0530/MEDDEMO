@@ -76,9 +76,6 @@ export function ReportFilterPane({
   return (
     <div className="space-y-4">
       <h2 className="text-base font-semibold">篩選</h2>
-      <p className="text-xs text-muted-foreground">
-        報表、分頁與單圖條件取交集，不能擴大資料權限。
-      </p>
       <ReportDateRangeEditor
         label="報表期間"
         value={config.period === "custom" ? (config.date_range ?? null) : null}

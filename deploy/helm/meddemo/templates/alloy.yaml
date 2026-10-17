@@ -1,3 +1,6 @@
+{{- if and .Values.monitoring.logs.enabled (not .Values.monitoring.enabled) }}
+{{- fail "monitoring.logs.enabled requires monitoring.enabled" }}
+{{- end }}
 {{- if .Values.monitoring.enabled }}
 apiVersion: v1
 kind: ConfigMap
@@ -43,4 +46,46 @@ data:
         max_keepalive_time = "1h"
       }
     }
+    {{- if .Values.monitoring.logs.enabled }}
+
+    loki.source.file "api" {
+      targets = [{
+        __path__ = "/var/log/meddemo/api.jsonl",
+        job = "meddemo/api",
+        service_name = "meddemo-api",
+        instance = sys.env("POD_NAME"),
+        namespace = sys.env("POD_NAMESPACE"),
+        environment = {{ .Values.monitoring.environment | quote }},
+      }]
+      file_match {
+        enabled = true
+        sync_period = "5s"
+      }
+      forward_to = [loki.process.api.receiver]
+    }
+
+    loki.process "api" {
+      stage.json {
+        expressions = { level = "level", timestamp = "timestamp" }
+      }
+      stage.timestamp {
+        source = "timestamp"
+        format = "RFC3339Nano"
+      }
+      stage.labels {
+        values = { level = "" }
+      }
+      forward_to = [loki.write.grafana_cloud.receiver]
+    }
+
+    loki.write "grafana_cloud" {
+      endpoint {
+        url = sys.env("GRAFANA_CLOUD_LOKI_URL")
+        basic_auth {
+          username = sys.env("GRAFANA_CLOUD_LOKI_USERNAME")
+          password = sys.env("GRAFANA_CLOUD_LOKI_TOKEN")
+        }
+      }
+    }
+    {{- end }}
 {{- end }}

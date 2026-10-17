@@ -516,6 +516,7 @@ class MatrixView(BaseModel):
 class ReportQuery(ReportConfig):
     """暫時聯動只隨資料查詢傳送，不寫入報表設定或 AI 提案。"""
 
+    requested_card_ids: list[str] | None = Field(default=None, max_length=24)
     selection_groups: list[ReportSelectionGroup] = Field(default_factory=list, max_length=24)
     drill_filters: dict[str, list[ReportFilter]] = Field(default_factory=dict)
     matrix_views: dict[str, MatrixView] = Field(default_factory=dict)
@@ -528,6 +529,9 @@ class ReportQuery(ReportConfig):
         if len({group.source_id for group in self.selection_groups}) != len(self.selection_groups):
             raise ValueError("每張來源圖只能有一組聯動選取")
         cards = {card.id: card for card in self.cards}
+        if self.requested_card_ids is not None:
+            if len(set(self.requested_card_ids)) != len(self.requested_card_ids) or not set(self.requested_card_ids) <= cards.keys():
+                raise ValueError("查詢圖表需要存在於報表中且不能重複")
         validate_filters(self.navigation_filters)
         if self.navigation_page and self.navigation_page not in {page.id for page in self.pages}:
             raise ValueError("跨頁分析目標不存在")
@@ -1320,7 +1324,10 @@ def data(session: Session, user: AppUser, config: ReportConfig) -> ReportData:
     if user.acts_as_user_id:
         scope_label = f"示範資料 · {acting.name} · {scope_label}"
     cards = []
+    requested_ids = getattr(config, "requested_card_ids", None)
     for card in config.cards:
+        if requested_ids is not None and card.id not in requested_ids:
+            continue
         groups = getattr(config, "selection_groups", [])
         if card.interaction == "highlight" and any(group.source_id != card.id for group in groups):
             base_config = config.model_copy(update={"selection_groups": []})

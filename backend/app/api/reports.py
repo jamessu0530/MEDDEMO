@@ -32,7 +32,7 @@ class ReportSettings(report_library.LibrarySnapshot):
     templates: dict[str, ReportConfig]
     owners: list[ReportOwner]
     ai_available: bool
-    filter_options: ReportFilterOptions
+    filter_options: ReportFilterOptions | None = None
     as_of: dt.date
 
 
@@ -44,8 +44,13 @@ class AdjustInput(BaseModel):
 
 
 @router.get("", response_model=ReportSettings)
-def get_reports(session: SessionDep, user: CurrentUser):
-    return ReportSettings(**report_library.snapshot(session, user).model_dump(), templates=service.templates(), owners=service.owners(session, user), ai_available=service.ai_available(), filter_options=service.filter_options(session, user), as_of=service.app_today(session))
+def get_reports(session: SessionDep, user: CurrentUser, include_filters: bool = True):
+    return ReportSettings(**report_library.snapshot(session, user).model_dump(), templates=service.templates(), owners=service.owners(session, user), ai_available=service.ai_available(), filter_options=service.filter_options(session, user) if include_filters else None, as_of=service.app_today(session))
+
+
+@router.get("/filter-options", response_model=ReportFilterOptions)
+def get_report_filter_options(session: SessionDep, user: CurrentUser):
+    return service.filter_options(session, user)
 
 
 class CreateReportInput(BaseModel):

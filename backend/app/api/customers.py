@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.api.auth import CurrentUser
 from app.api.methods import MethodCardOut
 from app.db import get_session
-from app.models import AppUser, Customer, PublicOutlet, Product, SalesTransaction, SapQuotationDraft, Visit
+from app.models import AppUser, Customer, PublicOutlet, OutletStorefront, Product, SalesTransaction, SapQuotationDraft, Visit
 from app.pricing import supply_price
 from app.services import approvals, customer_profile, last_order, negotiation, orders, promo_packs, writeback
 from app.services.scope import SHARING_LEVEL, Scope
@@ -22,6 +22,14 @@ from app.services.product_catalog import visible_catalog_products
 
 router = APIRouter(prefix="/api/customers", tags=["customers"])
 SessionDep = Annotated[Session, Depends(get_session)]
+
+
+class StorefrontPhoto(BaseModel):
+    image_url: str
+    source_url: str
+    credit: str | None = None
+    license_name: str | None = None
+    license_url: str | None = None
 
 
 class CustomerItem(BaseModel):
@@ -40,6 +48,8 @@ class CustomerItem(BaseModel):
     source_url: str | None = None
     retrieved_on: date | None = None
     review_notes: list[str] = Field(default_factory=list)
+    storefront_photo: StorefrontPhoto | None = None
+    google_place_id: str | None = None
     last_visit_date: date | None
 
 
@@ -226,12 +236,14 @@ def _customer_query(scope: Scope):
             Customer.owner_user_id.label("owner_id"), AppUser.name.label("owner_name"),
             Customer.city, Customer.area, PublicOutlet.phone, PublicOutlet.address, PublicOutlet.source_url, PublicOutlet.retrieved_on,
             func.coalesce(PublicOutlet.review_notes, text("'[]'::jsonb")).label("review_notes"),
+            OutletStorefront.photos[0].label("storefront_photo"), OutletStorefront.google_place_id,
             visible_last_visit.label("last_visit_date"),
         )
         .outerjoin(AppUser, AppUser.id == Customer.owner_user_id)
         .outerjoin(PublicOutlet, PublicOutlet.customer_id == Customer.id)
+        .outerjoin(OutletStorefront, OutletStorefront.outlet_id == Customer.id)
         .outerjoin(Visit, (Visit.customer_id == Customer.id) & Visit.status.in_(("confirmed", "synced")))
-        .group_by(Customer.id, AppUser.name, PublicOutlet.customer_id)
+        .group_by(Customer.id, AppUser.name, PublicOutlet.customer_id, OutletStorefront.outlet_id)
         .order_by(Customer.id)
     )
 

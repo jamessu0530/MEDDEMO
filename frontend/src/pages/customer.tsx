@@ -18,10 +18,18 @@ import { LastOrderSection } from "@/components/last-order-section"
 import { NextNotes } from "@/components/next-notes"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
-import { ContextHelp } from "@/components/context-help"
+import { CustomerStorefront } from "@/components/customer-storefront"
+
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { useAuth } from "@/lib/auth"
 import { formatDate, formatMoney } from "@/lib/format"
 import { customerNotFoundText } from "@/lib/scope"
@@ -49,23 +57,39 @@ export function CustomerPage() {
   const navigate = useNavigate()
   // 電腦版左邊看狀況、右邊做事（docs/superpowers/specs/2026-10-09-desktop-layout-design.md）
   const desktop = useIsDesktop()
-  const { flash, backTo = "/route" } = (useLocation().state as CustomerLocationState | null) ?? {}
+  const { flash, backTo = "/route" } =
+    (useLocation().state as CustomerLocationState | null) ?? {}
   const user = useAuth()?.user
   const [state, setState] = useState<LoadState>({ status: "loading" })
   const [attempt, setAttempt] = useState(0)
   const [threadError, setThreadError] = useState<string | null>(null)
   const [opening, setOpening] = useState(false)
   // 連鎖客戶的合約條件；記下是哪一家的，換客戶時不會閃一下上一家的合約
-  const [contract, setContract] = useState<{ customerId: string; data: Contract } | null>(null)
+  const [contract, setContract] = useState<{
+    customerId: string
+    data: Contract
+  } | null>(null)
   // 待處理事項按了「客戶下單了」的那張報價，確認框開著；notice 是成交之後的提示
-  const [ordering, setOrdering] = useState<CustomerProfile["open_quotes"][number] | null>(null)
+  const [ordering, setOrdering] = useState<
+    CustomerProfile["open_quotes"][number] | null
+  >(null)
   const [placing, setPlacing] = useState(false)
   const [orderError, setOrderError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
   useAskPageContext({
-    title: state.status === "ready" && state.profile.customer.id === customerId ? `${state.profile.customer.name} · 客戶檔案` : "客戶檔案",
-    facts: state.status === "ready" && state.profile.customer.id === customerId ? [`客戶：${state.profile.customer.name}`, `客戶編號：${customerId}`, `區域：${state.profile.customer.region}`] : [`客戶編號：${customerId}`, "客戶資料尚未載入"],
+    title:
+      state.status === "ready" && state.profile.customer.id === customerId
+        ? `${state.profile.customer.name} · 客戶檔案`
+        : "客戶檔案",
+    facts:
+      state.status === "ready" && state.profile.customer.id === customerId
+        ? [
+            `客戶：${state.profile.customer.name}`,
+            `客戶編號：${customerId}`,
+            `區域：${state.profile.customer.region}`,
+          ]
+        : [`客戶編號：${customerId}`, "客戶資料尚未載入"],
   })
 
   async function confirmOrder() {
@@ -74,7 +98,9 @@ export function CustomerPage() {
     setOrderError(null)
     try {
       const placed = await placeOrder(customerId, ordering.quote_no)
-      setNotice(`報價 ${ordering.quote_no} 成交了，已寫進今天的進貨 ${formatMoney(placed.amount)}`)
+      setNotice(
+        `報價 ${ordering.quote_no} 成交了，已寫進今天的進貨 ${formatMoney(placed.amount)}`
+      )
       setOrdering(null)
       // 進貨數字、待處理事項、上次訂的都跟著變：整頁重新載入
       setAttempt((n) => n + 1)
@@ -92,7 +118,9 @@ export function CustomerPage() {
     setThreadError(null)
     try {
       const thread = await openCustomerThread(customerId)
-      navigate(`/channels/${thread.id}`, { state: { backTo: `/customers/${customerId}` } })
+      navigate(`/channels/${thread.id}`, {
+        state: { backTo: `/customers/${customerId}` },
+      })
     } catch {
       setThreadError("討論串沒有打開，請再試一次")
     } finally {
@@ -106,13 +134,17 @@ export function CustomerPage() {
       .then((profile) => setState({ status: "ready", profile }))
       .catch((error) => {
         if (controller.signal.aborted) return
-        setState({ status: "error", missing: error instanceof ApiError && error.status === 404 })
+        setState({
+          status: "error",
+          missing: error instanceof ApiError && error.status === 404,
+        })
       })
     return () => controller.abort()
   }, [customerId, attempt])
 
   // 合約那一列只有連鎖客戶有。另外問一次，問不到就不顯示：不擋客戶檔案的其他內容
-  const isChain = state.status === "ready" && state.profile.customer.type === "chain"
+  const isChain =
+    state.status === "ready" && state.profile.customer.type === "chain"
   useEffect(() => {
     if (!isChain) return
     const controller = new AbortController()
@@ -129,17 +161,33 @@ export function CustomerPage() {
       <div className="flex min-h-svh flex-col">
         <PageHeader title="客戶檔案" backTo={backTo} />
         <main className="flex-1 p-4">
-          {state.status === "loading" && <p className="py-10 text-center text-sm text-muted-foreground">載入客戶檔案中…</p>}
+          {state.status === "loading" && (
+            <p className="py-10 text-center text-sm text-muted-foreground">
+              載入客戶檔案中…
+            </p>
+          )}
           {/* 404：沒有這家，或不是登入者看得到的客戶。重新載入也一樣，只給回客戶清單的路 */}
           {state.status === "error" && state.missing && (
-            <Notice text={customerNotFoundText(user)} action={{ label: "回客戶清單", onClick: () => navigate("/customers") }} />
+            <Notice
+              text={customerNotFoundText(user)}
+              action={{
+                label: "回客戶清單",
+                onClick: () => navigate("/customers"),
+              }}
+            />
           )}
           {/* 沒訊號時看不到客戶檔案，但照樣可以錄音：錄音先存在手機，恢復連線自動送出（FR-4.3） */}
           {state.status === "error" && !state.missing && !navigator.onLine && (
             <Notice
               text="沒有網路，客戶檔案沒有載入。可以直接錄音，錄音會先存在手機。"
-              action={{ label: "直接錄音", onClick: () => navigate(`/customers/${customerId}/record`) }}
-              secondary={{ label: "回客戶清單", onClick: () => navigate("/customers") }}
+              action={{
+                label: "直接錄音",
+                onClick: () => navigate(`/customers/${customerId}/record`),
+              }}
+              secondary={{
+                label: "回客戶清單",
+                onClick: () => navigate("/customers"),
+              }}
             />
           )}
           {state.status === "error" && !state.missing && navigator.onLine && (
@@ -152,7 +200,10 @@ export function CustomerPage() {
                   setAttempt((n) => n + 1)
                 },
               }}
-              secondary={{ label: "回客戶清單", onClick: () => navigate("/customers") }}
+              secondary={{
+                label: "回客戶清單",
+                onClick: () => navigate("/customers"),
+              }}
             />
           )}
         </main>
@@ -163,27 +214,67 @@ export function CustomerPage() {
   const { profile } = state
   const { customer, stats } = profile
   const toRecord = () => navigate(`/customers/${customer.id}/record`)
-  const toOrder = () => navigate(`/orders/new?${new URLSearchParams({ customer_id: customer.id })}`)
+  const toOrder = () =>
+    navigate(`/orders/new?${new URLSearchParams({ customer_id: customer.id })}`)
   const toNegotiation = () => navigate(`/customers/${customer.id}/negotiation`)
 
   const alerts = (
     <>
-      {flash && <p className="rounded-xl bg-primary/10 px-3 py-2 text-sm text-primary">{flash}</p>}
-      {notice && <p className="rounded-xl bg-primary/10 px-3 py-2 text-sm text-primary">{notice}</p>}
-      {threadError && <p className="rounded-xl bg-destructive/10 px-3 py-2 text-sm text-destructive">{threadError}</p>}
-      {customer.source_url && <section className="rounded-xl border bg-card p-4 text-sm">
-        <h2 className="font-semibold">公開通路資料</h2>
-        <p className="mt-2">{customer.address}</p>
-        <p className="mt-1">電話：{customer.phone || "來源未提供"}</p>
-        <p className="mt-2 text-xs text-muted-foreground">來源查詢日 {customer.retrieved_on}，現行合作與營業狀態待核對。</p>
-        {!!customer.review_notes?.length && <p className="mt-2 text-xs text-amber-700">待核對：{customer.review_notes.join("、")}</p>}
-        <a href={customer.source_url} target="_blank" rel="noreferrer" className="mt-2 inline-block text-primary underline">查看官網來源</a>
-      </section>}
+      {flash && (
+        <p className="rounded-xl bg-primary/10 px-3 py-2 text-sm text-primary">
+          {flash}
+        </p>
+      )}
+      {notice && (
+        <p className="rounded-xl bg-primary/10 px-3 py-2 text-sm text-primary">
+          {notice}
+        </p>
+      )}
+      {threadError && (
+        <p className="rounded-xl bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {threadError}
+        </p>
+      )}
+      {customer.storefront_photo && (
+        <CustomerStorefront
+          customer={{
+            ...customer,
+            city: customer.city ?? profile.city,
+            area: customer.area ?? profile.area,
+          }}
+          clinic={customer.type === "clinic"}
+        />
+      )}
+      {customer.source_url && (
+        <section className="rounded-xl border bg-card p-4 text-sm">
+          <h2 className="font-semibold">公開通路資料</h2>
+          <p className="mt-2">{customer.address}</p>
+          <p className="mt-1">電話：{customer.phone || "來源未提供"}</p>
+          <p className="mt-2 text-xs text-muted-foreground">
+            來源查詢日 {customer.retrieved_on}，現行合作與營業狀態待核對。
+          </p>
+          {!!customer.review_notes?.length && (
+            <p className="mt-2 text-xs text-amber-700">
+              待核對：{customer.review_notes.join("、")}
+            </p>
+          )}
+          <a
+            href={customer.source_url}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-2 inline-block text-primary underline"
+          >
+            查看官網來源
+          </a>
+        </section>
+      )}
     </>
   )
   const brief = (
     <section className="rounded-2xl border-2 border-primary/20 bg-primary/10 p-4 shadow-lip-primary-soft">
-      <p className="text-xs font-semibold tracking-wide text-primary">進門前三分鐘</p>
+      <p className="text-xs font-semibold tracking-wide text-primary">
+        進門前三分鐘
+      </p>
       <ul className="mt-2 flex list-disc flex-col gap-1.5 pl-4 text-sm leading-relaxed">
         {profile.highlights.map((line) => (
           <li key={line}>{line}</li>
@@ -191,19 +282,40 @@ export function CustomerPage() {
       </ul>
     </section>
   )
-  const nextNotes = <NextNotes customerId={customer.id} customerName={customer.name} today={profile.today} />
+  const nextNotes = (
+    <NextNotes
+      customerId={customer.id}
+      customerName={customer.name}
+      today={profile.today}
+    />
+  )
   // 跟著整頁重新載入：成交之後「上次」就是剛成交的那張
-  const lastOrderSection = <LastOrderSection key={attempt} customerId={customer.id} />
+  const lastOrderSection = (
+    <LastOrderSection key={attempt} customerId={customer.id} />
+  )
   const numbers = (
     <>
       <section className="grid grid-cols-3 gap-2">
-        <StatCard label="近 3 月進貨" value={wan(stats.amount_last_90d)} unit="萬" note={amountNote(stats)} />
+        <StatCard
+          label="近 3 月進貨"
+          value={wan(stats.amount_last_90d)}
+          unit="萬"
+          note={amountNote(stats)}
+        />
         <StatCard
           label="進貨間隔"
-          value={stats.interval_last_90d === null ? "—" : Math.round(stats.interval_last_90d)}
+          value={
+            stats.interval_last_90d === null
+              ? "—"
+              : Math.round(stats.interval_last_90d)
+          }
           unit="天"
           tone={stats.interval_alert ? "alert" : undefined}
-          note={stats.interval_before === null ? undefined : `之前 ${Math.round(stats.interval_before)} 天`}
+          note={
+            stats.interval_before === null
+              ? undefined
+              : `之前 ${Math.round(stats.interval_before)} 天`
+          }
         />
         <StatCard
           label="帳款逾期"
@@ -214,10 +326,15 @@ export function CustomerPage() {
         />
       </section>
 
-      <IntervalChart intervals={profile.intervals} alert={stats.interval_alert} />
+      <IntervalChart
+        intervals={profile.intervals}
+        alert={stats.interval_alert}
+      />
     </>
   )
-  const contractRow = contract?.customerId === customer.id && <ContractRow customerId={customer.id} contract={contract.data} />
+  const contractRow = contract?.customerId === customer.id && (
+    <ContractRow customerId={customer.id} contract={contract.data} />
+  )
   const pendingItems = (
     <PendingItems
       profile={profile}
@@ -264,11 +381,19 @@ export function CustomerPage() {
                 語音記錄
               </Button>
               <div className="flex gap-2">
-                <Button variant="outline" className="h-12 flex-1 gap-1.5" onClick={toOrder}>
+                <Button
+                  variant="outline"
+                  className="h-12 flex-1 gap-1.5"
+                  onClick={toOrder}
+                >
                   <FileText className="size-4" />
                   新增訂單
                 </Button>
-                <Button variant="outline" className="h-12 flex-1 gap-1.5" onClick={toNegotiation}>
+                <Button
+                  variant="outline"
+                  className="h-12 flex-1 gap-1.5"
+                  onClick={toNegotiation}
+                >
                   <Handshake className="size-4" />
                   談判卡
                 </Button>
@@ -292,17 +417,29 @@ export function CustomerPage() {
         </main>
       )}
 
-      <Dialog open={ordering !== null} onOpenChange={(open) => !open && !placing && setOrdering(null)}>
+      <Dialog
+        open={ordering !== null}
+        onOpenChange={(open) => !open && !placing && setOrdering(null)}
+      >
         <DialogContent showCloseButton={false}>
           <DialogHeader>
             <DialogTitle>把這張報價寫成今天的進貨？</DialogTitle>
             <DialogDescription>
-              {ordering && `${ordering.quote_no}，${formatMoney(ordering.amount)}。`}會寫進交易紀錄與應收帳款，不能復原。
+              {ordering &&
+                `${ordering.quote_no}，${formatMoney(ordering.amount)}。`}
+              會寫進交易紀錄與應收帳款，不能復原。
             </DialogDescription>
           </DialogHeader>
-          {orderError && <p className="text-sm text-destructive">{orderError}</p>}
+          {orderError && (
+            <p className="text-sm text-destructive">{orderError}</p>
+          )}
           <DialogFooter>
-            <Button variant="outline" className="h-11" disabled={placing} onClick={() => setOrdering(null)}>
+            <Button
+              variant="outline"
+              className="h-11"
+              disabled={placing}
+              onClick={() => setOrdering(null)}
+            >
               不要
             </Button>
             <Button className="h-11" disabled={placing} onClick={confirmOrder}>
@@ -313,14 +450,25 @@ export function CustomerPage() {
       </Dialog>
 
       {!desktop && (
-        <div data-page-footer className="fixed inset-x-0 bottom-0 z-10 mx-auto flex max-w-md gap-2 border-t bg-card px-4 pt-3 pb-[max(env(safe-area-inset-bottom),0.75rem)]">
+        <div
+          data-page-footer
+          className="fixed inset-x-0 bottom-0 z-10 mx-auto flex max-w-md gap-2 border-t bg-card px-4 pt-3 pb-[max(env(safe-area-inset-bottom),0.75rem)]"
+        >
           {/* 每種客戶都有談判卡：連鎖是顧客導向，獨立藥局與診所是成本導向 */}
-          <Button variant="outline" className="h-12 flex-1 gap-1.5" onClick={toNegotiation}>
+          <Button
+            variant="outline"
+            className="h-12 flex-1 gap-1.5"
+            onClick={toNegotiation}
+          >
             <Handshake className="size-4" />
             談判卡
           </Button>
           {/* 與訂單首頁共用建立流程，直接帶入這家客戶。 */}
-          <Button variant="outline" className="h-12 flex-1 gap-1.5" onClick={toOrder}>
+          <Button
+            variant="outline"
+            className="h-12 flex-1 gap-1.5"
+            onClick={toOrder}
+          >
             <FileText className="size-4" />
             新增訂單
           </Button>
@@ -336,7 +484,9 @@ export function CustomerPage() {
 
 function amountNote(stats: ProfileStats) {
   if (!stats.amount_prev_90d) return undefined
-  const change = Math.round((stats.amount_last_90d / stats.amount_prev_90d - 1) * 100)
+  const change = Math.round(
+    (stats.amount_last_90d / stats.amount_prev_90d - 1) * 100
+  )
   return `比前 3 月 ${change > 0 ? "+" : ""}${change}%`
 }
 
@@ -345,38 +495,91 @@ function arTone(overdueDays: number | null): Tone {
   return overdueDays > AR_ESCALATE_DAYS ? "alert" : "warn"
 }
 
-function StatCard({ label, value, unit, note, tone }: { label: string; value: string | number; unit: string; note?: string; tone?: Tone }) {
+function StatCard({
+  label,
+  value,
+  unit,
+  note,
+  tone,
+}: {
+  label: string
+  value: string | number
+  unit: string
+  note?: string
+  tone?: Tone
+}) {
   return (
     <div className="flex flex-col gap-1 rounded-xl border-2 bg-card p-3 shadow-lip">
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className={cn("text-lg font-semibold tabular-nums", tone === "alert" && "text-destructive", tone === "warn" && "text-warning")}>
+      <p
+        className={cn(
+          "text-lg font-semibold tabular-nums",
+          tone === "alert" && "text-destructive",
+          tone === "warn" && "text-warning"
+        )}
+      >
         {value}
-        <span className="ml-0.5 text-xs font-normal text-muted-foreground">{unit}</span>
+        <span className="ml-0.5 text-xs font-normal text-muted-foreground">
+          {unit}
+        </span>
       </p>
-      {note && <p className="text-xs leading-snug text-muted-foreground">{note}</p>}
+      {note && (
+        <p className="text-xs leading-snug text-muted-foreground">{note}</p>
+      )}
     </div>
   )
 }
 
 /** 近六個月每個月的平均進貨間隔；拉長時最後一根標紅（原型的「進貨間隔」長條圖） */
-function IntervalChart({ intervals, alert }: { intervals: CustomerProfile["intervals"]; alert: boolean }) {
+function IntervalChart({
+  intervals,
+  alert,
+}: {
+  intervals: CustomerProfile["intervals"]
+  alert: boolean
+}) {
   const max = Math.max(1, ...intervals.map((item) => item.gap_days ?? 0))
   return (
     <section className="rounded-2xl border-2 bg-card p-4 shadow-lip">
-      <div className="flex items-center justify-between"><h2 className="text-base font-semibold">每月進貨間隔</h2><ContextHelp label="進貨間隔計算方式"><p>每次進貨距離上次進貨的天數，歸入本次進貨月份後取平均，單位為天。</p></ContextHelp></div>
+      <div className="flex items-center justify-between">
+        <h2 className="text-base font-semibold">每月進貨間隔</h2>
+      </div>
       <div className="mt-3 flex h-36 items-end gap-2">
         {intervals.map((item, index) => {
           const last = index === intervals.length - 1
           return (
-            <div key={item.month} className="flex flex-1 flex-col items-center justify-end gap-1">
-              <span className={cn("text-xs tabular-nums", last && alert ? "font-semibold text-destructive" : "text-muted-foreground")}>
+            <div
+              key={item.month}
+              className="flex flex-1 flex-col items-center justify-end gap-1"
+            >
+              <span
+                className={cn(
+                  "text-xs tabular-nums",
+                  last && alert
+                    ? "font-semibold text-destructive"
+                    : "text-muted-foreground"
+                )}
+              >
                 {item.gap_days === null ? "—" : Math.round(item.gap_days)}
               </span>
               <div
-                className={cn("w-full rounded-md", item.gap_days === null ? "h-1 bg-muted" : last && alert ? "bg-destructive" : "bg-accent")}
-                style={item.gap_days === null ? undefined : { height: `${Math.max(6, (item.gap_days / max) * 96)}px` }}
+                className={cn(
+                  "w-full rounded-md",
+                  item.gap_days === null
+                    ? "h-1 bg-muted"
+                    : last && alert
+                      ? "bg-destructive"
+                      : "bg-accent"
+                )}
+                style={
+                  item.gap_days === null
+                    ? undefined
+                    : { height: `${Math.max(6, (item.gap_days / max) * 96)}px` }
+                }
               />
-              <span className="text-xs text-muted-foreground">{Number(item.month.slice(5))}月</span>
+              <span className="text-xs text-muted-foreground">
+                {Number(item.month.slice(5))}月
+              </span>
             </div>
           )
         })}
@@ -389,18 +592,30 @@ function IntervalChart({ intervals, alert }: { intervals: CustomerProfile["inter
  * 連鎖客戶的合約到期日；3 個月內到期時標出來，這時才有「申請續約」
  * （《連鎖通路合約條件》：到期前 3 個月啟動續約協商，離到期還久的合約後端不收續約申請）
  */
-function ContractRow({ customerId, contract }: { customerId: string; contract: Contract }) {
+function ContractRow({
+  customerId,
+  contract,
+}: {
+  customerId: string
+  contract: Contract
+}) {
   if (!contract.contract_end_date) return null
   const left = contract.days_left ?? 0
   return (
     <section
-      className={cn("flex items-center gap-3 rounded-2xl border-2 bg-card px-4 py-3 shadow-lip", contract.ending_soon && "border-warning/60")}
+      className={cn(
+        "flex items-center gap-3 rounded-2xl border-2 bg-card px-4 py-3 shadow-lip",
+        contract.ending_soon && "border-warning/60"
+      )}
     >
       <div className="min-w-0 flex-1">
         <p className="text-sm font-semibold">
           合約 {contract.contract_end_date.replaceAll("-", "/")} 到期
           {contract.ending_soon && (
-            <Badge variant="outline" className="ml-2 border-warning/60 text-warning">
+            <Badge
+              variant="outline"
+              className="ml-2 border-warning/60 text-warning"
+            >
               {left >= 0 ? `剩 ${left} 天` : "已過期"}
             </Badge>
           )}
@@ -431,13 +646,28 @@ function ContractRow({ customerId, contract }: { customerId: string; contract: C
 /** FR-2.2：未結案報價、客訴、逾期承諾 */
 type OpenQuote = CustomerProfile["open_quotes"][number]
 
-function PendingItems({ profile, onOrder }: { profile: CustomerProfile; onOrder: (quote: OpenQuote) => void }) {
-  const rows: { key: string; tone: Tone; title: string; meta: string; tag?: string; quote?: OpenQuote }[] = [
+function PendingItems({
+  profile,
+  onOrder,
+}: {
+  profile: CustomerProfile
+  onOrder: (quote: OpenQuote) => void
+}) {
+  const rows: {
+    key: string
+    tone: Tone
+    title: string
+    meta: string
+    tag?: string
+    quote?: OpenQuote
+  }[] = [
     ...profile.commitments.map((item) => ({
       key: `commitment-${item.visit_id}`,
       tone: (item.overdue ? "alert" : "warn") as Tone,
       title: `${item.by === "us" ? "我方答應" : "客戶答應"}：${item.text}`,
-      meta: item.due ? `${formatDate(item.due)} ${item.overdue ? "已過期" : "到期"}` : "沒有期限",
+      meta: item.due
+        ? `${formatDate(item.due)} ${item.overdue ? "已過期" : "到期"}`
+        : "沒有期限",
     })),
     ...profile.complaints.map((item) => ({
       key: `complaint-${item.visit_id}`,
@@ -458,14 +688,20 @@ function PendingItems({ profile, onOrder }: { profile: CustomerProfile; onOrder:
   return (
     <section className="rounded-2xl border-2 bg-card px-4 pb-1 shadow-lip">
       <p className="py-3 text-sm font-semibold">待處理事項</p>
-      {rows.length === 0 && <p className="pb-3 text-sm text-muted-foreground">沒有待處理的事項。</p>}
+      {rows.length === 0 && (
+        <p className="pb-3 text-sm text-muted-foreground">沒有待處理的事項。</p>
+      )}
       {rows.map((row) => (
         <div key={row.key} className="flex flex-col gap-1 border-t py-2">
           <div className="flex min-h-8 items-center gap-3">
             <span
               className={cn(
                 "size-2 shrink-0 rounded-full",
-                row.tone === "alert" ? "bg-destructive" : row.tone === "warn" ? "bg-warning" : "bg-muted-foreground/40"
+                row.tone === "alert"
+                  ? "bg-destructive"
+                  : row.tone === "warn"
+                    ? "bg-warning"
+                    : "bg-muted-foreground/40"
               )}
             />
             <p className="flex-1 text-sm">
@@ -476,7 +712,16 @@ function PendingItems({ profile, onOrder }: { profile: CustomerProfile; onOrder:
                 </Badge>
               )}
             </p>
-            <span className={cn("shrink-0 text-xs", row.tone === "alert" ? "text-destructive" : "text-muted-foreground")}>{row.meta}</span>
+            <span
+              className={cn(
+                "shrink-0 text-xs",
+                row.tone === "alert"
+                  ? "text-destructive"
+                  : "text-muted-foreground"
+              )}
+            >
+              {row.meta}
+            </span>
           </div>
           {row.quote && (
             <div className="ml-5 flex items-center gap-3">
@@ -488,7 +733,9 @@ function PendingItems({ profile, onOrder }: { profile: CustomerProfile; onOrder:
               >
                 客戶下單了
               </Button>
-              {row.quote.status === "pending_approval" && <p className="text-xs text-muted-foreground">核准後才能成交</p>}
+              {row.quote.status === "pending_approval" && (
+                <p className="text-xs text-muted-foreground">核准後才能成交</p>
+              )}
             </div>
           )}
         </div>
@@ -498,11 +745,19 @@ function PendingItems({ profile, onOrder }: { profile: CustomerProfile; onOrder:
 }
 
 /** FR-2.3：過去拜訪提到過的競品 */
-function Competitors({ competitors }: { competitors: CustomerProfile["competitors"] }) {
+function Competitors({
+  competitors,
+}: {
+  competitors: CustomerProfile["competitors"]
+}) {
   return (
     <section className="rounded-2xl border-2 bg-card px-4 pb-1 shadow-lip">
       <p className="py-3 text-sm font-semibold">競品紀錄</p>
-      {competitors.length === 0 && <p className="pb-3 text-sm text-muted-foreground">過去的拜訪沒有提到競品。</p>}
+      {competitors.length === 0 && (
+        <p className="pb-3 text-sm text-muted-foreground">
+          過去的拜訪沒有提到競品。
+        </p>
+      )}
       {competitors.map((item) => (
         <div key={item.name} className="flex flex-col gap-0.5 border-t py-2.5">
           <div className="flex items-baseline justify-between gap-3">
@@ -511,7 +766,9 @@ function Competitors({ competitors }: { competitors: CustomerProfile["competitor
               提到 {item.mentions} 次 · 最近 {formatDate(item.last_date)}
             </span>
           </div>
-          {item.detail && <p className="text-xs text-muted-foreground">{item.detail}</p>}
+          {item.detail && (
+            <p className="text-xs text-muted-foreground">{item.detail}</p>
+          )}
         </div>
       ))}
     </section>

@@ -4,7 +4,7 @@ import { useSyncExternalStore } from "react"
 // IT 看得到也動得了全公司，並且是唯一能改組織的人（/admin）
 export type Role = "sales" | "manager" | "it"
 
-export type AuthUser = {
+export type AccountProfile = {
   id: string
   name: string
   role: Role
@@ -18,8 +18,11 @@ export type AuthUser = {
   acting_as?: { id: string; name: string } | null
   // 自己開的帳號才能改名字；公司帳號由公司設定
   can_rename?: boolean
-  // Demo 切換後顯示示範人物；account 保留真正登入者，供返回原帳號。
-  demo?: { account: { id: string; name: string }; role: Role | null } | null
+}
+
+export type AuthUser = AccountProfile & {
+  // Demo 切換後顯示示範人物；account 保留真正登入者的資料，供帳號設定與返回原帳號使用。
+  demo?: { account: AccountProfile; role: Role | null } | null
 }
 
 /** 登入後的首頁：業務進訂單；主管直接進主管端；IT 進組織管理 */

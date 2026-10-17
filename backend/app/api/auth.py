@@ -39,17 +39,12 @@ class ActingAs(BaseModel):
     name: str
 
 
-class DemoAccess(BaseModel):
-    account: ActingAs
-    role: Literal["sales", "manager", "it"] | None
-
-
 class DemoRoleRequest(BaseModel):
     # null 表示回到登入者自己的帳號。
     role: Literal["sales", "manager", "it"] | None
 
 
-class UserPublic(BaseModel):
+class AccountPublic(BaseModel):
     id: str
     name: str
     role: str
@@ -62,6 +57,15 @@ class UserPublic(BaseModel):
     acting_as: ActingAs | None = None
     # 自己開的帳號才能改名字；公司帳號的名字是公司資料，畫面上不給改
     can_rename: bool = False
+
+
+class DemoAccess(BaseModel):
+    # 設定頁在示範模式仍能管理原登入帳號，需要它自己的姓名、密碼狀態與綁定資料。
+    account: AccountPublic
+    role: Literal["sales", "manager", "it"] | None
+
+
+class UserPublic(AccountPublic):
     demo: DemoAccess | None = None
 
 
@@ -91,8 +95,7 @@ class AuthResponse(BaseModel):
     user: UserPublic
 
 
-def _public(session: Session, user: AppUser, account: AppUser | None = None) -> UserPublic:
-    account = account if account is not None else user
+def _account_public(session: Session, user: AppUser) -> AccountPublic:
     # 歷史綁定留在資料庫，只公開目前仍支援的登入方式。
     identities = session.scalars(
         select(UserIdentity).where(
@@ -100,14 +103,22 @@ def _public(session: Session, user: AppUser, account: AppUser | None = None) -> 
         ).order_by(UserIdentity.provider)
     )
     acting = session.get(AppUser, user.acts_as_user_id) if user.acts_as_user_id else None
-    return UserPublic(
+    return AccountPublic(
         id=user.id, name=user.name, role=user.role, region=user.region, email=user.email,
         has_password=bool(user.password_hash),
         linked=[LinkedIdentity(provider=i.provider, email=i.email, linked_at=i.created_at) for i in identities],
         acting_as=ActingAs(id=acting.id, name=acting.name) if acting else None,
         can_rename=_is_self_service(user),
+    )
+
+
+def _public(session: Session, user: AppUser, account: AppUser | None = None) -> UserPublic:
+    account = account if account is not None else user
+    profile = _account_public(session, user)
+    return UserPublic(
+        **profile.model_dump(),
         demo=DemoAccess(
-            account=ActingAs(id=account.id, name=account.name),
+            account=profile if user.id == account.id else _account_public(session, account),
             role=user.role if user.id != account.id else None,
         ) if settings().demo_role_switch else None,
     )

@@ -407,7 +407,7 @@ export function RouteEditPage() {
       />
       <main className="flex flex-1 flex-col px-4 pt-3 pb-10">
         <p className="text-xs text-muted-foreground tabular-nums">
-          共 {view.travel_km} 公里 · 路上 {formatMinutes(view.travel_minutes)}
+          {view.travel_km} 公里 · 路上 {formatMinutes(view.travel_minutes)}
           {view.finish_time && ` · 約 ${view.finish_time} 收工`}
           <DriveSource estimated={view.estimated} />
         </p>

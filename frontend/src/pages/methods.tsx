@@ -40,7 +40,6 @@ export function MethodsPage() {
 
   const cards = state.status === "ready" ? state.cards : []
   const shown = filterCards(cards, { tag, customerType, keyword: query })
-  const filtering = Boolean(tag || customerType || query.trim())
 
   function changed(next: MethodCard) {
     setState((current) =>
@@ -122,9 +121,6 @@ export function MethodsPage() {
               <Notice text="找不到符合的方法卡。" action={{ label: "清除篩選", onClick: clearFilters }} />
             ) : (
               <>
-                <p className="text-xs text-muted-foreground">
-                  {filtering ? `符合 ${shown.length} 張` : `共 ${shown.length} 張`} · 依採用次數排序
-                </p>
                 {shown.map((card) => (
                   <MethodCardItem key={card.id} card={card} onChanged={changed} />
                 ))}

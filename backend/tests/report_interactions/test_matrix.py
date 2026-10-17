@@ -208,7 +208,7 @@ def test_matrix_options_save_but_temporary_views_do_not_persist(interaction_sess
     payload = body.model_dump(mode="json")
     assert client.post("/api/reports/data", headers=headers, json=payload).status_code == 200
     assert client.put("/api/reports/config", headers=headers, json=payload).status_code == 422
-    for key in ("selection_groups", "drill_filters", "matrix_views", "canvas_selections", "navigation_page", "navigation_filters"):
+    for key in ("selection_groups", "drill_filters", "matrix_views", "canvas_selections", "navigation_page", "navigation_filters", "requested_card_ids"):
         payload.pop(key)
     assert client.put("/api/reports/config", headers=headers, json=payload).status_code == 200
     assert client.get("/api/reports", headers=headers).json()["config"]["cards"][0]["matrix"]["metrics"] == METRICS

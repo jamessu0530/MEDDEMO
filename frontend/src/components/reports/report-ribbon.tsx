@@ -129,9 +129,6 @@ export function ReportRibbon({
             <Button variant="outline" size="sm" onClick={onAnalytics}>
               圖表分析與互動
             </Button>
-            <p className="text-xs text-muted-foreground">
-              選取圖表，設定跨頁分析、提示頁、趨勢與預測。
-            </p>
           </>
         )}
       </div>

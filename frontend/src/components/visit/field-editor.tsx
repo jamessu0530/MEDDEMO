@@ -220,7 +220,6 @@ function NotesEditor({ initial, saving, onSave }: EditorProps<NoteItem[]>) {
 
   return (
     <>
-      <p className="text-xs text-muted-foreground">確認後存進這家的備忘，下次去之前在客戶檔案與日曆看得到。</p>
       {rows.map((row, index) => (
         <div key={index} className="flex flex-col gap-2 rounded-xl border-2 bg-card p-3 shadow-lip">
           <div className="flex gap-2">
@@ -320,7 +319,6 @@ function IntentEditor({ initial, saving, onSave }: EditorProps<IntentItem[]>) {
 
   return (
     <>
-      <p className="text-xs text-muted-foreground">送出 SAP 報價草稿需要每一項都有品項和數量；選了促銷的口，數量就是口數。</p>
       {rows.map((row, index) => (
         <div key={index} className="flex flex-col gap-2 rounded-xl border-2 bg-card p-3 shadow-lip">
           {row.product_text && <p className="text-xs text-muted-foreground">口述講法：{row.product_text}</p>}

@@ -56,6 +56,84 @@ afterEach(() => {
   vi.useRealTimers()
 })
 describe("全站自動問答", () => {
+  it.each([
+    "這個頁面可以幹嘛？",
+    "可以跟我講一下如何設定這個頁面嗎",
+    "請說明這個頁面怎麼用",
+    "不用示範，介紹日曆功能就好",
+  ])("頁面說明直接顯示回覆，不查文件或自動示範：%s", async (question) => {
+    const context = { path: "/calendar", title: "日曆", facts: [] }
+    api.routeAsk.mockResolvedValueOnce(
+      routed(question, {
+        kind: null,
+        intent: "page_help",
+        answer: "按右上角齒輪「日曆與設定」管理分類、共享與通知。",
+        context_used: true,
+      })
+    )
+    const session = askSessionFor("U01")
+    await session.ask(question, undefined, context)
+    expect(api.routeAsk).toHaveBeenCalledWith(question, false, [], context)
+    expect(api.createAsk).not.toHaveBeenCalled()
+    expect(session.conversation.getSnapshot()).toMatchObject([
+      { kind: "user", text: question },
+      {
+        kind: "model",
+        text: expect.stringContaining("日曆與設定"),
+        page: context,
+      },
+    ])
+    expect(session.conversation.getSnapshot()[1]).not.toHaveProperty("demo")
+    expect(tools(session)).toHaveLength(0)
+    expect(session.isBusy()).toBe(false)
+    await session.ask("那通知呢？", undefined, context)
+    expect(api.routeAsk.mock.calls[1][2]).toEqual([
+      {
+        question,
+        answer: "按右上角齒輪「日曆與設定」管理分類、共享與通知。",
+        page: context,
+      },
+    ])
+  })
+  it("後端辨識的示範使用登錄頁面，保留一般回覆順序", async () => {
+    api.routeAsk.mockResolvedValueOnce(
+      routed("帶我一步一步逛日曆", {
+        kind: null,
+        intent: "page_demo",
+        answer: "日曆可新增行程。",
+        demo_path: "/calendar?view=week",
+      })
+    )
+    const session = askSessionFor("U01")
+    await session.ask("帶我一步一步逛日曆", undefined, page())
+    expect(session.conversation.getSnapshot()).toMatchObject([
+      { kind: "user" },
+      { kind: "model", demo: "page-tour", demoPath: "/calendar?view=week" },
+    ])
+    expect(api.createAsk).not.toHaveBeenCalled()
+    expect(tools(session)).toHaveLength(0)
+  })
+  it("資料與公司規定問題仍執行查詢", async () => {
+    const context = { path: "/calendar", title: "日曆", facts: [] }
+    const session = askSessionFor("U01")
+    await session.ask("今天有幾個行程？", undefined, context)
+    api.routeAsk.mockResolvedValueOnce(
+      routed("公司的共享日曆規定是什麼？", { kind: "knowledge" })
+    )
+    await session.ask("公司的共享日曆規定是什麼？", undefined, context)
+    expect(api.createAsk).toHaveBeenNthCalledWith(
+      1,
+      "data",
+      "今天有幾個行程？",
+      undefined
+    )
+    expect(api.createAsk).toHaveBeenNthCalledWith(
+      2,
+      "knowledge",
+      "公司的共享日曆規定是什麼？",
+      undefined
+    )
+  })
   it("OA 缺件直接依目前畫面回答，跨頁公司問題仍交給共用查詢", async () => {
     const session = askSessionFor("U01")
     const oa = {

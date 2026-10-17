@@ -18,6 +18,7 @@ from app.services.data_agent import answer_data
 from app.services.memory_answer import answer_memory
 from app.services.scope import Scope
 from app.services.knowledge import answer_knowledge
+from app.services import product_appearance
 
 log = logging.getLogger(__name__)
 
@@ -61,6 +62,19 @@ def run_ask(ask_id: str) -> None:
             session.commit()
 
         try:
+            if record.kind != "memory" and product_appearance.is_appearance_question(record.question) and session.scalar(
+                select(Attachment.id).where(Attachment.ask_id == ask_id)
+            ) is None:
+                hits = product_appearance.search_photos(
+                    session, optional_embedder(), record.question, drugs_only="藥" in record.question,
+                )
+                record.status = "answered"
+                record.answer = product_appearance.appearance_answer(hits)
+                record.evidence = {"product_photos": hits}
+                on_step(1, "search", search_query=record.question, row_count=len(hits), decision="依型錄照片外觀找候選商品，保留同系列與料號對應")
+                record.finished_at = dt.datetime.now(dt.UTC)
+                session.commit()
+                return
             llm = get_llm()
             embedder = optional_embedder()
             media, note = look_at_attachment(session, ask_id, llm, embedder, on_step)

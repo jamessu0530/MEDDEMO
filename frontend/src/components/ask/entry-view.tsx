@@ -5,7 +5,7 @@ import type { Entry, ToolRun } from "@/ask/conversation"
 import { AskAnswer, TracePanel } from "@/components/ask/ask-result"
 import { AttachmentGallery } from "@/components/attachments/attachment-gallery"
 import { Mascot } from "@/components/mascot"
-import { requestedUiDemo } from "@/lib/ui-demo"
+
 
 const TOOL_LABEL = {
   data: "公司資料",
@@ -38,15 +38,7 @@ export function EntryView({ entry, ...actions }: EntryViewProps) {
               className="w-56 max-w-full items-end"
             />
           )}
-          {entry.source === "voice" && (
-            <p className="text-xs text-muted-foreground">語音辨識，僅供參考</p>
-          )}
         </div>
-        {entry.source === "voice" && requestedUiDemo(entry.text) && (
-          <p className="text-sm text-muted-foreground">
-            要看操作示範，請在下方輸入「操作給我看」。
-          </p>
-        )}
       </>
     )
   }
@@ -127,11 +119,6 @@ function ToolCard({
             </LinkButton>
           )}
         </div>
-      )}
-      {run.cancelled && (
-        <p className="mt-2 text-xs text-muted-foreground">
-          對話已經不需要這個結果，查到的內容仍保留在這裡。
-        </p>
       )}
     </section>
   )

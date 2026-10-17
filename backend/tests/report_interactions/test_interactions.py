@@ -128,6 +128,7 @@ def test_api_accepts_query_selection_but_refuses_to_persist_temporary_selection(
     payload.pop("canvas_selections")
     payload.pop("navigation_page")
     payload.pop("navigation_filters")
+    payload.pop("requested_card_ids")
     assert client.put("/api/reports/config", json=payload, headers=headers).status_code == 200
     saved = client.get("/api/reports", headers=headers)
     assert saved.status_code == 200 and "selection_groups" not in saved.json()["config"]

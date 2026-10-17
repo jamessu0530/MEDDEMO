@@ -401,11 +401,6 @@ export function SearchSelect(props: Props) {
                         ? "沒有符合的已選項目"
                         : (props.emptyText ?? "沒有符合的選項")}
                     </p>
-                    <p className="text-xs text-muted-foreground">
-                      {query
-                        ? "換個關鍵字，或清除搜尋再試一次。"
-                        : "目前沒有可選資料。"}
-                    </p>
                   </div>
                 )}
                 {filtered.length > count && (
@@ -414,15 +409,14 @@ export function SearchSelect(props: Props) {
                     onClick={() => setCount((size) => size + 60)}
                     className="min-h-11 w-full rounded-lg text-xs font-medium text-primary hover:bg-muted"
                   >
-                    再顯示 60 項（共 {filtered.length} 項）
+                    顯示更多
                   </button>
                 )}
               </>
             )}
           </div>
-          <div className="shrink-0 border-t bg-muted/30 px-3 py-2.5">
-            {props.multiple ? (
-              <>
+          {props.multiple && (
+            <div className="shrink-0 border-t bg-muted/30 px-3 py-2.5">
                 <div className="mb-3 flex items-center justify-between gap-3 text-xs">
                   <button
                     type="button"
@@ -470,14 +464,8 @@ export function SearchSelect(props: Props) {
                     套用 {current.length} 項
                   </Button>
                 </div>
-              </>
-            ) : (
-              <p className="text-xs text-muted-foreground">
-                {loading ? "查詢中…" : `找到 ${filtered.length} 項`} · ↑ ↓
-                移動，Enter 選取
-              </p>
-            )}
-          </div>
+            </div>
+          )}
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>

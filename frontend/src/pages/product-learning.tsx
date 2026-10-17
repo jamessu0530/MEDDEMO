@@ -32,7 +32,6 @@ function ProductCourses() {
   return <div className="flex min-h-svh flex-col">
     <PageHeader title="品類成就" backTo="/me" />
     <main className="flex flex-col gap-5 px-4 pt-4 pb-10">
-      <p className="text-sm leading-relaxed text-muted-foreground">每關全部答對，依序解鎖銅、銀、金牌。</p>
       {error && <Notice text={error} action={{ label: "再試一次", onClick: () => { setError(null); setAttempt(n => n + 1) } }} />}
       {!courses && !error && <p className="py-8 text-sm text-muted-foreground">載入品類練習中…</p>}
       {courses?.map(course => <section key={course.kind} className="rounded-3xl border bg-card p-4">
@@ -96,7 +95,7 @@ function LessonContent({ kind, tier }: { kind: string; tier: string }) {
         <div className="rounded-2xl bg-primary/5 p-4"><h2 className="flex items-center gap-2 text-base font-semibold"><GraduationCap className="size-4" />{lesson.title}</h2><p className="mt-2 text-xs leading-relaxed text-muted-foreground">達成條件：{lesson.condition}</p></div>
         <section aria-label="商品型錄參考" className="rounded-2xl border bg-card p-4"><h2 className="mb-3 text-base font-semibold">先看商品型錄</h2><div className="flex flex-col gap-3">{lesson.reference.map(p => <div key={p.sku} className="rounded-xl bg-muted/50 p-3">
           <p className="text-sm font-medium">{p.name}</p><p className="mt-1 text-xs text-muted-foreground">料號 {p.sku} · {p.category}</p><p className="mt-1 text-xs">規格：{p.spec || "型錄未提供"} · 基礎單位：{p.unit}</p>
-        </div>)}</div><p className="mt-3 text-xs text-muted-foreground">依目前型錄核對品項、規格與單位。</p></section>
+        </div>)}</div></section>
         <form onSubmit={e => { e.preventDefault(); void submit() }} className="flex flex-col gap-5">
           {lesson.questions.map((q, i) => <fieldset key={q.id} disabled={saving} className="min-w-0"><legend className="mb-3 text-sm font-semibold">{i + 1}. {q.prompt}</legend><div className="flex flex-col gap-2">{q.choices.map(choice => <label key={choice.value} className={cn("flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border px-3 py-3 text-sm", answers[q.id] === choice.value ? "border-primary bg-primary/5" : "bg-card")}>
             <input type="radio" name={q.id} value={choice.value} checked={answers[q.id] === choice.value} onChange={() => { setAnswers(a => ({ ...a, [q.id]: choice.value })); setFeedback(null) }} className="size-4 shrink-0 accent-primary" required />{choice.label}

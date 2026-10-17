@@ -1,12 +1,11 @@
 import { useEffect, useState } from "react"
 import { Link } from "react-router"
-import { ArrowUpRight, Check, Copy, FileText, Search } from "@/components/icons"
+import { ArrowUpRight, FileText, Search } from "@/components/icons"
 import { getOaCatalog, type OaCatalog } from "@/api/oa"
 import { OaNav } from "@/components/oa-nav"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { businessGapText } from "@/lib/oa-legacy"
 import { cn } from "@/lib/utils"
 import { useAskPageContext } from "@/ask/use-page-context"
 
@@ -16,8 +15,6 @@ export function OaAppsPage() {
   const [query, setQuery] = useState("")
   const [category, setCategory] = useState("全部")
   const [attempt, setAttempt] = useState(0)
-  const [copied, setCopied] = useState(false)
-  const [copyError, setCopyError] = useState(false)
   useEffect(() => {
     window.scrollTo({ top: 0 })
     const controller = new AbortController()
@@ -57,25 +54,15 @@ export function OaAppsPage() {
       />
       <OaNav />
       <main className="mx-auto flex max-w-7xl flex-col gap-5 px-4 py-6 lg:px-8">
-        <div className="rounded-2xl border bg-primary/5 p-5">
-          <p className="font-semibold">從熟悉的表單開始，讓助理先幫你填</p>
-          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-            選表單 → 帶入帳號資料或貼上申請內容 → 核對缺漏 →
-            存草稿或送主管簽核。
-          </p>
-          <p className="mt-2 text-xs text-muted-foreground">
-            未提供的欄位保留空白。各表單的附件、權限與簽核規則可向業務窗口確認。
-          </p>
-        </div>
         <label className="relative block">
-          <Search className="absolute top-3.5 left-3 size-4 text-muted-foreground" />
+          <Search className="pointer-events-none absolute top-1/2 left-5 size-5 -translate-y-1/2 text-muted-foreground md:size-6" />
           <Input
             aria-label="搜尋 OA 表單"
             data-ui-demo="oa-template-search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="搜尋表單名稱、代碼或用途"
-            className="pl-10"
+            className="h-14 rounded-2xl pr-4 pl-14 text-base md:h-16 md:text-lg"
           />
         </label>
         <div
@@ -121,11 +108,6 @@ export function OaAppsPage() {
         {!catalog && !error && (
           <p className="py-10 text-center text-muted-foreground">載入表單中…</p>
         )}
-        {catalog && (
-          <p className="text-xs text-muted-foreground">
-            共 {items.length} 個入口
-          </p>
-        )}
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {items.map((item) => (
             <article
@@ -144,15 +126,10 @@ export function OaAppsPage() {
                 <FileText className="mt-0.5 size-5 shrink-0 text-primary" />
                 {item.title}
               </h2>
-              <p className="flex-1 text-sm leading-relaxed text-muted-foreground">
-                {item.description}
-              </p>
               {item.sap_origin && (
-                <p className="text-xs font-medium text-amber-700 dark:text-amber-400">
-                  正式流程須由 SAP 起單
-                </p>
+                <span className="text-xs font-medium text-amber-700 dark:text-amber-400">SAP 起單</span>
               )}
-              <Button asChild variant="outline" className="mt-1 w-full">
+              <Button asChild variant="outline" className="mt-auto w-full">
                 <Link
                   data-ui-demo={
                     item.query_only ? undefined : "oa-create-template"
@@ -172,50 +149,8 @@ export function OaAppsPage() {
         </div>
         {catalog && !items.length && (
           <p className="py-10 text-center text-sm text-muted-foreground">
-            沒有符合的表單，試試其他名稱或分類。
+            沒有符合的表單。
           </p>
-        )}
-        {catalog && (
-          <details className="rounded-2xl border-2 bg-card p-5" open>
-            <summary className="cursor-pointer font-semibold">
-              請業務協助補齊的資料
-            </summary>
-            <p className="mt-3 text-sm text-muted-foreground">
-              這份清單可複製給業務窗口，確認後才能對齊正式系統。
-            </p>
-            <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm leading-relaxed">
-              {catalog.business_gaps.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ol>
-            <Button
-              variant="outline"
-              className="mt-4"
-              onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(
-                    businessGapText(catalog.business_gaps)
-                  )
-                  setCopied(true)
-                  setCopyError(false)
-                } catch {
-                  setCopyError(true)
-                }
-              }}
-            >
-              {copied ? <Check /> : <Copy />}
-              {copied ? "已複製" : "複製給業務"}
-            </Button>
-            {copyError && (
-              <textarea
-                readOnly
-                aria-label="待補資料文字"
-                className="mt-3 h-48 w-full rounded-xl border p-3 text-sm"
-                value={businessGapText(catalog.business_gaps)}
-                onFocus={(e) => e.target.select()}
-              />
-            )}
-          </details>
         )}
       </main>
     </div>

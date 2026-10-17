@@ -88,9 +88,6 @@ export function ChannelSearchPage() {
         )}
       </form>
       <main className="flex-1 px-4 py-4">
-        {state.status === "idle" && (
-          <p className="py-10 text-center text-sm text-muted-foreground">搜尋訊息，或附上照片找相似圖片。</p>
-        )}
         {state.status === "loading" && <p className="py-10 text-center text-sm text-muted-foreground">找找看…</p>}
         {state.status === "error" && <Notice text={state.message} action={{ label: "再試一次", onClick: () => void submit() }} />}
         {state.status === "ready" && state.hits.length === 0 && (

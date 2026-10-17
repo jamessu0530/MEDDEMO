@@ -13,6 +13,7 @@ from app.db import make_engine  # noqa: E402
 from app.models import Customer, PublicOutlet  # noqa: E402
 from app.services.public_outlets import import_snapshot  # noqa: E402
 from app.services.outlet_search import rebuild, search_ids  # noqa: E402
+from app.services.storefront_photos import import_catalog  # noqa: E402
 
 
 def main():
@@ -24,6 +25,8 @@ def main():
     try:
         with Session(engine) as session:
             result = {} if args.index_only else import_snapshot(session)
+            if not args.index_only:
+                result["storefront_photos"] = import_catalog(session.connection())
             session.commit()
             if not args.import_only:
                 result["indexed_customers"] = rebuild(session)

@@ -14,7 +14,6 @@ import { Button } from "@/components/ui/button"
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -165,7 +164,7 @@ function MethodCardDraft({
 
   return (
     <Dialog open onOpenChange={(open) => !open && !busy && onClose()}>
-      <DialogContent
+      <DialogContent aria-describedby={undefined}
         showCloseButton={false}
         className="max-h-[90svh] overflow-y-auto sm:max-w-lg"
         onEscapeKeyDown={(event) => busy && event.preventDefault()}
@@ -191,13 +190,6 @@ function MethodCardDraft({
               <X aria-hidden="true" />
             </Button>
           </div>
-          <DialogDescription>
-            {sourcePicker
-              ? "從你可見的頻道選取經理本人寫下的原始發言。"
-              : card
-                ? "存檔後業務看到的就是新的內容，採用次數照舊。"
-                : "寫好直接上架，全公司的業務都看得到。"}
-          </DialogDescription>
         </DialogHeader>
         {sourcePicker ? (
           <MethodSourcePicker
@@ -375,9 +367,6 @@ function MethodCardDraft({
                     )
                   })}
                 </div>
-                <p className="text-xs leading-relaxed text-muted-foreground">
-                  至少選一個，業務靠標籤找到這張卡。
-                </p>
               </div>
               {error && (
                 <p

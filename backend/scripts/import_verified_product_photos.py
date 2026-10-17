@@ -5,13 +5,18 @@ this importer never substitutes another product's photograph.
 """
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date
+import argparse
 import json
+from pathlib import Path
 
 from fetch_product_photos import ASSETS, MANIFEST, ROOT, download
 
 
 def main():
-    plan = json.loads((ROOT / 'data/seed/product-photo-plan-20261016.json').read_text())
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--plan', type=Path, default=ROOT / 'data/seed/product-photo-plan-20261016.json')
+    args = parser.parse_args()
+    plan = json.loads(args.plan.read_text())
     manifest = json.loads(MANIFEST.read_text())
     # Rebuild mappings from the reviewed plan. Historical nearest-looking
     # assignments must never survive as a fallback for missing photos.

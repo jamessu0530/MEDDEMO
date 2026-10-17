@@ -15,11 +15,9 @@ import {
 import { Notice } from "@/components/notice"
 import { PendingUploads } from "@/components/pending-uploads"
 import { Input } from "@/components/ui/input"
-import { useAuth } from "@/lib/auth"
 import { formatDate } from "@/lib/format"
 import { useUnseenReplies } from "@/lib/manager-replies"
 import { openGuide } from "@/lib/onboarding"
-import { customerScopeText } from "@/lib/scope"
 
 type LoadState =
   | { status: "loading" }
@@ -31,7 +29,6 @@ export function CustomerPicker() {
   const [attempt, setAttempt] = useState(0)
   const [query, setQuery] = useState("")
   const unseen = useUnseenReplies()
-  const user = useAuth()?.user
 
   useEffect(() => {
     const controller = new AbortController()
@@ -100,12 +97,6 @@ export function CustomerPicker() {
           </div>
         </div>
         <h1 className="text-xl font-semibold">選擇拜訪客戶</h1>
-        {/* 清單只有登入者看得到的客戶，講清楚範圍，找不到某一家時才知道為什麼 */}
-        {user && state.status === "ready" && (
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            {customerScopeText(user, state.customers.length)}
-          </p>
-        )}
         <div className="relative mt-3">
           <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -153,11 +144,6 @@ export function CustomerPicker() {
             action={{ label: "清除搜尋", onClick: () => setQuery("") }}
           />
         )}
-        {state.status === "ready" && state.customers.length > 100 && (
-          <p className="mb-3 text-xs text-muted-foreground">
-            先顯示前 100 筆，輸入名稱、地址或電話可縮小範圍。
-          </p>
-        )}
         {visible.length > 0 && (
           <CustomerStorefrontList
             offline={state.status === "ready" && state.cached}
@@ -180,10 +166,13 @@ function CustomerRow({ customer }: { customer: Customer }) {
     <li className="flex items-start gap-3 rounded-xl border-2 bg-card p-3 shadow-lip">
       <CustomerStorefrontThumbnail
         customer={{
+          id: customer.id,
           name: customer.name,
           city: customer.city ?? "",
           area: customer.area ?? "",
           address: customer.address,
+          storefront_photo: customer.storefront_photo,
+          google_place_id: customer.google_place_id,
         }}
       />
       <Link

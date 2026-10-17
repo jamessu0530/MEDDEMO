@@ -141,9 +141,6 @@ export function FirstWeekPage() {
                 {data.methods.length > 0 && (
                   <section className="flex flex-col gap-2">
                     <h2 className="text-base font-semibold">主管教的做法</h2>
-                    <p className="text-xs text-muted-foreground">
-                      主管標了「新人必看」的方法卡裡，最多人說有幫上的三張。
-                    </p>
                     {/* 這一頁不是在哪一家客戶看的，回饋不帶客戶，跟在方法卡頁按的是同一筆 */}
                     {data.methods.map((method) => (
                       <MethodCardItem
@@ -181,9 +178,6 @@ export function FirstWeekPage() {
                       </ul>
                     </article>
                   ))}
-                  <p className="text-xs text-muted-foreground">
-                    這份清單供實際工作參考；上方操作課程完成後會自動記錄進度。
-                  </p>
                 </section>
 
                 {data.documents.length > 0 && (
@@ -238,11 +232,6 @@ function ProfileSection({ data }: { data: FirstWeek }) {
         )}
       </div>
       {/* 自建與第三方登入的帳號沒有人員主檔，下面列的是代理的那位示範業務的轄區與客戶 */}
-      {employee.proxy_of && (
-        <p className="mt-2 rounded-xl bg-primary/10 px-3 py-2 text-xs leading-relaxed text-primary">
-          目前共用{employee.proxy_of}的客戶與路線資料。
-        </p>
-      )}
       <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
         {employee.employee_no && (
           <Row label="人員編號" value={employee.employee_no} />
@@ -284,9 +273,6 @@ function ProductLines({ data }: { data: FirstWeek }) {
   return (
     <section className="flex flex-col gap-2">
       <h2 className="text-base font-semibold">你賣什麼</h2>
-      <p className="text-xs text-muted-foreground">
-        每條產品線列{data.employee.region}近 90 天進貨金額最高的三個品項。
-      </p>
       {data.product_lines.map((line) => (
         <article
           key={line.category}
@@ -354,9 +340,6 @@ function KeyCustomers({ data }: { data: FirstWeek }) {
   return (
     <section className="flex flex-col gap-2">
       <h2 className="text-base font-semibold">先認識這五家</h2>
-      <p className="text-xs text-muted-foreground">
-        先認識共用客戶的近期進貨與拜訪紀錄，也可以自行搜尋其他通路。
-      </p>
       {data.key_customers.length === 0 ? (
         <p className="rounded-xl bg-muted px-4 py-6 text-center text-sm text-muted-foreground">
           {data.customers.total === 0

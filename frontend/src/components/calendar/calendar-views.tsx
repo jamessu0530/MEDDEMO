@@ -8,18 +8,20 @@ import { Button } from "@/components/ui/button"
 import {
   dateKey,
   eventKey,
-  layoutTimedEvents,
   minutesOfDay,
-  onDay,
   timeLabel,
   type EventPlacement,
 } from "@/lib/planner"
 import { dayTitle } from "@/lib/calendar"
 import { cn } from "@/lib/utils"
+import {
+  EMPTY_CALENDAR_DAY,
+  type CalendarViewLayout,
+} from "./use-calendar-layout"
 
 type ViewProps = {
   days: string[]
-  events: CalendarEvent[]
+  layout: CalendarViewLayout
   today: string
   selected: string
   onSelect: (date: string) => void
@@ -30,7 +32,7 @@ const DAYS = ["一", "二", "三", "四", "五", "六", "日"]
 
 export function CalendarMonthView({
   days,
-  events,
+  layout,
   today,
   selected,
   onSelect,
@@ -58,7 +60,7 @@ export function CalendarMonthView({
           <MonthCell
             key={date}
             date={date}
-            events={events.filter((event) => onDay(event, date))}
+            events={(layout.days[date] ?? EMPTY_CALENDAR_DAY).events}
             today={today}
             selected={selected}
             legacy={legacy.get(date)}
@@ -80,7 +82,7 @@ function MonthCell({
   onSelect,
   onOpen,
   onCreate,
-}: Omit<ViewProps, "days" | "events"> & {
+}: Omit<ViewProps, "days" | "layout"> & {
   date: string
   events: CalendarEvent[]
   legacy?: CalendarDay
@@ -286,7 +288,7 @@ export function EventChip({
 
 export function CalendarTimeView({
   days,
-  events,
+  layout,
   today,
   selected,
   onSelect,
@@ -348,16 +350,14 @@ export function CalendarTimeView({
               key={date}
               className="min-h-9 min-w-0 space-y-1 border-t border-l p-1"
             >
-              {events
-                .filter((event) => event.all_day && onDay(event, date))
-                .map((event) => (
-                  <EventChip
-                    key={eventKey(event)}
-                    compact
-                    event={event}
-                    onOpen={onOpen}
-                  />
-                ))}
+              {(layout.days[date] ?? EMPTY_CALENDAR_DAY).allDay.map((event) => (
+                <EventChip
+                  key={eventKey(event)}
+                  compact
+                  event={event}
+                  onOpen={onOpen}
+                />
+              ))}
             </div>
           ))}
         </div>
@@ -388,14 +388,16 @@ export function CalendarTimeView({
                   onCreate={onCreate}
                 />
               ))}
-              {layoutTimedEvents(events, date).map((placement) => (
-                <EventChip
-                  key={eventKey(placement.event)}
-                  event={placement.event}
-                  placement={placement}
-                  onOpen={onOpen}
-                />
-              ))}
+              {(layout.days[date] ?? EMPTY_CALENDAR_DAY).timed.map(
+                (placement) => (
+                  <EventChip
+                    key={eventKey(placement.event)}
+                    event={placement.event}
+                    placement={placement}
+                    onOpen={onOpen}
+                  />
+                )
+              )}
               {dateKey(now) === date && (
                 <div
                   aria-label="目前時間"
@@ -443,7 +445,7 @@ function TimeSlot({
 
 export function CalendarListView({
   days,
-  events,
+  layout,
   selected,
   today,
   onOpen,
@@ -451,13 +453,13 @@ export function CalendarListView({
   search = false,
 }: Pick<
   ViewProps,
-  "days" | "events" | "selected" | "today" | "onOpen" | "onCreate"
+  "days" | "layout" | "selected" | "today" | "onOpen" | "onCreate"
 > & {
   search?: boolean
 }) {
   const groups = search
-    ? Array.from(new Set(events.map((e) => dateKey(e.starts_at)))).sort()
-    : days.filter((date) => events.some((event) => onDay(event, date)))
+    ? Object.keys(layout.search).sort()
+    : days.filter((date) => layout.days[date]?.events.length)
   return (
     <div className="space-y-4">
       {groups.length === 0 ? (
@@ -486,19 +488,15 @@ export function CalendarListView({
               {dayTitle(date)}
             </h3>
             <div className="space-y-2">
-              {events
-                .filter((event) =>
-                  search
-                    ? dateKey(event.starts_at) === date
-                    : onDay(event, date)
-                )
-                .map((event) => (
+              {(search ? layout.search[date] : layout.days[date].events).map(
+                (event) => (
                   <EventChip
                     key={eventKey(event)}
                     event={event}
                     onOpen={onOpen}
                   />
-                ))}
+                )
+              )}
             </div>
           </section>
         ))

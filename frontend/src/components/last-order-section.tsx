@@ -64,7 +64,6 @@ export function LastOrderSection({ customerId }: { customerId: string }) {
               再看 {hidden.length} 項
             </button>
           )}
-          <p className="pt-1 text-xs text-muted-foreground">錄音時講「跟上次一樣」，就照這份開報價；促銷變了的那幾項會照上面寫的改。</p>
         </>
       )}
     </section>

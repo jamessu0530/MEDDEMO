@@ -223,7 +223,6 @@ export function QuotePage() {
         )}
         {items.length > 0 && (
           <>
-            <p className="text-xs text-muted-foreground">這家近半年常進的品項，單價是給這家的供貨價。填了數量的才會列進報價。</p>
             <ul className="flex flex-col gap-2">
               {lines.map(({ item, qty }) => (
                 <li key={item.sku} className={cn("rounded-xl border-2 bg-card px-4 py-3 shadow-lip", qty === 0 && "bg-muted/60")}>
@@ -324,7 +323,7 @@ export function QuotePage() {
           )}
           <div className="flex items-baseline justify-between gap-3">
             <span className="text-sm text-muted-foreground">
-              合計 {chosen.length + chosenPacks.length} 項{route.valid && discount > 0 && `，折扣 ${discount}%`}
+              合計{route.valid && discount > 0 && ` · 折扣 ${discount}%`}
             </span>
             <span className="flex items-baseline gap-2">
               {total !== listTotal && (
@@ -368,7 +367,6 @@ function PromotionSection({ promotion, packCounts, quantities, notes, onPackChan
         <details className="rounded-xl border-2 bg-card px-4 py-1 text-xs shadow-lip">
           <summary data-ui-demo-open="disclosure" className="flex min-h-11 cursor-pointer items-center font-medium">整張訂單的活動</summary>
           <p className="whitespace-pre-line text-muted-foreground">{promotion.pm_note}</p>
-          <p className="mt-2 mb-2 text-muted-foreground">系統不算滿額贈與禮券，給你跟客戶談的時候參考。</p>
         </details>
       )}
       {groupBy(promotion.products, (p) => p.group_name).map(([group, products]) => (

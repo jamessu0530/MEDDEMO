@@ -13,7 +13,6 @@ import { Button } from "@/components/ui/button"
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -146,19 +145,13 @@ export function CustomerPriorityAdvisor({
           不知道怎麼調？問熊熊滾
         </Button>
       </DialogTrigger>
-      <DialogContent className="flex max-h-[90dvh] flex-col gap-3 overflow-hidden sm:max-w-2xl">
+      <DialogContent aria-describedby={undefined} className="flex max-h-[90dvh] flex-col gap-3 overflow-hidden sm:max-w-2xl">
         <DialogHeader className="shrink-0 pr-6">
           <DialogTitle>問熊熊滾：怎麼調客戶策略</DialogTitle>
-          <DialogDescription>
-            說出你想優先照顧的客戶，我幫你比較調整方式。帶入後先預覽，確認後再儲存啟用。
-          </DialogDescription>
         </DialogHeader>
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain pr-1">
           <div className="rounded-xl bg-primary/5 p-3">
             <p className="text-sm font-medium">還沒有方向？先選一個經營情境</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              這些是可再調整的起點，也可以在下面打字或用說的追問。
-            </p>
             <div className="mt-3 flex flex-wrap gap-2">
               {PRESETS.map((preset) => (
                 <Button
@@ -173,11 +166,6 @@ export function CustomerPriorityAdvisor({
               ))}
             </div>
           </div>
-          {!turns.length && !busy && (
-            <p className="px-1 text-sm leading-relaxed text-muted-foreground">
-              例如：「想先照顧業績下滑、又很久沒拜訪的客戶」或「營收跟淨毛利的權重要怎麼取捨？」
-            </p>
-          )}
           <div
             role="log"
             aria-label="客戶策略詢問紀錄"

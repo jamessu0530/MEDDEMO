@@ -16,7 +16,6 @@ import { Button } from "@/components/ui/button"
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
@@ -47,15 +46,11 @@ export function EventDialog(props: Props) {
   const readOnly = props.event && !props.event.can_edit
   return (
     <Dialog open onOpenChange={(open) => !open && props.onClose()}>
-      <DialogContent className="planner-dialog max-h-[90svh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent aria-describedby={undefined} className="planner-dialog max-h-[90svh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>
             {readOnly ? "行程詳情" : props.event ? "編輯行程" : "新增行程"}
           </DialogTitle>
-          <DialogDescription>
-            {props.event?.calendar_name ??
-              "安排時間、設定重複與提醒，也能邀請其他人。"}
-          </DialogDescription>
         </DialogHeader>
         {readOnly ? (
           <EventDetails {...props} event={props.event!} />
@@ -502,9 +497,6 @@ function EventForm({
           onChange={(e) => setAttendees(e.target.value)}
           placeholder="輸入 Email，多位以逗號分隔"
         />
-        <span className="text-xs font-normal text-muted-foreground">
-          站內帳號會收到邀請；外部對象可用「下載邀請」取得邀請檔後傳送。
-        </span>
       </label>
       {event && <AttendeeList event={event} />}
       {event && emailEnabled && event.attendees.length > 0 && (
@@ -528,11 +520,6 @@ function EventForm({
           >
             {event.recurrence ? "傳送整個系列的 Email 邀請" : "傳送 Email 邀請"}
           </Button>
-          <p className="text-xs text-muted-foreground">
-            {dirty
-              ? "先儲存變更，再開啟行程傳送邀請。"
-              : "將寄送目前已儲存的行程，受邀者可直接透過郵件回覆。"}
-          </p>
           {delivery && (
             <p role="status" className="text-sm">
               {delivery}

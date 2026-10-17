@@ -5,7 +5,8 @@ import { jsonBody, request, upload } from "@/api/client"
 // memory：在頻道記憶裡找（各頻道整理出來的重點與附件）
 export type AskKind = "data" | "knowledge" | "memory"
 export const ASK_KINDS: AskKind[] = ["data", "knowledge", "memory"]
-export type AskStatus = "queued" | "running" | "answered" | "no_evidence" | "not_converged" | "failed"
+export type AskStatus =
+  "queued" | "running" | "answered" | "no_evidence" | "not_converged" | "failed"
 
 export type TraceItem = {
   round: number
@@ -31,6 +32,7 @@ export type Source = {
 
 // 數字題的依據是最後一次查詢的結果表；知識題的依據是引用的文件段落（route 標示答案是從公司資料還是網路來的）
 export type AskEvidence = {
+  product_photos?: import("@/api/products").ProductPhotoMatch[]
   sql?: string
   columns?: string[]
   rows?: unknown[][]
@@ -44,7 +46,13 @@ export type AskEvidence = {
   attachments?: MemoryFile[]
 }
 
-export type MemorySource = { index: number; channel_name: string; date: string; category: string; text: string }
+export type MemorySource = {
+  index: number
+  channel_name: string
+  date: string
+  category: string
+  text: string
+}
 
 /** 頻道記憶題引用的附件。channel_id 是 null 代表看不到原頻道（靠往上傳才看得到），點不回原訊息 */
 export type MemoryFile = Attachment & {
@@ -73,10 +81,16 @@ export type Ask = {
   attachment: Attachment | null
 }
 
-export const isFinished = (ask: Ask) => ask.status !== "queued" && ask.status !== "running"
+export const isFinished = (ask: Ask) =>
+  ask.status !== "queued" && ask.status !== "running"
 
 /** 這段對話前面答完的一輪：送出下一題時帶著，要看前文才懂的會先改寫成完整問句 */
-export type Turn = { question: string; answer: string; page?: AskPageContext; has_file?: boolean }
+export type Turn = {
+  question: string
+  answer: string
+  page?: AskPageContext
+  has_file?: boolean
+}
 
 export type QuestionSuggestionsInput = {
   page: AskPageContext
@@ -84,7 +98,10 @@ export type QuestionSuggestionsInput = {
   candidates: string[]
 }
 
-export function suggestQuestions(input: QuestionSuggestionsInput, signal?: AbortSignal) {
+export function suggestQuestions(
+  input: QuestionSuggestionsInput,
+  signal?: AbortSignal
+) {
   return request<{ suggestions: string[] }>("/api/asks/suggestions", {
     ...jsonBody("POST", input),
     signal,
@@ -101,10 +118,18 @@ export type RouteResult = {
   clarification?: string | null
   context_used?: boolean
   continues_previous?: boolean
+  intent?: "query" | "page_help" | "page_demo"
+  answer?: string | null
+  demo_path?: string | null
 }
 
 /** 帶當下頁面與最近對話，整理問題、來源或追問，不建提問紀錄。 */
-export function routeAsk(question: string, hasFile: boolean, earlier: Turn[] = [], page?: AskPageContext) {
+export function routeAsk(
+  question: string,
+  hasFile: boolean,
+  earlier: Turn[] = [],
+  page?: AskPageContext
+) {
   return request<RouteResult>(
     "/api/asks/route",
     jsonBody("POST", { question, has_file: hasFile, earlier, page })
@@ -113,7 +138,8 @@ export function routeAsk(question: string, hasFile: boolean, earlier: Turn[] = [
 
 /** 提問。附了檔案（拍產品盒、仿單、競品海報）就用 multipart 上傳 */
 export function createAsk(kind: AskKind, question: string, file?: File) {
-  if (!file) return request<Ask>("/api/asks", jsonBody("POST", { kind, question }))
+  if (!file)
+    return request<Ask>("/api/asks", jsonBody("POST", { kind, question }))
   const form = new FormData()
   form.append("kind", kind)
   form.append("question", question)
