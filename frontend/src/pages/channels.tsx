@@ -1,7 +1,7 @@
 import { useAskPageContext } from "@/ask/use-page-context"
 import { Link, useNavigate, useParams, useSearchParams } from "react-router"
 import { useEffect, useState } from "react"
-import { Search } from "@/components/icons"
+import { BookOpenText, Search } from "@/components/icons"
 
 import { listChannels, type Channel } from "@/api/channels"
 import { BottomNav } from "@/components/bottom-nav"
@@ -96,9 +96,15 @@ export function ChannelsPage() {
         title="頻道"
         backTo={sales || !user ? undefined : homePath(user.role)}
         trailing={
-          <Link to="/channels/search" aria-label="找照片與檔案" className="flex size-11 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted">
-            <Search className="size-5" />
-          </Link>
+          <div className="flex shrink-0 items-center gap-1">
+            <Link to="/methods" className="flex h-11 items-center gap-1.5 rounded-lg px-3 text-sm font-semibold text-primary hover:bg-muted">
+              <BookOpenText className="size-5" />
+              方法卡
+            </Link>
+            <Link to="/channels/search" aria-label="找照片與檔案" className="flex size-11 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted">
+              <Search className="size-5" />
+            </Link>
+          </div>
         }
       />
       {state.status === "loading" && <p className="py-10 text-center text-sm text-muted-foreground">載入頻道中…</p>}

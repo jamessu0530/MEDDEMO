@@ -45,12 +45,14 @@ const SELECT = "h-11 min-w-0 rounded-xl border bg-card px-3 text-sm"
 export function OrdersPage({
   newOrder = false,
   title = "訂單",
+  hideTitle = false,
   navigation,
   showBottomNav = true,
   active = true,
 }: {
   newOrder?: boolean
   title?: string
+  hideTitle?: boolean
   navigation?: ReactNode
   showBottomNav?: boolean
   active?: boolean
@@ -113,6 +115,7 @@ export function OrdersPage({
       <header className="border-b bg-card px-4 py-5 lg:px-6">
         <SalesHeader
           title={title}
+          hideTitle={hideTitle}
           createDisabled={!result && !demonstrating}
           onCreate={() => {
             if (demonstrating) {

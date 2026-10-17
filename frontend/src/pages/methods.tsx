@@ -8,7 +8,6 @@ import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
 import { Input } from "@/components/ui/input"
 import { NativeSelect } from "@/components/ui/native-select"
-import { homePath, useAuth } from "@/lib/auth"
 import { filterCards, replaceCard, TAG_LABELS, TAGS } from "@/lib/methods"
 import { cn } from "@/lib/utils"
 
@@ -21,7 +20,6 @@ const CUSTOMER_TYPES = Object.keys(CUSTOMER_TYPE_LABEL) as (keyof typeof CUSTOME
  * 用過之後按「有幫上／沒幫上」，採用次數多的排前面。內容是主管寫的原文，AI 不生成也不改寫。
  */
 export function MethodsPage() {
-  const user = useAuth()?.user
   const [state, setState] = useState<LoadState>({ status: "loading" })
   const [attempt, setAttempt] = useState(0)
   const [tag, setTag] = useState<string | null>(null)
@@ -55,7 +53,7 @@ export function MethodsPage() {
 
   return (
     <div className="flex min-h-svh flex-col">
-      <PageHeader title="方法卡" backTo={user ? homePath(user.role) : "/"} />
+      <PageHeader title="方法卡" backTo="/channels" />
       <main className="flex flex-1 flex-col gap-3 px-4 pt-3 pb-10">
         {state.status === "loading" && <p className="py-10 text-center text-sm text-muted-foreground">載入方法卡中…</p>}
         {state.status === "error" && (

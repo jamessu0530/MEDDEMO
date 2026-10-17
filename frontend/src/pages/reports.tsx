@@ -222,6 +222,7 @@ export function ReportsPage() {
     <div className="min-h-svh pb-24 lg:pb-0">
       <PageHeader
         title={primaryNavigation ? "報表" : "我的報表"}
+        hideTitle
         backTo={primaryNavigation ? undefined : homePath(user.role)}
       />
       <main className="p-4">
@@ -1302,7 +1303,8 @@ function ReportDocument({
   return (
     <div ref={workspaceRef} className="report-workspace min-h-svh min-w-0">
       <PageHeader
-        title={isDesktop ? config.name : "報表"}
+        title={config.name}
+        hideTitle
         backTo={primaryNavigation ? undefined : backTo}
         trailing={
           <div className="report-header-actions">

@@ -6,7 +6,7 @@ import { routeDraft } from "@/lib/route-draft"
 import { cn } from "@/lib/utils"
 
 /**
- * 首頁橫幅上的「調整」：切成清單拖移、展開編輯，按「完成」一次存起來（pages/route-edit.tsx）。
+ * 路線工具列上的筆：切成清單拖移、展開編輯，按「完成」一次存起來（pages/route-edit.tsx）。
  * 從首頁進來一律重新開始：先清掉可能留著的舊草稿（系統返回手勢、登出、跨天都可能讓它還在），
  * 不然調整頁會誤以為是從加一站、習慣頁回來接著改，把舊草稿存回今天的行程。
  */
@@ -14,11 +14,12 @@ export function EditRouteLink() {
   return (
     <Link
       to="/route/edit"
+      aria-label="手動調整行程"
+      title="手動調整行程"
       onClick={() => routeDraft.clear()}
-      className="flex w-16 shrink-0 flex-col items-center justify-center gap-0.5 border-l-2 border-black/15 text-xs font-semibold active:bg-black/10"
+      className="flex size-11 shrink-0 items-center justify-center rounded-lg text-primary hover:bg-muted active:bg-primary/10"
     >
       <Pencil className="size-5" />
-      調整
     </Link>
   )
 }

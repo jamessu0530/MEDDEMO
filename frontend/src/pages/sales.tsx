@@ -30,7 +30,7 @@ export function SalesPage({ newOrder = false }: { newOrder?: boolean }) {
   }
 
   const navigation = <SalesNav view={view} onChange={changeView} />
-  const heading = <SalesHeader onCreate={() => navigate("/orders/new")} />
+  const heading = <SalesHeader hideTitle onCreate={() => navigate("/orders/new")} />
 
   return (
     <div>
@@ -38,6 +38,7 @@ export function SalesPage({ newOrder = false }: { newOrder?: boolean }) {
         <OrdersPage
           newOrder={newOrder}
           title="銷售"
+          hideTitle
           navigation={navigation}
           showBottomNav={false}
           active={view === "orders"}

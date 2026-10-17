@@ -4,6 +4,7 @@ import { Link } from "react-router"
 
 type PageHeaderProps = {
   title: string
+  hideTitle?: boolean
   subtitle?: string
   backTo?: string
   // 取代返回鍵的左側按鈕，例如錄音中的「取消」
@@ -12,7 +13,7 @@ type PageHeaderProps = {
   trailing?: ReactNode
 }
 
-export function PageHeader({ title, subtitle, backTo, leading, trailing }: PageHeaderProps) {
+export function PageHeader({ title, hideTitle = false, subtitle, backTo, leading, trailing }: PageHeaderProps) {
   return (
     <header className="sticky top-0 z-10 flex items-center gap-1 border-b bg-background/95 px-1 py-1.5 backdrop-blur">
       {leading ??
@@ -29,7 +30,7 @@ export function PageHeader({ title, subtitle, backTo, leading, trailing }: PageH
         ))}
       <div className="min-w-0 flex-1 pr-3">
         {subtitle && <p className="truncate text-xs text-muted-foreground">{subtitle}</p>}
-        <h1 className="truncate text-xl font-semibold">{title}</h1>
+        <h1 className={hideTitle ? "sr-only" : "truncate text-xl font-semibold"}>{title}</h1>
       </div>
       {trailing}
     </header>

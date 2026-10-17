@@ -8,10 +8,12 @@ import { useAuth } from "@/lib/auth"
 /** 銷售各分頁共用頁首與操作位置，查商品時也能直接新增訂單。 */
 export function SalesHeader({
   title = "銷售",
+  hideTitle = false,
   createDisabled = false,
   onCreate,
 }: {
   title?: string
+  hideTitle?: boolean
   createDisabled?: boolean
   onCreate: () => void
 }) {
@@ -23,8 +25,8 @@ export function SalesHeader({
           <SalesToolbar user={user} />
         </div>
       )}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center justify-end gap-3">
+        <div className={hideTitle ? "sr-only" : "mr-auto flex items-center gap-3"}>
           <span className="flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
             <ClipboardList className="size-6" />
           </span>

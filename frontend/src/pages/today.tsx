@@ -1,11 +1,6 @@
 import { useAskPageContext } from "@/ask/use-page-context"
 import { useEffect, useRef, useState, type CSSProperties } from "react"
-import {
-  BookOpenText,
-  CalendarDays,
-  Flag,
-  Loader2,
-} from "@/components/icons"
+import { Loader2 } from "@/components/icons"
 import { Link, useNavigate, useSearchParams } from "react-router"
 
 import { ApiError } from "@/api/client"
@@ -32,12 +27,11 @@ import { ViewSwitch } from "@/components/route/view-switch"
 import { UnlockToast } from "@/components/route/unlock-toast"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { useAuth } from "@/lib/auth"
-import { formatDate, formatDayLabel } from "@/lib/format"
+import { formatDate } from "@/lib/format"
 import { inOrder } from "@/lib/in-order"
 import { useHomeSplitLayout } from "@/lib/home-layout"
 import { ridesOf, type Leg } from "@/lib/rides"
 import { applyProgress } from "@/lib/route-progress"
-import { TRAVEL_MODE_LABEL } from "@/lib/travel-mode"
 import { useIsDesktop } from "@/lib/use-media-query"
 import { cn } from "@/lib/utils"
 import { FirstWeekEntry } from "@/pages/first-week"
@@ -52,7 +46,7 @@ type LoadState =
 /**
  * 今日路線（/route）：一天要跑哪幾家、順序、以及每一家為什麼被排進來。
  * 版面照 Duolingo 的主畫面（docs/superpowers/specs/2026-10-01-duolingo-home-design.md）：
- * 頂部是圖示加數字的狀態列和紫色橫幅，路線是一顆顆蛇行往下的圓鈕（components/route-path.tsx）。
+ * 頂部工具列保留手動調整入口，路線是一顆顆蛇行往下的圓鈕（components/route-path.tsx）。
  * 路線可以切成「地圖」（components/route/home-map-panel.tsx）：同一份行程畫在 Google 地圖上，下一站一按就導航。
  */
 export function TodayPage() {
@@ -230,52 +224,12 @@ export function TodayPage() {
       } as CSSProperties}
     >
       <header ref={headerRef} className="sticky top-0 z-10 bg-background/95 px-4 pt-2 pb-3 backdrop-blur lg:px-6">
+        <h1 className="sr-only">今日路線</h1>
         <SalesToolbar user={user}>
-          {route && route.total > 0 && (
-            <span className="flex h-[40px] items-center gap-1 px-1.5 text-sm font-semibold tabular-nums">
-              <Flag className="size-5 fill-primary text-primary" />
-              <span className="sr-only">今日進度</span>
-              {route.done}/{route.total}
-            </span>
-          )}
-        </SalesToolbar>
-        {/* 像 Duolingo 的單元橫幅；右邊的「指南」換成方法卡：主管教的做法，出門前或進門前翻一下 */}
-        <div className="mt-1 flex items-stretch overflow-hidden rounded-2xl bg-primary text-primary-foreground lg:mt-0 shadow-lip-primary">
-          <div className="min-w-0 flex-1 px-4 py-2.5">
-            {route && (
-              <p className="text-xs font-semibold opacity-85">
-                {/* 點日期進日曆：每一天要帶什麼、講過什麼（pages/calendar.tsx）。負的外距讓點得到的範圍大一點，橫幅不變高 */}
-                <Link
-                  to="/calendar"
-                  aria-label="打開日曆"
-                  className="-mx-1 -my-2 inline-flex items-center gap-1 rounded-md px-1 py-2 underline decoration-dotted underline-offset-2 active:bg-black/10"
-                >
-                  <CalendarDays className="size-3.5" />
-                  {formatDayLabel(route.date)}
-                </Link>
-                {route.total > 0 && ` · ${route.total} 站`}
-                {/* 手機上存的舊行程（這一版以前）沒有交通方式 */}
-                {route.total > 0 && route.travel_mode && ` · ${TRAVEL_MODE_LABEL[route.travel_mode]}`}
-              </p>
-            )}
-            <h1 className="text-xl leading-snug font-semibold">今日路線</h1>
-          </div>
-          {/* 電腦版頁首第一列收起來了，今日進度放在橫幅右邊 */}
-          {route && route.total > 0 && (
-            <span className="hidden items-center gap-1 px-4 text-sm font-semibold tabular-nums lg:flex">
-              <Flag className="size-5 fill-current" />
-              <span className="sr-only">今日進度</span>
-              {route.done}/{route.total}
-            </span>
-          )}
           {state.status === "ready" && !state.cached && <EditRouteLink />}
-          <Link
-            to="/methods"
-            className="flex w-16 shrink-0 flex-col items-center justify-center gap-0.5 border-l-2 border-black/15 text-xs font-semibold active:bg-black/10"
-          >
-            <BookOpenText className="size-5" />
-            方法卡
-          </Link>
+        </SalesToolbar>
+        <div className="hidden justify-end lg:flex">
+          {state.status === "ready" && !state.cached && <EditRouteLink />}
         </div>
       </header>
 

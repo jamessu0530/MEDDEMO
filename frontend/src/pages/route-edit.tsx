@@ -67,7 +67,7 @@ const SCREEN_READER_INSTRUCTIONS: ScreenReaderInstructions = {
 }
 
 /**
- * 調整行程（清單）：首頁橫幅按「調整」進來（docs/superpowers/specs/2026-10-01-itinerary-planning-design.md〈調整行程（清單）〉）。
+ * 調整行程（清單）：路線工具列按筆圖示進來（docs/superpowers/specs/2026-10-01-itinerary-planning-design.md〈調整行程（清單）〉）。
  * 每站一張卡，拖移把手或上移下移換順序，點卡片展開編輯約的時間、停留、先後、備註、鎖住、拿掉。
  * 改動先留在畫面上（lib/route-draft.ts），每次改完停 300ms 用 preview 算時間與車程（不存）；違反規則在手機上
  * 即時判斷（lib/itinerary.ts，跟後端同一套）。按「完成」用 PUT 一次存進去，按「取消」全部丟掉。

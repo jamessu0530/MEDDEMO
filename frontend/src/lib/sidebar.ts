@@ -33,7 +33,6 @@ const SALES: SidebarGroups = {
   ],
   more: [
     { to: "/calendar", label: "日曆", icon: Calendar },
-    { to: "/methods", label: "方法卡", icon: BookOpenText },
     { to: "/oa/forms", label: "我的申請單", icon: FileText },
   ],
 }
@@ -70,6 +69,7 @@ function managerView(query: string) {
 export function isActiveItem(item: SidebarItem, pathname: string, search: string) {
   const path = trimPath(pathname)
   const [itemPath, itemQuery = ""] = item.to.split("?")
+  if (itemPath === "/channels" && path === "/methods") return true
   if (itemPath === "/manager") return path === "/manager" && managerView(search) === managerView(itemQuery)
   if (itemPath === "/") return path === "/"
   return path === itemPath || path.startsWith(`${itemPath}/`)

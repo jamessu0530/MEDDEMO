@@ -18,7 +18,7 @@ describe("sidebarItems", () => {
   it("業務：銷售整合訂單與型錄，報表列入主要入口", () => {
     expect(labels("sales")).toEqual({
       main: ["銷售", "路線", "頻道", "報表"],
-      more: ["日曆", "方法卡", "我的申請單"],
+      more: ["日曆", "我的申請單"],
     })
   })
 
@@ -64,6 +64,7 @@ describe("isActiveItem", () => {
   it("其他項目連它底下的頁都算（訂單明細算訂單、搜尋算頻道）", () => {
     expect(isActiveItem(item("sales", "銷售"), "/orders/123", "")).toBe(true)
     expect(isActiveItem(item("sales", "頻道"), "/channels/search", "")).toBe(true)
+    expect(isActiveItem(item("sales", "頻道"), "/methods", "")).toBe(true)
     expect(isActiveItem(item("sales", "我的申請單"), "/oa/forms/3/", "")).toBe(true)
     expect(isActiveItem(item("sales", "銷售"), "/products-old", "")).toBe(false)
   })
