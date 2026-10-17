@@ -325,6 +325,11 @@
   }
 }
 
+/* 銷售長清單到頂、到底時固定工具列保持原位，避免回彈拉扯整個畫面。 */
+html:has([data-sales-page]) {
+  overscroll-behavior-y: none;
+}
+
 /* 手機輸入時保留正在操作的欄位，對話框使用鍵盤上方的可見範圍。 */
 @media (max-width: 1023px) {
   :root[data-keyboard-open="true"] {

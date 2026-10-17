@@ -47,7 +47,7 @@ export function useAssistantLayout(active = true) {
     const observer = new MutationObserver(schedule)
     observer.observe(document.body, { childList: true, subtree: true })
     window.addEventListener("resize", schedule)
-    window.addEventListener("scroll", schedule, true)
+    // 固定工具列不隨文件捲動；尺寸變更交給 ResizeObserver，鍵盤平移仍聽 visualViewport。
     window.visualViewport?.addEventListener("resize", schedule)
     window.visualViewport?.addEventListener("scroll", schedule)
     schedule()
@@ -56,7 +56,6 @@ export function useAssistantLayout(active = true) {
       observer.disconnect()
       resize.disconnect()
       window.removeEventListener("resize", schedule)
-      window.removeEventListener("scroll", schedule, true)
       window.visualViewport?.removeEventListener("resize", schedule)
       window.visualViewport?.removeEventListener("scroll", schedule)
     }

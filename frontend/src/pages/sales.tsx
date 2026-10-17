@@ -33,7 +33,7 @@ export function SalesPage({ newOrder = false }: { newOrder?: boolean }) {
   const heading = <SalesHeader hideTitle onCreate={() => navigate("/orders/new")} />
 
   return (
-    <div>
+    <div data-sales-page>
       <section hidden={view !== "orders"} aria-label="銷售訂單">
         <OrdersPage
           newOrder={newOrder}
