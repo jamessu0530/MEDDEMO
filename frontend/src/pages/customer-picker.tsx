@@ -1,11 +1,12 @@
-import { useEffect, useState } from "react"
+import { memo, useEffect, useRef, useState } from "react"
 import { ChevronRight, CircleHelp, Search } from "@/components/icons"
 import { Link } from "react-router"
 
 import {
   CUSTOMER_TYPE_LABEL,
-  listCustomers,
+  listPickerCustomers,
   type Customer,
+  type CustomerPickerPage,
 } from "@/api/customers"
 import { BottomNav } from "@/components/bottom-nav"
 import {
@@ -14,6 +15,7 @@ import {
 } from "@/components/customer-storefront"
 import { Notice } from "@/components/notice"
 import { PendingUploads } from "@/components/pending-uploads"
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { formatDate } from "@/lib/format"
 import { openGuide } from "@/lib/onboarding"
@@ -21,34 +23,98 @@ import { openGuide } from "@/lib/onboarding"
 type LoadState =
   | { status: "loading" }
   | { status: "error" }
-  | { status: "ready"; customers: Customer[]; cached: boolean }
+  | ({ status: "ready"; cached: boolean } & CustomerPickerPage)
 
 export function CustomerPicker() {
   const [state, setState] = useState<LoadState>({ status: "loading" })
   const [attempt, setAttempt] = useState(0)
   const [query, setQuery] = useState("")
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [moreError, setMoreError] = useState(false)
+  const moreController = useRef<AbortController | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
     const timer = setTimeout(
       () =>
-        listCustomers(controller.signal, query.trim())
-          .then(({ customers, cached }) =>
-            setState({ status: "ready", customers, cached })
-          )
+        listPickerCustomers(controller.signal, query.trim())
+          .then((page) => {
+            if (!controller.signal.aborted)
+              setState({ status: "ready", ...page })
+          })
           .catch(() => {
             if (!controller.signal.aborted) setState({ status: "error" })
           }),
-      200
+      query.trim() ? 200 : 0
     )
     return () => {
       clearTimeout(timer)
       controller.abort()
+      moreController.current?.abort()
     }
   }, [attempt, query])
 
   const keyword = query.trim()
-  const visible = state.status === "ready" ? state.customers.slice(0, 100) : []
+  const visible = state.status === "ready" ? state.customers : []
+  const nextOffset =
+    state.status === "ready" && !state.cached ? state.next_offset : null
+
+  useEffect(() => {
+    if (nextOffset === null) return
+    const controller = new AbortController()
+    const timer = setTimeout(() => {
+      void listPickerCustomers(controller.signal, keyword, nextOffset).catch(
+        () => {}
+      )
+    }, 300)
+    return () => {
+      clearTimeout(timer)
+      controller.abort()
+    }
+  }, [keyword, nextOffset])
+
+  function search(value: string) {
+    moreController.current?.abort()
+    setQuery(value)
+    setState({ status: "loading" })
+    setLoadingMore(false)
+    setMoreError(false)
+  }
+
+  function loadMore() {
+    if (state.status !== "ready" || state.next_offset === null || loadingMore)
+      return
+    const controller = new AbortController()
+    moreController.current = controller
+    setLoadingMore(true)
+    setMoreError(false)
+    listPickerCustomers(controller.signal, keyword, state.next_offset)
+      .then((page) => {
+        if (controller.signal.aborted) return
+        setState((previous) =>
+          previous.status !== "ready"
+            ? previous
+            : {
+                status: "ready",
+                customers: [
+                  ...new Map(
+                    [...previous.customers, ...page.customers].map(
+                      (customer) => [customer.id, customer]
+                    )
+                  ).values(),
+                ],
+                next_offset: page.next_offset,
+                cached: previous.cached || page.cached,
+              }
+        )
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setMoreError(true)
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoadingMore(false)
+      })
+  }
 
   function retry() {
     setState({ status: "loading" })
@@ -84,7 +150,7 @@ export function CustomerPicker() {
           <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => search(event.target.value)}
             placeholder="搜尋名稱、地址或電話（支援錯字）"
             aria-label="搜尋名稱、地址或電話（支援錯字）"
             maxLength={100}
@@ -114,7 +180,7 @@ export function CustomerPicker() {
         {state.status === "ready" && visible.length === 0 && (
           <Notice
             text={`找不到符合「${keyword}」的客戶。`}
-            action={{ label: "清除搜尋", onClick: () => setQuery("") }}
+            action={{ label: "清除搜尋", onClick: () => search("") }}
           />
         )}
         {visible.length > 0 && (
@@ -122,10 +188,30 @@ export function CustomerPicker() {
             offline={state.status === "ready" && state.cached}
           >
             <ul className="flex flex-col gap-2">
-              {visible.map((customer) => (
-                <CustomerRow key={customer.id} customer={customer} />
+              {visible.map((customer, index) => (
+                <CustomerRow
+                  key={customer.id}
+                  customer={customer}
+                  priority={index < 4}
+                />
               ))}
             </ul>
+            {moreError && (
+              <p role="alert" className="mt-3 text-sm text-destructive">
+                無法載入更多客戶，請再試一次。
+              </p>
+            )}
+            {state.status === "ready" && state.next_offset !== null && (
+              <Button
+                type="button"
+                variant="outline"
+                className="mt-4 w-full"
+                disabled={loadingMore}
+                onClick={loadMore}
+              >
+                {loadingMore ? "載入中…" : "顯示更多客戶"}
+              </Button>
+            )}
           </CustomerStorefrontList>
         )}
       </main>
@@ -134,10 +220,17 @@ export function CustomerPicker() {
   )
 }
 
-function CustomerRow({ customer }: { customer: Customer }) {
+const CustomerRow = memo(function CustomerRow({
+  customer,
+  priority,
+}: {
+  customer: Customer
+  priority: boolean
+}) {
   return (
     <li className="flex items-start gap-3 rounded-xl border-2 bg-card p-3 shadow-lip">
       <CustomerStorefrontThumbnail
+        priority={priority}
         customer={{
           id: customer.id,
           name: customer.name,
@@ -174,4 +267,4 @@ function CustomerRow({ customer }: { customer: Customer }) {
       </Link>
     </li>
   )
-}
+})

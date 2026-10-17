@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.api.auth import ManagerUser
 from app.api.customer_priority import router as priority_router
+from app.api.featured_products import router as featured_router
 from app.db import get_session
 from app.services import customer_profile
 from app.services.auth import role_data_user
@@ -18,6 +19,7 @@ from app.timeutil import TAIPEI
 
 router = APIRouter(prefix="/api/manager", tags=["manager"])
 router.include_router(priority_router)
+router.include_router(featured_router)
 SessionDep = Annotated[Session, Depends(get_session)]
 # 團隊今天的行程：只能看、只看今天。業務今天還沒打開首頁時，主管一讀就照第一次讀取的規則建好，所以讀完要 commit
 

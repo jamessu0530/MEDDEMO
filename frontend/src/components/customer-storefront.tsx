@@ -57,9 +57,11 @@ function SourceCredit({ photo }: { photo: StoredStorefrontPhoto }) {
 function StoredPhoto({
   customer,
   compact = false,
+  priority = false,
 }: {
   customer: StorefrontCustomer
   compact?: boolean
+  priority?: boolean
 }) {
   const photo = customer.storefront_photo
   const offline = useContext(OfflinePhotos)
@@ -81,7 +83,11 @@ function StoredPhoto({
         <img
           src={photo.image_url}
           alt={customer.name + "的店家照片"}
-          loading="lazy"
+          loading={priority ? "eager" : "lazy"}
+          fetchPriority={priority ? "high" : "auto"}
+          decoding="async"
+          width={compact ? 96 : undefined}
+          height={compact ? 80 : undefined}
           referrerPolicy="no-referrer"
           className={
             compact
@@ -98,15 +104,17 @@ function StoredPhoto({
 
 export function CustomerStorefrontThumbnail({
   customer,
+  priority = false,
 }: {
   customer: StorefrontCustomer
+  priority?: boolean
 }) {
   return (
     <div
       className="w-24 shrink-0 overflow-hidden rounded-lg"
       aria-label={customer.name + "的店家照片"}
     >
-      <StoredPhoto customer={customer} compact />
+      <StoredPhoto customer={customer} compact priority={priority} />
     </div>
   )
 }

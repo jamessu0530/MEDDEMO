@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.models import METHOD_TAGS, AppUser, Customer, DocumentChunk, Product, SalesTransaction
 from app.pricing import SUPPLY_PRICE_FACTOR
-from app.services import approvals, festivals, method_cards, payment_terms
+from app.services import approvals, festivals, featured_products, method_cards, payment_terms
 from app.services.product_catalog import visible_catalog_products
 from app.services.customer_profile import TOP_SKU_DAYS, Profile
 from app.services.retrieval import SIMPLE, keyword_tokens
@@ -163,6 +163,7 @@ class Terms:
 class NegotiationCard:
     orientation: str  # customer＝顧客導向（連鎖），cost＝成本導向（獨立藥局與診所）
     festival: FestivalBlock | None  # 行事曆裡沒有之後的節慶就是 None
+    featured: featured_products.FeaturedBlock | None  # 經理指定的單一料號，優先列在自動建議前面
     # 顧客導向的四區，成本導向的卡是 None
     campaign: Campaign | None
     shelf: Shelf | None
@@ -324,7 +325,7 @@ def _deals(session: Session, categories: list[str] | None) -> Deals:
     """進行中那一期促銷裡屬於主推品類的品項；主推品類裡沒有促銷品項，退回全部品類（scoped 是 False）。"""
     c = promotion_item.c
     promotion_name = session.scalar(
-        select(c.promotion_name).where(c.status == IN_PROGRESS).order_by(c.start_date.desc()).limit(1)
+        select(c.promotion_name).where(c.status == IN_PROGRESS).order_by(c.start_date.desc(), c.promotion_name).limit(1)
     )
     if promotion_name is None:
         return Deals([], False, None)
@@ -397,6 +398,7 @@ def negotiation_card(session: Session, customer: Customer, profile: Profile, use
     festival = coming[0] if coming else None
     categories = festival.categories if festival else None
     chain = customer.type == "chain"
+    featured = featured_products.for_customer(session, customer, festival)
     block = None
     if festival:
         # 同一個節慶，連鎖看顧客在買什麼，獨立藥局與診所看這一檔進貨要注意什麼
@@ -409,6 +411,7 @@ def negotiation_card(session: Session, customer: Customer, profile: Profile, use
         return NegotiationCard(
             orientation="customer",
             festival=block,
+            featured=featured,
             campaign=_campaign(coming, today, profile.stats.amount_last_90d),
             shelf=_shelf(session, customer, today, categories),
             gaps=_gaps(session, customer, today, categories) if categories else [],
@@ -422,6 +425,7 @@ def negotiation_card(session: Session, customer: Customer, profile: Profile, use
     return NegotiationCard(
         orientation="cost",
         festival=block,
+        featured=featured,
         campaign=None,
         shelf=None,
         gaps=None,

@@ -337,6 +337,11 @@ export function pagePromptsFor(pathname: string, search = ""): PagePrompts {
   }
   if (section === "manager") {
     const views: Record<string, PagePrompts> = {
+      featured: prompts(
+        "可以問節慶主推品項、促銷價格與毛利的計算依據。",
+        ["這一檔有哪些促銷品項？", "主推品項的毛利怎麼算？", "怎麼讓團隊的談判卡顯示指定品項？"],
+        ["供貨價與商品成本的資料來源是什麼？", "哪些品項適合這次節慶？", "幫我整理主推品項的拜訪重點。"]
+      ),
       priority: prompts(
         "可以問客戶進貨變化、跟進理由與拜訪準備。",
         [

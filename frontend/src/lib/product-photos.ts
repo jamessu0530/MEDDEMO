@@ -32,6 +32,20 @@ export function productPhoto(sku: string): ProductPhoto | null {
   }
 }
 
+/** An unavailable API photo can still use the bundled catalog photograph. */
+export function availableProductPhoto(
+  sku: string,
+  uploaded: ProductPhoto | null | undefined,
+  failedSources: readonly string[] = []
+): ProductPhoto | null {
+  return (
+    [uploaded, productPhoto(sku)].find(
+      (photo): photo is ProductPhoto =>
+        !!photo && !failedSources.includes(photo.src)
+    ) ?? null
+  )
+}
+
 /** Only punctuation, brand spelling and outer package notation may differ. */
 export function photoNameMatches(name: string, title: string) {
   const normalize = (text: string) =>

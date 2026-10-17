@@ -6,6 +6,7 @@ import { ApiError } from "@/api/client"
 import { getNegotiationCard, type NegotiationCard } from "@/api/customers"
 import type { MethodCard } from "@/api/methods"
 import { MethodCardItem } from "@/components/method-card"
+import { FeaturedProductsBlock } from "@/components/featured-products"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
 
@@ -62,6 +63,7 @@ export function NegotiationPage() {
   const card = state.status === "ready" ? state.card : null
   useAskPageContext({ facts: [
     `客戶編號：${customerId}`,
+    ...(card?.featured ? [`經理指定主推：${card.featured.items.map((item) => `${item.name}（${item.sku}）`).join("、")}`] : []),
     ...(card ? [`客戶：${card.customer.name}`, `談判方向：${ORIENTATION_LABEL[card.orientation]}`, ...(card.festival ? [`檔期：${card.festival.name}；日期：${card.festival.date}`] : [])] : ["談判資料尚未載入"]),
   ] })
 
@@ -103,6 +105,7 @@ export function NegotiationPage() {
           <>
             {/* 行事曆裡沒有之後的節慶就不顯示這一區，其餘照常 */}
             {card.festival && <FestivalBlock festival={card.festival} />}
+            {card.featured && <FeaturedProductsBlock featured={card.featured} />}
             {card.campaign && <CampaignBlock campaign={card.campaign} />}
             {card.shelf && <ShelfBlock shelf={card.shelf} festival={card.festival} />}
             {card.gaps && card.gaps.length > 0 && <GapsBlock gaps={card.gaps} />}

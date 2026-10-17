@@ -2,7 +2,7 @@ import { useState } from "react"
 import { ImageOff } from "@/components/icons"
 
 import type { Product } from "@/api/products"
-import { productPhoto } from "@/lib/product-photos"
+import { availableProductPhoto } from "@/lib/product-photos"
 
 type ProductPhotoProps = {
   product: Pick<Product, "sku" | "name" | "photo">
@@ -15,11 +15,10 @@ export function ProductPhoto({
   size = "default",
   showSource = true,
 }: ProductPhotoProps) {
-  const photo = product.photo ?? productPhoto(product.sku)
-  const [failedSrc, setFailedSrc] = useState<string | null>(null)
+  const [failedSources, setFailedSources] = useState<string[]>([])
+  const photo = availableProductPhoto(product.sku, product.photo, failedSources)
   const available =
     photo &&
-    failedSrc !== photo.src &&
     (photo.kind === "exact" ||
       photo.kind === "series" ||
       photo.kind === "illustrative")
@@ -44,7 +43,9 @@ export function ProductPhoto({
             loading="lazy"
             decoding="async"
             className="size-full object-contain p-1.5"
-            onError={() => setFailedSrc(photo.src)}
+            onError={() =>
+              setFailedSources((previous) => [...previous, photo.src])
+            }
           />
         ) : (
           <ImageOff
@@ -79,6 +80,14 @@ export function ProductPhoto({
                   來源
                 </a>
               </>
+            )}
+            {photo.kind === "illustrative" && photo.note && (
+              <details className="mt-1 text-left">
+                <summary className="cursor-pointer text-center underline underline-offset-2">
+                  查看照片差異
+                </summary>
+                <p className="mt-1 break-words">{photo.note}</p>
+              </details>
             )}
           </>
         ) : (

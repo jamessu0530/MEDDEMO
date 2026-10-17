@@ -10,6 +10,7 @@ import {
 import { ChevronLeft, ChevronRight, Search, Sparkles } from "@/components/icons"
 
 import { listProducts, type Product } from "@/api/products"
+import { CatalogHeader } from "@/components/catalog-header"
 import { Notice } from "@/components/notice"
 import { ProductPhoto } from "@/components/product-photo"
 import { ProductAppearanceSearch } from "@/components/product-appearance-search"
@@ -230,67 +231,60 @@ export function ProductsPanel({
 
   return (
     <div data-product-panel className="flex min-h-svh flex-col">
-      <header
-        className={cn(
-          "sticky top-0 z-10 border-b bg-background/95 px-4 backdrop-blur",
-          heading ? "py-5 lg:px-6" : "pt-4 pb-3"
-        )}
-      >
-        {heading ?? (
-          <h1 className="mt-0.5 text-xl font-semibold">商品與促銷</h1>
-        )}
-        {navigation}
+      <CatalogHeader heading={heading} navigation={navigation} active={active}>
         {state.status === "ready" && (
-          <>
-            <div className="relative mt-3">
-              <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={query}
-                onChange={(event) => {
-                  anchor.current = null
-                  setQuery(event.target.value)
-                  setLimit(PRODUCT_BATCH)
-                  setSelection(null)
-                }}
-                placeholder="搜尋品名、料號或規格"
-                aria-label="搜尋商品品名、料號、規格或別名"
-                className="h-11 bg-card pl-9"
-              />
-            </div>
-            <div
-              aria-label="商品類別"
-              className="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 pb-1.5"
-            >
-              {[{ name: null, count: products.length }, ...categories].map(
-                ({ name }) => (
-                  <button
-                    key={name ?? "all"}
-                    type="button"
-                    aria-pressed={category === name}
-                    onClick={() => {
-                      anchor.current = null
-                      setCategory(name)
-                      setLimit(PRODUCT_BATCH)
-                      setSelection(null)
-                    }}
-                    className={cn(
-                      "min-h-11 shrink-0 press rounded-full border-2 px-3 text-sm",
-                      category === name
-                        ? "border-primary bg-primary text-primary-foreground shadow-lip-primary"
-                        : "bg-card text-muted-foreground shadow-lip"
-                    )}
-                  >
-                    {name ?? "全部"}
-                  </button>
-                )
-              )}
-            </div>
-          </>
+          <div className="relative mt-3">
+            <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(event) => {
+                anchor.current = null
+                setQuery(event.target.value)
+                setLimit(PRODUCT_BATCH)
+                setSelection(null)
+              }}
+              placeholder="搜尋品名、料號或規格"
+              aria-label="搜尋商品品名、料號、規格或別名"
+              className="h-11 bg-card pl-9"
+            />
+          </div>
         )}
-      </header>
+      </CatalogHeader>
 
       <main className="flex-1 overflow-x-clip px-4 pt-3 pb-32">
-        {state.status === "ready" && products.length > 0 && <ProductAppearanceSearch />}
+        {state.status === "ready" && (
+          <div
+            aria-label="商品類別"
+            className="-mx-4 mb-3 flex gap-2 overflow-x-auto px-4 pb-1.5"
+          >
+            {[{ name: null, count: products.length }, ...categories].map(
+              ({ name }) => (
+                <button
+                  key={name ?? "all"}
+                  type="button"
+                  aria-pressed={category === name}
+                  onClick={() => {
+                    anchor.current = null
+                    setCategory(name)
+                    setLimit(PRODUCT_BATCH)
+                    setSelection(null)
+                  }}
+                  className={cn(
+                    "min-h-11 shrink-0 press rounded-full border-2 px-3 text-sm",
+                    category === name
+                      ? "border-primary bg-primary text-primary-foreground shadow-lip-primary"
+                      : "bg-card text-muted-foreground shadow-lip"
+                  )}
+                >
+                  {name ?? "全部"}
+                </button>
+              )
+            )}
+          </div>
+        )}
+        {state.status === "ready" && products.length > 0 && (
+          <ProductAppearanceSearch />
+        )}
         {state.status === "loading" && (
           <p className="py-10 text-center text-sm text-muted-foreground">
             載入商品型錄中…
@@ -401,17 +395,15 @@ export function ProductsPanel({
                     data-product-sku={product.sku}
                     className="rounded-xl border-2 bg-card px-4 py-3 shadow-lip"
                   >
-                    <div className="flex items-start gap-3 sm:gap-4">
-                      <ProductPhoto product={product} />
+                    <p className="text-base leading-snug font-semibold [overflow-wrap:anywhere]">
+                      {product.name}
+                    </p>
+                    <div className="mt-3 flex items-start gap-3 sm:gap-4">
+                      <ProductPhoto product={product} size="compact" />
                       <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-start justify-between gap-2">
-                          <p className="min-w-0 leading-snug font-medium">
-                            {product.name}
-                          </p>
-                          <Badge variant="secondary" className="shrink-0">
-                            {product.category}
-                          </Badge>
-                        </div>
+                        <Badge variant="secondary" className="shrink-0">
+                          {product.category}
+                        </Badge>
                         <p className="mt-2 text-xs text-muted-foreground">
                           {product.sku} · {product.unit}
                         </p>

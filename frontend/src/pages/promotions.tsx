@@ -8,6 +8,7 @@ import {
   type PromotionItem,
 } from "@/api/promotions"
 import { Notice } from "@/components/notice"
+import { CatalogHeader } from "@/components/catalog-header"
 
 import { ProductPhoto } from "@/components/product-photo"
 import { Badge } from "@/components/ui/badge"
@@ -150,11 +151,27 @@ export function PromotionsPanel({ heading, navigation, active = true }: { headin
 
   return (
     <div className="flex min-h-svh flex-col">
-      <header className={cn("sticky top-0 z-10 border-b bg-background/95 px-4 backdrop-blur", heading ? "py-5 lg:px-6" : "pt-4 pb-3")}>
-        {heading ?? <h1 className="mt-0.5 text-xl font-semibold">商品與促銷</h1>}
-        {navigation}
+      <CatalogHeader heading={heading} navigation={navigation} active={active}>
+        {current && (
+          <div className="relative mt-3">
+            <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={filters.query}
+              onChange={(event) => updateFilter("query", event.target.value)}
+              placeholder="搜尋品項、類別、品牌或料號"
+              aria-label="搜尋品項、類別、品牌或料號"
+              className="h-11 bg-card pl-9"
+            />
+          </div>
+        )}
+      </CatalogHeader>
+
+      <main className="flex-1 px-4 pt-3 pb-20">
         {promotions.length > 1 && (
-          <div className="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 pb-1.5">
+          <div
+            aria-label="促銷月份"
+            className="-mx-4 mb-3 flex gap-2 overflow-x-auto px-4 pb-1.5"
+          >
             {promotions.map((p) => (
               <button
                 key={p.name}
@@ -174,21 +191,6 @@ export function PromotionsPanel({ heading, navigation, active = true }: { headin
             ))}
           </div>
         )}
-        {current && (
-          <div className="relative mt-3">
-            <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={filters.query}
-              onChange={(event) => updateFilter("query", event.target.value)}
-              placeholder="搜尋品項、類別、品牌或料號"
-              aria-label="搜尋品項、類別、品牌或料號"
-              className="h-11 bg-card pl-9"
-            />
-          </div>
-        )}
-      </header>
-
-      <main className="flex-1 px-4 pt-3 pb-20">
         {state.status === "loading" && (
           <p className="py-10 text-center text-sm text-muted-foreground">
             載入促銷方案中…
@@ -415,15 +417,15 @@ function ItemRow({
 }) {
   return (
     <li className="rounded-xl border-2 bg-card px-4 py-3 shadow-lip">
-      <div className="flex items-start gap-3 sm:gap-4">
-        <ProductPhoto product={item} />
+      <p className="text-base leading-snug font-semibold [overflow-wrap:anywhere]">
+        {item.name}
+      </p>
+      <div className="mt-3 flex items-start gap-3 sm:gap-4">
+        <ProductPhoto product={item} size="compact" />
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-start justify-between gap-2">
-            <p className="min-w-0 leading-snug font-medium">{item.name}</p>
-            <Badge variant="secondary" className="shrink-0">
-              {dealLabel(item)}
-            </Badge>
-          </div>
+          <Badge variant="secondary" className="shrink-0">
+            {dealLabel(item)}
+          </Badge>
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
             <Badge variant="outline">{item.category}</Badge>
             {isCategoryBest && <Badge>類別最高折扣</Badge>}

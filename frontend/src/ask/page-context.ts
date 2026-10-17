@@ -89,6 +89,7 @@ export function pageContextFor(pathname: string, search = ""): AssistantPage {
   } else if (parts[0] === "manager") {
     const views: Record<string, string> = {
       priority: "客戶策略",
+      featured: "主推品項",
       oa: "簽核",
       methods: "方法卡",
     }

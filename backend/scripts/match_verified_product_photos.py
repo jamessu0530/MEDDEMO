@@ -240,6 +240,9 @@ def choose(product, sources):
     # Similarity only breaks ties among already verified identities/series;
     # it cannot make an unrelated source eligible for selection.
     score, kind, reason, source = max(ranked, key=lambda item: (item[0], SequenceMatcher(None, key, name_key(item[3]['title'])).ratio()))
+    # The source inventory retains every SKU review. A plan row only needs its
+    # own decision and photo provenance, not hundreds of other SKU reviews.
+    source = {key: value for key, value in source.items() if key != 'reviewedProducts'}
     return {'sku': sku, 'name': name, 'category': product['category'], 'kind': kind, 'reason': reason, 'score': score, 'source': source}
 
 

@@ -41,6 +41,7 @@ it("示意照片可顯示，且在圖片下方標明Demo參考照", () => {
   )
   expect(markup).toContain('src="/product-photos/')
   expect(markup).toContain("Demo 參考照")
+  expect(markup).toContain("查看照片差異")
   expect(markup).toContain("20mg")
   expect(markup).toContain("5mg")
 })

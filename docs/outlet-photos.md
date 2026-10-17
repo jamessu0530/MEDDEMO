@@ -16,6 +16,8 @@ backend/.venv/bin/python backend/scripts/import_storefront_photos.py
 
 客戶清單與客戶檔案直接使用 API 回傳的 `storefront_photo`。有圖、缺圖、圖片失效與離線情況都不自動讀取 Maps 設定、不載入 Places SDK，也不回退至 Places 查詢。Google 地圖連結僅在使用者點擊時開啟外部網頁。
 
+「選擇拜訪客戶」未搜尋時會先列出有照片的店家，同組維持 API 原有順序；搜尋時保留 API 相關度排序。每次顯示 100 筆，頁尾可按「顯示更多客戶」繼續瀏覽，搜尋或清除搜尋後回到前 100 筆。原先直接截取按 ID 排序的前 100 筆，全部落在沒有真實照片的示範客戶，導致預設畫面看不到已匯入的店家照片。
+
 Google 查詢結果只保存可永久保存的 Place ID／候選 ID，不保存 Google 照片內容或照片參照。[Google 官方照片文件](https://developers.google.com/maps/documentation/places/web-service/place-photos) 說明照片名稱會過期且不得快取。只有 Google 照片的店家，仍需另有非 Google 照片來源才能在此流程顯示。
 
 ### 2026-10-17 正式站發布
@@ -25,6 +27,20 @@ Google 查詢結果只保存可永久保存的 Place ID／候選 ID，不保存 
 發布以正式版本 `489ef695c6aab0cdf96405390f73b4fc24c1535f` 為基底，只覆蓋照片功能；前端來源逐檔比對確認只有客戶 API 型別、照片工具、照片元件、客戶清單與客戶檔案五個檔案變更。API 使用 `docker.io/library/meddemo-storefront-api:20261017-db`，網頁使用 `docker.io/library/meddemo-storefront-web:20261017-db2`，映像已載入該 VM 的 k3s。
 
 完整 schema 升級未執行，正式站 `schema_version` 保留 `04fd21a6ec6e`；照片表已獨立新增，API 正常使用。後續正常整站發布可使用程式中已測試的保留資料升級路徑。此手動發布尚未改動 Helm 的映像設定；再次執行 Helm 發布前須包含照片功能原始碼，以免切回舊照片流程。
+
+### 2026-10-17 客戶清單首批顯示修正
+
+正式站預設前 100 筆原本全部是沒有照片的示範客戶，已改為有照片店家優先並增加「顯示更多客戶」。以當時正式版本 `fd9e439190e15fb999d9d1e41121637985274c78` 為基底，只增加客戶清單頁及排序工具，使用映像 `docker.io/library/meddemo-picker-web:20261017-photos`；API 與資料庫未變更。發布前核對原網頁雜湊，僅追加 582 KB 的網頁資產差異，保留同時上線的對話輸入列更新。15 項相關測試、型別檢查、Lint 與打包通過；正式站確認首批店家照片已載入，「顯示更多」可由 100 筆增加到 200 筆，共 4,895 位客戶。後續正常部署須包含本次清單頁與 `frontend/src/lib/customer-picker.ts`。
+
+### 2026-10-17 分頁與入口快取修正
+
+移除清單上的筆數與「有照片的店家優先」說明。拜訪清單改用 `/api/customers/picker?limit=100&offset=0`，先選取這一批客戶 ID，再查照片與拜訪摘要；回傳 `next_offset`，沒有下一批則為 null。搜尋維持相關度排序。原有 `/api/customers` 供行事曆等完整清單使用，行為不變。
+
+畫面先顯示首批，300 毫秒後預載下一批，依使用者、搜尋字與頁數暫存 30 秒、最多八批。前四張照片優先抓取並非同步解碼，其餘維持延後載入；已儲存的完整行事曆離線清單保留。此次採分頁與預載減少傳輸量，沒有增加額外 API 或瀏覽器 Worker。
+
+正式站同次實測：完整清單 4,895 筆、2,620,137 bytes；首批 100 筆、63,510 bytes，資料量減少約 97.6%，分頁 API 在伺服器內約 50 毫秒。這是 API 量測，不含使用者網路與來源網站照片時間。前端 21 項與後端 11 項相關測試、型別檢查、Lint、打包及頁面操作驗證通過。
+
+正式映像為 `docker.io/library/meddemo-picker-api:20261017-pages` 與 `docker.io/library/meddemo-picker-web:20261017-pages-v2`，沿用前述 `fd9e439` 與照片修正，只更換客戶 API、網頁資產與 HTML 快取設定。入口 `index.html` 設定 `Cache-Control: no-store` 並關閉 ETag／修改時間的條件回應，避免同大小入口檔因舊 ETag 而繼續載入舊版程式。雜湊資產維持原本的瀏覽器快取。後續一般部署需包含這次前後端與 Nginx 設定。
 
 ## 已使用來源
 

@@ -9,6 +9,7 @@ import { ChannelsLink } from "@/components/channels-link"
 import { ListRow, MasterDetail } from "@/components/manager/master-detail"
 import { RoutesPanel } from "@/components/manager/routes-panel"
 import { CustomerPriorityPanel } from "@/components/manager/customer-priority-panel"
+import { FeaturedProductsPanel } from "@/components/manager/featured-products-panel"
 import { MethodCardForm } from "@/components/method-card-form"
 import { MethodSourceDisplay } from "@/components/method-source-display"
 import { Notice } from "@/components/notice"
@@ -28,17 +29,18 @@ import { tagLabel } from "@/lib/methods"
 import { useIsDesktop } from "@/lib/use-media-query"
 import { cn } from "@/lib/utils"
 
-// 主管端的分頁：團隊行程（預設）、客戶策略、簽核、方法卡。
+// 主管端的分頁：團隊行程（預設）、客戶策略、主推品項、簽核、方法卡。
 // 記在網址上，從客戶檔案回來還停在同一頁
-const VIEWS = ["routes", "priority", "oa", "methods"] as const
+const VIEWS = ["routes", "priority", "featured", "oa", "methods"] as const
 type View = (typeof VIEWS)[number]
 const VIEW_TITLE: Record<View, string> = {
   routes: "團隊行程",
   priority: "客戶策略",
+  featured: "主推品項",
   oa: "OA 簽核",
   methods: "方法卡",
 }
-const VIEW_TAB: Record<View, string> = { routes: "行程", priority: "客戶策略", oa: "簽核", methods: "方法卡" }
+const VIEW_TAB: Record<View, string> = { routes: "行程", priority: "客戶策略", featured: "主推品項", oa: "簽核", methods: "方法卡" }
 // 標頭的圖示按鈕用固定的 44px，不跟著放大字體變大，標題才不會被擠掉（components/channels-link.tsx 同）
 const HEADER_BUTTON = "flex size-[44px] shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
 
@@ -140,6 +142,8 @@ export function ManagerPage() {
           <RoutesPanel />
         ) : view === "priority" ? (
           <CustomerPriorityPanel />
+        ) : view === "featured" ? (
+          <FeaturedProductsPanel />
         ) : view === "oa" ? (
           <OaInboxPanel />
         ) : (

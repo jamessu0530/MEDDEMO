@@ -22,12 +22,12 @@ describe("sidebarItems", () => {
     })
   })
 
-  it("主管：主管端的四個分頁，加上頻道", () => {
-    expect(labels("manager")).toEqual({ main: ["團隊行程", "客戶策略", "簽核", "方法卡"], more: ["我的報表", "訂單", "頻道", "商品與促銷"] })
+  it("主管：主管端的五個分頁，加上頻道", () => {
+    expect(labels("manager")).toEqual({ main: ["團隊行程", "客戶策略", "主推品項", "簽核", "方法卡"], more: ["我的報表", "訂單", "頻道", "商品與促銷"] })
   })
 
   it("IT：組織管理在最前面，接著是主管端", () => {
-    expect(labels("it")).toEqual({ main: ["組織管理", "團隊行程", "客戶策略", "簽核", "方法卡"], more: ["我的報表", "訂單", "頻道", "商品與促銷"] })
+    expect(labels("it")).toEqual({ main: ["組織管理", "團隊行程", "客戶策略", "主推品項", "簽核", "方法卡"], more: ["我的報表", "訂單", "頻道", "商品與促銷"] })
   })
 
   it("數字掛在對的項目上", () => {
@@ -40,6 +40,7 @@ describe("sidebarItems", () => {
   it("主管端的項目連到各自的分頁", () => {
     expect(item("manager", "團隊行程").to).toBe("/manager")
     expect(item("manager", "簽核").to).toBe("/manager?view=oa")
+    expect(item("manager", "主推品項").to).toBe("/manager?view=featured")
   })
 })
 
@@ -76,6 +77,8 @@ describe("isActiveItem", () => {
     expect(isActiveItem(item("manager", "團隊行程"), "/manager", "?view=asks")).toBe(true)
     expect(isActiveItem(item("manager", "客戶策略"), "/manager", "?view=priority")).toBe(true)
     expect(isActiveItem(item("manager", "團隊行程"), "/manager", "?view=priority")).toBe(false)
+    expect(isActiveItem(item("manager", "主推品項"), "/manager", "?view=featured")).toBe(true)
+    expect(isActiveItem(item("manager", "團隊行程"), "/manager", "?view=featured")).toBe(false)
     expect(isActiveItem(item("manager", "簽核"), "/manager", "?view=oa&item=4")).toBe(true)
     expect(isActiveItem(item("manager", "簽核"), "/manager", "?view=notices")).toBe(false)
     expect(isActiveItem(item("manager", "簽核"), "/oa/forms/4", "")).toBe(false)

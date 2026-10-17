@@ -2,6 +2,7 @@ import { jsonBody, request } from "@/api/client"
 import type { MethodCard } from "@/api/methods"
 import { readUser } from "@/lib/auth"
 import type { StoredStorefrontPhoto } from "@/lib/storefront"
+import { CUSTOMER_PAGE_SIZE, orderPickerCustomers } from "@/lib/customer-picker"
 
 export type Customer = {
   id: string
@@ -68,6 +69,93 @@ export async function listCustomers(signal?: AbortSignal, query = "") {
         cached: true,
       }
     throw error
+  }
+}
+
+export type CustomerPickerPage = {
+  customers: Customer[]
+  next_offset: number | null
+}
+
+const pickerPages = new Map<
+  string,
+  { page: CustomerPickerPage; expires: number }
+>()
+
+/** Small pages also serve prefetches; the calendar retains the full-list API. */
+export async function listPickerCustomers(
+  signal?: AbortSignal,
+  query = "",
+  offset = 0
+) {
+  if (signal?.aborted) throw new DOMException("Aborted", "AbortError")
+  const params = new URLSearchParams({
+    limit: String(CUSTOMER_PAGE_SIZE),
+    offset: String(offset),
+  })
+  if (query.trim()) params.set("q", query.trim())
+  const userCacheKey = cacheKey()
+  const key = `${userCacheKey}:${params}`
+  const remembered = pickerPages.get(key)
+  if (remembered && remembered.expires > Date.now())
+    return { ...remembered.page, cached: false }
+  try {
+    const page = await request<CustomerPickerPage>(
+      `/api/customers/picker?${params}`,
+      { signal }
+    )
+    if (signal?.aborted || cacheKey() !== userCacheKey)
+      throw new DOMException("Aborted", "AbortError")
+    pickerPages.delete(key)
+    pickerPages.set(key, { page, expires: Date.now() + 30_000 })
+    if (pickerPages.size > 8)
+      pickerPages.delete(pickerPages.keys().next().value!)
+    if (!query.trim()) {
+      try {
+        // Preserve a full calendar cache without serializing it on each page.
+        const stored = readCachedCustomers() ?? []
+        const previous = stored.slice(-500)
+        const merged = new Map(
+          [...previous, ...page.customers].map((customer) => [
+            customer.id,
+            customer,
+          ])
+        )
+        if (stored.length <= 600)
+          localStorage.setItem(
+            userCacheKey,
+            JSON.stringify([...merged.values()].slice(-600))
+          )
+      } catch {
+        // Storage restrictions do not block browsing.
+      }
+    }
+    return { ...page, cached: false }
+  } catch (error) {
+    const saved =
+      signal?.aborted || cacheKey() !== userCacheKey
+        ? null
+        : readCachedCustomers()
+    if (!saved) throw error
+    const keyword = query.trim().toLowerCase()
+    const matches = orderPickerCustomers(
+      saved.filter(
+        (customer) =>
+          !keyword ||
+          [customer.name, customer.address, customer.phone].some((value) =>
+            value?.toLowerCase().includes(keyword)
+          )
+      ),
+      query
+    )
+    return {
+      customers: matches.slice(offset, offset + CUSTOMER_PAGE_SIZE),
+      next_offset:
+        offset + CUSTOMER_PAGE_SIZE < matches.length
+          ? offset + CUSTOMER_PAGE_SIZE
+          : null,
+      cached: true,
+    }
   }
 }
 
@@ -140,6 +228,7 @@ export type CustomerProfile = {
 export type NegotiationCard = {
   customer: Customer
   orientation: "customer" | "cost"
+  featured: import("@/api/featured-products").FeaturedProducts | null
   // 行事曆裡沒有之後的節慶就是 null。note 是設定檔裡人寫的一句話，連鎖與其他客戶看到的不同
   festival: {
     name: string

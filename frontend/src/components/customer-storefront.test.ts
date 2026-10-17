@@ -20,6 +20,20 @@ const customer = {
 }
 
 describe("資料庫店家照片", () => {
+  it("首屏照片優先抓取，圖片解碼不阻塞互動，其他縮圖維持延後載入", () => {
+    const html = renderToStaticMarkup(
+      createElement(CustomerStorefrontThumbnail, { customer, priority: true })
+    )
+    expect(html).toContain('loading="eager"')
+    expect(html).toContain('fetchPriority="high"')
+    expect(html).toContain('decoding="async"')
+    expect(html).toContain('width="96"')
+    expect(
+      renderToStaticMarkup(
+        createElement(CustomerStorefrontThumbnail, { customer })
+      )
+    ).toContain('loading="lazy"')
+  })
   it("清單直接顯示資料庫照片，沒有地圖 SDK 或 Google 設定請求", () => {
     const fetch = vi.spyOn(globalThis, "fetch")
     const html = renderToStaticMarkup(

@@ -19,6 +19,7 @@ from app.pricing import supply_price
 from app.services import approvals, customer_profile, last_order, negotiation, orders, promo_packs, writeback
 from app.services.scope import SHARING_LEVEL, Scope
 from app.services.product_catalog import visible_catalog_products
+from app.services.featured_products import FeaturedBlock
 
 router = APIRouter(prefix="/api/customers", tags=["customers"])
 SessionDep = Annotated[Session, Depends(get_session)]
@@ -51,6 +52,11 @@ class CustomerItem(BaseModel):
     storefront_photo: StorefrontPhoto | None = None
     google_place_id: str | None = None
     last_visit_date: date | None
+
+
+class CustomerPickerPage(BaseModel):
+    customers: list[CustomerItem]
+    next_offset: int | None
 
 
 class ProfileStats(BaseModel):
@@ -209,6 +215,7 @@ class NegotiationCard(BaseModel):
     # 不屬於這個導向的欄位是 null
     orientation: Literal["customer", "cost"]
     festival: Festival | None
+    featured: FeaturedBlock | None
     campaign: Campaign | None
     shelf: Shelf | None
     gaps: list[Gap] | None
@@ -271,6 +278,40 @@ def list_customers(session: SessionDep, user: CurrentUser, q: str = Query(defaul
         if ids:
             stmt = stmt.order_by(None).order_by(case({key: i for i, key in enumerate(ids)}, value=Customer.id), Customer.id)
     return [CustomerItem(**row._mapping) for row in session.execute(stmt)]
+
+
+@router.get("/picker", response_model=CustomerPickerPage)
+def customer_picker_page(
+    session: SessionDep,
+    user: CurrentUser,
+    q: str = Query(default="", max_length=100),
+    offset: int = Query(default=0, ge=0, le=100_000),
+    limit: int = Query(default=100, ge=1, le=100),
+):
+    """只為這一批客戶載入照片與拜訪摘要，不先聚合整份清單。"""
+    scope = Scope.for_user(user)
+    visible = scope.customers_at(SHARING_LEVEL["customer_basic"])
+    if q.strip():
+        from app.services.outlet_search import customer_matches
+        matches = customer_matches(session, q.strip())
+        allowed = set(session.scalars(select(Customer.id).where(visible, Customer.id.in_(matches))))
+        ids = [key for key in matches if key in allowed][offset:offset + limit + 1]
+    else:
+        ids = list(session.scalars(
+            select(Customer.id)
+            .outerjoin(OutletStorefront, OutletStorefront.outlet_id == Customer.id)
+            .where(visible)
+            .order_by(case((OutletStorefront.photos[0].is_not(None), 0), else_=1), Customer.id)
+            .offset(offset).limit(limit + 1)
+        ))
+    has_more = len(ids) > limit
+    ids = ids[:limit]
+    rows = session.execute(_customer_query(scope).where(Customer.id.in_(ids))) if ids else []
+    items = {row.id: CustomerItem(**row._mapping) for row in rows}
+    return CustomerPickerPage(
+        customers=[items[key] for key in ids],
+        next_offset=offset + len(ids) if has_more else None,
+    )
 
 
 @router.get("/{customer_id}", response_model=CustomerItem)

@@ -4,7 +4,11 @@ import { describe, expect, it } from "vitest"
 
 import manifest from "@/data/product-photos.json"
 import coverage from "../../../data/seed/product-photo-coverage.json"
-import { photoNameMatches, productPhoto } from "@/lib/product-photos"
+import {
+  availableProductPhoto,
+  photoNameMatches,
+  productPhoto,
+} from "@/lib/product-photos"
 
 describe("商品型錄照片", () => {
   it("只接受同名同規格圖片，拒絕其他藥品或不同劑量的示意照", () => {
@@ -38,7 +42,9 @@ describe("商品型錄照片", () => {
       [...section[1].matchAll(/^\s*\("([^"]+)"/gm)].map((row) => row[1])
     )
     const skus = [...realSkus, ...seededSkus]
-    const missing = new Set(coverage.missing.map((product) => product.sku))
+    const missing = new Set(
+      coverage.missing.map((product: { sku: string }) => product.sku)
+    )
     expect(skus).toHaveLength(coverage.appliedCount + coverage.missingCount)
     expect(Object.keys(manifest.products)).toHaveLength(coverage.appliedCount)
     for (const sku of skus) {
@@ -74,5 +80,28 @@ describe("商品型錄照片", () => {
 
   it("新增但尚未配圖的商品正常使用缺圖狀態", () => {
     expect(productPhoto("UNKNOWN-SKU")).toBeNull()
+  })
+
+  it("目前完整型錄沒有缺圖，參考照保留明確差異說明", () => {
+    expect(coverage.missingCount).toBe(0)
+    expect(coverage.downloadFailures).toEqual([])
+    for (const mapping of Object.values(manifest.products)) {
+      if (mapping.kind === "illustrative")
+        expect(mapping.note).toMatch(/^Demo參考照：/)
+    }
+  })
+
+  it("API照片失效時改用本機商品照，兩者都失效才顯示缺圖", () => {
+    const bundled = productPhoto("C160308")!
+    const uploaded = { ...bundled, src: "/api/products/stale-photo.webp" }
+    expect(availableProductPhoto("C160308", uploaded)).toEqual(uploaded)
+    expect(
+      availableProductPhoto("C160308", uploaded, [uploaded.src])
+    ).toEqual(bundled)
+    expect(
+      availableProductPhoto("C160308", uploaded, [uploaded.src, bundled.src])
+    ).toBeNull()
+    expect(availableProductPhoto("C160308", null)).toEqual(bundled)
+    expect(availableProductPhoto("UNKNOWN-SKU", null)).toBeNull()
   })
 })
