@@ -1,33 +1,18 @@
 import { request } from "@/api/client"
-import type { LegMode, TravelMode } from "@/api/route"
+import type { RoutePathStop, TravelMode } from "@/api/route"
 
 // 主管端的行程分頁（後端 api/manager.py 的 /api/manager/itineraries）：只能看、只看今天。
-// 站的狀態與來源跟業務首頁同一套（後端 services/itinerary.py），這裡自己寫一份，不跟業務那邊的型別綁在一起
+// 站的呈現與業務首頁共用；主管另外取得地圖座標與站號。
 export type StopStatus = "done" | "next" | "todo"
 // model：系統早上排的；rep：業務自己加的；ai：跟熊熊滾說加的；ask：問答頁「排入今天的路線」
 export type StopSource = "model" | "rep" | "ai" | "ask"
 
 export type LatLng = { lat: number; lng: number }
 
-export type TeamStop = LatLng & {
+export type TeamStop = RoutePathStop & LatLng & {
   // 第幾站，1 起算，已完成的在前
   number: number
-  customer_id: string
-  customer_name: string
   area: string
-  status: StopStatus
-  // 已完成的是拜訪時間，其他是排出來的到達時間
-  planned_time: string
-  duration_minutes: number
-  late_minutes: number
-  source: StopSource
-  signal: string
-  reason: string
-  // 約的時間：at 幾點到、before 幾點以前、after 幾點以後
-  window_kind: "at" | "before" | "after" | null
-  window_time: string | null
-  // 從上一站過來用的交通方式
-  travel_mode: LegMode
 }
 
 // 大眾運輸一段裡的一小段：走路（虛線）或搭車
@@ -63,6 +48,8 @@ export type RepRoute = {
   estimated: boolean
   // 這位業務的交通方式
   travel_mode: TravelMode
+  start_city: string | null
+  office_start: boolean
   // 區處辦公室，路線從這裡畫起；還沒有位置的區是 null
   origin: LatLng | null
   stops: TeamStop[]

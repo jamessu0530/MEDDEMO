@@ -3,10 +3,8 @@ import { useEffect, useState, type ReactNode } from "react"
 import { ChartNoAxesCombined, ChevronRight, Network, Settings } from "@/components/icons"
 import { Link, useNavigate, useSearchParams } from "react-router"
 
-import { listEscalations, replyEscalation, type Escalation } from "@/api/escalations"
 import { customerTypeLabel, listMyMethods, updateMethod, type MethodCard } from "@/api/methods"
 import { listAutoApproved, listOaInbox, type OaFormDetail, type OaFormItem } from "@/api/oa"
-import { AttachmentGallery } from "@/components/attachments/attachment-gallery"
 import { ChannelsLink } from "@/components/channels-link"
 import { ListRow, MasterDetail } from "@/components/manager/master-detail"
 import { RoutesPanel } from "@/components/manager/routes-panel"
@@ -21,7 +19,6 @@ import { SkinToggle } from "@/components/skin-toggle"
 import { PageHeader } from "@/components/page-header"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
 import { useAuth } from "@/lib/auth"
 import { OA_STATUS_LABEL, formatProbability, oaDateText } from "@/lib/approval"
 import { formatDateTime } from "@/lib/format"
@@ -31,21 +28,17 @@ import { tagLabel } from "@/lib/methods"
 import { useIsDesktop } from "@/lib/use-media-query"
 import { cn } from "@/lib/utils"
 
-// 主管端的分頁：團隊行程（預設）、客戶策略、提問、簽核、方法卡。
+// 主管端的分頁：團隊行程（預設）、客戶策略、簽核、方法卡。
 // 記在網址上，從客戶檔案回來還停在同一頁
-const VIEWS = ["routes", "priority", "asks", "oa", "methods"] as const
+const VIEWS = ["routes", "priority", "oa", "methods"] as const
 type View = (typeof VIEWS)[number]
 const VIEW_TITLE: Record<View, string> = {
   routes: "團隊行程",
   priority: "客戶策略",
-  asks: "待回覆的提問",
   oa: "OA 簽核",
   methods: "方法卡",
 }
-const VIEW_TAB: Record<View, string> = { routes: "行程", priority: "客戶策略", asks: "提問", oa: "簽核", methods: "方法卡" }
-type Tab = "open" | "answered"
-type LoadState = { status: "loading" } | { status: "error" } | { status: "ready"; items: Escalation[] }
-
+const VIEW_TAB: Record<View, string> = { routes: "行程", priority: "客戶策略", oa: "簽核", methods: "方法卡" }
 // 標頭的圖示按鈕用固定的 44px，不跟著放大字體變大，標題才不會被擠掉（components/channels-link.tsx 同）
 const HEADER_BUTTON = "flex size-[44px] shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
 
@@ -65,7 +58,7 @@ function useItemParam(): [number | null, (id: number | null) => void] {
   return [itemParam(params.get("item")), select]
 }
 
-/** 主管端（FR-8.4 延伸）：看團隊今天的行程、回覆業務轉過來的提問、簽申請單（出差單、優惠、合約）、寫方法卡。主管看自己底下的人，IT 看全公司 */
+/** 主管端：看團隊今天的行程、簽申請單（出差單、優惠、合約）、寫方法卡。主管看自己底下的人，IT 看全公司 */
 export function ManagerPage() {
   const user = useAuth()?.user
   const [params, setParams] = useSearchParams()
@@ -147,193 +140,12 @@ export function ManagerPage() {
           <RoutesPanel />
         ) : view === "priority" ? (
           <CustomerPriorityPanel />
-        ) : view === "asks" ? (
-          <EscalationsPanel />
         ) : view === "oa" ? (
           <OaInboxPanel />
         ) : (
           <MethodsPanel />
         )}
       </main>
-    </div>
-  )
-}
-
-/** 業務查不到答案轉過來的提問，主管在這裡回覆；回覆後業務的首頁會提醒 */
-function EscalationsPanel() {
-  const navigate = useNavigate()
-  const desktop = useIsDesktop()
-  const [requested, select] = useItemParam()
-  const [tab, setTab] = useState<Tab>("open")
-  const [state, setState] = useState<LoadState>({ status: "loading" })
-  const [attempt, setAttempt] = useState(0)
-  const [notice, setNotice] = useState<string | null>(null)
-
-  useEffect(() => {
-    const controller = new AbortController()
-    listEscalations(tab, controller.signal)
-      .then((items) => setState({ status: "ready", items }))
-      .catch(() => {
-        if (!controller.signal.aborted) setState({ status: "error" })
-      })
-    return () => controller.abort()
-  }, [tab, attempt])
-
-  function switchTab(next: Tab) {
-    if (next === tab) return
-    setState({ status: "loading" })
-    setNotice(null)
-    if (desktop) select(null)
-    setTab(next)
-  }
-
-  function replied(item: Escalation) {
-    // 電腦版接著打開下一張；要在拿掉之前算
-    if (desktop && state.status === "ready") select(nextAfter(state.items, item.id))
-    setState((current) =>
-      current.status === "ready" ? { status: "ready", items: current.items.filter((i) => i.id !== item.id) } : current
-    )
-    setNotice(`已回覆「${item.question}」，業務的首頁會提醒他來看。`)
-  }
-
-  return (
-    <>
-      <div className="grid grid-cols-2 rounded-lg bg-muted p-1 text-sm" role="tablist">
-        {(["open", "answered"] as const).map((value) => (
-          <button
-            key={value}
-            type="button"
-            role="tab"
-            aria-selected={tab === value}
-            onClick={() => switchTab(value)}
-            className={cn("h-9 rounded-md", tab === value ? "bg-card font-medium shadow-sm" : "text-muted-foreground")}
-          >
-            {value === "open" ? "待回覆" : "已回覆"}
-          </button>
-        ))}
-      </div>
-
-      {notice && <p className="rounded-lg bg-primary/10 px-3 py-2 text-sm text-primary">{notice}</p>}
-      {state.status === "loading" && <p className="py-10 text-center text-sm text-muted-foreground">載入中…</p>}
-      {state.status === "error" && (
-        <Notice
-          text="連不上伺服器，提問沒有載入。"
-          action={{
-            label: "重新載入",
-            onClick: () => {
-              setState({ status: "loading" })
-              setAttempt((n) => n + 1)
-            },
-          }}
-          secondary={{ label: "回首頁", onClick: () => navigate("/") }}
-        />
-      )}
-      {state.status === "ready" && state.items.length === 0 && (
-        <p className="py-10 text-center text-sm text-muted-foreground">
-          {tab === "open" ? "目前沒有待回覆的提問。" : "還沒有回覆過的提問。"}
-        </p>
-      )}
-      {state.status === "ready" &&
-        state.items.length > 0 &&
-        (desktop ? (
-          <EscalationSplit items={state.items} requested={requested} onSelect={select} onReplied={replied} />
-        ) : (
-          state.items.map((item) => <EscalationArticle key={item.id} item={item} onReplied={replied} />)
-        ))}
-    </>
-  )
-}
-
-/** 一則提問：問題、附件、系統的回覆；待回覆的有回覆框，回覆過的寫誰、什麼時候回、業務看過沒 */
-function EscalationArticle({ item, onReplied }: { item: Escalation; onReplied: (item: Escalation) => void }) {
-  return (
-    <article className="rounded-2xl border-2 bg-card p-4 shadow-lip">
-      <p className="text-xs text-muted-foreground">
-        {formatDateTime(item.created_at)} · {item.kind === "data" ? "數字查詢" : "知識查詢"} · 單號 #{item.id}
-      </p>
-      <p className="mt-1.5 text-sm font-medium">{item.question}</p>
-      {item.attachment && <AttachmentGallery attachments={[item.attachment]} className="mt-2 w-56 max-w-full" />}
-      {item.system_answer && (
-        <p className="mt-2 line-clamp-4 rounded-lg bg-muted px-3 py-2 text-xs leading-relaxed text-muted-foreground">
-          系統的回覆：{item.system_answer}
-        </p>
-      )}
-      {item.status === "open" ? (
-        <ReplyForm item={item} onReplied={onReplied} />
-      ) : (
-        <div className="mt-3 rounded-xl bg-primary/10 px-3 py-2.5">
-          <p className="text-xs font-semibold text-primary">
-            {item.answered_by} · {item.answered_at && formatDateTime(item.answered_at)}
-          </p>
-          <p className="mt-1 text-sm leading-relaxed whitespace-pre-line">{item.answer}</p>
-          <p className="mt-1.5 text-xs text-muted-foreground">
-            {item.seen_at ? `業務 ${formatDateTime(item.seen_at)} 看過` : "業務還沒看"}
-          </p>
-        </div>
-      )}
-    </article>
-  )
-}
-
-/** 電腦版：左邊一列一則提問，右邊打開選中的那則 */
-function EscalationSplit({
-  items,
-  requested,
-  onSelect,
-  onReplied,
-}: {
-  items: Escalation[]
-  requested: number | null
-  onSelect: (id: number) => void
-  onReplied: (item: Escalation) => void
-}) {
-  const selected = pickItem(items, requested)
-  return (
-    <MasterDetail
-      list={items.map((item) => (
-        <ListRow key={item.id} selected={item.id === selected?.id} onSelect={() => onSelect(item.id)}>
-          <span className="text-xs text-muted-foreground">
-            {formatDateTime(item.created_at)} · {item.kind === "data" ? "數字查詢" : "知識查詢"}
-          </span>
-          <span className="line-clamp-2 text-sm font-medium">{item.question}</span>
-        </ListRow>
-      ))}
-      detail={selected && <EscalationArticle key={selected.id} item={selected} onReplied={onReplied} />}
-    />
-  )
-}
-
-function ReplyForm({ item, onReplied }: { item: Escalation; onReplied: (item: Escalation) => void }) {
-  const [text, setText] = useState("")
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  async function submit() {
-    setBusy(true)
-    setError(null)
-    try {
-      onReplied(await replyEscalation(item.id, text.trim()))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "送出失敗，請再試一次")
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <div className="mt-3 flex flex-col gap-2">
-      <Textarea
-        value={text}
-        onChange={(event) => setText(event.target.value)}
-        placeholder="回覆業務：可以怎麼做、依據是哪一條規定"
-        aria-label={`回覆：${item.question}`}
-        maxLength={2000}
-        rows={3}
-      />
-      {error && <p className="text-xs text-destructive">{error}</p>}
-      <Button className="h-11" disabled={busy || !text.trim()} onClick={submit}>
-        送出回覆
-      </Button>
     </div>
   )
 }
@@ -387,7 +199,7 @@ function OaInboxPanel() {
               setAttempt((n) => n + 1)
             },
           }}
-          secondary={{ label: "回提問", onClick: () => navigate("/manager?view=asks") }}
+          secondary={{ label: "回團隊行程", onClick: () => navigate("/manager") }}
         />
       )}
       {state.status === "ready" && state.items.length === 0 && (
@@ -566,7 +378,7 @@ function MethodsPanel() {
               setAttempt((n) => n + 1)
             },
           }}
-          secondary={{ label: "回提問", onClick: () => navigate("/manager?view=asks") }}
+          secondary={{ label: "回團隊行程", onClick: () => navigate("/manager") }}
         />
       )}
       {state.status === "ready" && state.cards.length === 0 && (

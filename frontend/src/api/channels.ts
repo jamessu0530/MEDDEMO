@@ -2,7 +2,7 @@ import type { Attachment } from "@/api/attachments"
 import { jsonBody, request, upload } from "@/api/client"
 import type { PresenceStatus } from "@/api/presence"
 
-// national 全國；region 整區；team 一位主管帶的小組；place 地點（縣市，台北市到行政區）；customer 一家客戶的討論串；
+// national 全國；region 整區；team 一位主管帶的小組；place 地點（共用行政區或示範組織地點）；customer 一家客戶的討論串；
 // topic 文字頻道：區的主管與 IT 在整區頻道、IT 在全國頻道底下開的
 export type ChannelKind =
   "national" | "region" | "team" | "place" | "customer" | "topic"
@@ -11,7 +11,7 @@ export type Channel = {
   id: number
   kind: ChannelKind
   name: string
-  // 所在的區（TW.N），頻道列表依這個分組；全國與封存的頻道是 null
+  // 所在的組織區（TW.N）；全國、全台共用地點與封存的小組是 null
   region_id: string | null
   // 上層頻道；文字頻道是它所在的整區或全國頻道
   parent_id: number | null

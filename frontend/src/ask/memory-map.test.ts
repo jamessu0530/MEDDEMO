@@ -18,7 +18,6 @@ function answered(
     evidence,
     error_message: null,
     trace: [],
-    escalation_id: null,
     customers: [],
     attachment: null,
   }
@@ -246,7 +245,7 @@ describe("query memory map", () => {
     ).toEqual({ jumpTo: 45 })
   })
 
-  it("只保留最近24題的地圖資料，舊題不留下孤立節點或關係", () => {
+  it("每頁顯示24題，較早的記憶能翻頁回看且不留下孤立連線", () => {
     const conversation = createConversation()
     for (let i = 0; i < 30; i++) {
       const id = conversation.addToolRun("knowledge", `問題${i}`)
@@ -262,5 +261,10 @@ describe("query memory map", () => {
     ).toBe(true)
     const run = conversation.getSnapshot().at(-1) as ToolRun
     expect(graph.latestId).toBe(`question:${run.id}`)
+    const older = buildMemoryMap(conversation.getSnapshot(), 24)
+    expect(older.total).toBe(30)
+    expect(older.shown).toBe(6)
+    expect(older.nodes.some((node) => node.id === "question:1")).toBe(true)
+    expect(older.nodes.some((node) => node.id === "question:30")).toBe(false)
   })
 })

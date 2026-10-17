@@ -446,7 +446,7 @@ function DeleteAccount() {
           <DialogHeader>
             <DialogTitle>刪除帳號？</DialogTitle>
             <DialogDescription>
-              會刪掉這個帳號、綁定的第三方登入、你問過的問題與轉給主管的提問，以及你對方法卡按的「有幫上／沒幫上」，刪了不能復原。你開的報價草稿是客戶的交易紀錄，會留著，但不再記是誰開的。
+              會刪掉這個帳號、綁定的第三方登入、你問過的問題與回覆，以及你對方法卡按的「有幫上／沒幫上」，刪了不能復原。你開的報價草稿是客戶的交易紀錄，會留著，但不再記是誰開的。
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -510,12 +510,7 @@ export function SettingsPage() {
     <div className="flex min-h-svh flex-col">
       <PageHeader title="帳號設定" backTo={homePath(user.role)} />
       <main className="flex flex-1 flex-col gap-5 px-4 pt-4 pb-10">
-        {user.demo?.role && (
-          <p className="rounded-2xl border-2 bg-card p-4 text-sm leading-relaxed shadow-lip">
-            目前示範{ROLE_LABEL[user.role]}「{user.name}」。帳號資料與登入方式會套用至原登入帳號「{account.name}」；其他設定套用至目前的示範身分。
-          </p>
-        )}
-        {user.role !== "sales" && <PersonalMemory />}
+        {user.role !== "sales" && <><PersonalMemory /><Link to="/conversations" className="rounded-xl border bg-card px-4 py-3 text-sm font-medium hover:bg-muted">對話紀錄</Link></>}
         <section className="rounded-2xl border-2 bg-card p-4 shadow-lip">
           <NameEditor key={account.id} user={account} />
           <p className="mt-1 text-sm text-muted-foreground">

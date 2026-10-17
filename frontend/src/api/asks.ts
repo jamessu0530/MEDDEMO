@@ -74,7 +74,6 @@ export type Ask = {
   evidence: AskEvidence | null
   error_message: string | null
   trace: TraceItem[]
-  escalation_id: number | null
   // 數字查詢的答案或查詢結果裡提到、而且是登入者負責的客戶，可以一鍵排進今日路線；知識查詢或沒有就是 []
   customers: { id: string; name: string }[]
   // 提問附的照片或 PDF
@@ -137,20 +136,17 @@ export function routeAsk(
 }
 
 /** 提問。附了檔案（拍產品盒、仿單、競品海報）就用 multipart 上傳 */
-export function createAsk(kind: AskKind, question: string, file?: File) {
+export function createAsk(kind: AskKind, question: string, file?: File, ghost = false) {
   if (!file)
-    return request<Ask>("/api/asks", jsonBody("POST", { kind, question }))
+    return request<Ask>("/api/asks", jsonBody("POST", { kind, question, ...(ghost ? { ghost: true } : {}) }))
   const form = new FormData()
   form.append("kind", kind)
   form.append("question", question)
+  if (ghost) form.append("ghost", "true")
   form.append("file", file, file.name)
   return upload<Ask>("/api/asks", form)
 }
 
 export function getAsk(id: string, signal?: AbortSignal) {
   return request<Ask>(`/api/asks/${id}`, { signal })
-}
-
-export function escalateAsk(id: string) {
-  return request<Ask>(`/api/asks/${id}/escalate`, { method: "POST" })
 }

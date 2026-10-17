@@ -9,6 +9,7 @@ import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/lib/auth"
+import { celebrateCompletion } from "@/lib/completion-celebration"
 import { TIER_NAME } from "@/lib/medals"
 import { cn } from "@/lib/utils"
 
@@ -77,6 +78,7 @@ function LessonContent({ kind, tier }: { kind: string; tier: string }) {
     try {
       const data = await completeProductLesson(kind, tier, answers)
       setLesson(data.lesson); setResult({ unlocked: data.unlocked })
+      celebrateCompletion(data.unlocked.length ? "品類過關，獎牌解鎖！" : "品類複習完成！")
     } catch (e) { setFeedback(e instanceof ApiError ? e.message : "進度還沒存成功，請保留答案再試一次。") }
     finally { submitting.current = false; setSaving(false) }
   }

@@ -1,5 +1,5 @@
 import { useAskPageContext } from "@/ask/use-page-context"
-import { useStartUiDemo } from "@/lib/use-start-ui-demo"
+import { useReportAssistant } from "@/ask/use-report-assistant"
 import { ReportPageTooltip } from "@/components/reports/report-page-tooltip"
 import {
   useEffect,
@@ -9,39 +9,32 @@ import {
   useState,
   type ComponentProps,
   type CSSProperties,
-  type FormEvent,
   type ReactNode,
   type SyntheticEvent,
 } from "react"
 import {
-  ArrowUp,
-  Check,
   Download,
   Ellipsis,
-  Eye,
   FileChartColumn,
-  LoaderCircle,
-  Pencil,
   Plus,
   RotateCcw,
   RotateCw,
-  Save,
   Settings2,
   SlidersHorizontal,
   Trash2,
   X,
 } from "@/components/icons"
-import { useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
+import { useReportCardDrag } from "@/components/reports/use-report-card-drag"
+import { createReportSaveQueue } from "@/lib/report-autosave"
+import { ApiError } from "@/api/client"
 
 import {
-  adjustReport,
   getReportData,
   getReportFilterOptions,
   getReports,
   saveReportConfig,
   saveReportDocument,
-  type ReportAdjustment,
   type ReportWorkspace,
 } from "@/api/reports"
 import {
@@ -51,7 +44,6 @@ import {
 import { Notice } from "@/components/notice"
 import { BottomNav } from "@/components/bottom-nav"
 
-import { Mascot } from "@/components/mascot"
 import { PageHeader } from "@/components/page-header"
 import { ReportChart } from "@/components/reports/report-chart"
 import { useReportWidgetSize } from "@/components/reports/use-report-widget-size"
@@ -142,7 +134,6 @@ import {
   setReportSlicer,
 } from "@/lib/report-filters"
 import {
-  CUSTOMER_TYPES,
   DIMENSIONS,
   METRICS,
   PERIODS,
@@ -156,7 +147,6 @@ import {
   selectionPointKey,
   toggleReportSelection,
   type CardData,
-  type OwnerOption,
   type ReportCard,
   type ReportConfig,
   type ReportData,
@@ -175,7 +165,6 @@ import { useIsDesktop } from "@/lib/use-media-query"
 import { useReportWorkspaceLayout } from "@/lib/report-workspace-layout"
 import { cn } from "@/lib/utils"
 import { uiDemo } from "@/lib/ui-demo-browser"
-import { requestedUiDemo } from "@/lib/ui-demo"
 
 type Boot =
   | { status: "ready"; workspace: ReportWorkspace }
@@ -332,7 +321,9 @@ function ReportDocument({
   )
   const [retry, setRetry] = useState(0)
   const readonly = library.readonly === true
-  const [editing, setEditing] = useState(false)
+  const [inspecting, setInspecting] = useState(false)
+  const editing = !readonly && inspecting
+  const setEditing = setInspecting
   const [toolsOpen, setToolsOpen] = useState(false)
   const [lastLoadedAt, setLastLoadedAt] = useState<string | null>(null)
   const [lastAsOf, setLastAsOf] = useState(workspace.as_of)
@@ -358,7 +349,6 @@ function ReportDocument({
     ref: workspaceRef,
     canvasRef,
     fitsPanels,
-    dockBounds,
   } = useReportWorkspaceLayout(studioPanels.data)
   const dockedPanels = isDesktop && fitsPanels
   const [datasetEpoch, setDatasetEpoch] = useState(0)
@@ -425,6 +415,9 @@ function ReportDocument({
     return uiDemo.subscribe(prepare)
   }, [])
   const [saving, setSaving] = useState(false)
+  const [autosaveError, setAutosaveError] = useState("")
+  const [autosavePaused, setAutosavePaused] = useState(false)
+  const [saveAttempt, setSaveAttempt] = useState(0)
   const [notice, setNotice] = useState<{ text: string; error: boolean } | null>(
     null
   )
@@ -669,6 +662,13 @@ function ReportDocument({
     setDraft((current) => editReportDraft(current, normalized))
     setNotice(null)
   }
+  useReportAssistant(
+    editing && !readonly,
+    config,
+    workspace.ai_available,
+    change
+  )
+
   function undo() {
     setSelectionGroups([])
     setDrills({})
@@ -732,41 +732,61 @@ function ReportDocument({
       })
     }
   }
-  async function save() {
-    if (readonly) return false
-    const submitted = config
-    // 已按下的儲存要完成；切去其他頁暫停工作區時不取消這次寫入。
-    setSaving(true)
-    setNotice(null)
-    try {
-      const nextLibrary = workspace.active_report_id
-        ? await saveReportDocument(
-            library.active_report_id,
+  const [saveQueue] = useState(() =>
+    createReportSaveQueue(
+      { config: workspace.config, revision: library.revision },
+      async (submitted, revision) => {
+        if (workspace.active_report_id)
+          return saveReportDocument(
+            workspace.active_report_id,
             submitted,
-            library.revision
+            revision
           )
-        : null
-      const stored = nextLibrary?.config ?? (await saveReportConfig(submitted))
-      if (nextLibrary) setLibrary(nextLibrary)
-      setDraft((current) =>
-        JSON.stringify(current.config) === JSON.stringify(submitted)
-          ? { ...current, config: stored }
-          : current
-      )
-      setSavedKey(JSON.stringify(stored))
-      setNotice({ text: "報表已儲存到你的帳號。", error: false })
+        return {
+          ...library,
+          config: await saveReportConfig(submitted),
+          revision: revision + 1,
+        }
+      },
+      (stored, submitted) => {
+        setLibrary(stored)
+        setDraft((current) =>
+          JSON.stringify(current.config) === JSON.stringify(submitted)
+            ? { ...current, config: stored.config }
+            : current
+        )
+        setSavedKey(JSON.stringify(stored.config))
+      }
+    )
+  )
+  useEffect(() => {
+    saveQueue.update(config)
+  }, [saveQueue, config])
+  async function save() {
+    if (readonly || autosavePaused) return false
+    if (!dirty && !saving) return true
+    setSaving(true)
+    setAutosaveError("")
+    try {
+      await saveQueue.flush()
       return true
     } catch (err) {
-      setNotice({
-        text: err instanceof Error ? err.message : "沒有儲存成功，請再試一次",
-        error: true,
-      })
+      const permanent =
+        err instanceof ApiError && err.status >= 400 && err.status < 500
+      if (permanent) setAutosavePaused(true)
+      setAutosaveError(
+        err instanceof Error
+          ? err.message
+          : "自動儲存暫時失敗，連線恢復後會重試。"
+      )
       return false
     } finally {
       setSaving(false)
     }
   }
   function selectCard(id: string) {
+    if (readonly) return
+    setEditing(true)
     setSelectedId(id)
     if (!dockedPanels) setMobileInspector(true)
   }
@@ -1216,7 +1236,7 @@ function ReportDocument({
     dirty,
     saving,
     onSave: save,
-    onRestore: (restored, restoredPage, revision, conflict) => {
+    onRestore: (restored, restoredPage, _revision, conflict) => {
       change(restored)
       setPageId(
         reportPages(restored).some((page) => page.id === restoredPage)
@@ -1224,71 +1244,82 @@ function ReportDocument({
           : reportPages(restored)[0].id
       )
       setSelectedId(null)
-      setLibrary((current) => ({ ...current, revision }))
+      if (conflict) {
+        setAutosavePaused(true)
+        setAutosaveError("帳號報表已有較新版本，請比較版本或另存新報表。")
+      }
       setNotice({
         text: conflict
           ? "已復原草稿；帳號版本已有變更，請另存新報表或先比較版本。"
-          : "已復原本機草稿，尚未儲存到帳號。",
+          : "已復原本機草稿，將自動儲存到帳號。",
         error: false,
       })
     },
   })
 
+  const latestSave = useRef(save)
+  useEffect(() => {
+    latestSave.current = save
+  })
+  useEffect(() => {
+    if (
+      !dirty ||
+      readonly ||
+      saving ||
+      autosavePaused ||
+      draftProtection.recovering
+    )
+      return
+    const timer = window.setTimeout(
+      () => void latestSave.current(),
+      autosaveError ? 5000 : 700
+    )
+    return () => window.clearTimeout(timer)
+  }, [
+    config,
+    dirty,
+    readonly,
+    saving,
+    autosavePaused,
+    autosaveError,
+    saveAttempt,
+    draftProtection.recovering,
+  ])
+  useEffect(() => {
+    const retrySave = () => setSaveAttempt((value) => value + 1)
+    const hide = () => {
+      if (document.visibilityState === "hidden") void latestSave.current()
+    }
+    window.addEventListener("online", retrySave)
+    document.addEventListener("visibilitychange", hide)
+    return () => {
+      window.removeEventListener("online", retrySave)
+      document.removeEventListener("visibilitychange", hide)
+      void latestSave.current()
+    }
+  }, [])
+
   return (
-    <div
-      ref={workspaceRef}
-      className={cn(
-        "report-workspace min-h-svh min-w-0",
-        editing && "report-workspace-editing"
-      )}
-    >
+    <div ref={workspaceRef} className="report-workspace min-h-svh min-w-0">
       <PageHeader
         title={isDesktop ? config.name : "報表"}
         backTo={primaryNavigation ? undefined : backTo}
         trailing={
           <div className="report-header-actions">
             {!readonly && (
-              <Button
-                variant="ghost"
-                className="report-edit-button"
-                aria-pressed={editing}
-                data-ui-demo={
-                  editing ? "report-finish-editing" : "report-start-editing"
-                }
-                onClick={() => {
-                  setEditing(!editing)
-                  setMobileInspector(false)
-                  const demo = uiDemo.getSnapshot()
-                  if (
-                    !editing &&
-                    !(demo.status === "running" && demo.kind === "report-tour")
-                  ) {
-                    setDrills({})
-                    setSelectionGroups([])
-                  }
-                }}
+              <span
+                className="report-autosave-status"
+                role="status"
+                aria-live="polite"
               >
-                {editing ? (
-                  <Check className="size-4" />
-                ) : (
-                  <Pencil className="size-4" />
-                )}
-                {editing ? "完成編輯" : "編輯報表"}
-              </Button>
-            )}
-            {dirty && (
-              <Button
-                className="report-save-button"
-                onClick={() => void save()}
-                disabled={saving}
-              >
-                {saving ? (
-                  <LoaderCircle className="size-4 animate-spin" />
-                ) : (
-                  <Save className="size-4" />
-                )}
-                儲存
-              </Button>
+                {autosaveError
+                  ? "尚未同步"
+                  : saving
+                    ? "自動儲存中…"
+                    : dirty
+                      ? "等待自動儲存…"
+                      : "已自動儲存"}
+              </span>
             )}
             <Button
               variant="ghost"
@@ -1385,9 +1416,7 @@ function ReportDocument({
             aria-haspopup="dialog"
           >
             <SlidersHorizontal className="size-4 shrink-0" />
-            <span>
-              {filtered ? "已套用篩選" : (ready?.scope_label ?? "篩選")}
-            </span>
+            <span>{filtered ? "已套用篩選" : "篩選"}</span>
             {filtered && (
               <span className="size-1.5 shrink-0 rounded-full bg-primary" />
             )}
@@ -1439,7 +1468,7 @@ function ReportDocument({
           />
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0 flex-1">
-              {editing ? (
+              {!readonly ? (
                 <input
                   aria-label="報表名稱"
                   value={config.name}
@@ -1462,50 +1491,10 @@ function ReportDocument({
                 </h2>
               )}
             </div>
-            <div
-              className="flex shrink-0 items-center gap-1 rounded-lg border bg-muted/50 p-1"
-              aria-label="報表模式"
-            >
-              <button
-                type="button"
-                className={cn(
-                  "flex min-h-9 items-center gap-1.5 rounded-md px-3 text-xs",
-                  !editing && "bg-card font-medium shadow-sm"
-                )}
-                aria-pressed={!editing}
-                onClick={() => {
-                  setToolsOpen(false)
-                  setEditing(false)
-                  setMobileInspector(false)
-                }}
-              >
-                <Eye className="size-3.5" />
-                檢視
-              </button>
-              <button
-                type="button"
-                className={cn(
-                  "flex min-h-9 items-center gap-1.5 rounded-md px-3 text-xs",
-                  editing && "bg-card font-medium shadow-sm"
-                )}
-                aria-pressed={editing}
-                disabled={readonly}
-                onClick={() => {
-                  setToolsOpen(false)
-                  setEditing(true)
-                  setDrills({})
-                  setSelectionGroups([])
-                  if (!dockedPanels) setMobileInspector(true)
-                }}
-              >
-                <Pencil className="size-3.5" />
-                編輯
-              </button>
-            </div>
           </div>
-          {editing && (
+          {!readonly && (
             <ReportRibbon
-              editing={editing}
+              editing={!readonly}
               onInsert={addObject}
               panels={studioPanels}
               onPanel={(key) =>
@@ -1515,6 +1504,7 @@ function ReportDocument({
                 }))
               }
               onAnalytics={() => {
+                setEditing(true)
                 setToolsOpen(false)
                 setMobileInspector(true)
                 setStudioPanels((current) => ({
@@ -1551,7 +1541,7 @@ function ReportDocument({
               <ReportDatasetLauncher
                 onClose={() => setDatasetEpoch((value) => value + 1)}
               />
-              {editing && (
+              {!readonly && (
                 <Button
                   variant="outline"
                   className="h-10 rounded-md border shadow-none"
@@ -1581,7 +1571,7 @@ function ReportDocument({
                   <span className="size-1.5 rounded-full bg-primary" />
                 )}
               </Button>
-              {editing && (
+              {!readonly && (
                 <NativeSelect
                   aria-label="套用報表範本"
                   className="h-10 max-w-36 rounded-md border text-base shadow-none"
@@ -1621,11 +1611,15 @@ function ReportDocument({
                 className="ml-auto text-xs text-muted-foreground"
                 role="status"
               >
-                {readonly ? "唯讀共享設定" : dirty ? "● 尚未儲存" : "已儲存"}
+                {saving
+                  ? "自動儲存中…"
+                  : dirty
+                    ? "等待自動儲存…"
+                    : "已自動儲存"}
               </span>
             </ReportRibbon>
           )}
-          {!editing && (
+          {readonly && (
             <div className="report-reading-tools">
               <Button
                 data-ui-demo="report-export"
@@ -1757,6 +1751,11 @@ function ReportDocument({
             )}
           </div>
         </ReportSheet>
+        {autosaveError && (
+          <Notice
+            text={`${autosaveError} ${autosavePaused ? "目前變更已保留在本機草稿。" : "會自動重試，草稿仍保留在此裝置。"}`}
+          />
+        )}
         {notice && (
           <p
             role={notice.error ? "alert" : "status"}
@@ -2017,6 +2016,7 @@ function ReportDocument({
               config={layoutConfig}
               pageId={currentPage.id}
               editing={editing}
+              readonly={readonly}
               isDesktop={isDesktop}
               selectedId={selectedId}
               selectionIds={activeSelection}
@@ -2056,7 +2056,7 @@ function ReportDocument({
                     layout={layout}
                     filterOptions={filterOptions}
                     data={cardData(card.id)}
-                    editing={editing}
+                    editing={editing && layout.selected}
                     selected={layout.selected}
                     loading={cardLoading(card.id)}
                     selections={
@@ -2183,7 +2183,10 @@ function ReportDocument({
       </main>
       <Dialog
         open={editing && mobileInspector && !dockedPanels}
-        onOpenChange={setMobileInspector}
+        onOpenChange={(open) => {
+          setMobileInspector(open)
+          if (!open) setEditing(false)
+        }}
       >
         <DialogContent
           showCloseButton={false}
@@ -2210,7 +2213,10 @@ function ReportDocument({
               className="size-11"
               aria-label="關閉視覺效果設定"
               data-ui-demo="report-inspector-close"
-              onClick={() => setMobileInspector(false)}
+              onClick={() => {
+                setMobileInspector(false)
+                setEditing(false)
+              }}
             >
               <X className="size-4" />
             </Button>
@@ -2345,16 +2351,6 @@ function ReportDocument({
           onClose={() => setExportView(null)}
         />
       )}
-      {!readonly && editing && (
-        <AiReportDock
-          bottomNavigation={primaryNavigation && !isDesktop}
-          bounds={dockBounds}
-          config={config}
-          owners={workspace.owners}
-          available={workspace.ai_available}
-          onApply={change}
-        />
-      )}
     </div>
   )
 }
@@ -2438,10 +2434,8 @@ function CanvasVisual({
     transform,
     transition,
     isDragging,
-  } = useSortable({
-    id: card.id,
-    disabled: !editing || card.locked,
-  })
+    surfaceListeners,
+  } = useReportCardDrag(card.id, !layout.draggable)
   const { widgetRef, widgetSize } = useReportWidgetSize(layout.fixedHeight)
   const setVisualRef = useCallback(
     (element: HTMLElement | null) => {
@@ -2457,6 +2451,8 @@ function CanvasVisual({
   return (
     <article
       ref={setVisualRef}
+      {...surfaceListeners}
+      data-dragging={isDragging || undefined}
       style={
         {
           transform: CSS.Transform.toString(transform),
@@ -2470,13 +2466,13 @@ function CanvasVisual({
         } as CSSProperties
       }
       className={cn(
-        "report-visual min-w-0 self-start overflow-hidden bg-card",
+        "report-visual report-drag-surface min-w-0 self-start overflow-hidden bg-card",
         card.visual === "kpi" && "report-kpi",
         layout.fixedHeight && "report-fixed-visual flex flex-col",
         editing && selected
           ? "border-primary ring-1 ring-primary"
           : "border-border",
-        isDragging && "z-20 opacity-80 shadow-xl"
+        isDragging && "z-30"
       )}
       aria-label={card.title}
       data-report-metric={card.metric}
@@ -2485,24 +2481,20 @@ function CanvasVisual({
     >
       <div className="report-visual-heading flex items-start gap-1.5">
         <div className="min-w-0 flex-1">
-          {editing ? (
-            <button
-              type="button"
+          <h3 className="report-visual-title leading-snug wrap-break-word">
+            <span
               ref={setActivatorNodeRef}
-              {...attributes}
-              {...listeners}
-              onClick={onSelect}
-              aria-pressed={selected}
-              data-ui-demo="report-visual-edit"
-              className="min-h-9 w-full cursor-grab touch-none text-left text-sm leading-snug font-semibold wrap-break-word active:cursor-grabbing"
+              {...(layout.draggable ? attributes : {})}
+              onKeyDown={layout.draggable ? listeners?.onKeyDown : undefined}
+              aria-label={
+                layout.draggable
+                  ? `移動報表：${card.title}，長按拖移或按空白鍵`
+                  : undefined
+              }
             >
               {card.title}
-            </button>
-          ) : (
-            <h3 className="report-visual-title leading-snug wrap-break-word">
-              {card.title}
-            </h3>
-          )}
+            </span>
+          </h3>
           {card.visual === "kpi" ? (
             editing &&
             card.title !== METRICS[card.metric].label && (
@@ -2517,6 +2509,17 @@ function CanvasVisual({
             </p>
           ) : null}
         </div>
+        {layout.draggable && (
+          <button
+            type="button"
+            aria-label={`調整圖表：${card.title}`}
+            data-ui-demo="report-visual-edit"
+            onClick={onSelect}
+            className="flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted"
+          >
+            <Settings2 className="size-3.5" />
+          </button>
+        )}
       </div>
       <div
         className={
@@ -2615,300 +2618,5 @@ function CanvasVisual({
         )}
       </div>
     </article>
-  )
-}
-
-/** visualViewport 在手機鍵盤打開時縮小，輸入膠囊跟著移到鍵盤上方。 */
-function useKeyboardInset() {
-  const [inset, setInset] = useState(0)
-  useEffect(() => {
-    const viewport = window.visualViewport
-    if (!viewport) return
-    const update = () =>
-      setInset(
-        Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)
-      )
-    viewport.addEventListener("resize", update)
-    viewport.addEventListener("scroll", update)
-    update()
-    return () => {
-      viewport.removeEventListener("resize", update)
-      viewport.removeEventListener("scroll", update)
-    }
-  }, [])
-  return inset
-}
-
-function AiReportDock({
-  bounds,
-  bottomNavigation,
-  config,
-  owners,
-  available,
-  onApply,
-}: {
-  bounds?: { left: number; width: number }
-  bottomNavigation: boolean
-  config: ReportConfig
-  owners: OwnerOption[]
-  available: boolean
-  onApply: (config: ReportConfig) => void
-}) {
-  const [question, setQuestion] = useState("")
-  const startDemo = useStartUiDemo()
-  const [expanded, setExpanded] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const [result, setResult] = useState<{
-    adjustment: ReportAdjustment
-    base: string
-  } | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const latestConfig = useRef(config)
-  const controllerRef = useRef<AbortController | null>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
-  const keyboardInset = useKeyboardInset()
-  const configKey = JSON.stringify(config)
-  const activeResult = result?.base === configKey ? result.adjustment : null
-  const mascotState = busy ? "think" : activeResult ? "talk" : "idle"
-
-  useEffect(() => {
-    latestConfig.current = config
-  }, [config])
-  useEffect(() => () => controllerRef.current?.abort(), [])
-
-  async function ask(text: string) {
-    const trimmed = text.trim()
-    if (!trimmed || busy) return
-    if (requestedUiDemo(trimmed, "/reports") === "report-tour") {
-      setExpanded(false)
-      setResult(null)
-      setError(null)
-      setQuestion("")
-      inputRef.current?.blur()
-      startDemo("report-tour")
-      return
-    }
-    if (!available) return
-    const baseConfig = latestConfig.current
-    const proposedConfig = activeResult?.config ?? baseConfig
-    const base = JSON.stringify(baseConfig)
-    const controller = new AbortController()
-    controllerRef.current = controller
-    setQuestion(trimmed)
-    setBusy(true)
-    setExpanded(false)
-    setError(null)
-    setResult(null)
-    inputRef.current?.blur()
-    try {
-      const adjustment = await adjustReport(
-        trimmed,
-        proposedConfig,
-        controller.signal
-      )
-      if (controller.signal.aborted) return
-      if (JSON.stringify(latestConfig.current) !== base) {
-        setError("報表在 AI 調整時改過了，請依目前的報表再送一次。")
-        return
-      }
-      setResult({ adjustment, base })
-      setQuestion("")
-    } catch (err) {
-      if (!controller.signal.aborted)
-        setError(
-          err instanceof Error ? err.message : "AI 這次沒有完成調整，請再試一次"
-        )
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    void ask(question)
-  }
-
-  function apply() {
-    if (!activeResult?.config) return
-    onApply(activeResult.config)
-    setResult(null)
-    setQuestion("")
-  }
-
-  return (
-    <div
-      data-report-ai-dock
-      className="pointer-events-none fixed inset-x-0 z-30 mx-auto flex max-w-md flex-col pb-[calc(0.75rem+env(safe-area-inset-bottom))] lg:max-w-3xl"
-      style={{
-        bottom:
-          keyboardInset ||
-          `var(--page-assistant-dock-space, ${bottomNavigation ? "4rem" : "0px"})`,
-        maxHeight: keyboardInset
-          ? "calc(var(--app-visual-height, 100dvh) - 1rem)"
-          : "max(0px, calc(var(--app-visual-height, 100dvh) - var(--page-assistant-dock-space, 0px) - 0.5rem))",
-        ...(bounds && {
-          left: bounds.left,
-          right: "auto",
-          width: bounds.width,
-          maxWidth: "none",
-        }),
-      }}
-    >
-      <div className="pointer-events-auto mx-auto flex min-h-0 w-full max-w-3xl flex-col">
-        {(expanded || activeResult || error) && (
-          <div className="mb-3 max-h-[min(55dvh,28rem)] min-h-0 overflow-y-auto rounded-3xl border-2 bg-card p-4 shadow-xl">
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <p className="flex items-center gap-2 text-sm font-semibold">
-                <Mascot state={mascotState} size={32} />
-                {activeResult?.kind === "proposal"
-                  ? "AI 建議的調整"
-                  : "用一句話調整報表"}
-              </p>
-              <button
-                type="button"
-                aria-label="收起 AI 調整"
-                className="-mr-2 flex size-11 items-center justify-center rounded-full text-muted-foreground hover:bg-muted"
-                onClick={() => {
-                  setExpanded(false)
-                  setResult(null)
-                  setError(null)
-                }}
-              >
-                <X className="size-4" />
-              </button>
-            </div>
-            {error && (
-              <p role="alert" className="mb-2 text-sm text-destructive">
-                {error}
-              </p>
-            )}
-            {activeResult ? (
-              <div aria-live="polite">
-                <p className="text-sm leading-relaxed">
-                  {activeResult.message}
-                </p>
-                {activeResult.config && (
-                  <>
-                    <p className="mt-3 text-xs text-muted-foreground">
-                      {PERIODS[activeResult.config.period]} ·{" "}
-                      {activeResult.config.owner_id
-                        ? (owners.find(
-                            (owner) =>
-                              owner.id === activeResult.config?.owner_id
-                          )?.name ?? "已選業務")
-                        : "全部可見業務"}{" "}
-                      ·{" "}
-                      {activeResult.config.customer_type
-                        ? CUSTOMER_TYPES[activeResult.config.customer_type]
-                        : "全部客戶類型"}
-                    </p>
-                    {activeResult.config.cards.length === 0 ? (
-                      <p className="my-3 rounded-2xl bg-muted/60 p-3 text-sm">
-                        清空全部 {config.cards.length} 張圖表，保留空白畫布。
-                      </p>
-                    ) : (
-                      <ol className="my-3 space-y-1.5 rounded-2xl bg-muted/60 p-3">
-                        {activeResult.config.cards.map((card, index) => (
-                          <li
-                            key={card.id}
-                            className="flex items-start gap-2 text-xs"
-                          >
-                            <span className="text-muted-foreground">
-                              {index + 1}.
-                            </span>
-                            <span className="min-w-0 flex-1 wrap-break-word">
-                              {card.title}
-                            </span>
-                            <span className="shrink-0 text-muted-foreground">
-                              {VISUALS[card.visual]}
-                            </span>
-                          </li>
-                        ))}
-                      </ol>
-                    )}
-                    <div className="flex gap-2">
-                      <Button
-                        className="h-11 flex-1 rounded-full"
-                        onClick={apply}
-                      >
-                        <Check className="size-4" />
-                        套用調整
-                      </Button>
-                      <Button
-                        variant="outline"
-                        className="h-11 rounded-full"
-                        onClick={() => setResult(null)}
-                      >
-                        保留原版
-                      </Button>
-                    </div>
-                  </>
-                )}
-              </div>
-            ) : (
-              expanded && (
-                <>
-                  <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
-                    {available
-                      ? "告訴 AI 你想看哪些數字、圖表與順序，它會先給你預覽。"
-                      : "AI 尚未設定。你仍可用「自訂」選擇卡片、圖表與順序。"}
-                  </p>
-                </>
-              )
-            )}
-          </div>
-        )}
-        <form
-          data-assistant-obstacle
-          onSubmit={submit}
-          className="flex min-h-16 shrink-0 items-center gap-1 rounded-full border-2 border-primary/20 bg-card px-2 shadow-xl shadow-primary/10 focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/30"
-        >
-          <button
-            type="button"
-            aria-label="開啟 AI 調整建議"
-            aria-expanded={expanded}
-            onClick={() => setExpanded((open) => !open)}
-            className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"
-          >
-            <Mascot state={mascotState} size={44} />
-          </button>
-          <input
-            ref={inputRef}
-            value={question}
-            maxLength={600}
-            onChange={(event) => setQuestion(event.target.value)}
-            disabled={busy}
-            aria-label="用自然語言調整報表"
-            placeholder={busy ? "AI 正在調整…" : "輸入報表調整需求…"}
-            className="h-11 min-w-0 flex-1 bg-transparent px-2 text-base outline-none placeholder:text-muted-foreground/60 disabled:opacity-70"
-          />
-          <button
-            type="submit"
-            aria-label="送出報表調整需求"
-            disabled={
-              busy ||
-              (!available &&
-                requestedUiDemo(question, "/reports") !== "report-tour") ||
-              !question.trim()
-            }
-            className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground disabled:bg-muted disabled:text-muted-foreground"
-          >
-            {busy ? (
-              <LoaderCircle className="size-5 animate-spin" />
-            ) : (
-              <ArrowUp className="size-5" />
-            )}
-          </button>
-        </form>
-        {busy && (
-          <p
-            role="status"
-            className="mt-1.5 text-center text-xs text-muted-foreground"
-          >
-            正在理解你的需求，原報表保留中…
-          </p>
-        )}
-      </div>
-    </div>
   )
 }

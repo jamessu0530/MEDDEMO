@@ -78,7 +78,7 @@ def test_first_sign_in_opens_a_sales_account_that_sees_the_demo_rep(client, engi
         headers = {"Authorization": f"Bearer {again.json()['token']}"}
         route = client.get("/api/itinerary/today", headers=headers).json()
         assert route["rep"]["id"] == "U01" and len(route["stops"]) == 5
-        assert client.post("/api/escalations/1/reply", json={"answer": "x"}, headers=headers).status_code == 403
+        assert client.get("/api/admin/org", headers=headers).status_code == 403
     finally:
         # 這個測試不像其他測試用 tx（回滾），client 真的 commit 到共用的測試資料庫：
         # 上面那個 GET 會把 U01 的 10/28 行程存下來，留著會卡到後面每一個測試，收尾要清掉

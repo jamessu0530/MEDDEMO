@@ -45,6 +45,12 @@ class MapStop:
     window_kind: str | None  # 約的時間：at 幾點到、before 幾點以前、after 幾點以後
     window_time: str | None  # HH:MM
     travel_mode: str  # 到這一站那一段實際用的交通方式
+    travel_minutes: int | None
+    travel_km: float | None
+    travel_estimated: bool
+    city: str
+    arrived_at: dt.datetime | None
+    visit_id: str | None
 
 
 @dataclass
@@ -339,6 +345,8 @@ def _map_stop(number: int, stop: itineraries.StopView, customer: Customer) -> Ma
         duration_minutes=stop.duration_minutes, late_minutes=stop.late_minutes, source=stop.source,
         signal=stop.signal, reason=stop.reason, window_kind=stop.window_kind, window_time=stop.window_time,
         travel_mode=stop.travel_mode,
+        travel_minutes=stop.travel_minutes, travel_km=stop.travel_km, travel_estimated=stop.travel_estimated,
+        city=stop.city, arrived_at=stop.arrived_at, visit_id=stop.visit_id,
     )
 
 

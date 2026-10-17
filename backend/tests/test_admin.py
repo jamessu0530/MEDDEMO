@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from app import realtime
 from app.config import settings
 from app.main import app
-from app.models import AppUser, AskRecord, Escalation, OaApprovalStep, OaExpenseForm, OrgChangeLog, SapEmployee
+from app.models import AppUser, OaApprovalStep, OaExpenseForm, OrgChangeLog, SapEmployee
 from app.services.org import paths_from_reports
 from app.services.scope import SELF, Scope
 from app.services.sql_executor import run_readonly
@@ -146,21 +146,6 @@ def test_changing_a_reps_manager_moves_their_pending_approval(tx, client, auth):
     assert decided["status"] == "approved"
     assert decided["steps"][-1]["name"] == "James"
 
-
-def test_escalations_reach_the_direct_manager_and_it(tx, client, auth):
-    # 自建帳號不在樹上：他轉出去的提問換算成代理的 U01，送到 U01 的主管
-    tx.add(AppUser(id="XTEST02", name="自建", role="sales", region="北區", acts_as_user_id="U01"))
-    tx.flush()
-    tx.add(AskRecord(id="test-admin-ask", user_id="XTEST02", kind="knowledge", question="測試：換貨", status="no_evidence"))
-    tx.flush()
-    tx.add(Escalation(ask_id="test-admin-ask", question="測試：換貨"))
-    tx.commit()
-
-    def escalations(user_id):
-        return {e["ask_id"] for e in client.get("/api/escalations", headers=auth(user_id)).json()}
-
-    assert "test-admin-ask" in escalations("M01") and "test-admin-ask" in escalations("A01")
-    assert "test-admin-ask" not in escalations("M02")
 
 def test_a_deactivated_account_cannot_sign_in(tx, client, auth):
     token = auth("U05")

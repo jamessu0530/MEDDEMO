@@ -51,6 +51,9 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "search_integration: requires a real Elasticsearch service and RUN_SEARCH_INTEGRATION=1",
+]
 # data/seed 不是套件，加進搜尋路徑，測試才 import 得到假資料產生器。
 # "." 是 backend 本身：macOS 上 .venv 會被標成隱藏，Python 就略過可編輯安裝的 .pth，直接加路徑最保險
 pythonpath = [".", "../data/seed"]

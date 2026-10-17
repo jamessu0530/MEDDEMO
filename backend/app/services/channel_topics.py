@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.models import TOPIC_NAME_MAX, AppUser, Channel, OrgUnit
 from app.services import channels
+from app.services.auth import role_data_user
 from app.services.channels import ChannelInfo
 
 
@@ -39,7 +40,7 @@ def can_manage(user: AppUser, info: ChannelInfo) -> bool:
         return False
     if user.role == "it":
         return True
-    return user.role == "manager" and user.deactivated_at is None and info.region_id is not None and user.unit_id == info.region_id
+    return user.role == "manager" and user.deactivated_at is None and info.region_id is not None and role_data_user(user).unit_id == info.region_id
 
 
 def clean_name(raw: str) -> str:

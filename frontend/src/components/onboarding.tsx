@@ -27,7 +27,7 @@ const STEPS: { icon: LucideIcon; mascot: MascotState; title: string; body: strin
     icon: MessageCircleQuestion,
     mascot: "think",
     title: "想到就問",
-    body: "每個頁面都能點「問熊熊滾」，直接打字或按麥克風用講的。熊熊滾會參考你正在看的客戶、商品或報表，也能問其他事情，答案附出處。查不到可以轉給主管，主管回覆了會提醒你。",
+    body: "每個頁面都能點「問熊熊滾」，直接打字或按麥克風用講的。熊熊滾會參考你正在看的客戶、商品或報表，也能問其他事情，答案附出處。查不到可以到頻道和主管討論，實用的做法能從訊息存成方法卡。",
   },
 ]
 

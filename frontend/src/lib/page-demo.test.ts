@@ -106,6 +106,8 @@ describe("全站操作求助與目的頁面", () => {
     "幫我操作這個頁面",
     "幫我點擊",
     "教我用日曆",
+    "教我用對話紀錄",
+    "歷史對話怎麼搜尋？",
     "這個畫面怎麼操作？",
     "帶我操作頻道",
   ])("辨識 %s", (question) => {
@@ -132,6 +134,12 @@ describe("全站操作求助與目的頁面", () => {
     expect(requestedPageDemoPath("操作給我看", "/orders/42")).toBe("/orders/42")
     expect(requestedPageDemoPath("教我用商品學習", "/customers")).toBe(
       "/learning/products"
+    )
+    expect(requestedPageDemoPath("教我用對話紀錄", "/orders")).toBe(
+      "/conversations"
+    )
+    expect(requestedPageDemoPath("歷史對話怎麼搜尋？", "/conversations?q=訂單")).toBe(
+      "/conversations?q=訂單"
     )
     expect(
       requestedPageDemoPath("操作給我看", "/auth/google/callback?code=secret")

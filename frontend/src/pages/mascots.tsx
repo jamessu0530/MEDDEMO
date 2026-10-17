@@ -14,6 +14,11 @@ export function MascotsPage() {
   const [error, setError] = useState("")
   const [attempt, setAttempt] = useState(0)
   useEffect(() => {
+    const refresh = () => setAttempt((value) => value + 1)
+    window.addEventListener("mascot-achievement-unlocked", refresh)
+    return () => window.removeEventListener("mascot-achievement-unlocked", refresh)
+  }, [])
+  useEffect(() => {
     const controller = new AbortController()
     getMascotCollection(controller.signal).then(setCollection).catch((err) => {
       if (!controller.signal.aborted) setError(err instanceof Error ? err.message : "收藏暫時載入不了")

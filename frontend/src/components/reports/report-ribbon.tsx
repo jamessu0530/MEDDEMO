@@ -20,7 +20,7 @@ export function ReportRibbon({
   const [tab, setTab] = useState("home")
   return (
     <div
-      className="mt-3 rounded-lg border bg-muted/10"
+      className="mt-3 min-w-0 rounded-lg border bg-muted/10"
       aria-label="報表功能工具列"
     >
       <div
@@ -72,7 +72,7 @@ export function ReportRibbon({
       <div
         role="toolbar"
         aria-label={`${tab}工具`}
-        className="flex min-h-14 items-center gap-2 overflow-x-auto p-2 [&>*]:shrink-0"
+        className="flex min-h-14 min-w-0 flex-wrap items-center gap-2 p-2 [&>*]:max-w-full"
       >
         {tab === "home" && children}
         {tab === "insert" && (

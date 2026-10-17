@@ -1,4 +1,4 @@
-"""示範角色與真正登入者分開：權限、組織範圍、還原與帳號管理。"""
+"""切換示範角色保留本人身分：權限、共用資料範圍、還原與帳號管理。"""
 
 import datetime as dt
 
@@ -45,8 +45,10 @@ def test_every_account_can_switch_without_changing_accounts(client, auth, tx, en
     original_profile = client.get("/api/auth/me", headers=authorization).json()
     claims = auth_service.token_claims(authorization["Authorization"].removeprefix("Bearer "))
     result = switch(client, authorization, role)
-    assert result["user"]["id"] == target_id
+    for field in ("id", "name", "email", "region", "has_password", "can_rename", "linked"):
+        assert result["user"][field] == original_profile[field]
     assert result["user"]["role"] == role
+    assert result["user"]["demo"]["role"] == role
     assert result["user"]["demo"]["account"] == {
         key: value for key, value in original_profile.items() if key != "demo"
     }
@@ -128,14 +130,16 @@ def test_registered_accounts_can_demo_and_account_edits_stay_personal(client, tx
     renamed = client.patch("/api/auth/me/profile", headers=authorization, json={"name": "新評審名稱"})
     assert renamed.status_code == 200
     assert renamed.json()["demo"]["account"]["name"] == "新評審名稱"
-    assert renamed.json()["id"] == target_id
-    assert renamed.json()["name"] == target_name
+    assert renamed.json()["id"] == original["user"]["id"]
+    assert renamed.json()["name"] == "新評審名稱"
+    assert renamed.json()["role"] == role
     monkeypatch.setattr(oauth, "verify_google", lambda credential: oauth.ExternalIdentity(
         "google", credential, "judge-linked@example.test", "評審 Google",
     ))
     linked = client.post("/api/auth/oauth/google/link", headers=authorization, json={"credential": "judge-google"})
     assert linked.status_code == 200
-    assert linked.json()["id"] == target_id
+    assert linked.json()["id"] == original["user"]["id"]
+    assert linked.json()["name"] == "新評審名稱"
     assert linked.json()["demo"]["account"]["linked"][0]["email"] == "judge-linked@example.test"
     unlinked = client.delete("/api/auth/oauth/google", headers=authorization)
     assert unlinked.status_code == 200
@@ -201,6 +205,8 @@ def test_google_account_can_demo_and_bindings_belong_to_real_account(client, tx,
     demo = switch(client, headers(original["token"]), "it")
     assert client.get("/api/admin/org", headers=headers(demo["token"])).status_code == 200
     assert demo["user"]["demo"]["account"]["id"] == original["user"]["id"]
+    assert demo["user"]["id"] == original["user"]["id"]
+    assert demo["user"]["name"] == "Google 展示評審"
     assert demo["user"]["demo"]["account"]["has_password"] is False
     assert demo["user"]["demo"]["account"]["linked"][0]["email"] == "demo-google-judge@example.test"
     # 不能因為目前展示 IT 就把另一個 Google 綁到 A01。
@@ -214,3 +220,33 @@ def test_google_account_can_demo_and_bindings_belong_to_real_account(client, tx,
     assert restored["user"]["id"] == original["user"]["id"]
     assert restored["user"]["has_password"] is False
     assert restored["user"]["linked"][0]["provider"] == "google"
+
+
+def test_james_keeps_his_name_on_personal_page_after_switching_roles(client, env):
+    env(DEMO_ROLE_SWITCH="true")
+    original = client.post("/api/auth/register", json={
+        "name": "james su", "email": "james-personal@example.test", "password": "james-demo-1234",
+    }).json()
+    authorization = headers(original["token"])
+    for role in ("manager", "it", "sales"):
+        result = switch(client, authorization, role)
+        assert result["user"]["id"] == original["user"]["id"]
+        assert result["user"]["name"] == "james su"
+        authorization = headers(result["token"])
+    personal = client.get("/api/me", headers=authorization)
+    assert personal.status_code == 200
+    assert personal.json()["name"] == "james su"
+    assert client.get("/api/itinerary/today", headers=authorization).status_code == 200
+
+
+def test_messages_in_demo_are_authored_by_the_logged_in_person(client, auth, env):
+    env(DEMO_ROLE_SWITCH="true")
+    original = client.get("/api/auth/me", headers=auth("U02")).json()
+    demo = switch(client, auth("U02"), "manager")
+    authorization = headers(demo["token"])
+    channels = client.get("/api/channels", headers=authorization).json()
+    national = next(channel for channel in channels if channel["name"] == "全國")
+    response = client.post(f"/api/channels/{national['id']}/messages", headers=authorization, json={"body": "以本人身分發言"})
+    assert response.status_code == 201, response.text
+    assert response.json()["author_id"] == original["id"]
+    assert response.json()["author_name"] == original["name"]

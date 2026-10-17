@@ -26,7 +26,7 @@ from app.models import (
 from app.services import channels
 from app.services.scope import SHARING_LEVEL, Scope
 
-# 標題在清單上只有一行；情況是清單上的兩三行；做法是點開才看的全文，上限跟主管回覆提問一樣
+# 標題在清單上只有一行；情況是清單上的兩三行；做法是點開才看的全文，上限 2000 字
 TITLE_LENGTH = (2, 40)
 SITUATION_MAX = 200
 APPROACH_MAX = 2000

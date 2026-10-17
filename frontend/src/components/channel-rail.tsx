@@ -3,6 +3,7 @@ import { Archive, MapPin } from "@/components/icons"
 
 import type { Channel } from "@/api/channels"
 import { UnreadDot } from "@/components/channels-link"
+import { ChannelPlacesDialog } from "@/components/channel-places-dialog"
 import { AVATAR_TONES } from "@/components/user-avatar"
 import { folderExpanded, railItems, shortName } from "@/lib/channel-rail"
 import { cn } from "@/lib/utils"
@@ -20,6 +21,7 @@ export function ChannelRail({
 }) {
   // 自己點過的資料夾是開是關；沒點過的，裡面有選中的頻道就展開（folderExpanded）
   const [choices, setChoices] = useState<ReadonlyMap<string, boolean>>(new Map())
+  const [placesOpen, setPlacesOpen] = useState(false)
   const toggle = (key: string, expanded: boolean) => setChoices((prev) => new Map(prev).set(key, !expanded))
 
   return (
@@ -37,6 +39,15 @@ export function ChannelRail({
             />
           )
         }
+        if (item.key === "shared-places") return (
+          <div key={item.key} className="relative">
+            <button type="button" aria-label="全台地點頻道，22 縣市、368 鄉鎮市區" aria-haspopup="dialog" data-ui-demo-open="dialog" onClick={() => setPlacesOpen(true)} className={cn("relative flex size-12 flex-col items-center justify-center gap-0.5 rounded-2xl border-2 bg-card text-muted-foreground shadow-lip", item.channels.some((channel) => channel.id === selectedId) && "ring-2 ring-primary ring-offset-2 ring-offset-background")}>
+              <MapPin className="size-4" /><span className="text-xs leading-none">全台</span>
+              {item.unread > 0 && <UnreadDot count={item.unread} className="absolute -right-1.5 -bottom-1.5" />}
+            </button>
+            {placesOpen && <ChannelPlacesDialog channels={item.channels} selectedId={selectedId} onSelect={onSelect} onClose={() => setPlacesOpen(false)} />}
+          </div>
+        )
         const expanded = folderExpanded(choices, item.key, item.channels.some((c) => c.id === selectedId))
         const Icon = item.icon === "places" ? MapPin : Archive
         return (

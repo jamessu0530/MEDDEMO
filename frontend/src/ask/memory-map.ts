@@ -92,9 +92,10 @@ export function runStatus(run: ToolRun) {
 }
 
 /** Queries share one conversation; evidence links only use the authorized response. */
-export function buildMemoryMap(entries: Entry[]): MemoryMap {
+export function buildMemoryMap(entries: Entry[], offset = 0): MemoryMap {
   const all = entries.filter((entry): entry is ToolRun => entry.kind === "tool")
-  const runs = all.slice(-24)
+  const end = Math.max(0, all.length - offset)
+  const runs = all.slice(Math.max(0, end - 24), end)
   const nodes = new Map<string, MapNode>()
   const links = new Map<string, MapLink>()
   function node(value: Omit<MapNode, "runIds">, runId?: number) {

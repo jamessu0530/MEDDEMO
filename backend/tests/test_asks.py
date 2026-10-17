@@ -277,7 +277,7 @@ def test_a_company_internal_question_is_not_answered_from_the_web(engine, docs, 
     with Session(engine) as session:
         result = answer_knowledge(session, llm, IRRELEVANT_QUESTION, Trace())
     assert (result.status, result.reason) == ("no_evidence", "internal")
-    assert result.answer == "內部文件裡找不到這個問題的依據。這是只有公司內部才有答案的問題（例如公司的規定、報價、人事、交易條件），網路上的資料代表不了公司，所以不上網查，可以轉給主管確認。"
+    assert result.answer == "內部文件裡找不到這個問題的依據。這是只有公司內部才有答案的問題（例如公司的規定、報價、人事、交易條件），網路上的資料代表不了公司，所以不上網查，可以到頻道請主管協助確認。"
     assert web_client.search_calls == []
 
 
@@ -320,21 +320,8 @@ def test_without_an_ai_model_the_question_fails_with_a_clear_reason(client, monk
     assert "AI 模型還沒設定" in ask["error_message"]
 
 
-def test_a_question_without_evidence_can_be_escalated_once(client, docs, monkeypatch):
-    llm = ScriptedLLM(grade=[grade("incorrect")], rewrite=[rewrite("年終獎金")], answer=["不該被用到的投機答案"])
-    monkeypatch.setattr(asks_service, "get_llm", lambda: llm)
-    ask_id = client.post("/api/asks", json={"kind": "knowledge", "question": "年終怎麼算？"}).json()["id"]
-    run_jobs()
-    assert client.get(f"/api/asks/{ask_id}").json()["status"] == "no_evidence"
-    assert client.post(f"/api/asks/{ask_id}/escalate").status_code == 200
-
-    first = client.post(f"/api/asks/{ask_id}/escalate").json()["escalation_id"]
-    again = client.post(f"/api/asks/{ask_id}/escalate").json()["escalation_id"]
-    assert first is not None and first == again
-
-
 def test_a_medication_question_is_not_offered_to_the_manager(client, docs, monkeypatch):
-    """用藥題請業務問醫師或藥師（James 2026-09-15）：evidence 帶 reason，轉主管回 409。"""
+    """用藥題請業務問醫師或藥師（James 2026-09-15）：evidence 帶 reason，回答保留醫療問題說明。"""
     use_web(monkeypatch, FakeWebClient())
     llm = ScriptedLLM(grade=[grade("incorrect")], rewrite=[rewrite("魚油 副作用", medical=True)], answer=["不該被用到的投機答案"])
     monkeypatch.setattr(asks_service, "get_llm", lambda: llm)
@@ -342,17 +329,16 @@ def test_a_medication_question_is_not_offered_to_the_manager(client, docs, monke
     run_jobs()
     ask = client.get(f"/api/asks/{ask_id}").json()
     assert (ask["status"], ask["evidence"]["reason"]) == ("no_evidence", "medical")
-    assert client.post(f"/api/asks/{ask_id}/escalate").status_code == 409
 
 
-def test_a_company_internal_question_can_still_go_to_the_manager(client, docs, monkeypatch):
+def test_a_company_internal_question_suggests_discussing_in_the_channel(client, docs, monkeypatch):
     use_web(monkeypatch, FakeWebClient())
     llm = ScriptedLLM(grade=[grade("incorrect")], rewrite=[rewrite("年終獎金", internal=True)], answer=["不該被用到的投機答案"])
     monkeypatch.setattr(asks_service, "get_llm", lambda: llm)
     ask_id = client.post("/api/asks", json={"kind": "knowledge", "question": "年終怎麼算？"}).json()["id"]
     run_jobs()
     assert client.get(f"/api/asks/{ask_id}").json()["evidence"]["reason"] == "internal"
-    assert client.post(f"/api/asks/{ask_id}/escalate").status_code == 200
+    assert "到頻道請主管協助確認" in client.get(f"/api/asks/{ask_id}").json()["answer"]
 
 
 def test_a_medication_question_the_documents_refuse_still_gets_the_medical_reason(engine, docs, monkeypatch):

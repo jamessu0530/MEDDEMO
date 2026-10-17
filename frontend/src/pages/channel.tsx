@@ -42,6 +42,8 @@ import {
 import { useAuth } from "@/lib/auth"
 import { channelUnread } from "@/lib/channel-unread"
 import { railPath } from "@/lib/channel-rail"
+import { requestedChannelDemo } from "@/lib/channel-ui-demo"
+import { useStartUiDemo } from "@/lib/use-start-ui-demo"
 import {
   awaitingMascot,
   canSaveMethodSource,
@@ -108,11 +110,13 @@ export function ChannelConversation({
   layout?: "page" | "pane"
   onLoaded?: (channel: Channel) => void
 }) {
+  const location = useLocation()
+  const startDemo = useStartUiDemo()
   const {
     backTo: backState,
     jumpTo: stateJump,
     tab: initialTab,
-  } = (useLocation().state as ChannelLocationState | null) ?? {}
+  } = (location.state as ChannelLocationState | null) ?? {}
   const [searchParams] = useSearchParams()
   const queryJump = Number(searchParams.get("message"))
   const jumpTarget =
@@ -349,6 +353,21 @@ export function ChannelConversation({
   async function send() {
     const body = draft.trim()
     if ((!body && !files.length) || sending) return
+    textarea.current?.blur()
+    const pagePath = location.pathname + location.search
+    const demo = requestedChannelDemo(body, pagePath, files.length > 0)
+    if (demo) {
+      setDraft("")
+      setSendError(null)
+      setPickError(null)
+      startDemo(
+        demo.kind,
+        demo.path === pagePath && layout === "page" && state.status === "ready"
+          ? railPath(state.channel)
+          : demo.path
+      )
+      return
+    }
     setSending(true)
     setSendError(null)
     setPickError(null)
@@ -686,7 +705,7 @@ export function ChannelConversation({
     </>
   )
   if (layout === "page")
-    return <div data-keyboard-page className="flex h-[calc(100svh-var(--page-assistant-dock-space,5rem))] flex-col">{column}</div>
+    return <div data-keyboard-page className="flex h-svh flex-col">{column}</div>
   return (
     <div className="flex min-h-0 min-w-0 flex-1">
       <div className="flex min-w-0 flex-1 flex-col">{column}</div>

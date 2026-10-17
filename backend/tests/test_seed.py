@@ -498,8 +498,8 @@ def test_seeded_conversations_sit_in_their_channels(db):
         "陳建宏小組": 5, "台北市・大安區": 2, "康泰連鎖藥局 · 忠孝店": 2, "許文彬小組": 2, "蔡宗翰小組": 2,
         "新品上市": 2, "補貨問題": 1, "公司公告": 1,
     }
-    # 全國 1、整區 3、小組 4、地點 18、文字頻道 3，加上灌資料建的忠孝店討論串
-    assert rows(db, "SELECT count(*) FROM channel")[0][0] == 30
+    # 全國 1、整區 3、小組 4、示範地點 18、全台行政區 368、文字頻道 3，加上忠孝店討論串
+    assert rows(db, "SELECT count(*) FROM channel")[0][0] == 30 + 368
     # 時間都在灌資料之前，同一個頻道裡編號越大越晚
     assert rows(db, "SELECT count(*) FROM channel_message WHERE created_at > now()")[0][0] == 0
     assert rows(db, """

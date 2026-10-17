@@ -13,6 +13,8 @@ export function mascotOutfit(id = "none") {
   return MASCOT_OUTFITS.find((outfit) => outfit.id === id) ?? MASCOT_OUTFITS[0]
 }
 export type Collected<T> = T & { owned: boolean; unlocked_at: string | null }
+export type AssistantAchievement = { id: "ghost" | "new"; title: string; description: string }
+export type AssistantAchievementUnlock = { achievement: Collected<AssistantAchievement>; newly_unlocked: boolean }
 export type MascotCollection = {
   colors: Collected<MascotColor>[]
   outfits: Collected<MascotOutfit>[]
@@ -21,6 +23,7 @@ export type MascotCollection = {
   encounters: number
   shiny_odds: number
   guaranteed_in: number
+  achievements?: Collected<AssistantAchievement>[]
 }
 export type MascotEncounter = { color_id: string; newly_collected: boolean; collection: MascotCollection }
 export function canWear(collection: MascotCollection, look: MascotLook) {

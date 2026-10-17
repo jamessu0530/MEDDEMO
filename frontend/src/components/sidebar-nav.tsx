@@ -36,7 +36,7 @@ export function SidebarNav({
           active ? "bg-primary text-primary-foreground shadow-lip-primary" : "text-muted-foreground hover:bg-muted"
         )}
       >
-        <Icon data-icon-attention={item.badge === "replies" && count > 0 ? "true" : undefined} className="size-5 shrink-0" />
+        <Icon className="size-5 shrink-0" />
         <span className={collapsed ? "sr-only" : "min-w-0 flex-1 truncate"}>{item.label}</span>
         {count > 0 && <UnreadDot count={count} className={collapsed ? "absolute -top-0.5 -right-0.5" : undefined} />}
       </Link>

@@ -16,6 +16,7 @@ import { channelPanes } from "@/lib/channel-panes"
 import { presence } from "@/lib/presence"
 import { realtime } from "@/lib/realtime"
 import { useIsDesktop } from "@/lib/use-media-query"
+import { cn } from "@/lib/utils"
 
 // 有新訊息、有人狀態變了或文字頻道有變動，等這麼久再重新載入一次，一連串的變化併成一次
 const RELOAD_DELAY_MS = 3_000
@@ -90,7 +91,7 @@ export function ChannelsPage() {
 
   const sales = user?.role === "sales"
   return (
-    <div data-keyboard-page className="flex h-[calc(100svh-var(--page-assistant-dock-space,5rem))] flex-col">
+    <div data-keyboard-page className={cn("flex h-svh flex-col", sales && "pb-[calc(4rem+env(safe-area-inset-bottom))] lg:pb-0")}>
       <PageHeader
         title="頻道"
         backTo={sales || !user ? undefined : homePath(user.role)}

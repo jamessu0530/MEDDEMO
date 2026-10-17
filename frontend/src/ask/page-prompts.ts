@@ -243,7 +243,7 @@ export function pagePromptsFor(pathname: string, search = ""): PagePrompts {
       "ask-v1": [
         "怎麼核對 AI 回答的文件出處？",
         "文件沒有說明時應該怎麼回覆客戶？",
-        "哪些問題需要轉給主管確認？",
+        "哪些問題需要到頻道請主管確認？",
       ],
     }
     return prompts(
@@ -350,19 +350,6 @@ export function pagePromptsFor(pathname: string, search = ""): PagePrompts {
           "幫我整理給業務的跟進重點。",
         ]
       ),
-      asks: prompts(
-        "可以問相關公司規定，整理回覆業務前需要核對的依據。",
-        [
-          "回覆業務提問前要確認哪些資料？",
-          "公司的折扣審核規定是什麼？",
-          "怎麼把回覆整理成可重複使用的方法卡？",
-        ],
-        [
-          "這個回覆有哪些規定可以引用？",
-          "有哪些資訊還需要請業務補充？",
-          "幫我把剛才的重點整理成簡短回覆。",
-        ]
-      ),
       oa: prompts(
         "可以問簽核規定、附件與審核時的核對重點。",
         [
@@ -380,7 +367,7 @@ export function pagePromptsFor(pathname: string, search = ""): PagePrompts {
         "可以問方法卡的使用情境、內容重點與依據。",
         [
           "方法卡適合整理哪些經驗？",
-          "怎麼把主管回覆整理成方法卡？",
+          "怎麼把頻道訊息存成方法卡？",
           "有哪些方法可以幫助處理客戶議價？",
         ],
         [
@@ -523,19 +510,6 @@ export function pagePromptsFor(pathname: string, search = ""): PagePrompts {
         "哪些承諾需要在下次拜訪前完成？",
         "可以列出相關拜訪紀錄與日期嗎？",
         "幫我整理下次要向客戶確認的問題。",
-      ]
-    ),
-    escalations: prompts(
-      "可以問主管回覆的依據，以及怎麼轉成下一步行動。",
-      [
-        "怎麼查看主管回覆的提問？",
-        "主管回覆後要怎麼跟進？",
-        "回覆裡的公司規定可以在哪裡查？",
-      ],
-      [
-        "幫我整理回覆裡需要執行的步驟。",
-        "還有哪些資料需要向主管確認？",
-        "怎麼把這個做法用在客戶溝通？",
       ]
     ),
     admin: prompts(

@@ -1,0 +1,208 @@
+.completion-celebration-host {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  pointer-events: none;
+  overflow: hidden;
+}
+.completion-celebration {
+  position: absolute;
+  top: max(env(safe-area-inset-top), 12vh);
+  left: 50%;
+  width: min(320px, calc(100vw - 32px));
+  transform: translateX(-50%);
+  animation: completion-fade var(--celebration-duration) linear both;
+}
+.completion-flight-stage { position: relative; height: 300px; }
+.completion-flight-halo {
+  position: absolute;
+  inset: 20px -12px 4px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, #fff2ba99, #eadbfd66 42%, #eadbfd00 72%);
+  animation: completion-halo var(--celebration-duration) linear both;
+}
+.completion-flight-shadow {
+  position: absolute;
+  bottom: 24px;
+  left: calc(50% - 38px);
+  width: 76px;
+  height: 9px;
+  border-radius: 50%;
+  background: #2b1b4720;
+  animation: completion-shadow var(--celebration-duration) linear both;
+}
+/* Flight, pose and the spring use separate layers, so a new pose never brakes
+   the flight. Easing changes only at takeoff and the floating apex. */
+.completion-flight-lift {
+  position: absolute;
+  bottom: 25px;
+  left: calc(50% - 80px);
+  width: 160px;
+  height: 160px;
+  animation: completion-lift var(--celebration-duration) linear both;
+  will-change: transform, opacity;
+}
+.completion-flight-bear {
+  overflow: visible;
+  transform-origin: 50% 90%;
+  animation: completion-joy var(--celebration-duration) linear both;
+}
+.completion-flight-bear .mascot-ear-l { animation: completion-ear-left var(--celebration-duration) linear both; }
+.completion-flight-bear .mascot-ear-r { animation: completion-ear-right var(--celebration-duration) linear both; }
+.completion-flight-blush { animation: completion-blush var(--celebration-duration) linear both; }
+.completion-flight-ring {
+  position: absolute;
+  bottom: 17px;
+  left: calc(50% - 34px);
+  width: 68px;
+  height: 18px;
+  border: 2px solid #d3b0f3;
+  border-radius: 50%;
+  animation: completion-ring var(--celebration-duration) linear both;
+}
+.completion-flight-streaks {
+  position: absolute;
+  inset: 0;
+  width: 160px;
+  height: 180px;
+  overflow: visible;
+  stroke: #c9a2f5;
+  stroke-width: 4;
+  stroke-linecap: round;
+  animation: completion-streaks var(--celebration-duration) linear both;
+}
+.completion-flight-spark {
+  position: absolute;
+  left: calc(50% - 11px);
+  bottom: 128px;
+  color: #ffc53d;
+  font-size: 26px;
+  line-height: 1;
+  animation: completion-spark calc(var(--celebration-duration) * .68) ease-out both;
+}
+.completion-flight-spark:nth-of-type(even) { color: #b58ae8; font-size: 18px; }
+.completion-flight-heart {
+  position: absolute;
+  top: 25px;
+  color: #f58caf;
+  font-size: 19px;
+  line-height: 1;
+  animation: completion-heart-left var(--celebration-duration) linear both;
+}
+.completion-flight-heart[data-side="left"] { left: 7px; }
+.completion-flight-heart[data-side="right"] { right: 5px; font-size: 14px; animation-name: completion-heart-right; }
+.completion-flight-message {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: fit-content;
+  max-width: 100%;
+  margin: -5px auto 0;
+  border: 1px solid var(--border, #e8dff0);
+  border-radius: 20px;
+  padding: 12px 18px;
+  color: var(--foreground, #2b1b47);
+  background: var(--card, #fff);
+  box-shadow: 0 6px 0 #9b51e012, 0 12px 36px #2b1b4714;
+  animation: completion-message var(--celebration-duration) linear both;
+}
+.completion-flight-message strong { display: block; font-size: 15px; line-height: 1.5; overflow-wrap: anywhere; }
+.completion-flight-message strong + span { display: block; margin-top: 2px; color: var(--muted-foreground, #746581); font-size: 12px; }
+.completion-flight-check { display: grid; place-items: center; flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; background: #eadbfd; color: #713caf; font-size: 18px; font-weight: 700; }
+
+@keyframes completion-lift {
+  0% { transform: translate(0, 0); opacity: 0; }
+  5% { transform: translate(0, 0); opacity: 1; }
+  11% { transform: translate(0, 5px); animation-timing-function: cubic-bezier(.16, 1, .3, 1); }
+  33% { transform: translate(-6px, -114px); animation-timing-function: ease-in-out; }
+  47% { transform: translate(4px, -124px); animation-timing-function: ease-in-out; }
+  60% { transform: translate(10px, -116px); opacity: 1; animation-timing-function: cubic-bezier(.55, 0, 1, .55); }
+  87% { transform: translate(24px, -306px); opacity: 0; }
+  100% { transform: translate(24px, -306px); opacity: 0; }
+}
+@keyframes completion-joy {
+  0% { transform: scale(.96); animation-timing-function: ease-in-out; }
+  11% { transform: scale(1.1, .87); animation-timing-function: cubic-bezier(.2, .8, .3, 1); }
+  22% { transform: scale(.96, 1.04); animation-timing-function: ease-in-out; }
+  34% { transform: scale(1.025, .99); animation-timing-function: ease-in-out; }
+  47% { transform: scale(.99, 1.025); animation-timing-function: ease-in-out; }
+  60% { transform: scale(1); animation-timing-function: ease-in; }
+  87%, 100% { transform: scale(.98, 1.02); }
+}
+@keyframes completion-ear-left {
+  0%, 11%, 100% { transform: rotate(0); }
+  22% { transform: rotate(-16deg); }
+  34% { transform: rotate(12deg); }
+  47% { transform: rotate(-10deg); }
+  60% { transform: rotate(6deg); }
+  78% { transform: rotate(-14deg); }
+}
+@keyframes completion-ear-right {
+  0%, 11%, 100% { transform: rotate(0); }
+  22% { transform: rotate(16deg); }
+  34% { transform: rotate(-12deg); }
+  47% { transform: rotate(10deg); }
+  60% { transform: rotate(-6deg); }
+  78% { transform: rotate(14deg); }
+}
+@keyframes completion-blush { 0%, 11% { opacity: 0; } 26%, 100% { opacity: .68; } }
+@keyframes completion-shadow {
+  0%, 5% { transform: scale(1); opacity: .6; }
+  11% { transform: scaleX(1.1); opacity: .7; animation-timing-function: cubic-bezier(.16, 1, .3, 1); }
+  33%, 60% { transform: scale(.5); opacity: .2; }
+  84%, 100% { transform: scale(.25); opacity: 0; }
+}
+@keyframes completion-ring {
+  0%, 11% { transform: scale(.7); opacity: 0; }
+  16% { opacity: .5; animation-timing-function: ease-out; }
+  34%, 100% { transform: scale(2); opacity: 0; }
+}
+@keyframes completion-streaks {
+  0%, 11% { transform: translateY(-4px) scaleY(.65); opacity: 0; }
+  18% { opacity: .55; }
+  31%, 60% { transform: translateY(9px) scaleY(1); opacity: 0; }
+  72% { transform: translateY(0) scaleY(1); opacity: .45; }
+  87%, 100% { transform: translateY(14px) scaleY(1.2); opacity: 0; }
+}
+@keyframes completion-spark {
+  0%, 18% { transform: translate(0, 0) scale(0); opacity: 0; }
+  28% { opacity: 1; }
+  60% { opacity: 1; }
+  100% { transform: translate(var(--spark-x), var(--spark-y)) rotate(var(--spark-turn)) scale(.5); opacity: 0; }
+}
+@keyframes completion-heart-left {
+  0%, 29% { transform: translate(0, 8px) rotate(-15deg) scale(0); opacity: 0; }
+  40% { opacity: .9; }
+  62%, 100% { transform: translate(-15px, -26px) rotate(-12deg) scale(1.1); opacity: 0; }
+}
+@keyframes completion-heart-right {
+  0%, 35% { transform: translate(0, 6px) rotate(15deg) scale(0); opacity: 0; }
+  46% { opacity: .9; }
+  68%, 100% { transform: translate(18px, -24px) rotate(12deg) scale(1.1); opacity: 0; }
+}
+@keyframes completion-halo {
+  0% { transform: scale(.8); opacity: 0; }
+  20%, 60% { transform: scale(1); opacity: 1; }
+  90%, 100% { transform: scale(1.1); opacity: 0; }
+}
+@keyframes completion-message {
+  0%, 12% { transform: translateY(8px); opacity: 0; }
+  24%, 100% { transform: translateY(0); opacity: 1; }
+}
+@keyframes completion-fade { 0%, 84% { opacity: 1; } 100% { opacity: 0; } }
+
+.completion-celebration, .completion-celebration * { animation-delay: var(--celebration-delay, 0ms); }
+.completion-flight-spark { animation-delay: calc(var(--celebration-delay, 0ms) + var(--spark-delay) * var(--celebration-speed, 1)); }
+.completion-celebration[data-paused="true"], .completion-celebration[data-paused="true"] * { animation-play-state: paused !important; }
+
+@media (max-height: 600px) {
+  .completion-celebration { top: max(env(safe-area-inset-top), 8px); }
+  .completion-flight-stage { height: 260px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .completion-celebration, .completion-celebration * { animation: none !important; }
+  .completion-flight-stage { height: 155px; }
+  .completion-flight-lift { bottom: 0; will-change: auto; }
+  .completion-flight-halo { inset: 0 30px; }
+  .completion-flight-spark, .completion-flight-streaks, .completion-flight-ring, .completion-flight-shadow, .completion-flight-heart { display: none; }
+}

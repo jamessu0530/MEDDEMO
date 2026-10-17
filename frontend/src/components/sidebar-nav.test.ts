@@ -22,7 +22,7 @@ describe("SidebarNav", () => {
   })
 
   it("有數字才顯示，超過 99 寫 99+", () => {
-    const html = render("sales", { uploads: 2, channels: 120, replies: 0 })
+    const html = render("sales", { uploads: 2, channels: 120 })
     expect(html).toContain(">2<")
     expect(html).toContain(">99+<")
     expect(html).not.toContain(">0<")

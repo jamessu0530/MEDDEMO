@@ -297,7 +297,7 @@ def ask_with_photo(session: Session, user_id: str) -> Attachment:
     return attachment
 
 
-def test_ask_attachments_are_only_for_the_asker_and_the_manager_who_answers(tx):
+def test_ask_attachments_are_only_for_the_asker_even_with_a_legacy_escalation(tx):
     attachment = ask_with_photo(tx, "U01")
     users = {u: tx.get(AppUser, u) for u in ("U01", "U02", "M01", "M03", "A01")}
     assert attachments.can_see(tx, users["U01"], attachment)
@@ -305,9 +305,9 @@ def test_ask_attachments_are_only_for_the_asker_and_the_manager_who_answers(tx):
     assert not attachments.can_see(tx, users["M01"], attachment)
     tx.add(Escalation(ask_id=attachment.ask_id, question="這張海報怎麼回應"))
     tx.flush()
-    # 轉給主管之後，U01 的主管與 IT 看得到；別區的主管還是看不到
-    assert attachments.can_see(tx, users["M01"], attachment)
-    assert attachments.can_see(tx, users["A01"], attachment)
+    # 舊的轉介資料不再讓主管或 IT 存取私人問答附件
+    assert not attachments.can_see(tx, users["M01"], attachment)
+    assert not attachments.can_see(tx, users["A01"], attachment)
     assert not attachments.can_see(tx, users["M03"], attachment)
 
 

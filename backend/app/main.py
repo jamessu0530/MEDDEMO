@@ -8,7 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app import usage
-from app.api import admin, asks, attachments, auth, avatars, channel_search, channels, customers, documents, escalations, first_week, itinerary, manager, memory, methods, mock_systems, oa, preferences, presence, products, promotions, transcription, vehicles, visits, voice
+from app.api import admin, asks, attachments, auth, avatars, channel_search, channels, customers, documents, first_week, itinerary, manager, memory, methods, mock_systems, oa, preferences, presence, products, promotions, transcription, vehicles, visits, voice
 from app.api import maps  # 行程第 4 階段：主管頁的地圖金鑰
 from app.api import location  # 行程第 6 階段：即時位置
 from app.api import route_habits as route_habits_api
@@ -19,6 +19,7 @@ from app.api import reports  # 可自訂的行動報表
 from app.api import learning
 from app.api import mascot
 from app.api import orders as orders_api
+from app.api import assistant_memory
 from app.config import settings
 from app.db import get_session
 from app.observability import install_metrics
@@ -33,6 +34,7 @@ app.middleware("http")(usage.limit_usage)
 install_metrics(app)
 app.include_router(auth.router)
 app.include_router(asks.router)
+app.include_router(assistant_memory.router)
 app.include_router(customers.router)
 app.include_router(products.router)
 app.include_router(promotions.router)
@@ -40,7 +42,6 @@ app.include_router(visits.router)
 app.include_router(mock_systems.router)
 app.include_router(voice.router)
 app.include_router(transcription.router)
-app.include_router(escalations.router)
 app.include_router(itinerary.router)
 app.include_router(route_habits_api.router)
 app.include_router(manager.router)

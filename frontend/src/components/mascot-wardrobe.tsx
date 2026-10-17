@@ -4,6 +4,7 @@ import { Check, LockKeyhole, MapPin, Sparkles, Shirt } from "@/components/icons"
 import { Mascot } from "@/components/mascot"
 import { MascotPlay } from "@/components/mascot-play"
 import { Mascot3D } from "@/components/mascot-3d"
+import { AssistantAchievements } from "@/components/ask/assistant-achievements"
 
 import { canWear, mascotOutfit, mascotPalette, type MascotCollection, type MascotEncounter, type MascotLook } from "@/lib/mascot-collection"
 
@@ -65,5 +66,6 @@ export function MascotWardrobe({ collection, onEquip, onEncounter, showHeading =
         {tab === "colors" && <p className="wardrobe-hint">已分裂 {collection.encounters} 次 · 再 {collection.guaranteed_in} 次內遇見異色</p>}
       </section>
     </div>
+    <AssistantAchievements achievements={collection.achievements} />
   </div>
 }

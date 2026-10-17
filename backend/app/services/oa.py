@@ -105,7 +105,7 @@ def _step_to_decide(session: Session, form: OaExpenseForm, user: AppUser, *, fre
     """
     stmt = select(OaApprovalStep).where(OaApprovalStep.form_id == form.id, OaApprovalStep.status == "pending")
     if user.role != "it":
-        stmt = stmt.where(OaApprovalStep.user_id == user.id)
+        stmt = stmt.where(OaApprovalStep.user_id == Scope.for_user(user).acting_user_id)
     stmt = stmt.order_by(OaApprovalStep.step_no)
     return session.scalar(stmt.execution_options(populate_existing=True) if fresh else stmt)
 
@@ -250,7 +250,7 @@ def list_inbox(session: Session, user: AppUser) -> dict[str, Any]:
     # 主管看指派給自己的；IT 看全公司還沒簽的
     pending_ids = select(OaApprovalStep.form_id).where(OaApprovalStep.status == "pending")
     if user.role != "it":
-        pending_ids = pending_ids.where(OaApprovalStep.user_id == user.id)
+        pending_ids = pending_ids.where(OaApprovalStep.user_id == Scope.for_user(user).acting_user_id)
     forms = session.scalars(
         select(OaExpenseForm).where(OaExpenseForm.id.in_(pending_ids)).order_by(*LIST_ORDER).limit(50)
     ).all()

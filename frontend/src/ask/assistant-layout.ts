@@ -1,5 +1,45 @@
 type Bounds = { top: number; bottom: number }
 
+/** 對話框保留輸入列；向下拉近輸入列時收合，向上拉則限制在可見範圍。 */
+export function assistantPanelSize({
+  height,
+  availableHeight,
+  collapsedHeight,
+}: {
+  height?: number
+  availableHeight: number
+  collapsedHeight: number
+}) {
+  const max = Math.max(0, availableHeight - 24)
+  // 鍵盤上方的短視窗仍要容納頁首、輸入列與可捲動的紀錄。
+  const shortViewport = availableHeight <= 480
+  const min = Math.min(max, collapsedHeight + (shortViewport ? 160 : 96))
+  return {
+    min,
+    max,
+    height: Math.max(
+      min,
+      Math.min(max, height ?? (shortViewport ? max : Math.min(384, availableHeight * 0.55)))
+    ),
+  }
+}
+
+export function resizeAssistantPanel({
+  height,
+  availableHeight,
+  collapsedHeight,
+}: {
+  height: number
+  availableHeight: number
+  collapsedHeight: number
+}) {
+  return {
+    open: height > collapsedHeight + 40,
+    height: assistantPanelSize({ height, availableHeight, collapsedHeight })
+      .height,
+  }
+}
+
 /** 固定定位用 layout viewport；可用高度用 visual viewport，包含鍵盤與捲動位移。 */
 export function assistantLayout({
   layoutHeight,

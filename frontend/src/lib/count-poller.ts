@@ -3,7 +3,7 @@ const POLL_MS = 60_000
 // 收到即時通知後等這麼久才問：很多人同時發言時，一陣通知併成一次，不會每則通知都問
 const SOON_MS = 2_000
 
-/** 有畫面在看的時候，每分鐘問一次某個數字（主管回覆、頻道未讀）。手機從背景切回來、恢復連線時先問一次 */
+/** 有畫面在看的時候，每分鐘問一次某個數字（待簽申請單、頻道未讀）。手機從背景切回來、恢復連線時先問一次 */
 export class CountPoller {
   private count = 0
   private readonly listeners = new Set<() => void>()

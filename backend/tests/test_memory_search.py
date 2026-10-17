@@ -173,7 +173,7 @@ def test_memory_questions_are_not_escalated(asking):
     llm.answerable, llm.answer = False, "找不到年終獎金的重點。"
     ask = ask_memory(client, "年終獎金怎麼算？")
     assert (ask["status"], ask["answer"]) == ("no_evidence", "找不到年終獎金的重點。")
-    assert client.post(f"/api/asks/{ask['id']}/escalate").status_code == 409
+    assert client.post(f"/api/asks/{ask['id']}/escalate").status_code == 404
 
 
 def test_with_vectors_the_closest_items_come_first(tx):

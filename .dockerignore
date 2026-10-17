@@ -12,6 +12,7 @@ frontend/src/*
 !frontend/src/data
 frontend/src/data/*
 !frontend/src/data/product-photos.json
+!frontend/src/data/taiwan-districts.json
 !frontend/public
 frontend/public/*
 !frontend/public/product-photos

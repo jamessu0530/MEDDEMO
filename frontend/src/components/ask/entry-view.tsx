@@ -1,6 +1,6 @@
 import type { ReactNode } from "react"
 
-import { isFinished, type Ask } from "@/api/asks"
+import { isFinished } from "@/api/asks"
 import type { Entry, ToolRun } from "@/ask/conversation"
 import { AskAnswer, TracePanel } from "@/components/ask/ask-result"
 import { AttachmentGallery } from "@/components/attachments/attachment-gallery"
@@ -15,7 +15,6 @@ const TOOL_LABEL = {
 
 type EntryViewProps = {
   entry: Entry
-  onAskChange: (entryId: number, patch: { ask: Ask }) => void
   /** 看了前文改寫的意思不對：用業務原本打的那句重查 */
   onAskAsTyped: (entryId: number) => void
   /** 有一題還在查：選種類的按鈕先停用，按了也不會送 */
@@ -55,7 +54,6 @@ export function EntryView({ entry, ...actions }: EntryViewProps) {
 /** AI 呼叫查詢工具的那一步：跟打字問答同一套查詢，結果、依據與查詢過程都看得到 */
 function ToolCard({
   run,
-  onAskChange,
   onAskAsTyped,
   busy,
 }: Omit<EntryViewProps, "entry"> & { run: ToolRun }) {
@@ -85,7 +83,6 @@ function ToolCard({
       ) : run.ask ? (
         <AskAnswer
           ask={run.ask}
-          onChange={(ask) => onAskChange(run.id, { ask })}
           compact
         />
       ) : (

@@ -15,6 +15,10 @@ COLORS = {item["id"]: item for item in CATALOG["colors"]}
 OUTFITS = {item["id"]: item for item in CATALOG["outfits"]}
 SHINY_COLORS = tuple(key for key, item in COLORS.items() if item["rarity"] == "shiny")
 SHINY_ODDS = 8
+ASSISTANT_ACHIEVEMENTS = {
+    "ghost": {"id": "ghost", "title": "神出鬼沒", "description": "第一次向右滑，讓熊熊滾戴上鬼面具。"},
+    "new": {"id": "new", "title": "熊熊影分身", "description": "第一次向左滑，開啟新對話並召喚兩隻熊熊滾。"},
+}
 
 
 def profile(session: Session, user_id: str) -> MascotWardrobe:
@@ -56,9 +60,24 @@ def snapshot(session: Session, user: AppUser, row: MascotWardrobe) -> dict:
         return [item | {"owned": f"{kind}:{item['id']}" in owned, "unlocked_at": owned.get(f"{kind}:{item['id']}")} for item in entries]
     return {
         "colors": items("color", CATALOG["colors"]), "outfits": items("outfit", CATALOG["outfits"]),
+        "achievements": items("achievement", ASSISTANT_ACHIEVEMENTS.values()),
         "equipped": {"color": row.color_id, "outfit": row.outfit_id}, "use_as_avatar": row.use_as_avatar,
         "encounters": session.scalar(select(func.count()).select_from(MascotEncounter).where(MascotEncounter.user_id == user.id)),
         "shiny_odds": SHINY_ODDS, "guaranteed_in": SHINY_ODDS - row.misses,
+    }
+
+
+def unlock_assistant_achievement(session: Session, user: AppUser, action: str) -> dict:
+    """只記錄發現的彩蛋種類，不接收 Ghost 對話的文字、查詢或對話編號。"""
+    if action not in ASSISTANT_ACHIEVEMENTS:
+        raise ValueError("找不到這個熊熊成就")
+    profile(session, user.id)
+    item_id = f"achievement:{action}"
+    added = grant(session, user.id, item_id)
+    row = session.get(MascotCollectible, (user.id, item_id))
+    return {
+        "achievement": ASSISTANT_ACHIEVEMENTS[action] | {"owned": True, "unlocked_at": row.unlocked_at},
+        "newly_unlocked": added,
     }
 
 

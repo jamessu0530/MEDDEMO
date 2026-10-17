@@ -19,6 +19,12 @@ export function teamStop(number: number, status: StopStatus, extra: Partial<Team
     window_kind: null,
     window_time: null,
     travel_mode: "drive",
+    travel_minutes: status === "done" ? null : 10,
+    travel_km: status === "done" ? null : 3.2,
+    travel_estimated: true,
+    city: "台北市",
+    arrived_at: null,
+    visit_id: null,
     ...extra,
   }
 }
@@ -35,6 +41,8 @@ export function repRoute(extra: Partial<RepRoute> = {}): RepRoute {
     finish_time: "16:40",
     estimated: true,
     travel_mode: "drive",
+    start_city: "台北市",
+    office_start: true,
     origin: { lat: 25.052, lng: 121.544 },
     stops: [teamStop(1, "done"), teamStop(2, "next", { planned_time: "10:40" }), teamStop(3, "todo")],
     legs: [

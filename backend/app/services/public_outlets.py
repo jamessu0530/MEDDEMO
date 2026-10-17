@@ -11,6 +11,8 @@ from sqlalchemy.orm import Session
 
 from app.models import Customer, OrgUnit, Place, PublicOutlet
 from app.services.outlet_search import normalize
+from app.services.channel_geography import ensure_places, location_key, shared_places
+from app.services.channels import ensure_channels
 
 SOURCE_FILE = Path(__file__).resolve().parents[3] / "data" / "public-outlets" / "cenra-20261016.json"
 # 原始碼在 backend/app/services；容器的資料位於 /srv/data。
@@ -45,6 +47,8 @@ def import_snapshot(session: Session, path: Path = SOURCE_FILE) -> dict[str, int
     if not session.get(OrgUnit, "TW"):
         raise ValueError("請先初始化系統資料，再匯入公開通路")
     session.execute(text("SELECT pg_advisory_xact_lock(hashtext('meddemo-public-outlets-import'))"))
+    ensure_places(session)
+    geographic_places = shared_places(session)
     existing = set(session.scalars(select(PublicOutlet.customer_id)))
     places, customers, sources = {}, [], []
     for row in rows:
@@ -52,7 +56,11 @@ def import_snapshot(session: Session, path: Path = SOURCE_FILE) -> dict[str, int
         city = row["city_normalized"] if "縣市待核對" not in row["issues"] else "待核對"
         district = row["district"]
         place_id = "OUTPLACE-" + hashlib.sha256(f"{city}|{district}".encode()).hexdigest()[:20]
-        places[place_id] = {"id": place_id, "name": f"{city}{district}", "unit_id": "TW"}
+        match = geographic_places.get(location_key(city + district))
+        if match is not None:
+            place_id = match.id
+        else:
+            places[place_id] = {"id": place_id, "name": f"{city}{district}", "unit_id": "TW"}
         customers.append({"id": key, "name": row["name"].strip(), "type": "outlet", "chain_group": None,
             "region": region(city), "city": city, "place_id": place_id, "area": district,
             "lat": row["lat"], "lng": row["lng"], "grade": None, "owner_user_id": None,
@@ -60,9 +68,11 @@ def import_snapshot(session: Session, path: Path = SOURCE_FILE) -> dict[str, int
         sources.append({"customer_id": key, "phone": row["tel"], "address": row["Address"], "category": row["name_category"],
             "review_notes": row["issues"], "raw_record": row, "source_url": meta["page_url"], "data_url": meta["data_url"],
             "retrieved_on": dt.date.fromisoformat(meta["retrieved_date"]), "snapshot_sha256": meta["source_sha256"]})
-    session.execute(insert(Place).values(list(places.values())).on_conflict_do_nothing(index_elements=[Place.id]))
+    if places:
+        session.execute(insert(Place).values(list(places.values())).on_conflict_do_nothing(index_elements=[Place.id]))
     for offset in range(0, len(rows), 300):
         session.execute(insert(Customer).values(customers[offset:offset+300]).on_conflict_do_nothing(index_elements=[Customer.id]))
         session.execute(insert(PublicOutlet).values(sources[offset:offset+300]).on_conflict_do_nothing(index_elements=[PublicOutlet.customer_id]))
+    ensure_channels(session)
     return {"source_records": meta["raw_count"], "public_outlets": len(rows),
         "created": sum(row["customer_id"] not in existing for row in sources), "review_records": meta["records_with_issues"]}

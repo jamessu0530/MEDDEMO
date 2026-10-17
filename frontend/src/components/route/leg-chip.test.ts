@@ -52,7 +52,11 @@ describe("LegChip", () => {
   })
 
   it("沒給 onClick（例如用的是手機上的舊行程）就不能點", () => {
-    expect(chip({ onClick: undefined })).toContain('disabled=""')
+    const html = chip({ onClick: undefined })
+    expect(html).toContain('disabled=""')
+    expect(html).not.toContain("換交通方式")
+    expect(html).not.toContain("aria-expanded")
+    expect(html).not.toContain("aria-controls")
   })
 })
 

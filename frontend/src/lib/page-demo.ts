@@ -140,6 +140,11 @@ const PAGE_DESTINATIONS: readonly {
   path: string
   family: RegExp
 }[] = [
+  {
+    words: /對話紀錄|對話記錄|歷史對話/,
+    path: "/conversations",
+    family: /^\/conversations$/,
+  },
   { words: /日曆|月曆|行事曆/, path: "/calendar", family: /^\/calendar$/ },
   { words: /頻道|討論串/, path: "/channels", family: /^\/channels(?:\/|$)/ },
   { words: /商品學習/, path: "/learning/products", family: /^\/learning\// },

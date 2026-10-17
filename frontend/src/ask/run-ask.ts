@@ -36,10 +36,20 @@ export async function runAsk(
   signal: AbortSignal,
   options: { file?: File; utteranceId?: number } = {}
 ): Promise<Ask> {
-  let ask = await createAsk(kind, question, options.file)
+  const ghost = conversation.getSnapshot().find((entry) => entry.id === entryId)?.ghost
+  const ask = ghost
+    ? await createAsk(kind, question, options.file, true)
+    : await createAsk(kind, question, options.file)
   if (options.utteranceId !== undefined && ask.attachment) conversation.attach(options.utteranceId, ask.attachment)
   conversation.replace(entryId, { ask })
+  return pollAsk(conversation, entryId, ask, signal)
+}
+
+/** 重新登入後接續已存在的查詢，不重送或重複計費。 */
+export async function pollAsk(conversation: Conversation, entryId: number, initial: Ask, signal: AbortSignal): Promise<Ask> {
+  let ask = initial
   while (!isFinished(ask)) {
+    if (signal.aborted) throw signal.reason
     await sleep(POLL_MS, signal)
     try {
       ask = await getAsk(ask.id, signal)

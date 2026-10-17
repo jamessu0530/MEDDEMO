@@ -16,7 +16,7 @@ LESSONS = (
     {"id": "product-v1", "title": "看懂一口促銷", "description": "操作品項與促銷，分清楚付費量和搭贈量。", "skill": "產品與促銷", "minutes": 2},
     {"id": "route-v1", "title": "排好今天的兩站", "description": "調整拜訪順序，守住客戶約好的時間。", "skill": "今日路線", "minutes": 2},
     {"id": "visit-v1", "title": "AI 草稿，由你確認", "description": "對照示範逐字稿，刪掉客戶沒說的下單意向。", "skill": "拜訪確認", "minutes": 3},
-    {"id": "ask-v1", "title": "問 AI，也要看依據", "description": "打開答案出處；查無依據時轉給主管。", "skill": "AI 問答", "minutes": 2},
+    {"id": "ask-v1", "title": "問 AI，也要看依據", "description": "打開答案出處；查無依據時到頻道請主管確認。", "skill": "AI 問答", "minutes": 2},
 )
 LESSON_IDS = tuple(lesson["id"] for lesson in LESSONS)
 XP_PER_LESSON = 20
@@ -94,7 +94,7 @@ def validate_answer(lesson_id: str, answer: dict[str, Any]) -> None:
         if answer.get("reviewed") is not True or answer.get("competitor") != "御松田" or answer.get("intent") != "":
             raise LearningError("核對逐字稿：競品是御松田；客戶沒有說要下單，請清空下單意向。")
     elif answer.get("asked") is not True or answer.get("source_opened") is not True or answer.get("action") != "escalate":
-        raise LearningError("先打開答案的出處，再把查無依據的問題轉給主管，別把猜測當成答案。")
+        raise LearningError("先打開答案的出處，再到頻道請主管確認查無依據的問題，別把猜測當成答案。")
 
 
 def complete(session: Session, user: AppUser, lesson_id: str, answer: dict[str, Any]) -> dict[str, Any]:

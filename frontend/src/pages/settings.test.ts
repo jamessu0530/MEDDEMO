@@ -59,7 +59,9 @@ describe("示範身分的帳號設定", () => {
     }
     expect(html).toContain("judge@example.test")
     expect(html).toContain("judge-google@example.test")
-    expect(html).toContain("原登入帳號「原登入評審」")
+    expect(html).toContain("原登入評審")
+    expect(html).not.toContain("目前示範")
+    expect(html).not.toContain("示範人物")
     expect(html).not.toContain("demo@example.test")
     expect(html).not.toContain("demo-google@example.test")
     expect(html).not.toContain("示範身分下無法修改")

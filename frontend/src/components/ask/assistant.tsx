@@ -3,6 +3,7 @@ import {
   lazy,
   Suspense,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   useSyncExternalStore,
@@ -12,7 +13,6 @@ import {
 import { ChevronDown, Loader2, Mic, SendHorizontal } from "@/components/icons"
 import { Link, useLocation } from "react-router"
 
-import type { Ask } from "@/api/asks"
 import { askSessionFor } from "@/ask/ask-session"
 import {
   assistantWindow,
@@ -23,7 +23,12 @@ import { useConversation } from "@/ask/use-conversation"
 import { useCurrentPageContext } from "@/ask/use-page-context"
 import { pageAssistantPlacement } from "@/ask/page-assistant"
 import { useAssistantLayout } from "@/ask/use-assistant-layout"
+import { useAssistantResize } from "@/ask/use-assistant-resize"
+import { useAssistantSwipe } from "@/ask/use-assistant-swipe"
+import { useAssistantTransition, type AssistantTransitionAction } from "@/ask/use-assistant-transition"
+import { AssistantModeTransition } from "@/components/ask/assistant-mode-transition"
 import { EntryView } from "@/components/ask/entry-view"
+import { AccountMemoryStatus } from "@/components/ask/memory-status"
 import type { VoiceSession } from "@/components/ask/voice-dock"
 import { AttachButton, DraftFiles } from "@/components/attachments/draft-files"
 import { LearningAiGate } from "@/components/learning/ai-gate"
@@ -39,14 +44,41 @@ import { cn } from "@/lib/utils"
 import { uiDemo } from "@/lib/ui-demo-browser"
 import { useStartUiDemo } from "@/lib/use-start-ui-demo"
 import { requestedUiDemo } from "@/lib/ui-demo"
+import { reportAssistant } from "@/ask/report-assistant"
+import { ReportAssistantPreview } from "@/components/reports/report-assistant-preview"
+import {
+  customerPriorityAssistant,
+  isCustomerPriorityPage,
+} from "@/ask/customer-priority-assistant"
+import { CustomerPriorityAssistantPreview } from "@/components/manager/customer-priority-assistant-preview"
 
 const loadVoiceDock = () => import("@/components/ask/voice-dock")
 
-/** 共用對話與草稿；路線頁使用原有的 AI 輸入列。 */
+/** 共用對話與草稿；路線頁使用原有的 AI 輸入列，頻道內透過 @熊熊滾 提問。 */
 export function Assistant() {
   const user = useAuth()?.user
   const page = useCurrentPageContext()
-  const { pathname } = useLocation()
+  const location = useLocation()
+  const { pathname } = location
+  const asking = askSessionFor(user?.id ?? "")
+  const thread = useSyncExternalStore(asking.threads.subscribe, asking.threads.getSnapshot, asking.threads.getSnapshot)
+  const sending = useSyncExternalStore(asking.subscribe, asking.isBusy, asking.isBusy)
+  const transition = useAssistantTransition(user?.id)
+  const restoreInputFocus = useRef(false)
+  useLayoutEffect(() => {
+    if (!restoreInputFocus.current) return
+    restoreInputFocus.current = false
+    document.getElementById("page-assistant-input")?.focus({ preventScroll: true })
+  }, [thread.id])
+  function changeMode(action: AssistantTransitionAction) {
+    if (!user || sending) return
+    restoreInputFocus.current = document.activeElement?.id === "page-assistant-input"
+    if (action === "ghost") asking.threads.enterGhost()
+    else asking.threads.startNew()
+    transition.play(action)
+    openAssistant()
+  }
+  const { dragging, ...swipe } = useAssistantSwipe(changeMode, Boolean(user) && !sending)
   const placement = pageAssistantPlacement(pathname)
   const enabled = placement !== "none"
   const bare = pageWidth(pathname) === "bare"
@@ -56,6 +88,14 @@ export function Assistant() {
     assistantWindow.getSnapshot
   )
   const { inset, availableHeight } = useAssistantLayout(enabled)
+  const {
+    panelRef,
+    height: panelHeight,
+    resizing,
+    handleProps,
+  } = useAssistantResize(open, availableHeight)
+  const fullAnimation = availableHeight !== undefined && availableHeight - panelHeight >= 248
+  const modeAnimation = transition.event && <AssistantModeTransition key={transition.event.id} action={transition.event.action} unlock={transition.reward?.unlock} failed={transition.reward?.failed} compact={!fullAnimation} heading={`熊熊滾 · ${page.title}`} />
   const demo = useSyncExternalStore(
     uiDemo.subscribe,
     uiDemo.getSnapshot,
@@ -105,7 +145,11 @@ export function Assistant() {
     },
     []
   )
-  useEffect(() => closeAssistant(), [pathname])
+  useEffect(() => {
+    const requested = (location.state as { assistantThread?: string } | null)?.assistantThread
+    if (requested && requested === asking.threads.getSnapshot().id) openAssistant()
+    else closeAssistant()
+  }, [pathname, location.key, location.state, asking])
   useEffect(() => {
     if (!open || !active) return
     const onKey = (event: KeyboardEvent) => {
@@ -117,7 +161,7 @@ export function Assistant() {
         closeAssistant()
         requestAnimationFrame(() =>
           document
-            .getElementById("page-assistant-input")
+            .getElementById("page-assistant-resize")
             ?.focus({ preventScroll: true })
         )
       }
@@ -133,7 +177,7 @@ export function Assistant() {
       hidden={demo.status === "running"}
       data-placement="dock"
       className={cn(
-        "pointer-events-none flex flex-col pt-2 pb-[max(env(safe-area-inset-bottom),0.5rem)] pl-[max(env(safe-area-inset-left),0.625rem)] pr-[max(env(safe-area-inset-right),0.625rem)]",
+        "pointer-events-none flex flex-col pt-2 pr-[max(env(safe-area-inset-right),0.625rem)] pb-[max(env(safe-area-inset-bottom),0.5rem)] pl-[max(env(safe-area-inset-left),0.625rem)]",
         demo.status === "running" && "hidden",
         bare
           ? "fixed inset-x-0 z-30 mx-auto max-w-md"
@@ -143,29 +187,64 @@ export function Assistant() {
         {
           bottom: inset,
           maxHeight: `max(0px, calc(${availableHeight === undefined ? "100dvh" : `${availableHeight}px`} - max(env(safe-area-inset-top), 0.5rem)))`,
-          "--assistant-height": "min(28rem, 65dvh)",
+          "--assistant-height": `${panelHeight}px`,
         } as CSSProperties
       }
     >
       <Card
+        {...swipe}
+        ref={panelRef}
         id="page-assistant-panel"
+        data-assistant-mode={thread.ghost ? "ghost" : "saved"}
+        data-assistant-swipe={dragging ?? undefined}
+        aria-keyshortcuts="Alt+Shift+ArrowRight Alt+Shift+ArrowLeft"
+        onKeyDown={(event) => {
+          if (!user || sending || !event.altKey || !event.shiftKey) return
+          if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return
+          event.preventDefault()
+          changeMode(event.key === "ArrowRight" ? "ghost" : "new")
+        }}
         hidden={!active}
         className={cn(
-          "pointer-events-auto min-h-0 gap-0 overflow-hidden rounded-2xl border-border/80 py-0 shadow-lg shadow-foreground/5",
-          open && "max-h-[var(--assistant-height)]",
+          "pointer-events-auto min-h-0 touch-pan-y gap-0 overflow-hidden rounded-2xl border-foreground py-0 shadow-lg shadow-foreground/5",
+          thread.ghost && "border-2 border-dashed border-muted-foreground/60 bg-muted/95",
+          dragging === "new" && "border-2 border-solid border-success",
+          open && "h-[var(--assistant-height)]",
+          resizing && "select-none",
           !active && "hidden",
           !user && "overflow-y-auto overscroll-contain"
         )}
       >
+        {user && (
+          <div
+            id="page-assistant-resize"
+            role="separator"
+            tabIndex={0}
+            aria-label="調整對話框高度"
+            aria-orientation="horizontal"
+            aria-controls="page-assistant-answers"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuetext={
+              open
+                ? "向上拉高、向下縮小對話框"
+                : "對話已收合，向上拉查看紀錄"
+            }
+            {...handleProps}
+            className="flex h-6 shrink-0 touch-none cursor-ns-resize select-none items-center justify-center hover:bg-muted/50 focus-visible:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+          >
+            <span className="h-0.5 w-8 rounded-full bg-muted-foreground/35" />
+          </div>
+        )}
         {open && (
           <CardHeader className="shrink-0 border-b px-3 py-1">
             <div className="flex items-center gap-3">
-              <p
+              {modeAnimation && !fullAnimation ? <div className="min-w-0 flex-1">{modeAnimation}</div> : <p
                 className="min-w-0 flex-1 truncate text-sm font-semibold"
                 title={`熊熊滾 · ${page.title}`}
               >
                 熊熊滾 · {page.title}
-              </p>
+              </p>}
               <Button
                 type="button"
                 size="icon"
@@ -178,7 +257,7 @@ export function Assistant() {
                   closeAssistant()
                   requestAnimationFrame(() =>
                     document
-                      .getElementById("page-assistant-input")
+                      .getElementById("page-assistant-resize")
                       ?.focus({ preventScroll: true })
                   )
                 }}
@@ -190,12 +269,13 @@ export function Assistant() {
         )}
         {user ? (
           <LearningAiGate embedded compact active={active}>
-            <AssistantContent open={open && active} active={active} />
+            <AssistantContent key={`${user.id}:${thread.id}`} open={open && active} active={active} />
           </LearningAiGate>
         ) : (
           <SignedOutAssistant />
         )}
       </Card>
+      {fullAnimation && modeAnimation}
     </div>
   )
 }
@@ -210,7 +290,10 @@ function SignedOutAssistant() {
       ? "/"
       : pathname + search)
   return (
-    <section className="flex min-h-14 items-center gap-2 p-2" aria-label="AI 助理登入提示">
+    <section
+      className="flex min-h-14 items-center gap-2 p-2"
+      aria-label="AI 助理登入提示"
+    >
       <Mascot size={28} bust className="shrink-0" />
       <p className="min-w-0 flex-1 text-sm leading-relaxed text-muted-foreground">
         登入後就能問熊熊滾
@@ -234,6 +317,20 @@ function AssistantContent({
   const user = useAuth()?.user
   const page = useCurrentPageContext()
   const startDemo = useStartUiDemo()
+  const location = useLocation()
+  const jumpEntry = (location.state as { assistantEntry?: number } | null)?.assistantEntry
+  const report = useSyncExternalStore(
+    reportAssistant.subscribe,
+    reportAssistant.getSnapshot,
+    reportAssistant.getSnapshot
+  )
+  const editingReport = report.editing && pathnameIsReport(page.path)
+  const priority = useSyncExternalStore(
+    customerPriorityAssistant.subscribe,
+    customerPriorityAssistant.getSnapshot,
+    customerPriorityAssistant.getSnapshot
+  )
+  const editingPriority = priority.editing && isCustomerPriorityPage(page.path)
   const asking = askSessionFor(user?.id ?? "")
   const conversation = asking.conversation
   const sending = useSyncExternalStore(
@@ -268,7 +365,6 @@ function AssistantContent({
       followAnswersRef.current = true
       if (answersRef.current)
         answersRef.current.scrollTop = answersRef.current.scrollHeight
-      inputRef.current?.focus({ preventScroll: true })
     }
   }, [open])
   useEffect(() => {
@@ -290,9 +386,20 @@ function AssistantContent({
     return () => observer.disconnect()
   }, [open])
 
+  useEffect(() => {
+    if (!open || jumpEntry === undefined) return
+    const element = document.getElementById(`ask-entry-${jumpEntry}`)
+    if (!element) return
+    followAnswersRef.current = false
+    element.scrollIntoView({ behavior: "smooth", block: "nearest" })
+    element.focus({ preventScroll: true })
+  }, [open, jumpEntry, entries.length, location.key])
+
   async function submit(text: string) {
     const trimmed = text.trim()
     if (!trimmed || busy || preparingRef.current) return
+    inputRef.current?.blur()
+    const submittedThread = asking.threads.getSnapshot().id
     openAssistant()
     const snapshot = {
       path: page.path,
@@ -300,7 +407,13 @@ function AssistantContent({
       facts: [...page.facts],
     }
     setQuestion("")
-    if (session && open && !requestedUiDemo(trimmed, snapshot.path)) {
+    if (
+      session &&
+      open &&
+      !requestedUiDemo(trimmed, snapshot.path) &&
+      !reportAssistant.handles(trimmed, snapshot) &&
+      !customerPriorityAssistant.handles(trimmed, snapshot)
+    ) {
       session.sendText(trimmed)
       return
     }
@@ -312,11 +425,10 @@ function AssistantContent({
     setPreparing(true)
     try {
       const ready = file ? await shrinkPhoto(file) : undefined
-      if (!asking.polls.aborted) {
+      if (!asking.polls.aborted && asking.threads.getSnapshot().id === submittedThread) {
         await asking.ask(trimmed, ready, snapshot)
         const reply = conversation.getSnapshot().at(-1)
         if (!asking.polls.aborted && reply?.kind === "model" && reply.demo) {
-          inputRef.current?.blur()
           startDemo(reply.demo, reply.demoPath)
         }
       }
@@ -337,8 +449,6 @@ function AssistantContent({
     if (result.files.length) setFiles(result.files)
     setPickError(result.error)
   }
-  const replaceAsk = (id: number, patch: { ask: Ask }) =>
-    conversation.replace(id, patch)
   const failVoice = () => {
     setVoiceOn(false)
     setNotice({
@@ -381,12 +491,14 @@ function AssistantContent({
             >
               <EntryView
                 entry={entry}
-                onAskChange={replaceAsk}
                 onAskAsTyped={(id) => void asking.askAsTyped(id)}
                 busy={busy}
               />
             </div>
           ))}
+          {editingReport && <ReportAssistantPreview />}
+          {editingPriority && <CustomerPriorityAssistantPreview />}
+          {!asking.threads.getSnapshot().ghost && <AccountMemoryStatus memory={asking.memory} />}
           {notice && (
             <Notice
               text={notice.text}
@@ -494,7 +606,11 @@ function AssistantContent({
                   ? "想問檔案的什麼？"
                   : busy
                     ? "先寫下下一題…"
-                    : "輸入問題…"
+                    : editingReport
+                      ? "輸入問題或報表調整需求…"
+                      : editingPriority
+                        ? "輸入問題或客戶策略調整需求…"
+                        : "輸入問題…"
             }
             aria-label="輸入問題"
             className="max-h-[min(6rem,24dvh)] min-h-11 min-w-0 flex-1 resize-none overflow-y-auto rounded-lg border-0 bg-transparent px-1 py-2.5 text-base shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0"
@@ -538,6 +654,10 @@ function AssistantContent({
       </CardFooter>
     </>
   )
+}
+
+function pathnameIsReport(path: string) {
+  return path.split("?")[0].replace(/\/$/, "") === "/reports"
 }
 
 class VoiceBoundary extends Component<

@@ -1,17 +1,14 @@
 import type { ReactNode } from "react"
-import { Bell, ChevronRight, FileText } from "@/components/icons"
+import { ChevronRight, FileText } from "@/components/icons"
 import { Link } from "react-router"
 
 import { CompanyLogo } from "@/components/company-logo"
 import { MyStatusButton } from "@/components/my-status"
 import { SkinToggle } from "@/components/skin-toggle"
 import type { AuthUser } from "@/lib/auth"
-import { useUnseenReplies } from "@/lib/manager-replies"
-import { cn } from "@/lib/utils"
 
-/** 業務手機頁首：訂單首頁與路線共用個人頁、主管回覆、申請單與配色入口。 */
+/** 業務手機頁首：訂單首頁與路線共用個人頁、申請單與配色入口。 */
 export function SalesToolbar({ user, children }: { user: AuthUser; children?: ReactNode }) {
-  const unseen = useUnseenReplies()
   return (
     <div className="flex flex-col gap-2 lg:hidden">
       <div className="flex items-center gap-2">
@@ -34,14 +31,6 @@ export function SalesToolbar({ user, children }: { user: AuthUser; children?: Re
         </div>
         <div className="flex shrink-0 items-center">
           {children}
-          <Link
-            to="/escalations"
-            aria-label={unseen > 0 ? `主管回覆 ${unseen} 則，查看` : "轉給主管的提問"}
-            className="flex h-[40px] min-w-[40px] items-center justify-center gap-1 rounded-lg px-1.5 hover:bg-muted"
-          >
-            <Bell data-icon-attention={unseen > 0 ? "true" : undefined} className={cn("size-5", unseen > 0 ? "fill-warning text-warning" : "text-muted-foreground")} />
-            {unseen > 0 && <span className="text-sm font-semibold text-warning tabular-nums">{unseen}</span>}
-          </Link>
           <Link
             to="/oa/forms"
             aria-label="我的申請單"

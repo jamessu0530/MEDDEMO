@@ -90,8 +90,8 @@ describe("RoutePath", () => {
   it("小卡一開始是收起來的", () => {
     const html = render(day)
     expect(html).not.toContain("data-stop-popover")
-    // 5 顆圓鈕 + 3 顆還沒走完的膠囊（走完的段不能展開，沒有 aria-expanded）
-    expect(html.match(/aria-expanded="false"/g)).toHaveLength(8)
+    // 只有 5 顆站點能展開；沒給 onPickMode 的膠囊不能展開。
+    expect(html.match(/aria-expanded="false"/g)).toHaveLength(5)
   })
 
   it("最上面有辦公室圓鈕；沒點過站時熊熊滾停在辦公室，騎辦公室縣市的座騎（沒給就是第一站的），不能重播", () => {

@@ -10,7 +10,7 @@ from pydantic import Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.auth import CurrentUser
+from app.api.auth import CurrentAccount
 from app.config import NotConfigured
 from app.db import get_session
 from app.llm import LLMOutputError
@@ -31,13 +31,13 @@ def action(callback):
 
 
 @router.get("")
-def list_datasets(session: SessionDep, user: CurrentUser):
+def list_datasets(session: SessionDep, user: CurrentAccount):
     datasets = session.scalars(select(ReportDataset).where(ReportDataset.user_id == user.id).order_by(ReportDataset.updated_at.desc(), ReportDataset.id))
     return {"datasets": [service.summary(dataset) for dataset in datasets], "ai_available": ai_available()}
 
 
 @router.post("", status_code=201)
-def import_dataset(session: SessionDep, user: CurrentUser, file: Annotated[UploadFile, File()],
+def import_dataset(session: SessionDep, user: CurrentAccount, file: Annotated[UploadFile, File()],
                    sheet: Annotated[str | None, Form(max_length=80)] = None,
                    header_row: Annotated[int, Form(ge=1, le=100)] = 1,
                    encoding: Annotated[str, Form()] = "auto", delimiter: Annotated[str, Form()] = "auto"):
@@ -54,7 +54,7 @@ def import_dataset(session: SessionDep, user: CurrentUser, file: Annotated[Uploa
 
 
 @router.post("/inspect")
-def inspect_dataset(session: SessionDep, user: CurrentUser, file: Annotated[UploadFile, File()],
+def inspect_dataset(session: SessionDep, user: CurrentAccount, file: Annotated[UploadFile, File()],
                     sheet: Annotated[str | None, Form(max_length=80)] = None,
                     header_row: Annotated[int, Form(ge=1, le=100)] = 1,
                     encoding: Annotated[str, Form()] = "auto", delimiter: Annotated[str, Form()] = "auto"):
@@ -68,7 +68,7 @@ def inspect_dataset(session: SessionDep, user: CurrentUser, file: Annotated[Uplo
 
 
 @router.post("/merge", status_code=201)
-def merge_datasets(session: SessionDep, user: CurrentUser, body: service.MergeInput):
+def merge_datasets(session: SessionDep, user: CurrentAccount, body: service.MergeInput):
     def run():
         dataset = service.merge(session, user, body)
         session.commit()
@@ -77,13 +77,13 @@ def merge_datasets(session: SessionDep, user: CurrentUser, body: service.MergeIn
 
 
 @router.get("/{dataset_id}")
-def get_dataset(session: SessionDep, user: CurrentUser, dataset_id: str,
+def get_dataset(session: SessionDep, user: CurrentAccount, dataset_id: str,
                 page: int = Query(default=1, ge=1, le=20_000), page_size: int = Query(default=50, ge=1, le=100)):
     return action(lambda: service.detail(service.owned(session, user, dataset_id), page, page_size))
 
 
 @router.post("/{dataset_id}/preview")
-def preview_cleaning(session: SessionDep, user: CurrentUser, dataset_id: str, body: service.Recipe):
+def preview_cleaning(session: SessionDep, user: CurrentAccount, dataset_id: str, body: service.Recipe):
     def run():
         dataset = service.owned(session, user, dataset_id)
         columns, rows, changes = service.transform(dataset.source, body)
@@ -100,7 +100,7 @@ class ReparseInput(service.StrictModel):
 
 
 @router.post("/{dataset_id}/reparse")
-def reparse_dataset(session: SessionDep, user: CurrentUser, dataset_id: str, body: ReparseInput):
+def reparse_dataset(session: SessionDep, user: CurrentAccount, dataset_id: str, body: ReparseInput):
     def run():
         dataset = service.owned(session, user, dataset_id, body.revision, lock=True)
         if dataset.content is None:
@@ -119,7 +119,7 @@ def reparse_dataset(session: SessionDep, user: CurrentUser, dataset_id: str, bod
 
 
 @router.put("/{dataset_id}")
-def save_dataset(session: SessionDep, user: CurrentUser, dataset_id: str, body: service.SaveInput):
+def save_dataset(session: SessionDep, user: CurrentAccount, dataset_id: str, body: service.SaveInput):
     def run():
         dataset = service.save(session, user, dataset_id, body)
         session.commit()
@@ -128,7 +128,7 @@ def save_dataset(session: SessionDep, user: CurrentUser, dataset_id: str, body: 
 
 
 @router.post("/{dataset_id}/query")
-def query_dataset(session: SessionDep, user: CurrentUser, dataset_id: str, body: service.DatasetChart):
+def query_dataset(session: SessionDep, user: CurrentAccount, dataset_id: str, body: service.DatasetChart):
     def run():
         dataset = service.owned(session, user, dataset_id)
         return {**service.aggregate(dataset.columns, dataset.rows, body), "revision": dataset.revision}
@@ -140,7 +140,7 @@ class AnalyzeInput(service.StrictModel):
 
 
 @router.post("/{dataset_id}/analyze")
-def analyze_dataset(session: SessionDep, user: CurrentUser, dataset_id: str, body: AnalyzeInput):
+def analyze_dataset(session: SessionDep, user: CurrentAccount, dataset_id: str, body: AnalyzeInput):
     dataset = action(lambda: service.owned(session, user, dataset_id))
     if not ai_available():
         raise HTTPException(503, "AI 尚未設定；你仍可預覽、整理、合併資料及建立圖表。")
@@ -154,14 +154,14 @@ def analyze_dataset(session: SessionDep, user: CurrentUser, dataset_id: str, bod
 
 
 @router.get("/{dataset_id}/export")
-def export_dataset(session: SessionDep, user: CurrentUser, dataset_id: str):
+def export_dataset(session: SessionDep, user: CurrentAccount, dataset_id: str):
     dataset = action(lambda: service.owned(session, user, dataset_id))
     return Response(service.export_csv(dataset), media_type="text/csv; charset=utf-8", headers={
         "Content-Disposition": f"attachment; filename=data.csv; filename*=UTF-8''{quote(dataset.name + '.csv')}", "Cache-Control": "no-store"})
 
 
 @router.delete("/{dataset_id}", status_code=204)
-def delete_dataset(session: SessionDep, user: CurrentUser, dataset_id: str, revision: int = Query(ge=1)):
+def delete_dataset(session: SessionDep, user: CurrentAccount, dataset_id: str, revision: int = Query(ge=1)):
     def run():
         session.execute(select(AppUser.id).where(AppUser.id == user.id).with_for_update())
         session.delete(service.owned(session, user, dataset_id, revision, lock=True))

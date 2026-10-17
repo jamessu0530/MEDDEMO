@@ -8,7 +8,6 @@ import { SidebarEdge } from "@/components/sidebar-edge"
 import { homePath, type AuthUser } from "@/lib/auth"
 import { useChannelUnread } from "@/lib/channel-unread"
 import { usePendingOa } from "@/lib/manager-counts"
-import { useUnseenReplies } from "@/lib/manager-replies"
 import { useUploadQueue } from "@/lib/offline-queue"
 import { chooseSkin } from "@/lib/preferences"
 import { profilePath, SIDEBAR_ITEM, sidebarItems, type SidebarBadge } from "@/lib/sidebar"
@@ -30,10 +29,9 @@ export function AppSidebar(props: SidebarProps) {
 function SalesSidebar(props: SidebarProps) {
   const { items } = useUploadQueue()
   const channels = useChannelUnread()
-  const replies = useUnseenReplies()
   // FR-4.3：手機裡還有沒送出的錄音，跟底部分頁列一樣掛在訂單首頁上
   const uploads = items.filter((item) => item.state === "pending").length
-  return <Sidebar {...props} counts={{ uploads, channels, replies }} />
+  return <Sidebar {...props} counts={{ uploads, channels }} />
 }
 
 function ManagerSidebar(props: SidebarProps) {

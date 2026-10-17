@@ -18,7 +18,6 @@ import {
   type ReportLibrarySnapshot,
 } from "@/lib/report-documents"
 import { normalizeReportConfig, type ReportConfig } from "@/lib/reports"
-import { ReportShareDialog } from "@/components/reports/report-share"
 
 const BUTTON =
   "flex min-h-10 items-center justify-center gap-1.5 rounded-md border bg-background px-2.5 text-sm disabled:opacity-40"
@@ -52,7 +51,6 @@ export function ReportDocumentControls({
   const [mode, setMode] = useState<"new" | "copy" | "save_as" | null>(null)
   const [name, setName] = useState("")
   const [bookmarkDialog, setBookmarkDialog] = useState(false)
-  const [shareDialog, setShareDialog] = useState(false)
   const [bookmarkName, setBookmarkName] = useState("")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
@@ -247,16 +245,6 @@ export function ReportDocumentControls({
               <Bookmark className="size-3.5" />
               儲存檢視書籤
             </button>
-            {!library.readonly && (
-              <button
-                type="button"
-                className={BUTTON}
-                disabled={busy || saving || dirty}
-                onClick={() => setShareDialog(true)}
-              >
-                唯讀共享
-              </button>
-            )}
           </div>
           {error && !mode && !bookmarkDialog && (
             <p role="alert" className="text-xs text-destructive">
@@ -265,13 +253,6 @@ export function ReportDocumentControls({
           )}
         </div>
       </details>
-      {shareDialog && (
-        <ReportShareDialog
-          reportId={library.active_report_id}
-          revision={library.revision}
-          onClose={() => setShareDialog(false)}
-        />
-      )}
       <Dialog
         open={!!mode}
         onOpenChange={(open) => {

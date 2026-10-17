@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react"
-import { useSortable } from "@dnd-kit/sortable"
+import { useReportCardDrag } from "@/components/reports/use-report-card-drag"
 import { CSS } from "@dnd-kit/utilities"
 import {
   Eye,
@@ -62,10 +62,9 @@ export function StudioVisual({
     setActivatorNodeRef,
     transform,
     transition,
-  } = useSortable({
-    id: object.id,
-    disabled: !editing || object.locked,
-  })
+    isDragging,
+    surfaceListeners,
+  } = useReportCardDrag(object.id, !layout.draggable)
   const selected = object.slicer ? (values[object.id] ?? []) : []
   const options =
     object.slicer && object.slicer.dimension in filterOptions
@@ -74,12 +73,14 @@ export function StudioVisual({
   return (
     <article
       ref={setNodeRef}
+      {...surfaceListeners}
+      data-dragging={isDragging || undefined}
       data-studio-object={object.id}
       aria-label={object.title}
       onClick={() => {
         if (editing) layout.onSelect()
       }}
-      className={`col-span-2 min-w-0 overflow-hidden rounded-lg border bg-card lg:col-span-12 ${layout.selected && editing ? "ring-2 ring-primary" : ""} ${object.hidden && editing ? "opacity-40" : ""}`}
+      className={`report-drag-surface col-span-2 min-w-0 overflow-hidden rounded-lg border bg-card lg:col-span-12 ${layout.selected && editing ? "ring-2 ring-primary" : ""} ${object.hidden && editing ? "opacity-40" : ""}`}
       style={{
         transform: CSS.Transform.toString(transform),
         transition,
@@ -87,20 +88,20 @@ export function StudioVisual({
         background: object.background,
       }}
     >
-      {editing && (
+      {layout.draggable && (
         <div className="flex min-h-10 items-center gap-1 border-b bg-muted/30 px-2">
           <button
             ref={setActivatorNodeRef}
             type="button"
             aria-label={`拖曳物件：${object.title}`}
             {...attributes}
-            {...listeners}
+            onKeyDown={listeners?.onKeyDown}
             disabled={object.locked}
             onClick={(event) => {
               event.stopPropagation()
               layout.onSelect(event)
             }}
-            className="flex min-h-9 min-w-0 flex-1 touch-none items-center gap-1 text-left text-sm"
+            className="flex min-h-9 min-w-0 flex-1 items-center gap-1 text-left text-sm"
           >
             <GripVertical className="size-3.5 shrink-0" />
             <span className="truncate">{object.title}</span>
@@ -110,7 +111,7 @@ export function StudioVisual({
       )}
       <div
         className="h-full min-h-0 overflow-auto p-3"
-        style={{ maxHeight: editing ? "calc(100% - 40px)" : undefined }}
+        style={{ maxHeight: layout.draggable ? "calc(100% - 40px)" : undefined }}
       >
         {object.kind === "text" && (
           <div

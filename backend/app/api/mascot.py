@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -22,6 +22,17 @@ class EquipInput(BaseModel):
 
 class EncounterInput(BaseModel):
     event_id: UUID
+
+
+class AssistantAchievementInput(BaseModel):
+    action: Literal["ghost", "new"]
+
+
+@router.post("/achievements")
+def unlock_achievement(session: SessionDep, user: CurrentUser, body: AssistantAchievementInput):
+    result = service.unlock_assistant_achievement(session, user, body.action)
+    session.commit()
+    return result
 
 
 @router.get("")

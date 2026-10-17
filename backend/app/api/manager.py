@@ -12,6 +12,7 @@ from app.api.auth import ManagerUser
 from app.api.customer_priority import router as priority_router
 from app.db import get_session
 from app.services import customer_profile
+from app.services.auth import role_data_user
 from app.services import team_itineraries as team
 from app.timeutil import TAIPEI
 
@@ -49,6 +50,12 @@ class TeamStop(BaseModel):
     window_kind: str | None
     window_time: str | None
     travel_mode: str  # 到這一站那一段實際用的交通方式
+    travel_minutes: int | None
+    travel_km: float | None
+    travel_estimated: bool
+    city: str
+    arrived_at: dt.datetime | None
+    visit_id: str | None
 
 
 class TeamLegStep(BaseModel):
@@ -93,6 +100,8 @@ class RepRoute(BaseModel):
     finish_time: str | None
     estimated: bool
     travel_mode: str  # 這位業務的交通方式：drive、scooter、transit
+    start_city: str | None
+    office_start: bool
     origin: LatLng | None
     stops: list[TeamStop]
     legs: list[TeamLeg]
@@ -117,6 +126,7 @@ def _route_out(route: team.RepRoute) -> RepRoute:
         version=view.version, done=view.done, total=view.total, travel_minutes=view.travel_minutes,
         travel_km=view.travel_km, finish_time=view.finish_time, estimated=view.estimated,
         travel_mode=view.travel_mode,
+        start_city=view.start_city, office_start=view.office_start,
         origin=LatLng(lat=route.origin[0], lng=route.origin[1]) if route.origin else None,
         stops=[TeamStop(**dataclasses.asdict(stop)) for stop in route.stops],
         legs=[TeamLeg(**dataclasses.asdict(leg)) for leg in route.legs],
@@ -133,7 +143,7 @@ def team_itineraries(session: SessionDep, manager: ManagerUser):
     result = TeamRoutes(
         date=customer_profile.app_today(session),
         updated_at=dt.datetime.now(TAIPEI).strftime("%H:%M"),
-        scope="全公司" if manager.role == "it" else manager.region,
+        scope="全公司" if manager.role == "it" else role_data_user(manager).region,
         reps=[_route_out(route) for route in routes],
     )
     session.commit()

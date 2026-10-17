@@ -1318,7 +1318,7 @@ def data(session: Session, user: AppUser, config: ReportConfig) -> ReportData:
     start, end = period_bounds(config.period, today, config.date_range)
     scope = Scope.for_user(user)
     acting = user.acts_as or user
-    scope_label = "全公司共用"
+    scope_label = "我的報表"
     if config.owner_id:
         scope_label = next(owner.name for owner in owners(session, user) if owner.id == config.owner_id)
     if user.acts_as_user_id:

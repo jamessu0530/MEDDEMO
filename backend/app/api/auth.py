@@ -114,12 +114,12 @@ def _account_public(session: Session, user: AppUser) -> AccountPublic:
 
 def _public(session: Session, user: AppUser, account: AppUser | None = None) -> UserPublic:
     account = account if account is not None else user
-    profile = _account_public(session, user)
+    profile = _account_public(session, account)
     return UserPublic(
-        **profile.model_dump(),
+        **{**profile.model_dump(), "role": user.role},
         demo=DemoAccess(
-            account=profile if user.id == account.id else _account_public(session, account),
-            role=user.role if user.id != account.id else None,
+            account=profile,
+            role=getattr(user, "_demo_role", None),
         ) if settings().demo_role_switch else None,
     )
 

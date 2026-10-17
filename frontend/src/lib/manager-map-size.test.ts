@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-import { constrainManagerMapSize, managerMapLimits, readManagerMapSize, saveManagerMapSize } from "@/lib/manager-map-size"
+import { constrainManagerMapSize, managerMapLimits, readManagerMapSize, readManagerRouteSize, saveManagerMapSize, saveManagerRouteSize } from "@/lib/manager-map-size"
 
 beforeEach(() => {
   const items = new Map<string, string>()
@@ -14,6 +14,26 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals())
 
 describe("主管地圖尺寸", () => {
+  it("行程清單另存尺寸，重開保留且不混用地圖或其他帳號的偏好", () => {
+    const map = { widthPercent: 60, height: 420 }
+    const routes = { widthPercent: 80, height: 360 }
+    saveManagerMapSize("M01", map)
+    saveManagerRouteSize("M01", routes)
+    expect(readManagerRouteSize("M01")).toEqual(routes)
+    expect(readManagerMapSize("M01")).toEqual(map)
+    expect(readManagerRouteSize("M02")).toEqual({ widthPercent: null, height: null })
+    saveManagerRouteSize("M01", { widthPercent: null, height: null })
+    expect(localStorage.getItem("meddemo:manager-route-size:M01")).toBeNull()
+    expect(readManagerMapSize("M01")).toEqual(map)
+  })
+
+  it("行程清單可以儲存整欄寬度，無效尺寸回到自然大小", () => {
+    saveManagerRouteSize("M01", { widthPercent: 100, height: 400 })
+    expect(readManagerRouteSize("M01")).toEqual({ widthPercent: 100, height: 400 })
+    localStorage.setItem("meddemo:manager-route-size:M01", '{"widthPercent":101,"height":-1}')
+    expect(readManagerRouteSize("M01")).toEqual({ widthPercent: null, height: null })
+  })
+
   it("同一帳號重開會保留尺寸，其他帳號使用自己的預設；還原會清除偏好", () => {
     const size = { widthPercent: 65, height: 420 }
     saveManagerMapSize("M01", size)

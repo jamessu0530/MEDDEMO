@@ -6,12 +6,11 @@
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select, text
+from sqlalchemy import text
 from test_asks import FISH_OIL_SQL, ScriptedLLM, answer, grade, query, rewrite, run_jobs
 from test_attachments import pdf, photo
 
 from app.main import app
-from app.models import Attachment, Escalation
 from app.services import asks as asks_service
 from app.tasks import redis
 
@@ -159,19 +158,3 @@ def test_a_pdf_works_the_same_way(client, monkeypatch):
     run_jobs()
     assert client.get(f"/api/asks/{created.json()['id']}").json()["status"] == "answered"
     assert llm.media[-1] == ("json", ["application/pdf"])
-
-
-def test_the_manager_answering_an_escalation_sees_the_photo(client, engine, auth, monkeypatch):
-    llm = SeeingLLM(grade=[grade("incorrect")], rewrite=[rewrite("年終獎金")], answer=["不該用到"])
-    monkeypatch.setattr(asks_service, "get_llm", lambda: llm)
-    monkeypatch.setattr(asks_service, "optional_embedder", lambda: None)
-    ask_id = ask_with_file(client, "knowledge", "這張海報上的條件我們跟得上嗎").json()["id"]
-    run_jobs()
-    assert client.post(f"/api/asks/{ask_id}/escalate").status_code == 200
-    items = TestClient(app).get("/api/escalations", headers=auth("M01")).json()
-    item = next(e for e in items if e["ask_id"] == ask_id)
-    assert item["attachment"]["kind"] == "image"
-    assert TestClient(app).get(item["attachment"]["url"]).status_code == 200
-    with engine.connect() as conn:
-        assert conn.scalar(select(Escalation.id).where(Escalation.ask_id == ask_id)) is not None
-        assert conn.scalar(select(Attachment.status).where(Attachment.ask_id == ask_id)) == "ready"

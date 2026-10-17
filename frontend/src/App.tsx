@@ -4,7 +4,9 @@ import { RouterProvider } from "react-router/dom"
 
 import { fetchMe } from "@/api/auth"
 import { AppShell } from "@/components/app-shell"
+import { CompletionCelebrationHost } from "@/components/completion-celebration"
 import { Assistant } from "@/components/ask/assistant"
+import { ConversationHistoryPage } from "@/pages/conversation-history"
 import { openAssistant } from "@/ask/assistant-window"
 import { InkOverlay, InkRoutes } from "@/components/ink-transition"
 import { Mascot } from "@/components/mascot"
@@ -33,7 +35,6 @@ import { CustomerPicker } from "@/pages/customer-picker"
 import { OrdersPage } from "@/pages/orders"
 import { OrderPage, PracticeOrderPage } from "@/pages/order"
 import { DocumentPage } from "@/pages/document"
-import { EscalationsPage } from "@/pages/escalations"
 import { FirstWeekPage } from "@/pages/first-week"
 import { LearningLessonPage } from "@/pages/learning-lesson"
 import { ProductLearningPage } from "@/pages/product-learning"
@@ -153,6 +154,7 @@ function RequireAuth() {
         <Outlet />
       </AppShell>
       <CalendarReminderHost key={`calendar-${session.user.id}`} />
+      <CompletionCelebrationHost key={`completion-${session.user.id}`} />
       {/* FR-11：第一次打開時說明三個主要操作，登入之後才顯示 */}
       <Onboarding />
     </>
@@ -271,6 +273,7 @@ function ApplicationRoutes() {
             {/* 座騎圖鑑：熊熊滾騎過的座騎；主管與 IT 打開會看到後端的說明 */}
             <Route path="/rides" element={<RidesPage />} />
             <Route path="/me" element={<MePage />} />
+            <Route path="/conversations" element={<ConversationHistoryPage />} />
             <Route path="/mascots" element={<MascotsPage />} />
             {/* 工作區由 RequireAuth 保留，換頁回來不會重新建立。 */}
             <Route path="/reports" element={null} />
@@ -283,7 +286,8 @@ function ApplicationRoutes() {
             <Route path="/customers/:customerId/contract" element={<ContractPage />} />
             <Route path="/customers/:customerId/record" element={<RecordVisit />} />
             <Route path="/visits/:visitId" element={<VisitPage />} />
-            <Route path="/escalations" element={<EscalationsPage />} />
+            {/* 舊的主管回覆書籤改到頻道，後續在訊息裡討論。 */}
+            <Route path="/escalations" element={<Navigate to="/channels" replace />} />
             <Route path="/oa/forms" element={<OaFormsPage />} />
             <Route path="/oa/apps" element={<OaAppsPage />} />
             <Route path="/oa/new/:code" element={<OaEditorPage />} />

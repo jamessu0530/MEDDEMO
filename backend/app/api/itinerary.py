@@ -21,6 +21,7 @@ from app.db import get_session
 from app.llm import LLMOutputError
 from app.models import AppUser
 from app.services import itinerary as service
+from app.services.auth import role_data_user
 from app.services import itinerary_ai
 from app.services import mascot_collection
 from app.services import team_itineraries as team
@@ -343,7 +344,7 @@ class TodayMap(BaseModel):
 
 
 def _rep_id(user: AppUser) -> str:
-    return user.acts_as_user_id or user.id
+    return role_data_user(user).id
 
 
 def _out(view: service.ItineraryView) -> TodayItinerary:

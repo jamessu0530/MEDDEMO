@@ -37,9 +37,9 @@ export function LegChip({
     <button
       type="button"
       data-leg-chip
-      aria-expanded={done ? undefined : open}
-      aria-controls={done ? undefined : controls}
-      aria-label={`${fromOffice ? "從辦公室出發，" : ""}${text}${done ? "（已走完）" : "，換交通方式"}`}
+      aria-expanded={done || !onClick ? undefined : open}
+      aria-controls={done || !onClick ? undefined : controls}
+      aria-label={`${fromOffice ? "從辦公室出發，" : ""}${text}${done ? "（已走完）" : onClick ? "，換交通方式" : ""}`}
       disabled={done || !onClick}
       onClick={onClick}
       className={cn(
@@ -50,7 +50,7 @@ export function LegChip({
       {fromOffice && <span className="font-normal text-muted-foreground">從辦公室 ·</span>}
       <Icon aria-hidden className={cn("size-4", done ? "text-muted-foreground" : "text-primary")} />
       {text}
-      {!done && <ChevronDown aria-hidden className="size-3.5 text-muted-foreground" />}
+      {!done && onClick && <ChevronDown aria-hidden className="size-3.5 text-muted-foreground" />}
     </button>
   )
 }

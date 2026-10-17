@@ -11,11 +11,12 @@ from app.models import Itinerary
 
 ROUTE_FIELDS = {
     "rep", "version", "done", "total", "travel_minutes", "travel_km", "finish_time", "estimated", "travel_mode", "origin",
-    "stops", "legs", "removed", "added", "moved", "untouched", "location",
+    "stops", "legs", "removed", "added", "moved", "untouched", "location", "start_city", "office_start",
 }
 STOP_FIELDS = {
     "number", "customer_id", "customer_name", "area", "lat", "lng", "status", "planned_time", "duration_minutes",
     "late_minutes", "source", "signal", "reason", "window_kind", "window_time", "travel_mode",
+    "travel_minutes", "travel_km", "travel_estimated", "city", "arrived_at", "visit_id",
 }
 
 
@@ -63,6 +64,29 @@ def test_one_reps_detail_only_inside_your_team(client, auth):
         response = client.get(f"/api/manager/itineraries/{user_id}", headers=auth("M01"))
         assert response.status_code == 404 and response.json()["detail"] == "找不到這位業務"
     assert client.get("/api/manager/itineraries/U03", headers=auth("A01")).status_code == 200
+
+
+def test_manager_route_matches_the_sales_route_without_private_fields(client, auth):
+    sales_headers = auth("U01")
+    sales = client.get("/api/itinerary/today", headers=sales_headers).json()
+    customer_id = sales["stops"][0]["customer_id"]
+    arrived = client.post(f"/api/itinerary/today/stops/{customer_id}/arrive", headers=sales_headers)
+    assert arrived.status_code == 200, arrived.text
+    sales = client.get("/api/itinerary/today", headers=sales_headers).json()
+    response = client.get("/api/manager/itineraries/U01", headers=auth("M01"))
+    assert response.status_code == 200, response.text
+    manager = response.json()
+    for key in ("done", "total", "start_city", "office_start"):
+        assert manager[key] == sales[key]
+    assert manager["stops"][0]["arrived_at"] is not None
+    for actual, expected in zip(manager["stops"], sales["stops"], strict=True):
+        for key in STOP_FIELDS - {"number", "area", "lat", "lng"}:
+            assert actual[key] == expected[key], key
+        assert not {"note", "locked", "habit_ids"} & actual.keys()
+    after = client.get("/api/itinerary/today", headers=sales_headers).json()
+    assert [(s["customer_id"], s["arrived_at"]) for s in after["stops"]] == [
+        (s["customer_id"], s["arrived_at"]) for s in sales["stops"]
+    ]
 
 
 def test_a_managers_read_saves_the_itinerary_it_built(client, auth, tx):

@@ -59,6 +59,7 @@ def test_search_normalizes_traditional_simplified_and_fullwidth_characters():
     assert outlet_search.normalize(" 臺北 華興藥局Ａ ") == outlet_search.normalize("台北华兴药局a")
 
 
+@pytest.mark.search_integration
 @pytest.mark.skipif(os.environ.get("RUN_SEARCH_INTEGRATION") != "1", reason="需明確啟用本機／CI Elasticsearch 實測")
 def test_real_elasticsearch_fuzzy_chinese_phone_and_failed_rebuild_preserves_alias(tx, env, monkeypatch):
     env(ELASTICSEARCH_URL="http://127.0.0.1:19201", ELASTICSEARCH_INDEX=f"meddemo-test-{uuid.uuid4().hex}")
@@ -69,6 +70,8 @@ def test_real_elasticsearch_fuzzy_chinese_phone_and_failed_rebuild_preserves_ali
     try:
         count = outlet_search.rebuild(tx)
         assert count == tx.scalar(select(func.count()).select_from(Customer))
+        assert outlet_search.index_is_healthy(count)
+        assert not outlet_search.index_is_healthy(count + 1)
         assert key in outlet_search.search_ids("合康藥句")
         assert key in outlet_search.search_ids("合康药局")
         assert key in outlet_search.search_ids("0224555173")

@@ -13,6 +13,9 @@ from sqlalchemy.orm import Session
 from app.main import app
 from app.models import AppUser, Channel
 from app.services import channels
+from app.services.channel_geography import geography
+
+GEOGRAPHIC_PLACES = {city["name"] + district["name"] for city in geography()["cities"] for district in city["districts"]}
 
 NORTH_PLACES = {
     "台北市・中正區", "台北市・大同區", "台北市・中山區", "台北市・松山區", "台北市・大安區", "台北市・萬華區",
@@ -46,8 +49,8 @@ def test_channels_follow_the_org_tree_and_places(engine):
             session, list(session.scalars(select(Channel).where(Channel.kind.not_in(("customer", "topic")))))
         )
     by_name = {i.name: i for i in infos}
-    # 全國 1、整區 3、小組 4（每位主管一個）、地點 18
-    assert len(infos) == 26
+    # 全國 1、整區 3、小組 4、示範地點 18，再加 368 個全台共用行政區
+    assert len(infos) == 26 + 368
     assert (by_name["全國"].path, by_name["全國"].parent_id, by_name["全國"].region_id) == ("TW", None, None)
     assert (by_name["北區"].path, by_name["北區"].parent_id) == ("TW.N", by_name["全國"].id)
     assert (by_name["陳建宏小組"].path, by_name["陳建宏小組"].parent_id) == ("TW.N.M01", by_name["北區"].id)
@@ -59,16 +62,16 @@ def test_channels_follow_the_org_tree_and_places(engine):
 
 
 def test_each_account_sees_its_own_team_its_region_and_the_whole_company(client, auth):
-    north = {"全國", "公司公告", "北區", "新品上市", "補貨問題", "陳建宏小組"} | NORTH_PLACES
+    north = {"全國", "公司公告", "北區", "新品上市", "補貨問題", "陳建宏小組"} | NORTH_PLACES | GEOGRAPHIC_PLACES
     assert names(client, auth("U01")) == north
     assert names(client, auth("M01")) == north
     # 南區兩組各看各的小組頻道，整區、地點與全國的文字頻道一樣
-    assert names(client, auth("U04")) == {"全國", "公司公告", "南區", "許文彬小組", "高雄市", "台南市"}
-    assert names(client, auth("U05")) == {"全國", "公司公告", "南區", "蔡宗翰小組", "高雄市", "台南市"}
-    assert names(client, auth("M04")) == {"全國", "公司公告", "南區", "蔡宗翰小組", "高雄市", "台南市"}
+    assert names(client, auth("U04")) == {"全國", "公司公告", "南區", "許文彬小組", "高雄市", "台南市"} | GEOGRAPHIC_PLACES
+    assert names(client, auth("U05")) == {"全國", "公司公告", "南區", "蔡宗翰小組", "高雄市", "台南市"} | GEOGRAPHIC_PLACES
+    assert names(client, auth("M04")) == {"全國", "公司公告", "南區", "蔡宗翰小組", "高雄市", "台南市"} | GEOGRAPHIC_PLACES
     # IT 坐在根節點上，全部看得到，包括各組的原始對話
     everything = listing(client, auth("A01"))
-    assert len(everything) == 29
+    assert len(everything) == 29 + 368
     # 全國與它的文字頻道在最前面，接著北區、北區的文字頻道、小組、地點（照名稱排），再來中區、南區
     order = [c["name"] for c in everything]
     assert order[:7] == ["全國", "公司公告", "北區", "新品上市", "補貨問題", "陳建宏小組", "台北市・中山區"]
@@ -90,7 +93,7 @@ def test_a_self_created_account_sees_what_the_demo_rep_sees(tx, client):
         "/api/auth/register", json={"name": "評審", "email": "judge@channels.test", "password": "judge-pass-1"}
     ).json()
     headers = {"Authorization": f"Bearer {created['token']}"}
-    assert names(client, headers) == {"全國", "公司公告", "北區", "新品上市", "補貨問題", "陳建宏小組"} | NORTH_PLACES
+    assert names(client, headers) == {"全國", "公司公告", "北區", "新品上市", "補貨問題", "陳建宏小組"} | NORTH_PLACES | GEOGRAPHIC_PLACES
 
 
 def test_a_new_manager_gets_a_team_channel(tx, client, auth):

@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button"
 import { ConfirmView } from "@/components/visit/confirm-view"
 import { ResultView } from "@/components/visit/result-view"
 import { TranscriptDialog } from "@/components/visit/transcript-dialog"
+import { celebrateCompletion } from "@/lib/completion-celebration"
 
 const STAGE_TEXT: Partial<Record<NonNullable<Visit["stage"]>, string>> = {
   transcribing: "語音轉文字中…",
@@ -57,6 +58,9 @@ export function VisitPage() {
 
   // 動作完成後換上新的狀態；又回到處理中時，重新開始輪詢
   function update(next: Visit) {
+    if (next.status === "synced" && visit?.status !== "synced") {
+      celebrateCompletion("拜訪紀錄回寫完成！")
+    }
     setVisit(next)
     if (next.status === "processing") setPoll((n) => n + 1)
   }

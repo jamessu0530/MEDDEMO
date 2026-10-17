@@ -6,19 +6,23 @@ describe("各頁的 AI 輸入方式", () => {
     for (const path of ["/route", "/route/", "/route/edit", "/route/edit/"])
       expect(pageAssistantPlacement(path)).toBe("none")
   })
-  it("報表與頻道一律使用底部詢問欄", () => {
+  it("頻道相關頁面透過 @熊熊滾 提問，不顯示底部詢問欄", () => {
     for (const path of [
-      "/reports",
-      "/reports/",
       "/channels",
+      "/channels/",
       "/channels/2",
+      "/channels/2/",
       "/channels/search",
+      "/channels/search/",
       "/channels/2/threads",
+      "/channels/2/threads/",
     ])
-      expect(pageAssistantPlacement(path)).toBe("dock")
+      expect(pageAssistantPlacement(path)).toBe("none")
   })
   it("一般頁面與主管各分頁使用相同的底部詢問欄", () => {
     for (const path of [
+      "/reports",
+      "/reports/",
       "/orders",
       "/orders/new",
       "/customers",

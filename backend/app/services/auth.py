@@ -48,7 +48,7 @@ ACCOUNT_DISABLED = "這個帳號已停用，請洽 IT"
 # 決賽評審用自己的 Google 登入，要能馬上試完整流程（9/16 James 決定）
 EXTERNAL_ACCOUNT_ACTS_AS = "U01"
 
-# 切換使用現有示範人物及其組織範圍，不修改登入者或示範人物的角色、密碼與 sessionVersion。
+# 示範角色只借用資料範圍；登入者的姓名、工號與操作紀錄始終屬於本人。
 DEMO_ROLE_USERS = {"sales": "U01", "manager": "M01", "it": "A01"}
 
 # 沒設定 JWT_SECRET 時，這支程式自己產生一把；重開之後大家要重新登入。
@@ -149,8 +149,22 @@ def user_from_token(session: Session, token: str, *, demo: bool = True) -> AppUs
         target = session.get(AppUser, target_id) if target_id else None
         if target is None or target.deactivated_at is not None or target.role != role:
             raise AuthError("這個示範身分目前無法使用，請重新登入或洽 IT")
-        return target
+        # 建立只存在這個請求的角色視圖，不修改 Session 裡的本人或示範帳號。
+        # 所有以 user.id 寫入的私人資料與操作紀錄仍記在真正登入者名下。
+        effective = AppUser(**{
+            column.key: getattr(user, column.key) for column in AppUser.__mapper__.column_attrs
+        })
+        effective.role = role
+        effective.acts_as = user.acts_as
+        effective._demo_scope = target
+        effective._demo_role = role
+        return effective
     return user
+
+
+def role_data_user(user: AppUser) -> AppUser:
+    """取得角色展示的共用資料來源；不能拿它代替登入者的身分或操作人。"""
+    return getattr(user, "_demo_scope", None) or user.acts_as or user
 
 
 def subject_from_token(token: str) -> str | None:

@@ -2,7 +2,7 @@ import { useState } from "react"
 import { CalendarPlus, Check, ChevronDown } from "@/components/icons"
 import { Link } from "react-router"
 
-import { escalateAsk, isFinished, type Ask, type MemoryFile, type TraceItem } from "@/api/asks"
+import { isFinished, type Ask, type MemoryFile, type TraceItem } from "@/api/asks"
 import { ApiError } from "@/api/client"
 import { addStopsToToday } from "@/api/route"
 import { AttachmentThumbs } from "@/components/attachments/attachment-thumbs"
@@ -22,8 +22,8 @@ const STEP_LABEL: Record<TraceItem["step"], string> = {
   stop: "停止",
 }
 
-/** 一個提問的答案：進行中顯示查到第幾輪；查完顯示答案與依據（結果表或出處），查不到可以轉主管（用藥題除外） */
-export function AskAnswer({ ask, onChange, compact = false }: { ask: Ask; onChange: (ask: Ask) => void; compact?: boolean }) {
+/** 一個提問的答案：進行中顯示查到第幾輪；查完顯示答案與依據（結果表或出處） */
+export function AskAnswer({ ask, compact = false }: { ask: Ask; compact?: boolean }) {
   if (!isFinished(ask)) {
     const last = ask.trace.at(-1)
     return (
@@ -42,9 +42,7 @@ export function AskAnswer({ ask, onChange, compact = false }: { ask: Ask; onChan
     ask.evidence?.sources?.length ||
     ask.evidence?.items?.length ||
     ask.evidence?.attachments?.length ||
-    ask.customers.length ||
-    ask.status === "no_evidence" ||
-    ask.status === "not_converged"
+    ask.customers.length
   )
   return (
     <div className="flex flex-col gap-3">
@@ -55,14 +53,14 @@ export function AskAnswer({ ask, onChange, compact = false }: { ask: Ask; onChan
       {compact && hasEvidence ? (
         <details className="text-xs text-muted-foreground">
           <summary className="cursor-pointer py-1">查看依據與相關操作</summary>
-          <AskEvidence ask={ask} onChange={onChange} />
+          <AskEvidence ask={ask} />
         </details>
-      ) : !compact && <AskEvidence ask={ask} onChange={onChange} />}
+      ) : !compact && <AskEvidence ask={ask} />}
     </div>
   )
 }
 
-function AskEvidence({ ask, onChange }: { ask: Ask; onChange: (ask: Ask) => void }) {
+function AskEvidence({ ask }: { ask: Ask }) {
   const sources = ask.evidence?.sources ?? []
   return (
     <div className="flex flex-col gap-3">
@@ -114,10 +112,6 @@ function AskEvidence({ ask, onChange }: { ask: Ask; onChange: (ask: Ask) => void
         </div>
       )}
       {ask.kind === "memory" && <MemorySources items={ask.evidence?.items ?? []} files={ask.evidence?.attachments ?? []} />}
-      {/* 用藥題請業務詢問醫師或藥師，不給轉主管（James 2026-09-15）；頻道記憶題到頻道裡問就好，也不轉 */}
-      {(ask.status === "no_evidence" || ask.status === "not_converged") && ask.evidence?.reason !== "medical" && ask.kind !== "memory" && (
-        <Escalate ask={ask} onChange={onChange} />
-      )}
     </div>
   )
 }
@@ -217,38 +211,6 @@ function PinToRoute({ customers }: { customers: Ask["customers"] }) {
       </Button>
       {state.status === "error" && <p className="text-xs text-destructive">{state.message}</p>}
     </div>
-  )
-}
-
-/** FR-8.4：查不到就轉給主管，不讓業務卡在這裡 */
-function Escalate({ ask, onChange }: { ask: Ask; onChange: (ask: Ask) => void }) {
-  const [busy, setBusy] = useState(false)
-  if (ask.escalation_id) {
-    return (
-      <p className="text-xs text-muted-foreground">
-        已轉給主管（單號 #{ask.escalation_id}），有回覆會通知你。
-        <Link to="/escalations" className="ml-1 font-medium text-primary">
-          看主管回覆
-        </Link>
-      </p>
-    )
-  }
-  return (
-    <Button
-      variant="outline"
-      className="h-11"
-      disabled={busy}
-      onClick={async () => {
-        setBusy(true)
-        try {
-          onChange(await escalateAsk(ask.id))
-        } finally {
-          setBusy(false)
-        }
-      }}
-    >
-      轉給主管回答
-    </Button>
   )
 }
 

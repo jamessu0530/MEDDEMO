@@ -35,7 +35,6 @@ function sample(
       trace: [],
       error_message: null,
       customers: [],
-      escalation_id: null,
       attachment: null,
     },
   }

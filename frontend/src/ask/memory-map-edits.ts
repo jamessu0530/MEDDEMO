@@ -6,13 +6,14 @@ export type MapEdits = {
 }
 export type MapEditsStore = {
   getSnapshot: () => MapEdits
+  load: (snapshot: MapEdits) => void
   subscribe: (listener: () => void) => () => void
   edit: (id: string, label: string, note: string) => void
   remove: (id: string) => void
   restore: (id?: string) => void
 }
 
-/** Personal map changes share the query session's lifetime; source evidence stays intact. */
+/** 個人地圖修改由帳號記憶同步保存；來源與引用仍維持原文。 */
 export function createMapEditsStore(): MapEditsStore {
   let state: MapEdits = { nodes: {}, deleted: [] }
   const listeners = new Set<() => void>()
@@ -22,6 +23,7 @@ export function createMapEditsStore(): MapEditsStore {
   }
   return {
     getSnapshot: () => state,
+    load: commit,
     subscribe(listener) {
       listeners.add(listener)
       return () => {

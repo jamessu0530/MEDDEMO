@@ -12,10 +12,15 @@ import type { Ask, AskKind } from "@/api/asks"
 import type { AskPageContext } from "@/ask/page-context"
 
 export type UtteranceSource = "voice" | "typed"
+export type EntryMetadata = {
+  threadId?: string
+  createdAt?: string
+  ghost?: boolean
+}
 
 /** 業務或 AI 說的一句話。source 決定要不要標「語音辨識，僅供參考」——打字的是原文，不必標。
  * attachment：打字提問附的照片或 PDF，送出後後端回了才有（要用後端簽過名的網址） */
-export type Utterance = {
+export type Utterance = EntryMetadata & {
   id: number
   kind: "user" | "model"
   source: UtteranceSource
@@ -30,7 +35,7 @@ export type Utterance = {
  * 打字送出前會先整理：routing 是正在整理（判斷該查哪一種、追問要不要改寫）；clarification 是等待使用者以文字補充；choices 只相容舊紀錄；
  * auto 是自動判斷好直接查的。
  * question 是實際拿去查的那一句；看了前文改寫過時，original 是業務原本打的那句 */
-export type ToolRun = {
+export type ToolRun = EntryMetadata & {
   id: number
   kind: "tool"
   askKind: AskKind | null
@@ -52,17 +57,18 @@ export type Entry = Utterance | ToolRun
 
 export type Conversation = {
   getSnapshot: () => Entry[]
+  merge: (entries: Entry[]) => void
   subscribe: (listener: () => void) => () => void
   addUtterance: (
     kind: "user" | "model",
     source: UtteranceSource,
     text?: string,
-    options?: Pick<Utterance, "demo" | "demoPath" | "page">
+    options?: Pick<Utterance, "demo" | "demoPath" | "page"> & EntryMetadata
   ) => number
   addToolRun: (
     askKind: AskKind | null,
     question: string,
-    state?: Partial<Pick<ToolRun, "routing" | "original" | "page" | "hasFile">>
+    state?: Partial<Pick<ToolRun, "routing" | "original" | "page" | "hasFile">> & EntryMetadata
   ) => number
   appendText: (id: number, chunk: string) => void
   replace: (id: number, patch: Partial<Omit<ToolRun, "id" | "kind">>) => void
@@ -75,7 +81,10 @@ export type Conversation = {
   attach: (id: number, attachment: Attachment) => void
 }
 
-export function createConversation(): Conversation {
+export function createConversation(
+  nextId?: () => number,
+  metadata: () => EntryMetadata = () => ({})
+): Conversation {
   let entries: Entry[] = []
   let lastId = 0
   const listeners = new Set<() => void>()
@@ -93,6 +102,13 @@ export function createConversation(): Conversation {
     // 同一個參考回傳到下次變動為止：useSyncExternalStore 靠這個判斷要不要重繪
     getSnapshot: () => entries,
 
+    merge: (history) => {
+      const merged = new Map(history.map((entry) => [entry.id, entry]))
+      for (const entry of entries) merged.set(entry.id, entry)
+      for (const id of merged.keys()) lastId = Math.max(lastId, id)
+      commit([...merged.values()])
+    },
+
     subscribe: (listener) => {
       listeners.add(listener)
       return () => {
@@ -101,14 +117,15 @@ export function createConversation(): Conversation {
     },
 
     addUtterance: (kind, source, text = "", options = {}) => {
-      const id = ++lastId
-      commit([...entries, { id, kind, source, text, ...options }])
+      const id = nextId ? nextId() : ++lastId
+      commit([...entries, { ...metadata(), id, kind, source, text, ...options }])
       return id
     },
 
     addToolRun: (askKind, question, state = {}) => {
-      const id = ++lastId
+      const id = nextId ? nextId() : ++lastId
       const run: ToolRun = {
+        ...metadata(),
         id,
         kind: "tool",
         askKind,
@@ -155,7 +172,9 @@ export function createConversation(): Conversation {
       commit(
         entries.map((entry) =>
           entry.id === id
-            ? { id, kind: "model", source, text, page: target.page, ...options }
+            ? { id, kind: "model", source, text, page: target.page,
+                threadId: target.threadId, createdAt: target.createdAt,
+                ghost: target.ghost, ...options }
             : entry
         )
       )

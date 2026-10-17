@@ -3,6 +3,7 @@ import {
   ChartNoAxesCombined,
   ChevronRight,
   Medal,
+  MessagesSquare,
   Settings,
   Shirt,
 } from "@/components/icons"
@@ -100,13 +101,13 @@ export function MePage() {
                 />
               </span>
               <div className="min-w-0">
-                <p className="text-xl font-semibold">{state.me.name}</p>
+                <p className="text-xl font-semibold">{user.name}</p>
                 <p className="text-sm text-muted-foreground">
-                  {state.me.region} · 業務
+                  {user.region} · 業務
                 </p>
                 {user.acting_as && (
                   <p className="text-xs text-muted-foreground">
-                    示範業務的個人頁
+                    業績資料共用示範業務
                   </p>
                 )}
               </div>
@@ -130,6 +131,7 @@ export function MePage() {
             className="overflow-hidden rounded-2xl border bg-card [&>*+*]:border-t"
           >
             <PersonalMemory compact />
+            <ProfileLink to="/conversations" icon={MessagesSquare} label="對話紀錄" />
             <ProfileLink
               to="/me?view=achievements"
               icon={Medal}

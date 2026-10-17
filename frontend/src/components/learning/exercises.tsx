@@ -414,7 +414,7 @@ function AskExercise({ answer, onChange }: Props) {
                   selected={answer.action === "escalate"}
                   onClick={() => onChange({ ...answer, action: "escalate" })}
                 >
-                  轉給主管確認
+                  到頻道請主管確認
                 </Choice>
                 <Choice
                   selected={answer.action === "guess"}

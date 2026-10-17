@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -15,7 +16,8 @@ import {
   pointerWithin,
   type CollisionDetection,
   KeyboardSensor,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   useSensor,
   useSensors,
 } from "@dnd-kit/core"
@@ -71,12 +73,14 @@ const automaticCollision: CollisionDetection = (args) => {
 export type ReportLayoutRender = {
   fixedHeight: number
   selected: boolean
+  draggable: boolean
   onSelect: (event?: MouseEvent) => void
 }
 type Props = {
   config: ReportConfig
   pageId: string
   editing: boolean
+  readonly?: boolean
   isDesktop: boolean
   selectedId: string | null
   onSelect: (id: string) => void
@@ -96,6 +100,7 @@ function ReportLayoutBoard({
   config,
   pageId,
   editing,
+  readonly = false,
   isDesktop,
   selectedId,
   onSelect,
@@ -110,11 +115,9 @@ function ReportLayoutBoard({
       (card.page_id ?? "overview") === pageId && (editing || !card.hidden)
   )
   const baseSizes = automaticReportSizes(cards)
-  const [preview, setPreview] = useState<Record<string, ReportCardSize>>({})
   const [resizingId, setResizingId] = useState<string | null>(null)
   const [announcement, setAnnouncement] = useState("")
-  const sizes = { ...baseSizes, ...preview }
-  const rects = automaticReportRects(cards, compact, sizes)
+  const rects = automaticReportRects(cards, compact, baseSizes)
   const board = useRef<HTMLDivElement>(null)
   useLayoutEffect(() => {
     const element = board.current
@@ -132,21 +135,39 @@ function ReportLayoutBoard({
     y: number
     scroll: number
     width: number
+    element: HTMLElement
+    bounds: { width: number; height: number }
+    preview: { width: number; height: number }
     initial: ReportCardSize
     latest: ReportCardSize
   } | null>(null)
+  const previewFrame = useRef<number | null>(null)
   const selected = new Set(
     selectionIds?.length ? selectionIds : selectedId ? [selectedId] : []
   )
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+    useSensor(MouseSensor, {
+      activationConstraint: { delay: 350, tolerance: 8 },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 450, tolerance: 8 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
   )
-  function cancel() {
+  const cancel = useCallback(() => {
+    if (previewFrame.current !== null)
+      cancelAnimationFrame(previewFrame.current)
+    previewFrame.current = null
+    const element = gesture.current?.element
+    element?.style.removeProperty("transform")
+    element?.style.removeProperty("transform-origin")
+    element?.style.removeProperty("will-change")
     gesture.current = null
-    setPreview({})
     setResizingId(null)
-  }
+  }, [])
+  useEffect(() => cancel, [editing, readonly, config, compact, cancel])
   useEffect(() => {
     if (!editing) return
     const escape = (event: globalThis.KeyboardEvent) => {
@@ -157,7 +178,7 @@ function ReportLayoutBoard({
     }
     window.addEventListener("keydown", escape)
     return () => window.removeEventListener("keydown", escape)
-  }, [editing])
+  }, [editing, cancel])
   function select(card: ReportCard, event?: MouseEvent) {
     const members = card.group_id
       ? cards
@@ -179,11 +200,15 @@ function ReportLayoutBoard({
       !event.isPrimary ||
       gesture.current ||
       !editing ||
+      readonly ||
       card.locked
     )
       return
     const width = board.current?.clientWidth ?? 0
-    if (!width) return
+    const element = event.currentTarget.parentElement
+    if (!width || !element) return
+    const { width: cardWidth, height: cardHeight } =
+      element.getBoundingClientRect()
     event.preventDefault()
     event.stopPropagation()
     event.currentTarget.focus()
@@ -195,24 +220,53 @@ function ReportLayoutBoard({
       y: event.clientY,
       scroll: window.scrollY,
       width,
+      element,
+      bounds: { width: cardWidth, height: cardHeight },
+      preview: { width: cardWidth, height: cardHeight },
       initial: baseSizes[card.id],
       latest: baseSizes[card.id],
     }
+    element.style.transformOrigin = "top left"
+    element.style.willChange = "transform"
     setResizingId(card.id)
   }
-  function move(event: PointerEvent<HTMLButtonElement>) {
+  function update(event: PointerEvent<HTMLButtonElement>) {
     const active = gesture.current
     if (!active || active.pointer !== event.pointerId) return
+    const dx = event.clientX - active.x
+    const dy = event.clientY - active.y + window.scrollY - active.scroll
     active.latest = resizeAutomaticReportCard(
       active.initial,
-      event.clientX - active.x,
-      event.clientY - active.y + window.scrollY - active.scroll,
+      dx,
+      dy,
       active.width,
       compact
     )
-    setPreview({ [active.cardId]: active.latest })
+    active.preview = {
+      width: Math.max(
+        active.width * (compact ? 0.5 : 4 / REPORT_COLUMNS),
+        Math.min(active.width, active.bounds.width + dx)
+      ),
+      height: Math.max(
+        8 * REPORT_ROW,
+        Math.min(60 * REPORT_ROW, active.bounds.height + dy)
+      ),
+    }
+  }
+  function move(event: PointerEvent<HTMLButtonElement>) {
+    update(event)
+    if (!gesture.current || previewFrame.current !== null) return
+    // Composite the existing card once per frame. Its chart, ResizeObservers
+    // and neighbouring grid cells keep their committed dimensions until drop.
+    previewFrame.current = requestAnimationFrame(() => {
+      previewFrame.current = null
+      const active = gesture.current
+      if (!active) return
+      active.element.style.transform = `scale(${active.preview.width / active.bounds.width}, ${active.preview.height / active.bounds.height})`
+    })
   }
   function finish(event: PointerEvent<HTMLButtonElement>) {
+    update(event)
     const active = gesture.current
     if (!active || active.pointer !== event.pointerId) return
     if (
@@ -226,6 +280,7 @@ function ReportLayoutBoard({
   function keyboard(event: KeyboardEvent<HTMLButtonElement>, card: ReportCard) {
     if (
       !editing ||
+      readonly ||
       card.locked ||
       !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)
     )
@@ -262,7 +317,7 @@ function ReportLayoutBoard({
         sensors={sensors}
         collisionDetection={automaticCollision}
         onDragEnd={({ active, over }) => {
-          if (!editing || gesture.current || !over || active.id === over.id)
+          if (readonly || gesture.current || !over || active.id === over.id)
             return
           const card = cards.find((item) => item.id === active.id)
           if (!card || card.locked) return
@@ -306,13 +361,14 @@ function ReportLayoutBoard({
                   {renderCard(card, {
                     fixedHeight: rect.h * REPORT_ROW - 8,
                     selected: selected.has(card.id),
+                    draggable: !readonly && !card.locked,
                     onSelect: (event) => select(card, event),
                   })}
-                  {editing && !card.locked && (
+                  {editing && !readonly && !card.locked && (
                     <ReportWidgetResizeHandle
                       data-ui-demo="report-widget-resize"
                       aria-label={`調整尺寸：${card.title}`}
-                      title="拖曳調整大小，版面會自動整理；方向鍵微調、Esc 取消"
+                      title="拖曳預覽大小，放開後自動整理版面；方向鍵微調、Esc 取消"
                       onPointerDown={(event) => start(event, card)}
                       onPointerMove={move}
                       onPointerUp={finish}

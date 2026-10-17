@@ -4,7 +4,7 @@
 全國與整區是地理節點本身，小組是主管的 org_path，地點與客戶討論串是地點所在的那一區。
 看不看得到跟客戶、拜訪同一個式子：Scope.can_see(共享層級, 頻道路徑)，不另外寫規則。
 
-頻道總共二十幾個，加上有人打開過的客戶討論串，整批讀進來在 Python 裡算，不必寫成 SQL。
+另有全台行政區的共用地點頻道，掛在全國，不推定公司的業務責任區。
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import AppUser, Attachment, Channel, ChannelMessage, ChannelRead, Customer, OrgUnit, Place
+from app.services.channel_geography import ensure_places
 from app.services.scope import SELF, SHARING_LEVEL, Scope
 
 # 頻道列表的區順序，跟組織管理頁一樣由北到南
@@ -73,6 +74,7 @@ class ChannelInfo:
 def ensure_channels(session: Session) -> None:
     """補上缺的全國、整區、地點與小組頻道，可以重複呼叫。灌資料與每次組織異動後呼叫（services/org_admin.py）。
     客戶討論串不在這裡建：第一次有人打開才建（customer_thread）。"""
+    ensure_places(session)
     have_units = set(session.scalars(select(Channel.unit_id).where(Channel.kind.in_(("national", "region")))))
     for unit in session.scalars(select(OrgUnit)):
         if unit.id not in have_units:
@@ -133,9 +135,10 @@ def describe(session: Session, channels: list[Channel]) -> list[ChannelInfo]:
                 ))
         elif c.kind == "place":
             place = places[c.place_id]
+            shared = place.unit_id == root
             infos.append(ChannelInfo(
-                c.id, "place", place.name, place.unit_id, place.unit_id, by_unit[place.unit_id], False, None,
-                everyone_in(place.unit_id),
+                c.id, "place", place.name, place.unit_id, None if shared else place.unit_id, by_unit[place.unit_id], False, None,
+                "全公司都看得到" if shared else everyone_in(place.unit_id),
             ))
         elif c.kind == "topic":
             unit = units[c.unit_id]
@@ -157,9 +160,11 @@ def describe(session: Session, channels: list[Channel]) -> list[ChannelInfo]:
 
 
 def _level(info: ChannelInfo) -> int:
-    """共享層級。文字頻道跟著所在的單位：開在區裡同整區頻道，開在全國同全國頻道。"""
+    """文字頻道跟著所在單位；全台共用地點同全國，組織地點同整區。"""
     if info.kind == "topic":
         return LEVEL["region"] if info.region_id else LEVEL["national"]
+    if info.kind == "place" and info.region_id is None:
+        return LEVEL["national"]
     return LEVEL[info.kind]
 
 

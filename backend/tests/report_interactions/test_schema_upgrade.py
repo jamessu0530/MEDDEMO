@@ -3,6 +3,7 @@ from sqlalchemy import func, inspect, select
 
 from app.db import schema_version
 from app.models import AppSetting, LearningCompletion, SalesTransaction, UserReportConfig
+from scripts.upgrade_schema import PRE_ACCOUNT_MEMORY_VERSION, PRE_GHOST_VERSION
 from scripts.upgrade_schema import FROM_VERSION, PREVIOUS_VERSION, ORDERS_VERSION, REPORTS_VERSION, PRODUCT_BROWSING_VERSION, PUBLIC_OUTLETS_VERSION, PRE_CALENDAR_VERSION, PRE_OA_VERSION, PRE_CATALOG_CLEANUP_VERSION, PRE_STOREFRONT_VERSION, PRE_PRODUCT_PHOTOS_VERSION, PRE_DEMO_PHOTOS_VERSION, TO_VERSION, upgrade
 
 
@@ -24,7 +25,7 @@ def test_additive_upgrade_preserves_transactions_reports_and_existing_progress(i
     assert s.get(LearningCompletion, ("S1", "customer-v1")) is not None
 
 
-@pytest.mark.parametrize("version", [PREVIOUS_VERSION, ORDERS_VERSION, REPORTS_VERSION, PRODUCT_BROWSING_VERSION, PUBLIC_OUTLETS_VERSION, PRE_CALENDAR_VERSION, PRE_OA_VERSION, PRE_CATALOG_CLEANUP_VERSION, PRE_STOREFRONT_VERSION, PRE_PRODUCT_PHOTOS_VERSION, PRE_DEMO_PHOTOS_VERSION])
+@pytest.mark.parametrize("version", [PREVIOUS_VERSION, ORDERS_VERSION, REPORTS_VERSION, PRODUCT_BROWSING_VERSION, PUBLIC_OUTLETS_VERSION, PRE_CALENDAR_VERSION, PRE_OA_VERSION, PRE_CATALOG_CLEANUP_VERSION, PRE_STOREFRONT_VERSION, PRE_PRODUCT_PHOTOS_VERSION, PRE_DEMO_PHOTOS_VERSION, PRE_ACCOUNT_MEMORY_VERSION, PRE_GHOST_VERSION])
 def test_current_deployed_schema_can_upgrade_without_reseeding(interaction_session, version):
     s = interaction_session
     s.add(AppSetting(key="schema_version", value=version)); s.flush()
@@ -35,6 +36,7 @@ def test_current_deployed_schema_can_upgrade_without_reseeding(interaction_sessi
     assert "public_outlet" in inspect(s.connection()).get_table_names()
     assert "outlet_storefront" in inspect(s.connection()).get_table_names()
     assert "product_photo" in inspect(s.connection()).get_table_names()
+    assert {"assistant_memory_entry", "assistant_memory_node"} <= set(inspect(s.connection()).get_table_names())
     assert {"planner_calendar", "planner_member", "planner_event", "planner_attendee", "planner_notification", "planner_push_subscription"} <= set(inspect(s.connection()).get_table_names())
     assert s.scalar(select(func.count()).select_from(SalesTransaction)) == 6
 
@@ -74,3 +76,20 @@ def test_orders_schema_upgrade_keeps_legacy_constraints_and_allows_unassigned_pu
         with s.begin_nested():
             s.add(Customer(id="BROKEN-LEGACY", **{**public, "type": "clinic", "name": "未完成的舊型客戶"})); s.flush()
     assert s.get(Customer, "C1").owner_user_id == "S1"
+
+
+def test_ghost_upgrade_preserves_existing_queries_as_normal_conversations(interaction_session):
+    from sqlalchemy import text
+    from app.models import AskRecord
+    s = interaction_session
+    AskRecord.__table__.create(s.connection(), checkfirst=True)
+    s.add(AskRecord(id="keep-query", user_id="S1", kind="knowledge", question="保留的問題", status="answered"))
+    s.flush()
+    s.execute(text("ALTER TABLE ask_record DROP COLUMN ghost"))
+    s.add(AppSetting(key="schema_version", value=PRE_GHOST_VERSION))
+    s.flush()
+    upgrade(s.connection())
+    s.expire_all()
+    record = s.get(AskRecord, "keep-query")
+    assert record.question == "保留的問題"
+    assert record.ghost is False

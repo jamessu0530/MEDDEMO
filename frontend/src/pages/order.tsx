@@ -55,6 +55,7 @@ import {
 import { OrderBadge } from "@/pages/orders"
 import { cn } from "@/lib/utils"
 import { makePracticeOrder, savePracticeOrder } from "@/lib/order-practice"
+import { celebrateCompletion } from "@/lib/completion-celebration"
 
 type Tab = "items" | "related" | "activity"
 const FIELD =
@@ -249,6 +250,7 @@ function OrderEditor({
       setDraft(orderInput(saved))
       setConfirm(null)
       setNotice("訂單已送至 SAP 並生效，交易與應收帳款已建立。")
+      celebrateCompletion("訂單成功送出！")
       setEditingItems(false)
     } catch (err) {
       setError(

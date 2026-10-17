@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import type { OrderCustomer } from "@/api/orders"
+import { makePracticeOrder } from "@/lib/order-practice"
+import { PAYMENT_TERMS } from "@/lib/orders"
 import {
   createUiDemo,
   canStartUiDemo,
@@ -116,7 +119,7 @@ describe("示範執行與取消", () => {
     await vi.advanceTimersByTimeAsync(30_000)
     expect(acted).not.toHaveBeenCalled()
     demo.start()
-    await vi.advanceTimersByTimeAsync(30_000)
+    await vi.advanceTimersByTimeAsync(40_000)
     expect(demo.getSnapshot().status).toBe("completed")
     expect(acted.mock.calls.map(([target]) => target)).toEqual(
       ORDER_DEMO_STEPS.map((step) => step.target)
@@ -127,6 +130,57 @@ describe("示範執行與取消", () => {
       undefined
     )
     expect(unlisten).toHaveBeenCalledTimes(1)
+  })
+
+  it("客戶尚無付款條件時，先選練習單的條件再建立草稿", async () => {
+    const customer: OrderCustomer = {
+      id: "public-outlet",
+      name: "公開通路（待核對）",
+      owner_id: null,
+      owner_name: null,
+      payment_term: null,
+      region: "北區",
+    }
+    let pathname = "/orders"
+    let paymentTerm = ""
+    const created = vi.fn()
+    const demo = createUiDemo({
+      pathname: () => pathname,
+      listen: () => () => {},
+      target: (id) => {
+        if (id === "practice-create" && !paymentTerm) return null
+        return {
+          rect: () => ({ x: 10, y: 20, width: 100, height: 40 }),
+          scroll: () => {},
+          connected: () => true,
+          act: (action, value) => {
+            if (id === "practice-payment-term" && action === "fill")
+              paymentTerm = value ?? ""
+            if (id === "practice-create" && action === "click") {
+              created(
+                makePracticeOrder({ ...customer, payment_term: paymentTerm })
+              )
+              pathname = "/orders/demo"
+            }
+          },
+        }
+      },
+    })
+
+    demo.start("create-order")
+    await vi.advanceTimersByTimeAsync(40_000)
+
+    expect(demo.getSnapshot().status).toBe("completed")
+    expect(created).toHaveBeenCalledOnce()
+    expect(created).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "demo",
+        customer_id: customer.id,
+        payment_term: "RCD2",
+      })
+    )
+    expect(PAYMENT_TERMS).toHaveProperty(paymentTerm)
+    expect(customer.payment_term).toBeNull()
   })
 
   it("移動箭頭時接手，取消尚未發生的點擊與全部後續步驟", async () => {

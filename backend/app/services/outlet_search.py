@@ -76,6 +76,23 @@ def search_ids(query: str) -> list[str] | None:
         return None
 
 
+def index_is_healthy(expected_count: int) -> bool:
+    """部署略過重建前，確認 alias 存在、分片可用且筆數與資料庫一致。"""
+    try:
+        with _client() as client:
+            alias = _index()
+            health = client.get(f"/_cluster/health/{alias}", params={"timeout": "1s"})
+            health.raise_for_status()
+            status = health.json()
+            if not isinstance(status, dict) or status.get("timed_out") or status.get("status") not in ("green", "yellow"):
+                return False
+            count = client.get(f"/{alias}/_count")
+            count.raise_for_status()
+            return count.json()["count"] == expected_count
+    except (httpx.HTTPError, KeyError, TypeError, ValueError):
+        return False
+
+
 def customer_matches(session: Session, query: str) -> list[str]:
     """只產生候選 ID；API 從資料庫載入內容並沿用當下的授權規則。"""
     matches = search_ids(query)

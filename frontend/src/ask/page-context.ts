@@ -89,7 +89,6 @@ export function pageContextFor(pathname: string, search = ""): AssistantPage {
   } else if (parts[0] === "manager") {
     const views: Record<string, string> = {
       priority: "客戶策略",
-      asks: "團隊提問",
       oa: "簽核",
       methods: "方法卡",
     }
@@ -101,12 +100,12 @@ export function pageContextFor(pathname: string, search = ""): AssistantPage {
       reports: "報表",
       methods: "方法卡",
       me: "我的狀態",
+      conversations: "對話紀錄",
       settings: "帳號設定",
       "first-week": "新人課程",
       learning: "商品學習",
       documents: "內部文件",
       visits: "拜訪紀錄",
-      escalations: "主管回覆",
       oa: "申請單",
       admin: "組織管理",
       rides: "座騎圖鑑",

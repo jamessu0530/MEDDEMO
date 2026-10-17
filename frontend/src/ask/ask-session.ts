@@ -1,18 +1,24 @@
-/** 全站共用的對話與查詢。切頁或收起視窗不中止；登出、換人登入才清空。 */
-import { routeAsk, type AskKind, type Turn } from "@/api/asks"
-import { createConversation, type Conversation } from "@/ask/conversation"
+/** 全站共用的對話與查詢；長期記憶綁定登入帳號，登出只釋放本機會話。 */
+import { isFinished, routeAsk, type AskKind, type Turn } from "@/api/asks"
+import type { Conversation } from "@/ask/conversation"
+import { createConversationThreads } from "@/ask/conversation-threads"
 import { recentConversationTurns } from "@/ask/conversation-context"
 import { createMapEditsStore, type MapEditsStore } from "@/ask/memory-map-edits"
 import type { AskPageContext } from "@/ask/page-context"
-import { runAsk } from "@/ask/run-ask"
-import { onAuthChange, readUser } from "@/lib/auth"
+import { pollAsk, runAsk } from "@/ask/run-ask"
+import { onAuthChange, readToken, readUser } from "@/lib/auth"
+import { syncAccountMemory } from "@/ask/memory-sync"
 import { requestedUiDemo, uiDemoKindForPage } from "@/lib/ui-demo"
 import { requestedPageDemoPath } from "@/lib/page-demo"
 import { oaPageHelp } from "@/ask/oa-page-help"
+import { reportAssistant } from "@/ask/report-assistant"
+import { customerPriorityAssistant } from "@/ask/customer-priority-assistant"
 
 export type AskSession = {
   conversation: Conversation
+  threads: ReturnType<typeof createConversationThreads>
   mapEdits: MapEditsStore
+  memory: ReturnType<typeof syncAccountMemory> | null
   polls: AbortSignal
   ask: (question: string, file?: File, page?: AskPageContext) => Promise<void>
   askAsTyped: (entryId: number) => Promise<void>
@@ -26,9 +32,23 @@ function earlierTurns(conversation: Conversation): Turn[] {
 
 let current: { userId: string; session: AskSession; end: () => void } | null =
   null
+function memoryEntryId() {
+  // 使用完整的 JavaScript 安全整數隨機空間，避免不同裝置由 1 開始互相覆蓋。
+  const words = crypto.getRandomValues(new Uint32Array(2))
+  return (words[0] & 0x1fffff) * 0x100000000 + words[1] || 1
+}
 
 function create(userId: string): NonNullable<typeof current> {
-  const conversation = createConversation()
+  const localIds = new Set<number>()
+  const threads = createConversationThreads(() => {
+    let id = memoryEntryId()
+    while (localIds.has(id)) id = memoryEntryId()
+    localIds.add(id)
+    return id
+  })
+  const mapEdits = createMapEditsStore()
+  const token = readToken()
+  const memory = token && userId ? syncAccountMemory(userId, token, threads.history, mapEdits) : null
   const controller = new AbortController()
   const listeners = new Set<() => void>()
   let busy = false
@@ -44,6 +64,7 @@ function create(userId: string): NonNullable<typeof current> {
   }
 
   const run = async (
+    conversation: Conversation,
     entryId: number,
     kind: AskKind,
     question: string,
@@ -55,7 +76,7 @@ function create(userId: string): NonNullable<typeof current> {
       utteranceId,
     })
   }
-  const showError = (entryId: number, error: unknown) => {
+  const showError = (conversation: Conversation, entryId: number, error: unknown) => {
     if (!controller.signal.aborted)
       conversation.replace(entryId, {
         routing: false,
@@ -63,8 +84,10 @@ function create(userId: string): NonNullable<typeof current> {
       })
   }
   const session: AskSession = {
-    conversation,
-    mapEdits: createMapEditsStore(),
+    get conversation() { return threads.getSnapshot().conversation },
+    threads,
+    mapEdits,
+    memory,
     polls: controller.signal,
     isBusy: () => busy,
     subscribe: (listener) => {
@@ -75,6 +98,7 @@ function create(userId: string): NonNullable<typeof current> {
     },
     ask: async (question, file, page) => {
       if (busy || controller.signal.aborted || !question.trim()) return
+      const conversation = threads.getSnapshot().conversation
       // 在第一個 await 之前複製，收圖／判斷時切頁也不會換掉這題的情境。
       const snapshot = page
         ? { path: page.path, title: page.title, facts: [...page.facts] }
@@ -101,6 +125,28 @@ function create(userId: string): NonNullable<typeof current> {
                 snapshot?.path)
               : undefined,
         })
+        return
+      }
+      const editorAssistant = !file
+        ? [reportAssistant, customerPriorityAssistant].find((assistant) =>
+            assistant.handles(question, snapshot)
+          )
+        : undefined
+      if (editorAssistant) {
+        const entryId = conversation.addToolRun(null, question, {
+          routing: true,
+          page: snapshot,
+        })
+        setBusy(true)
+        try {
+          const message = await editorAssistant.ask(question)
+          if (!controller.signal.aborted)
+            conversation.completeWithMessage(entryId, "typed", message)
+        } catch (error) {
+          showError(conversation, entryId, error)
+        } finally {
+          setBusy(false)
+        }
         return
       }
       const previousFile = pendingFile
@@ -156,7 +202,7 @@ function create(userId: string): NonNullable<typeof current> {
             routed.clarification ||
             "你想了解哪個對象、哪一方面的狀況？可以再說明一下。"
           conversation.replace(entryId, { clarification })
-          pendingFile = attachment
+          if (threads.getSnapshot().conversation === conversation) pendingFile = attachment
           return
         }
         conversation.replace(entryId, { askKind: routed.kind, auto: true })
@@ -165,18 +211,21 @@ function create(userId: string): NonNullable<typeof current> {
           file: attachment,
           page: snapshot,
         })
-        await run(entryId, routed.kind, asked, attachment, utteranceId)
+        await run(conversation, entryId, routed.kind, asked, attachment, utteranceId)
       } catch (error) {
-        showError(entryId, error)
+        showError(conversation, entryId, error)
       } finally {
         setBusy(false)
       }
     },
     askAsTyped: async (entryId) => {
-      const asked = typed.get(entryId)
+      const conversation = threads.getSnapshot().conversation
       const target = conversation
         .getSnapshot()
         .find((entry) => entry.id === entryId)
+      const asked = typed.get(entryId) ?? (target?.kind === "tool" && target.original
+        ? { original: target.original, page: target.page, file: undefined }
+        : undefined)
       if (
         busy ||
         controller.signal.aborted ||
@@ -191,18 +240,45 @@ function create(userId: string): NonNullable<typeof current> {
       })
       setBusy(true)
       try {
-        await run(retryId, target.askKind, asked.original, asked.file)
+        let file = asked.file
+        if (!file && target.hasFile) {
+          const source = target.ask?.attachment
+          if (!source) throw new Error("請重新附上原本的檔案後再提問。")
+          const response = await fetch(source.url, { signal: controller.signal })
+          if (!response.ok) throw new Error("原本的附件暫時無法讀取，請重新附檔。")
+          const blob = await response.blob()
+          file = new File([blob], source.filename, { type: blob.type })
+        }
+        if (!controller.signal.aborted) await run(conversation, retryId, target.askKind, asked.original, file)
       } catch (error) {
-        showError(retryId, error)
+        showError(conversation, retryId, error)
       } finally {
         setBusy(false)
       }
     },
   }
+  const resumed = new Set<number>()
+  const resumeHistory = () => {
+    if (controller.signal.aborted) return
+    for (const entry of threads.history.getSnapshot()) {
+      if (entry.kind !== "tool") continue
+      if (!localIds.has(entry.id) && !resumed.has(entry.id) && entry.ask && !isFinished(entry.ask)) {
+        resumed.add(entry.id)
+        void pollAsk(threads.history, entry.id, entry.ask, controller.signal).catch((error) => showError(threads.history, entry.id, error))
+      }
+    }
+  }
+  const restoreHistory = () => { threads.restoreLatest(); resumeHistory() }
+  const unsubscribeMemory = memory?.subscribe(restoreHistory)
+  void memory?.ready.then(restoreHistory)
+  const unsubscribeThread = threads.subscribe(() => { pendingFile = undefined; typed.clear() })
   return {
     userId,
     session,
     end: () => {
+      unsubscribeThread()
+      unsubscribeMemory?.()
+      memory?.stop()
       controller.abort()
       pendingFile = undefined
     },
@@ -223,4 +299,9 @@ export function askSessionFor(userId: string): AskSession {
     current = create(userId)
   }
   return current.session
+}
+
+/** 正常登出先送完記憶，再讓伺服器撤銷 token；失敗的內容留在帳號專屬待同步佇列。 */
+export async function flushAccountMemory() {
+  await current?.session.memory?.flush()
 }

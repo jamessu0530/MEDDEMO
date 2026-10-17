@@ -18,7 +18,7 @@ from app.api.attachments import AttachmentItem, attachment_item
 from app.api.auth import CurrentUser
 from app.api.learning import LearningAiUser
 from app.db import get_session
-from app.models import AppUser, AskRecord, Attachment, Customer, Escalation, QueryTrace
+from app.models import AppUser, AskRecord, Attachment, Customer, QueryTrace
 from app.services import ask_followup, ask_router, attachments, assistant_context, question_suggestions
 from app.services.scope import SHARING_LEVEL, Scope
 from app.services.product_appearance import is_appearance_question
@@ -34,6 +34,7 @@ AskKind = Literal["data", "knowledge", "memory"]
 
 class AskInput(BaseModel):
     kind: AskKind
+    ghost: bool = False
     # 業務口語提問不會超過 500 字；再長多半是誤貼了一大段文字
     question: str = Field(min_length=1, max_length=500)
 
@@ -109,7 +110,7 @@ async def ask_form(request: Request) -> AskForm:
     if len(uploads) > attachments.MAX_PER_ASK:
         raise HTTPException(422, "一次提問只能附 1 個檔案")
     try:
-        body = AskInput.model_validate({"kind": form.get("kind"), "question": form.get("question")})
+        body = AskInput.model_validate({"kind": form.get("kind"), "question": form.get("question"), "ghost": form.get("ghost", False)})
     except ValueError as exc:
         raise _invalid(exc) from None
     file = (uploads[0].filename, await uploads[0].read(attachments.MAX_FILE_BYTES + 1)) if uploads else None
@@ -139,7 +140,6 @@ class AskDetail(BaseModel):
     evidence: dict[str, Any] | None
     error_message: str | None
     trace: list[TraceItem]
-    escalation_id: int | None
     # 答案或查詢結果裡提到、而且是提問者自己看得到的客戶。畫面上「排入今天的路線」用
     customers: list[CustomerRef] = Field(default_factory=list)
     # 提問附的照片或 PDF
@@ -176,7 +176,6 @@ def mentioned_customers(session: Session, record: AskRecord, user: AppUser) -> l
 
 def _detail(session: Session, record: AskRecord, user: AppUser) -> AskDetail:
     trace = session.scalars(select(QueryTrace).where(QueryTrace.ask_id == record.id).order_by(QueryTrace.id))
-    escalation = session.scalar(select(Escalation.id).where(Escalation.ask_id == record.id))
     attachment = session.scalar(select(Attachment).where(Attachment.ask_id == record.id))
     evidence = _signed_evidence(session, record, user)
     return AskDetail(
@@ -191,7 +190,6 @@ def _detail(session: Session, record: AskRecord, user: AppUser) -> AskDetail:
             TraceItem(round=t.round, step=t.step, sql=t.sql, search_query=t.search_query, row_count=t.row_count, decision=t.decision)
             for t in trace
         ],
-        escalation_id=escalation,
         customers=mentioned_customers(session, record, user),
         attachment=attachment_item(attachment, user) if attachment else None,
     )
@@ -270,7 +268,7 @@ def create_ask(session: SessionDep, form: Annotated[AskForm, Depends(ask_form)],
     except attachments.Rejected as exc:
         raise HTTPException(exc.status, str(exc)) from None
     record = AskRecord(
-        id=uuid.uuid4().hex, user_id=user.id, kind=body.kind, question=body.question.strip(), status="queued"
+        id=uuid.uuid4().hex, user_id=user.id, kind=body.kind, question=body.question.strip(), ghost=body.ghost, status="queued"
     )
     session.add(record)
     session.flush()
@@ -290,20 +288,3 @@ def create_ask(session: SessionDep, form: Annotated[AskForm, Depends(ask_form)],
 @router.get("/{ask_id}", response_model=AskDetail)
 def get_ask(session: SessionDep, ask_id: str, user: CurrentUser):
     return _detail(session, _load(session, ask_id, user), user)
-
-
-@router.post("/{ask_id}/escalate", response_model=AskDetail)
-def escalate(session: SessionDep, ask_id: str, user: CurrentUser):
-    """查不到依據時，把問題轉給主管回答（FR-8.4）。重複按只會有一筆。"""
-    record = _load(session, ask_id, user)
-    if record.status not in ("no_evidence", "not_converged"):
-        raise HTTPException(409, "只有查不到答案的提問可以轉給主管")
-    if record.kind == "memory":
-        raise HTTPException(409, "頻道記憶的提問不轉給主管，可以到頻道裡問同事或 @熊熊滾")
-    if (record.evidence or {}).get("reason") == "medical":
-        # James 2026-09-15：用藥題請業務詢問醫師或藥師，不轉主管（畫面也不給按鈕）
-        raise HTTPException(409, "用藥、劑量、療效這類醫療問題請詢問醫師或藥師，不轉給主管")
-    if session.scalar(select(Escalation.id).where(Escalation.ask_id == record.id)) is None:
-        session.add(Escalation(ask_id=record.id, question=record.question))
-        session.commit()
-    return _detail(session, record, user)

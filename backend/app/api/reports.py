@@ -11,7 +11,7 @@ from google.genai import errors
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
-from app.api.auth import CurrentUser
+from app.api.auth import CurrentAccount
 from app.api.report_datasets import router as dataset_router
 from app.config import NotConfigured
 from app.db import get_session
@@ -44,12 +44,12 @@ class AdjustInput(BaseModel):
 
 
 @router.get("", response_model=ReportSettings)
-def get_reports(session: SessionDep, user: CurrentUser, include_filters: bool = True):
+def get_reports(session: SessionDep, user: CurrentAccount, include_filters: bool = True):
     return ReportSettings(**report_library.snapshot(session, user).model_dump(), templates=service.templates(), owners=service.owners(session, user), ai_available=service.ai_available(), filter_options=service.filter_options(session, user) if include_filters else None, as_of=service.app_today(session))
 
 
 @router.get("/filter-options", response_model=ReportFilterOptions)
-def get_report_filter_options(session: SessionDep, user: CurrentUser):
+def get_report_filter_options(session: SessionDep, user: CurrentAccount):
     return service.filter_options(session, user)
 
 
@@ -90,47 +90,47 @@ def library_action(action):
 
 
 @router.post("/library", response_model=report_library.LibrarySnapshot)
-def create_named_report(session: SessionDep, user: CurrentUser, body: CreateReportInput):
+def create_named_report(session: SessionDep, user: CurrentAccount, body: CreateReportInput):
     return library_action(lambda: report_library.create(session, user, body.config, body.source_id))
 
 
 @router.post("/library/open", response_model=report_library.LibrarySnapshot)
-def open_named_report(session: SessionDep, user: CurrentUser, body: OpenReportInput):
+def open_named_report(session: SessionDep, user: CurrentAccount, body: OpenReportInput):
     return library_action(lambda: report_library.open_report(session, user, body.report_id))
 
 
 @router.post("/library/validate", response_model=ReportConfig)
-def validate_local_report_draft(session: SessionDep, user: CurrentUser, body: CreateReportInput):
+def validate_local_report_draft(session: SessionDep, user: CurrentAccount, body: CreateReportInput):
     return service.visible_config(session, user, body.config)
 
 
 @router.put("/library/{report_id}", response_model=report_library.LibrarySnapshot)
-def save_named_report(session: SessionDep, user: CurrentUser, report_id: str, body: SaveReportInput):
+def save_named_report(session: SessionDep, user: CurrentAccount, report_id: str, body: SaveReportInput):
     return library_action(lambda: report_library.save(session, user, report_id, body.config, body.revision))
 
 
 @router.post("/library/{report_id}/bookmarks", response_model=report_library.LibrarySnapshot)
-def create_filter_bookmark(session: SessionDep, user: CurrentUser, report_id: str, body: BookmarkInput):
+def create_filter_bookmark(session: SessionDep, user: CurrentAccount, report_id: str, body: BookmarkInput):
     return library_action(lambda: report_library.bookmark(session, user, report_id, body.name, body.state))
 
 
 @router.get("/share-recipients", response_model=list[report_library.Recipient])
-def report_share_recipients(session: SessionDep, user: CurrentUser):
+def report_share_recipients(session: SessionDep, user: CurrentAccount):
     return report_library.recipients(session, user)
 
 
 @router.post("/library/{report_id}/share")
-def share_named_report(session: SessionDep, user: CurrentUser, report_id: str, body: ShareReportInput):
+def share_named_report(session: SessionDep, user: CurrentAccount, report_id: str, body: ShareReportInput):
     return library_action(lambda: report_library.share(session, user, report_id, body.recipient_id, body.revision))
 
 
 @router.put("/config", response_model=ReportConfig)
-def save_report_config(session: SessionDep, user: CurrentUser, body: ReportConfig):
+def save_report_config(session: SessionDep, user: CurrentAccount, body: ReportConfig):
     return library_action(lambda: service.save_config(session, user, body))
 
 
 @router.post("/data", response_model=ReportData)
-def report_data(session: SessionDep, user: CurrentUser, body: ReportQuery):
+def report_data(session: SessionDep, user: CurrentAccount, body: ReportQuery):
     try:
         return service.data(session, user, body)
     except service.OwnerNotAllowed as exc:
@@ -138,7 +138,7 @@ def report_data(session: SessionDep, user: CurrentUser, body: ReportQuery):
 
 
 @router.post("/export")
-def export_complete_report(session: SessionDep, user: CurrentUser, body: report_exports.ExportInput):
+def export_complete_report(session: SessionDep, user: CurrentAccount, body: report_exports.ExportInput):
     try:
         file, filename = report_exports.export_file(session, user, body)
     except service.OwnerNotAllowed as exc:
@@ -156,7 +156,7 @@ def export_complete_report(session: SessionDep, user: CurrentUser, body: report_
 
 
 @router.post("/details", response_model=report_details.ReportDetails)
-def report_detail_rows(session: SessionDep, user: CurrentUser, body: report_details.DetailsInput):
+def report_detail_rows(session: SessionDep, user: CurrentAccount, body: report_details.DetailsInput):
     try:
         return report_details.details(session, user, body)
     except service.OwnerNotAllowed as exc:
@@ -166,7 +166,7 @@ def report_detail_rows(session: SessionDep, user: CurrentUser, body: report_deta
 
 
 @router.post("/details/export")
-def report_detail_csv(session: SessionDep, user: CurrentUser, body: report_details.DetailsInput):
+def report_detail_csv(session: SessionDep, user: CurrentAccount, body: report_details.DetailsInput):
     try:
         csv = report_details.export_csv(session, user, body)
         return Response(content=csv, media_type="text/csv; charset=utf-8",
@@ -178,7 +178,7 @@ def report_detail_csv(session: SessionDep, user: CurrentUser, body: report_detai
 
 
 @router.post("/adjust", response_model=Adjustment)
-def adjust_report(session: SessionDep, user: CurrentUser, body: AdjustInput):
+def adjust_report(session: SessionDep, user: CurrentAccount, body: AdjustInput):
     try:
         return service.adjust(session, user, body.question, body.config)
     except service.OwnerNotAllowed as exc:

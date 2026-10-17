@@ -324,7 +324,7 @@ function DatasetWorkspace({ onClose }: { onClose: () => void }) {
         }}
       >
         <DialogContent aria-describedby={undefined}
-          className="flex h-[94dvh] w-[calc(100vw-1rem)] max-w-6xl flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl"
+          className="report-dataset-dialog flex h-[94dvh] w-[calc(100%-1rem)] min-w-0 max-w-6xl flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl"
           onInteractOutside={(event) => {
             if (busy || dirty) event.preventDefault()
           }}
@@ -335,7 +335,7 @@ function DatasetWorkspace({ onClose }: { onClose: () => void }) {
               匯入資料與 AI 分析
             </DialogTitle>
           </DialogHeader>
-          <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-5">
+          <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-3 sm:p-5">
             <div className="mb-4 space-y-3 rounded-xl border bg-muted/20 p-3">
               <div className="flex flex-wrap items-end gap-2">
                 <Field label={`我的資料來源（${sources.length}／20）`}>

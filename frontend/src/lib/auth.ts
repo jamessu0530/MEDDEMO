@@ -21,7 +21,7 @@ export type AccountProfile = {
 }
 
 export type AuthUser = AccountProfile & {
-  // Demo 切換後顯示示範人物；account 保留真正登入者的資料，供帳號設定與返回原帳號使用。
+  // Demo 只切換角色；account 保留登入者原本的角色與帳號資料。
   demo?: { account: AccountProfile; role: Role | null } | null
 }
 
@@ -52,12 +52,18 @@ const TOKEN_KEY = "meddemo:token"
 const USER_KEY = "meddemo:user"
 const listeners = new Set<() => void>()
 
+/** 既有裝置可能還存著舊的示範人物，畫面一開始就還原成登入者本人。 */
+function normalizeIdentity(user: AuthUser): AuthUser {
+  const account = user.demo?.account
+  return account ? { ...user, ...account, role: user.role, demo: user.demo } : user
+}
+
 function read(): Session | null {
   try {
     const token = localStorage.getItem(TOKEN_KEY)
     const raw = localStorage.getItem(USER_KEY)
     if (!token || !raw) return null
-    return { token, user: JSON.parse(raw) as AuthUser }
+    return { token, user: normalizeIdentity(JSON.parse(raw) as AuthUser) }
   } catch {
     return null // 讀不到（無痕模式、存的格式壞了）就當作沒登入，畫面會導回登入頁
   }
@@ -87,9 +93,9 @@ function save(session: Session | null) {
 
 /** 登入成功（api/auth.ts 的 login 回來之後） */
 export function signIn(session: Session) {
-  current = session
+  current = { ...session, user: normalizeIdentity(session.user) }
   signedOutReason = null
-  save(session)
+  save(current)
   emit()
 }
 
@@ -107,6 +113,7 @@ export function signOut(reason?: string) {
 
 /** /api/auth/me 回來的最新身分（改過姓名、調過區域）；內容一樣就不動，免得畫面白重畫一次 */
 export function refreshUser(user: AuthUser) {
+  user = normalizeIdentity(user)
   if (!current || JSON.stringify(current.user) === JSON.stringify(user)) return
   current = { token: current.token, user }
   save(current)

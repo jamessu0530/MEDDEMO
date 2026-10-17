@@ -29,6 +29,13 @@ export const ORDER_DEMO_STEPS: readonly DemoStep[] = [
     text: "先核對從客戶清單帶入的客戶；也可以切換成其他客戶。",
   },
   {
+    target: "practice-payment-term",
+    page: "/orders",
+    action: "fill",
+    value: "RCD2",
+    text: "這張練習單先選「RCD2 隔月匯款」。正式建立訂單時，請核對本次付款條件。",
+  },
+  {
     target: "practice-create",
     page: "/orders",
     action: "click",
@@ -81,15 +88,8 @@ export const ORDER_DEMO_STEPS: readonly DemoStep[] = [
 export type UiDemoKind =
   "create-order" | "report-tour" | "oa-tour" | "page-tour"
 
-/** Report actions open the real interface; condition changes, saving and downloads stay with the user. */
+/** Report actions open the real interface; condition changes and downloads stay with the user. */
 export const REPORT_DEMO_STEPS: readonly DemoStep[] = [
-  {
-    target: "report-finish-editing",
-    page: "/reports",
-    action: "click",
-    optional: true,
-    text: "先回到閱讀畫面。你尚未儲存的編輯會保留。",
-  },
   {
     target: "report-period",
     page: "/reports",
@@ -122,18 +122,11 @@ export const REPORT_DEMO_STEPS: readonly DemoStep[] = [
     text: "報表分頁在最上方；手機可以左右滑動切換，不必捲到最下面。",
   },
   {
-    target: "report-start-editing",
-    page: "/reports",
-    action: "click",
-    optional: true,
-    text: "有編輯權限時，按「編輯報表」進入編輯模式。",
-  },
-  {
     target: "report-visual-edit",
     page: "/reports",
     action: "click",
     optional: true,
-    text: "選取圖表，就能調整這張圖的指標與格式；拖曳標題即可排序，版面會自動整理。",
+    text: "長按任一報表就能拖移，只有該張卡片會浮起；修改會自動儲存。按圖表設定可調整指標與格式。",
   },
   {
     target: "report-widget-resize",
@@ -155,13 +148,6 @@ export const REPORT_DEMO_STEPS: readonly DemoStep[] = [
     action: "click",
     optional: true,
     text: "先收起圖表設定，保留原有內容。",
-  },
-  {
-    target: "report-finish-editing",
-    page: "/reports",
-    action: "click",
-    optional: true,
-    text: "按「完成編輯」回到閱讀。要保留日後的修改，再由你按「儲存」。",
   },
   {
     target: "report-more",

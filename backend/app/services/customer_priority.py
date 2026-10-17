@@ -103,7 +103,7 @@ def managers(session: Session, viewer: AppUser) -> list[AppUser]:
 
 def target_manager(session: Session, viewer: AppUser, manager_id: str | None) -> AppUser:
     choices = managers(session, viewer)
-    wanted = manager_id or (viewer.id if viewer.role == "manager" else choices[0].id if choices else None)
+    wanted = manager_id or (Scope.for_user(viewer).acting_user_id if viewer.role == "manager" else choices[0].id if choices else None)
     found = next((m for m in choices if m.id == wanted), None)
     if found is None:
         raise PriorityError("找不到可設定策略的主管", 404)

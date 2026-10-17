@@ -66,6 +66,9 @@ export type RouteStop = {
   habit_ids: number[]
 }
 
+// 路線呈現共用的欄位；主管端不需要業務的私人備註、鎖定或習慣。
+export type RoutePathStop = Omit<RouteStop, "type" | "grade" | "note" | "locked" | "habit_ids">
+
 export type RouteRule = {
   id: string
   text: string

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { ChevronLeft, ChevronRight, MapPin } from "@/components/icons"
+import { ChevronLeft, MapPin } from "@/components/icons"
 import { Link, useNavigate, useSearchParams } from "react-router"
 
 import { ApiError } from "@/api/client"
@@ -10,9 +10,10 @@ import {
   type RepRoute,
   type TeamLocations,
   type TeamRoutes,
-  type TeamStop,
 } from "@/api/team-routes"
 import { MapSlot } from "@/components/map-slot"
+import { RepRoutePath } from "@/components/manager/rep-route-path"
+import { ViewSwitch } from "@/components/route/view-switch"
 import { RepRouteCard } from "@/components/manager/rep-route-card"
 import { ResizableMapLayout } from "@/components/manager/resizable-map-layout"
 import { Notice } from "@/components/notice"
@@ -20,9 +21,7 @@ import { LiveAvatar } from "@/components/user-avatar"
 import { useIsDesktop } from "@/lib/use-media-query"
 import { realtime } from "@/lib/realtime"
 import { RouteLiveLoader } from "@/lib/route-live-loader"
-import { headerLine, progressLine, SOURCE_LABEL, totalsLine, windowLabel, withLocation, withLocations } from "@/lib/team-routes"
-import { cn } from "@/lib/utils"
-import type { CustomerLocationState } from "@/pages/customer"
+import { headerLine, progressLine, totalsLine, withLocation, withLocations } from "@/lib/team-routes"
 
 // 收到位置或行程的通知之後等這麼久再重拿，一連串的變化併成一次（跟頻道列表一樣）
 const RELOAD_DELAY_MS = 3_000
@@ -124,7 +123,7 @@ function TeamOverview() {
       <Notice
         text={state.message}
         action={{ label: "重新載入", onClick: retry }}
-        secondary={{ label: "看提問", onClick: () => navigate("/manager?view=asks") }}
+        secondary={{ label: "看頻道", onClick: () => navigate("/channels") }}
       />
     )
   }
@@ -161,6 +160,17 @@ function TeamOverview() {
 function RepDetail({ userId }: { userId: string }) {
   const navigate = useNavigate()
   const desktop = useIsDesktop()
+  const [params, setParams] = useSearchParams()
+  const onMap = params.get("mode") === "map"
+  const showView = (view: "route" | "map") => setParams(
+    (current) => {
+      const next = new URLSearchParams(current)
+      if (view === "map") next.set("mode", "map")
+      else next.delete("mode")
+      return next
+    },
+    { replace: true }
+  )
   const { state, retry } = useLiveLoad<RepRoute>((signal) => getRepRoute(userId, signal), withLocation, (id) => id === userId, userId)
   if (state.status === "loading") return <Loading />
   if (state.status === "error") {
@@ -174,7 +184,7 @@ function RepDetail({ userId }: { userId: string }) {
   }
   const route = state.data
   // 從客戶檔案按返回，回到這位業務的詳細
-  const backTo = `/manager?view=routes&rep=${route.rep.id}`
+  const backTo = `/manager?${params}`
   const back = (
     <Link to="/manager" replace className="-ml-1 flex h-11 items-center gap-1 self-start text-sm text-muted-foreground">
       <ChevronLeft className="size-4" />
@@ -197,17 +207,15 @@ function RepDetail({ userId }: { userId: string }) {
         <MapPin className="mt-0.5 size-3.5 shrink-0" />
         {route.location.text}
       </p>
+      {!desktop && <ViewSwitch onMap={onMap} onChange={showView} />}
+      {!desktop && onMap ? (
+        <MapSlot routes={[route]} removed={route.removed} />
+      ) : (
+        <RepRoutePath route={route} backTo={backTo} />
+      )}
       <section className="flex flex-col gap-1.5 rounded-2xl border-2 bg-card p-4 shadow-lip">
         <h2 className="text-base font-semibold">跟系統早上的建議比</h2>
         <Changes route={route} />
-      </section>
-      <section className="flex flex-col gap-2">
-        <h2 className="text-base font-semibold">今天的行程</h2>
-        <ol className="flex flex-col gap-2">
-          {route.stops.map((stop) => (
-            <StopRow key={stop.customer_id} stop={stop} backTo={backTo} />
-          ))}
-        </ol>
       </section>
       <GoogleAttribution routes={[route]} />
     </>
@@ -225,7 +233,6 @@ function RepDetail({ userId }: { userId: string }) {
     <>
       {back}
       {who}
-      <MapSlot routes={[route]} removed={route.removed} />
       {details}
     </>
   )
@@ -250,45 +257,6 @@ function Changes({ route }: { route: RepRoute }) {
         <li key={line}>{line}</li>
       ))}
     </ul>
-  )
-}
-
-/** 行程清單的一站：跟業務看到的一樣（到達時間、停留、約的時間、會晚到、來源），點了進客戶檔案 */
-function StopRow({ stop, backTo }: { stop: TeamStop; backTo: string }) {
-  const done = stop.status === "done"
-  const window = windowLabel(stop)
-  return (
-    <li>
-      <Link
-        to={`/customers/${stop.customer_id}`}
-        state={{ backTo } satisfies CustomerLocationState}
-        className={cn("flex items-start gap-3 rounded-xl border-2 bg-card px-3 py-2.5 shadow-lip press", done && "opacity-60")}
-      >
-        <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-bold tabular-nums">
-          {stop.number}
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-sm leading-snug font-medium">{stop.customer_name}</span>
-          <span className="block text-xs text-muted-foreground tabular-nums">
-            {done ? `${stop.planned_time} 完成` : `${stop.planned_time} 到 · 停 ${stop.duration_minutes} 分`}
-          </span>
-          <span className="mt-1 flex flex-wrap gap-1 empty:hidden">
-            {window && <span className="rounded-md bg-muted px-1.5 py-0.5 text-xs">{window}</span>}
-            {!done && stop.late_minutes > 0 && (
-              <span className="rounded-md bg-destructive/10 px-1.5 py-0.5 text-xs text-destructive">
-                會晚到 {stop.late_minutes} 分
-              </span>
-            )}
-            {stop.source !== "model" && (
-              <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-xs text-primary">
-                {SOURCE_LABEL[stop.source]}
-              </span>
-            )}
-          </span>
-        </span>
-        <ChevronRight className="mt-1 size-4 shrink-0 text-muted-foreground" />
-      </Link>
-    </li>
   )
 }
 

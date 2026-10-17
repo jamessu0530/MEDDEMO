@@ -43,6 +43,7 @@ export function AskBar({
   const [text, setText] = useState("")
   const [listening, setListening] = useState(false)
   const [micError, setMicError] = useState<string | null>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
   const stopRef = useRef<(() => void) | null>(null)
   const startDemo = useStartUiDemo()
 
@@ -107,6 +108,7 @@ export function AskBar({
     event.preventDefault()
     const question = text.trim()
     if (!question || busy) return
+    inputRef.current?.blur()
     stopRef.current?.()
     const demo = requestedUiDemo(question, page.path)
     if (demo) {
@@ -133,6 +135,7 @@ export function AskBar({
       ) : (
         <div className="flex gap-2">
           <Input
+            ref={inputRef}
             value={text}
             maxLength={maxLength}
             onChange={(event) => setText(event.target.value)}

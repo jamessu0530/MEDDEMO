@@ -14,6 +14,7 @@ from sqlalchemy import ColumnElement, Select, cast, literal, select, true
 from sqlalchemy.orm import Session
 
 from app.models import LTREE, AppUser, Customer
+from app.services.auth import role_data_user
 
 # 共享層級就是路徑深度（ltree 的 nlevel 從 1 起算）
 ROOT = 1     # TW
@@ -69,7 +70,7 @@ class Scope:
 
     @classmethod
     def for_user(cls, user: AppUser) -> Scope:
-        acting = user.acts_as or user
+        acting = role_data_user(user)
         return cls(path=acting.org_path, acting_user_id=acting.id)
 
     def prefix(self, level: int) -> str | None:

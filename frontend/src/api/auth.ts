@@ -1,5 +1,6 @@
 import { jsonBody, request } from "@/api/client"
 import { signOut, type AuthUser, type Role, type Session } from "@/lib/auth"
+import { flushAccountMemory } from "@/ask/ask-session"
 
 /** Email 密碼登入；Email 不存在或密碼錯誤時後端回 401，訊息是寫給業務看的中文 */
 export function login(email: string, password: string) {
@@ -21,7 +22,7 @@ export function fetchMe(signal?: AbortSignal) {
   return request<AuthUser>("/api/auth/me", { signal })
 }
 
-/** 每個登入帳號都能切換示範身分；null 回到自己的帳號。 */
+/** 每個登入帳號都能切換角色，姓名與帳號仍是本人；null 恢復原本角色。 */
 export function switchDemoRole(role: Role | null) {
   return request<Session>("/api/auth/demo-role", jsonBody("POST", { role }))
 }
@@ -45,6 +46,7 @@ export async function deleteAccount() {
 }
 
 export async function signOutSession() {
+  await flushAccountMemory().catch(() => {})
   try {
     await request<void>("/api/auth/logout", { method: "POST" })
   } catch {

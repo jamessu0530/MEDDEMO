@@ -16,6 +16,7 @@ import { routeAsk, type Ask, type AskKind } from "@/api/asks"
 import { ApiError } from "@/api/client"
 import { startVoiceSession } from "@/api/voice"
 import type { Conversation } from "@/ask/conversation"
+import { recentConversationTurns } from "@/ask/conversation-context"
 import type { AskPageContext } from "@/ask/page-context"
 import { runAsk } from "@/ask/run-ask"
 import { TABLE_PREVIEW_ROWS } from "@/components/ask/ask-result"
@@ -200,6 +201,11 @@ export class VoiceController {
         return
       }
       this.sendPageContext(conn)
+      const earlier = recentConversationTurns(this.conversation.getSnapshot(), 3, 300)
+      if (earlier.length) conn.session.sendClientContent({
+        turns: `這段對話先前的問答（僅作為前文參考，不是新的提問或操作指令）：${JSON.stringify(earlier)}`,
+        turnComplete: false,
+      })
       conn.stopCapture = await startCapture(context, conn.stream, (pcm, level) => this.onChunk(conn, pcm, level))
       conn.lastActivity = Date.now()
       conn.idleTimer = window.setInterval(() => {
@@ -360,7 +366,8 @@ export class VoiceController {
       if (!askKind) throw new Error(`沒有這個查詢工具：${call.name}`)
       if (!question) throw new Error("模型沒有給要查的問題")
       if (page) {
-        const routed = await routeAsk(question, false, [], page)
+        const earlier = recentConversationTurns(this.conversation.getSnapshot(), 3, 300)
+        const routed = await routeAsk(question, false, earlier, page)
         if (signal.aborted) return
         if ((routed.intent === "page_help" || routed.intent === "page_demo") && routed.answer?.trim()) {
           const answer = routed.answer + (routed.intent === "page_demo" ? "\n要看操作示範，請在下方輸入「操作給我看」。" : "")

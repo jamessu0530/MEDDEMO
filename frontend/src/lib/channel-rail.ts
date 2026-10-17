@@ -15,7 +15,9 @@ const STORAGE_KEY = "meddemo:channel-rail"
 export function shortName(channel: Channel): string {
   if (channel.kind === "team") return initials(channel.name.replace(/小組$/, ""))
   if (channel.kind === "place") {
-    const part = channel.name.split("・").at(-1) ?? channel.name
+    const part = channel.name.includes("・")
+      ? channel.name.split("・").at(-1)!
+      : channel.name.replace(/^.{2}[縣市](?=.)/, "")
     const trimmed = part.replace(/[區市縣]$/, "")
     return Array.from(trimmed.length >= 2 ? trimmed : part).slice(0, 2).join("")
   }
@@ -45,6 +47,8 @@ export function railItems(channels: Channel[]): RailItem[] {
   const add = (channel: Channel) => items.push({ type: "channel", channel, unread: railUnread(channels, channel) })
   const national = channels.find((c) => c.kind === "national")
   if (national) add(national)
+  const shared = channels.filter((c) => c.kind === "place" && c.region_id === null && !c.archived)
+  if (shared.length) items.push(folder("shared-places", "全台", "places", shared))
   for (const region of channels.filter((c) => c.kind === "region")) {
     items.push({ type: "divider", key: `divider-${region.id}` })
     add(region)

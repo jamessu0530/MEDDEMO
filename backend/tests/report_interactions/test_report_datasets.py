@@ -9,6 +9,7 @@ from openpyxl import Workbook
 from sqlalchemy import func, select
 
 from app import usage
+from app.config import settings
 from app.main import app
 from app.models import AppUser, ReportDataset, SalesTransaction
 from app.services import auth, report_datasets as service
@@ -37,6 +38,23 @@ def upload(session, content=CSV, filename="銷售.csv", **options):
 
 def chart(**patch):
     return {"id": "test-chart", "title": "金額分析", "visual": "bar", "group_by": "c2", "value": "c4", "aggregation": "sum", **patch}
+
+
+def test_imports_belong_to_logged_in_account_even_with_same_demo_role(dataset_session, monkeypatch):
+    monkeypatch.setattr(settings(), "demo_role_switch", True)
+    monkeypatch.setitem(auth.DEMO_ROLE_USERS, "sales", "S1")
+    api = TestClient(app)
+    headers = {
+        account: {"Authorization": f"Bearer {auth.create_token(dataset_session.get(AppUser, account), demo_role='sales')}"}
+        for account in ("S2", "S3")
+    }
+    uploaded = api.post("/api/reports/datasets", headers=headers["S2"], files={"file": ("個人.csv", CSV.encode())})
+    assert uploaded.status_code == 201
+    dataset_id = uploaded.json()["id"]
+    assert [item["id"] for item in api.get("/api/reports/datasets", headers=headers["S2"]).json()["datasets"]] == [dataset_id]
+    for other in (headers["S3"], client(dataset_session, "S1")[1]):
+        assert api.get("/api/reports/datasets", headers=other).json()["datasets"] == []
+        assert api.get(f"/api/reports/datasets/{dataset_id}", headers=other).status_code == 404
 
 
 def test_csv_infers_types_preserves_identifiers_and_complete_statistics():

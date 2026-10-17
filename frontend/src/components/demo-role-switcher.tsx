@@ -7,10 +7,10 @@ import { cn } from "@/lib/utils"
 const ROLES: { role: Role; label: string }[] = [
   { role: "sales", label: "業務" },
   { role: "manager", label: "主管" },
-  { role: "it", label: "IT" },
+  { role: "it", label: "it" },
 ]
 
-/** 伺服器開啟 Demo 時才出現；換頁重新載入，清掉前一個身分的畫面、快取與即時連線。 */
+/** 伺服器開啟 Demo 時才出現；切換角色後重新載入，登入者仍是本人。 */
 export function DemoRoleSwitcher({ user }: { user: AuthUser }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -37,14 +37,6 @@ export function DemoRoleSwitcher({ user }: { user: AuthUser }) {
       className="border-b bg-primary/5 px-4 py-2.5"
     >
       <div className="mx-auto flex max-w-4xl flex-wrap items-center gap-x-4 gap-y-2">
-        <div className="min-w-0 basis-full text-xs leading-relaxed sm:flex-1 sm:basis-auto">
-          <p className="font-semibold text-primary">身分切換</p>
-          <p className="text-muted-foreground">
-            {user.demo.role
-              ? `目前：${user.name}（登入：${user.demo.account.name}）`
-              : `登入帳號：${user.demo.account.name}`}
-          </p>
-        </div>
         <div
           className="flex min-w-0 flex-wrap items-center gap-1.5"
           role="group"
@@ -54,12 +46,12 @@ export function DemoRoleSwitcher({ user }: { user: AuthUser }) {
             <button
               key={role}
               type="button"
-              aria-pressed={user.demo?.role === role}
+              aria-pressed={user.role === role}
               disabled={busy}
               onClick={() => void select(role)}
               className={cn(
                 "min-h-11 shrink-0 rounded-full border px-3 text-sm font-semibold whitespace-nowrap transition-colors disabled:opacity-50",
-                user.demo?.role === role
+                user.role === role
                   ? "border-primary bg-primary text-primary-foreground"
                   : "bg-background hover:bg-muted"
               )}

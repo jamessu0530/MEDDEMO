@@ -48,6 +48,35 @@ def test_collection_requires_login_and_starts_with_daily_outfits(tx, client):
     assert state["encounters"] == 0
 
 
+def test_assistant_achievements_require_login_and_reject_unknown_actions(tx, client):
+    assert client.post("/api/mascot/achievements", json={"action": "ghost"}).status_code == 401
+    headers = account(tx)
+    assert client.post("/api/mascot/achievements", headers=headers, json={"action": "unknown"}).status_code == 422
+    assert all(not item["owned"] for item in client.get("/api/mascot", headers=headers).json()["achievements"])
+
+
+@pytest.mark.parametrize("action", ["ghost", "new"])
+def test_assistant_achievement_is_permanent_deduplicated_and_personal(tx, client, action):
+    first, second = account(tx), account(tx, "XMASCOT2")
+    response = client.post("/api/mascot/achievements", headers=first, json={"action": action})
+    assert response.status_code == 200
+    result = response.json()
+    assert result["newly_unlocked"] is True
+    assert result["achievement"]["id"] == action
+    assert result["achievement"]["owned"] is True
+    assert result["achievement"]["unlocked_at"]
+    repeat = client.post("/api/mascot/achievements", headers=first, json={"action": action}).json()
+    assert repeat["newly_unlocked"] is False
+    assert repeat["achievement"] == result["achievement"]
+    assert tx.scalar(select(func.count()).select_from(MascotCollectible).where(MascotCollectible.user_id == "XMASCOT1", MascotCollectible.item_id == f"achievement:{action}")) == 1
+    saved = TestClient(app).get("/api/mascot", headers=first).json()["achievements"]
+    assert next(item for item in saved if item["id"] == action)["owned"] is True
+    assert all(not item["owned"] for item in client.get("/api/mascot", headers=second).json()["achievements"])
+    assert tx.get(MascotCollectible, ("U01", f"achievement:{action}")) is None
+    # 彩蛋不是異色抽選，也不佔用八次保底。
+    assert client.get("/api/mascot", headers=first).json()["encounters"] == 0
+
+
 def test_county_unlock_uses_real_arrival_and_survives_route_reset(tx, client):
     headers = account(tx)
     customer = tx.scalar(select(Customer).where(Customer.city == "台北市").limit(1))

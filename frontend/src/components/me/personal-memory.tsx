@@ -1,15 +1,18 @@
 import { askSessionFor } from "@/ask/ask-session"
-import { openAssistant } from "@/ask/assistant-window"
 import { useConversation } from "@/ask/use-conversation"
 import { AskMemoryMap } from "@/components/ask/memory-map"
+import { AccountMemoryStatus } from "@/components/ask/memory-status"
 import { useAuth } from "@/lib/auth"
+import { useNavigate } from "react-router"
+import { conversationPath, LEGACY_THREAD } from "@/ask/conversation-threads"
 
 /** 個人的記憶地圖彙整同一登入帳號的跨頁對話。 */
 export function PersonalMemory({ compact = false }: { compact?: boolean }) {
   const user = useAuth()?.user
+  const navigate = useNavigate()
   const asking = askSessionFor(user?.id ?? "")
-  const entries = useConversation(asking.conversation).filter(
-    (entry) => entry.kind === "tool" || entry.text.trim()
+  const entries = useConversation(asking.threads.history).filter(
+    (entry) => !entry.ghost && (entry.kind === "tool" || entry.text.trim())
   )
   return (
     <section aria-label="我的記憶地圖">
@@ -19,14 +22,13 @@ export function PersonalMemory({ compact = false }: { compact?: boolean }) {
         entries={entries}
         edits={asking.mapEdits}
         onJump={(id) => {
-          openAssistant()
-          requestAnimationFrame(() => {
-            const element = document.getElementById(`ask-entry-${id}`)
-            element?.scrollIntoView({ behavior: "smooth", block: "nearest" })
-            element?.focus({ preventScroll: true })
-          })
+          const entry = entries.find((item) => item.id === id)
+          if (!entry) return
+          asking.threads.resume(entry.threadId ?? LEGACY_THREAD)
+          navigate(conversationPath(entry.page), { state: { assistantThread: entry.threadId ?? LEGACY_THREAD, assistantEntry: id } })
         }}
       />
+      <AccountMemoryStatus memory={asking.memory} />
     </section>
   )
 }

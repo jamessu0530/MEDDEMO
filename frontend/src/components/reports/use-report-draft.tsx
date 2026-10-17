@@ -126,16 +126,19 @@ export function useReportDraft({
   )
 
   const requestAction = useCallback(
-    (label: string, action: () => void | Promise<void>) => {
-      if (saving) return
-      if (!dirty) {
+    async (label: string, action: () => void | Promise<void>) => {
+      if (!dirty && !saving) {
         void action()
         return
       }
       flush()
+      if (await onSave()) {
+        await action()
+        return
+      }
       setPending({ label, action })
     },
-    [dirty, saving, flush]
+    [dirty, saving, flush, onSave]
   )
 
   useEffect(() => {
@@ -199,6 +202,7 @@ export function useReportDraft({
     }
   }
   return {
+    recovering: !!recoverable,
     requestAction,
     flush,
     status:
@@ -301,7 +305,7 @@ export function useReportDraft({
                 disabled={leaving || saving}
                 onClick={() => void continueAfterSave()}
               >
-                儲存後繼續
+                重試同步並繼續
               </button>
             </div>
           </DialogContent>

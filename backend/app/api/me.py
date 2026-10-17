@@ -13,8 +13,8 @@ from sqlalchemy.orm import Session
 
 from app.api.auth import CurrentUser
 from app.db import get_session
-from app.models import AppUser
 from app.services import achievements
+from app.services.auth import role_data_user
 
 router = APIRouter(prefix="/api/me", tags=["me"])
 SessionDep = Annotated[Session, Depends(get_session)]
@@ -68,7 +68,8 @@ def medal_out(medal: achievements.Medal) -> MedalOut:
 @router.get("", response_model=MeOut)
 def get_me(session: SessionDep, user: CurrentUser):
     """個人頁的全部數字：三格事蹟、六面獎牌、近一年賣最多的五家、近六個月每月業績。"""
-    rep = session.get(AppUser, user.acts_as_user_id or user.id)
+    rep = role_data_user(user)
     if rep is None or rep.role != "sales":
         raise HTTPException(403, NO_ROUTE)
-    return MeOut(**dataclasses.asdict(achievements.build(session, rep, learning_user_id=user.id)))
+    result = dataclasses.asdict(achievements.build(session, rep, learning_user_id=user.id))
+    return MeOut(**{**result, "name": user.name, "region": user.region})

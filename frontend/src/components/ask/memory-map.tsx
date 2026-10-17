@@ -57,8 +57,11 @@ export function AskMemoryMap({
   compact?: boolean
 }) {
   const [open, setOpen] = useState(false)
+  const [historyPage, setHistoryPage] = useState(0)
+  const questionCount = entries.filter((entry) => entry.kind === "tool").length
+  const page = Math.min(historyPage, Math.max(0, Math.ceil(questionCount / 24) - 1))
   const changes = useSyncExternalStore(edits.subscribe, edits.getSnapshot)
-  const original = useMemo(() => buildMemoryMap(entries), [entries])
+  const original = useMemo(() => buildMemoryMap(entries, page * 24), [entries, page])
   const graph = useMemo(
     () => applyMapEdits(original, changes),
     [original, changes]
@@ -133,8 +136,18 @@ export function AskMemoryMap({
             </Button>
           </DialogClose>
         </div>
+        {questionCount > 24 && (
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b px-5 py-2 text-xs">
+            <span>共 {questionCount} 題記憶 · 第 {page + 1} / {Math.ceil(questionCount / 24)} 頁</span>
+            <div className="flex gap-2">
+              <Button variant="ghost" size="sm" disabled={page === 0} onClick={() => setHistoryPage(page - 1)}>較新的記憶</Button>
+              <Button variant="ghost" size="sm" disabled={(page + 1) * 24 >= questionCount} onClick={() => setHistoryPage(page + 1)}>較早的記憶</Button>
+            </div>
+          </div>
+        )}
         {open && (
           <MapExplorer
+            key={page}
             graph={graph}
             edits={edits}
             onJump={jump}
@@ -332,7 +345,7 @@ function MapExplorer({
                     <Waypoints className="size-8" aria-hidden="true" />
                     <p>
                       {loadFailed
-                        ? "3D 地圖載入失敗。重新整理會清空這段對話。"
+                        ? "3D 地圖載入失敗，請重新整理後再試。帳號記憶會保留。"
                         : "這個裝置暫時無法顯示 3D 地圖。"}
                     </p>
                     <Button

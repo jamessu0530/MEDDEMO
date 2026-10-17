@@ -3,17 +3,19 @@ import { Building2, Check, Flag } from "@/components/icons"
 import { Link } from "react-router"
 
 import { getBrief, type Brief } from "@/api/notes"
-import { SIGNAL_LABEL, type RouteSignal, type LegMode, type RouteStop, type TravelMode } from "@/api/route"
+import { SIGNAL_LABEL, type RouteSignal, type LegMode, type RoutePathStop, type TravelMode } from "@/api/route"
 import { Mascot } from "@/components/mascot"
 import { NoteRow } from "@/components/note-row"
 import { RideOnRoute } from "@/components/rides/ride-on-route"
 import { LegChip, LegMenu } from "@/components/route/leg-chip"
 import { buttonVariants } from "@/components/ui/button"
 import { formatTaipeiTime } from "@/lib/format"
+import { windowLabel } from "@/lib/itinerary"
 import { ROUTE_WIDTH } from "@/lib/ride-on-route"
 import { finishesRoute, followsServer, hereOf, lastLeg, legBetween, officeLeg, type Leg } from "@/lib/rides"
 import { departureRow, HALF_NODE, labelSide, pathOffset, signalTone, TONE_CLASS } from "@/lib/route-path"
 import { legFrom } from "@/lib/travel-mode"
+import { SOURCE_LABEL } from "@/lib/team-routes"
 import { cn } from "@/lib/utils"
 
 // 名字離圓鈕 12px（圓鈕的大小在 lib/route-path.ts）
@@ -22,9 +24,9 @@ const LABEL_GAP = 12
 // 全部到過時座騎淡出多久才拿掉（跟 rides/ride-on-route.css 的 .ride-park-leave 一樣）
 const LEAVE_MS = 300
 
-const STATUS_LABEL: Record<RouteStop["status"], string> = { done: "已完成", next: "下一站", todo: "待拜訪" }
+const STATUS_LABEL: Record<RoutePathStop["status"], string> = { done: "已完成", next: "下一站", todo: "待拜訪" }
 
-function popoverId(stop: RouteStop) {
+function popoverId(stop: RoutePathStop) {
   return `stop-popover-${stop.customer_id}`
 }
 
@@ -51,8 +53,10 @@ export function RoutePath({
   onRide,
   onRidingChange,
   collected = null,
+  readOnly = false,
+  backTo,
 }: {
-  stops: RouteStop[]
+  stops: RoutePathStop[]
   dayMode?: TravelMode
   officeStart?: boolean
   /** 辦公室所在的縣市：第一段的出發縣市 */
@@ -68,6 +72,10 @@ export function RoutePath({
   onRidingChange?: (riding: boolean) => void
   /** 座騎圖鑑收集了幾台（首頁拿；拿不到是 null，入口就只寫名字） */
   collected?: { ridden: number; total: number } | null
+  /** 主管查看：點站只開小卡，座騎跟著業務實際進度；不提供修改與圖鑑入口。 */
+  readOnly?: boolean
+  /** 從客戶檔案返回目前查看的行程。 */
+  backTo?: string
 }) {
   // 同時只開一個：站的小卡或某一段的選單
   const [opened, setOpened] = useState<Opened>(null)
@@ -111,7 +119,7 @@ export function RoutePath({
     replay ??
     (anchor === null ? officeLeg(stops, startCity) : stops[0] ? legBetween(stops, null, stops[0].customer_id, startCity) : null)
   // 重播要畫面上量得到出發的那一顆：沒有辦公室起點時，從辦公室來的那一段（只點過一站）不能重播
-  const canReplay = replay !== null && (officeStart || replay.from !== null)
+  const canReplay = !readOnly && replay !== null && (officeStart || replay.from !== null)
   // 全部到過：最後一段騎完，座騎淡出（LEAVE_MS；減少動態效果時直接不見）再拿掉，熊熊滾在收工旗子旁跳。
   // 只有這次騎過才淡出：一打開就全部到過的本來就沒有座騎；又點了一站（騎起來）就不淡出了
   const parkedVisible = parked !== null && (!finished || riding)
@@ -182,16 +190,16 @@ export function RoutePath({
   }, [flagCall])
 
   // 選單開著時 onPickMode 不見了（忙著處理急件鈕、或重新載入退回快取的路線）：選了也沒人接，乾脆收起來
-  if (!onPickMode && opened?.kind === "leg") setOpened(null)
+  if ((readOnly || !onPickMode) && opened?.kind === "leg") setOpened(null)
 
   function toggle(kind: "stop" | "leg", id: string) {
     setOpened((now) => (now?.kind === kind && now.id === id ? null : { kind, id }))
   }
 
-  function tapStop(stop: RouteStop) {
+  function tapStop(stop: RoutePathStop) {
     const isOpen = opened?.kind === "stop" && opened.id === stop.customer_id
     setOpened(isOpen ? null : { kind: "stop", id: stop.customer_id })
-    if (isOpen) return
+    if (isOpen || readOnly) return
     const rides = stop.customer_id !== anchor
     // 熊已經停在這一站、也記過到過了：只開小卡
     if (!rides && stop.arrived_at) return
@@ -254,7 +262,7 @@ export function RoutePath({
               hideChip={from === null && !officeStart}
               x={(pathOffset(Math.max(index - 1, 0)) + offset) / 2}
               open={opened?.kind === "leg" && opened.id === stop.customer_id}
-              onToggle={onPickMode ? () => toggle("leg", stop.customer_id) : undefined}
+              onToggle={!readOnly && onPickMode ? () => toggle("leg", stop.customer_id) : undefined}
               menu={(id) => (
                 <LegMenu
                   key={`${from}-${stop.customer_id}`}
@@ -285,11 +293,20 @@ export function RoutePath({
                 bubble={departure === stop.customer_id}
                 open={stopOpen}
                 onToggle={() => tapStop(stop)}
+                readOnly={readOnly}
+                backTo={backTo}
               />
               <StopLabel stop={stop} offset={offset} />
               {showParked && anchor === stop.customer_id && bear(offset)}
               {stopOpen && (
-                <StopPopover stop={stop} index={index} offset={offset} unsaved={unsaved?.has(stop.customer_id) ?? false} />
+                <StopPopover
+                  stop={stop}
+                  index={index}
+                  offset={offset}
+                  unsaved={unsaved?.has(stop.customer_id) ?? false}
+                  readOnly={readOnly}
+                  backTo={backTo}
+                />
               )}
             </div>
           </li>
@@ -315,9 +332,11 @@ export function RoutePath({
           <p className="font-[Roboto,sans-serif] text-xs text-muted-foreground">Google Maps</p>
         )}
         {finished && !riding && <FinishBear />}
-        <Link to="/rides" className="text-xs font-semibold text-primary">
-          座騎圖鑑{collected && ` ${collected.ridden}/${collected.total}`}
-        </Link>
+        {!readOnly && (
+          <Link to="/rides" className="text-xs font-semibold text-primary">
+            座騎圖鑑{collected && ` ${collected.ridden}/${collected.total}`}
+          </Link>
+        )}
       </li>
     </ol>
   )
@@ -333,7 +352,7 @@ function LegRow({
   onToggle,
   menu,
 }: {
-  stop: RouteStop
+  stop: RoutePathStop
   fromOffice: boolean
   hideChip: boolean
   x: number
@@ -395,14 +414,18 @@ function StopNode({
   bubble,
   open,
   onToggle,
+  readOnly,
+  backTo,
 }: {
-  stop: RouteStop
+  stop: RoutePathStop
   index: number
   offset: number
   /** 這一列上面有留空間：沒留（熊還在騎、空間還沒搬過來）時不放泡泡，不然會蓋到上面的膠囊 */
   bubble: boolean
   open: boolean
   onToggle: () => void
+  readOnly: boolean
+  backTo?: string
 }) {
   const done = stop.status === "done"
   const next = stop.status === "next"
@@ -414,11 +437,12 @@ function StopNode({
           {bubble && (
             <Link
               to={`/customers/${stop.customer_id}`}
+              state={backTo ? { backTo } : undefined}
               className="absolute bottom-[calc(100%+16px)] left-1/2 -translate-x-1/2 animate-in duration-300 fade-in motion-reduce:animate-none"
             >
               {/* 跳的是裡面這一層：外層的 -translate-x-1/2 負責置中，跳動的 transform 寫在同一個元素上會把置中蓋掉 */}
               <span className="relative block animate-bob rounded-xl border-2 bg-card px-3 py-1 text-sm font-semibold whitespace-nowrap text-primary motion-reduce:animate-none after:absolute after:top-full after:left-1/2 after:size-2.5 after:-translate-x-1/2 after:-translate-y-1/2 after:rotate-45 after:border-r-2 after:border-b-2 after:bg-card after:content-['']">
-                出發
+                {readOnly ? "下一站" : "出發"}
               </span>
             </Link>
           )}
@@ -444,7 +468,7 @@ function StopNode({
   )
 }
 
-function StopLabel({ stop, offset }: { stop: RouteStop; offset: number }) {
+function StopLabel({ stop, offset }: { stop: RoutePathStop; offset: number }) {
   const done = stop.status === "done"
   const left = labelSide(offset) === "left"
   // 名字在圓鈕空出來的那一側：右邊就從圓鈕右緣再過去 12px 開始，左邊就在圓鈕左緣前 12px 結束、靠右對齊
@@ -479,7 +503,14 @@ function SignalLabel({ signal }: { signal: RouteSignal }) {
 }
 
 /** 點圓鈕彈出的小卡：蓋在後面的路上，上面的尖角對準那顆圓鈕 */
-function StopPopover({ stop, index, offset, unsaved }: { stop: RouteStop; index: number; offset: number; unsaved: boolean }) {
+function StopPopover({ stop, index, offset, unsaved, readOnly, backTo }: {
+  stop: RoutePathStop
+  index: number
+  offset: number
+  unsaved: boolean
+  readOnly: boolean
+  backTo?: string
+}) {
   const done = stop.status === "done"
   return (
     // z 比固定在上面的頁首（z-10）低，捲到頁首底下時被頁首蓋住
@@ -502,10 +533,28 @@ function StopPopover({ stop, index, offset, unsaved }: { stop: RouteStop; index:
       <p className="mt-2 text-sm leading-relaxed">
         <SignalLabel signal={stop.signal} /> · {stop.reason}
       </p>
+      {readOnly && (
+        <div className="mt-2 flex flex-wrap gap-1 text-xs">
+          {!done && <span className="rounded-md bg-muted px-1.5 py-0.5">停留 {stop.duration_minutes} 分</span>}
+          {stop.window_kind && stop.window_time && (
+            <span className="rounded-md bg-muted px-1.5 py-0.5">{windowLabel(stop.window_kind, stop.window_time)}</span>
+          )}
+          {!done && stop.late_minutes > 0 && (
+            <span className="rounded-md bg-destructive/10 px-1.5 py-0.5 text-destructive">會晚到 {stop.late_minutes} 分</span>
+          )}
+          {stop.source !== "model" && (
+            <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-primary">{SOURCE_LABEL[stop.source]}</span>
+          )}
+        </div>
+      )}
       <StopBrief customerId={stop.customer_id} />
       {unsaved && <p className="mt-3 text-xs font-semibold text-destructive">沒連上，這一站還沒記到</p>}
-      <Link to={`/customers/${stop.customer_id}`} className={cn(buttonVariants(), "mt-3 h-11 w-full text-sm")}>
-        開啟拜訪準備
+      <Link
+        to={`/customers/${stop.customer_id}`}
+        state={backTo ? { backTo } : undefined}
+        className={cn(buttonVariants(), "mt-3 h-11 w-full text-sm")}
+      >
+        {readOnly ? "查看客戶檔案" : "開啟拜訪準備"}
       </Link>
     </div>
   )

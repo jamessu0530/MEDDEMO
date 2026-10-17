@@ -3,16 +3,26 @@ export type MapSizeLimits = { minWidth: number; maxWidth: number; minHeight: num
 
 const EMPTY_SIZE: ManagerMapSize = { widthPercent: null, height: null }
 const storageKey = (accountId: string) => `meddemo:manager-map-size:${accountId}`
+const routeStorageKey = (accountId: string) => `meddemo:manager-route-size:${accountId}`
 const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value)
 
 /** 寬度以比例記住，換視窗時再限制；高度以 px 記住。不同登入帳號各自保存。 */
 export function readManagerMapSize(accountId: string): ManagerMapSize {
+  return readSize(storageKey(accountId))
+}
+
+/** 清單保留自然高度，拖曳後才固定高度並在裡面捲動。 */
+export function readManagerRouteSize(accountId: string): ManagerMapSize {
+  return readSize(routeStorageKey(accountId), true)
+}
+
+function readSize(key: string, allowFullWidth = false): ManagerMapSize {
   try {
-    const saved: unknown = JSON.parse(localStorage.getItem(storageKey(accountId)) ?? "null")
+    const saved: unknown = JSON.parse(localStorage.getItem(key) ?? "null")
     if (!saved || typeof saved !== "object") return { ...EMPTY_SIZE }
     const { widthPercent, height } = saved as Record<string, unknown>
     return {
-      widthPercent: finite(widthPercent) && widthPercent > 0 && widthPercent < 100 ? widthPercent : null,
+      widthPercent: finite(widthPercent) && widthPercent > 0 && (widthPercent < 100 || (allowFullWidth && widthPercent === 100)) ? widthPercent : null,
       height: finite(height) && height > 0 ? height : null,
     }
   } catch {
@@ -21,9 +31,17 @@ export function readManagerMapSize(accountId: string): ManagerMapSize {
 }
 
 export function saveManagerMapSize(accountId: string, size: ManagerMapSize) {
+  saveSize(storageKey(accountId), size)
+}
+
+export function saveManagerRouteSize(accountId: string, size: ManagerMapSize) {
+  saveSize(routeStorageKey(accountId), size)
+}
+
+function saveSize(key: string, size: ManagerMapSize) {
   try {
-    if (size.widthPercent === null && size.height === null) localStorage.removeItem(storageKey(accountId))
-    else localStorage.setItem(storageKey(accountId), JSON.stringify(size))
+    if (size.widthPercent === null && size.height === null) localStorage.removeItem(key)
+    else localStorage.setItem(key, JSON.stringify(size))
   } catch {
     // 儲存空間被擋時仍可調整目前畫面。
   }

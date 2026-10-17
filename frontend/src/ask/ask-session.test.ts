@@ -7,6 +7,18 @@ const api = vi.hoisted(() => ({
   createAsk: vi.fn(),
   getAsk: vi.fn(),
   routeAsk: vi.fn(),
+  adjustReport: vi.fn(),
+  askPriorityAdvice: vi.fn(),
+  getAccountMemory: vi.fn(),
+  saveAccountMemory: vi.fn(),
+}))
+vi.mock("@/api/reports", () => ({ adjustReport: api.adjustReport }))
+vi.mock("@/api/assistant-memory", () => ({
+  getAccountMemory: api.getAccountMemory,
+  saveAccountMemory: api.saveAccountMemory,
+}))
+vi.mock("@/api/customer-priority", () => ({
+  askPriorityAdvice: api.askPriorityAdvice,
 }))
 vi.mock("@/api/asks", () => ({
   createAsk: api.createAsk,
@@ -16,6 +28,9 @@ vi.mock("@/api/asks", () => ({
 }))
 import { askSessionFor } from "@/ask/ask-session"
 import { signIn, signOut } from "@/lib/auth"
+import { reportAssistant } from "@/ask/report-assistant"
+import { customerPriorityAssistant } from "@/ask/customer-priority-assistant"
+import type { ReportConfig } from "@/lib/reports"
 const user = (id: string) =>
   ({ id, name: id, role: "sales", region: "北區", email: null }) as AuthUser
 const answer = (status: Ask["status"] = "answered") =>
@@ -45,6 +60,8 @@ const tools = (session: ReturnType<typeof askSessionFor>) =>
 beforeEach(() => {
   vi.useFakeTimers()
   api.createAsk.mockReset().mockResolvedValue(answer())
+  api.getAccountMemory.mockReset().mockResolvedValue({ entries: [], nodes: [] })
+  api.saveAccountMemory.mockReset().mockResolvedValue(undefined)
   api.getAsk.mockReset().mockResolvedValue(answer())
   api.routeAsk
     .mockReset()
@@ -56,6 +73,151 @@ afterEach(() => {
   vi.useRealTimers()
 })
 describe("全站自動問答", () => {
+  it("Ghost 查詢送出隱私標記，不同步到帳號；新對話不帶前文", async () => {
+    const session = askSessionFor("U01")
+    await session.memory?.ready
+    await session.ask("原本的問題", undefined, page())
+    await session.memory?.flush()
+    const saves = api.saveAccountMemory.mock.calls.length
+    const saved = session.threads.history.getSnapshot()
+    session.threads.enterGhost()
+    await session.ask("暫時問的問題", undefined, page())
+    expect(api.createAsk).toHaveBeenLastCalledWith("data", "暫時問的問題", undefined, true)
+    expect(session.threads.history.getSnapshot()).toBe(saved)
+    expect(api.routeAsk.mock.calls.at(-1)?.[2]).toEqual([])
+    await session.memory?.flush()
+    expect(api.saveAccountMemory).toHaveBeenCalledTimes(saves)
+    session.threads.startNew()
+    await session.ask("新問題", undefined, page())
+    expect(api.routeAsk.mock.calls.at(-1)?.[2]).toEqual([])
+    expect(session.conversation.getSnapshot()).toHaveLength(2)
+    expect(session.threads.history.getSnapshot().some((entry) => entry.ghost)).toBe(false)
+  })
+  it("切換對話後才到達的 Ghost 追問，不把原附件帶進新的正常對話", async () => {
+    const session = askSessionFor("U01")
+    await session.memory?.ready
+    session.threads.enterGhost()
+    let finish!: (value: ReturnType<typeof routed>) => void
+    api.routeAsk.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve }))
+    const pending = session.ask("暫時問這張照片", new File(["private"], "private.jpg"), page())
+    session.threads.startNew()
+    finish(routed("暫時問這張照片", { kind: null, clarification: "想問哪一部分？" }))
+    await pending
+    api.routeAsk.mockResolvedValueOnce(routed("新的問題", { continues_previous: true }))
+    await session.ask("新的問題", undefined, page())
+    expect(api.createAsk).toHaveBeenLastCalledWith("data", "新的問題", undefined)
+  })
+  it("重新登入後接續輪詢舊查詢，不再次建立提問", async () => {
+    const restored = { id: 777, kind: "tool", question: "之前的問題", askKind: "data", ask: answer("running"), original: null, error: null, routing: false, cancelled: false, choices: null, auto: true }
+    api.getAccountMemory.mockResolvedValue({ entries: [restored], nodes: [] })
+    const session = askSessionFor("U01")
+    await session.memory?.ready
+    await vi.advanceTimersByTimeAsync(500)
+    expect(api.createAsk).not.toHaveBeenCalled()
+    expect(api.getAsk).toHaveBeenCalledOnce()
+    expect(tools(session)[0].ask?.status).toBe("answered")
+  })
+
+  it("還原的問題仍可照原話查，原附件會重新讀取後送出", async () => {
+    const restored = { id: 778, kind: "tool", question: "改寫過的問題", askKind: "data", ask: { ...answer(), attachment: { url: "/api/attachments/8?sig=fresh", filename: "box.jpg" } }, original: "原話", error: null, routing: false, cancelled: false, choices: null, auto: true, hasFile: true }
+    api.getAccountMemory.mockResolvedValue({ entries: [restored], nodes: [] })
+    const fetch = vi.fn().mockResolvedValue(new Response(new Blob(["image"], { type: "image/jpeg" })))
+    vi.stubGlobal("fetch", fetch)
+    try {
+      const session = askSessionFor("U01")
+      await session.memory?.ready
+      await session.askAsTyped(778)
+      expect(fetch).toHaveBeenCalledWith("/api/attachments/8?sig=fresh", expect.objectContaining({ signal: expect.any(AbortSignal) }))
+      expect(api.createAsk).toHaveBeenCalledWith("data", "原話", expect.objectContaining({ name: "box.jpg", type: "image/jpeg" }))
+    } finally { vi.unstubAllGlobals() }
+  })
+  it("客戶策略從共用對話取得建議，一般營收查詢仍照原流程", async () => {
+    const strategy = {
+      id: "balanced",
+      name: "均衡經營",
+      days: 90,
+      daily_limit: 5,
+      metrics: [
+        { metric: "revenue" as const, weight: 1, direction: "higher" as const },
+      ],
+      priority_customers: [],
+    }
+    const context = {
+      path: "/manager?view=priority",
+      title: "客戶策略",
+      facts: [],
+    }
+    const onUse = vi.fn()
+    customerPriorityAssistant.connect({
+      managerId: "M01",
+      strategy,
+      disabled: false,
+      onUse,
+    })
+    api.askPriorityAdvice.mockResolvedValueOnce({
+      message: "已提出建議。",
+      strategy,
+      source: "ai",
+    })
+    const session = askSessionFor("U01")
+    await session.ask("幫我調整指標權重", undefined, context)
+    expect(api.askPriorityAdvice).toHaveBeenCalledWith(
+      "M01",
+      strategy,
+      "幫我調整指標權重",
+      [],
+      undefined,
+      expect.any(AbortSignal)
+    )
+    expect(api.routeAsk).not.toHaveBeenCalled()
+    expect(session.conversation.getSnapshot()).toMatchObject([
+      { kind: "user", text: "幫我調整指標權重", page: context },
+      { kind: "model", text: "已提出建議。", page: context },
+    ])
+    expect(onUse).not.toHaveBeenCalled()
+    await session.ask("團隊營收多少？", undefined, context)
+    expect(api.routeAsk).toHaveBeenCalledOnce()
+    customerPriorityAssistant.apply()
+    expect(onUse).toHaveBeenCalledOnce()
+  })
+  it("報表調整從共用對話送出，預覽確認後才更新報表", async () => {
+    const config: ReportConfig = {
+      name: "業績",
+      template: "sales",
+      period: "this_month",
+      owner_id: null,
+      customer_type: null,
+      cards: [],
+    }
+    const proposed = { ...config, name: "新版業績" }
+    api.adjustReport.mockResolvedValueOnce({
+      kind: "proposal",
+      message: "已修改名稱。",
+      config: proposed,
+    })
+    const onApply = vi.fn()
+    reportAssistant.connect({ config, available: true, onApply })
+    const session = askSessionFor("U01")
+    await session.ask("修改報表名稱", undefined, {
+      path: "/reports",
+      title: "業績",
+      facts: [],
+    })
+    expect(api.adjustReport).toHaveBeenCalledWith(
+      "修改報表名稱",
+      config,
+      expect.any(AbortSignal)
+    )
+    expect(api.routeAsk).not.toHaveBeenCalled()
+    expect(api.createAsk).not.toHaveBeenCalled()
+    expect(session.conversation.getSnapshot()).toMatchObject([
+      { kind: "user", text: "修改報表名稱" },
+      { kind: "model", text: "已修改名稱。" },
+    ])
+    expect(onApply).not.toHaveBeenCalled()
+    reportAssistant.apply()
+    expect(onApply).toHaveBeenCalledExactlyOnceWith(proposed)
+  })
   it.each([
     "這個頁面可以幹嘛？",
     "可以跟我講一下如何設定這個頁面嗎",
@@ -220,6 +382,20 @@ describe("全站自動問答", () => {
     })
     await session.ask("今天有幾個行程？", undefined, page())
     expect(api.routeAsk).toHaveBeenCalledOnce()
+  })
+  it.each([false, true])("對話紀錄示範接上目前對話並遵循保存模式，Ghost=%s", async (ghost) => {
+    const session = askSessionFor("U01")
+    await session.memory?.ready
+    if (ghost) session.threads.enterGhost()
+    const threadId = session.threads.getSnapshot().id
+    await session.ask("教我用對話紀錄", undefined, page())
+    expect(session.conversation.getSnapshot()).toMatchObject([
+      { kind: "user", threadId },
+      { kind: "model", threadId, demo: "page-tour", demoPath: "/conversations" },
+    ])
+    expect(session.threads.history.getSnapshot()).toHaveLength(ghost ? 0 : 2)
+    expect(api.routeAsk).not.toHaveBeenCalled()
+    expect(api.createAsk).not.toHaveBeenCalled()
   })
   it("報表操作求助交給報表示範流程，不送出資料查詢", async () => {
     const session = askSessionFor("U01")
@@ -436,7 +612,7 @@ describe("全站自動問答", () => {
     expect(api.createAsk).not.toHaveBeenCalled()
     expect(second.conversation.getSnapshot()).toEqual([])
   })
-  it("記憶地圖跨頁保留，換帳號清空", () => {
+  it("記憶地圖跨頁保留，換帳號建立獨立的記憶視圖", () => {
     const first = askSessionFor("U01")
     first.mapEdits.edit("question:1", "我的問題", "待辦筆記")
     expect(askSessionFor("U01").mapEdits.getSnapshot()).toEqual(

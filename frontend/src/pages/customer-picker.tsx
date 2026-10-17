@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Bell, ChevronRight, CircleHelp, Search } from "@/components/icons"
+import { ChevronRight, CircleHelp, Search } from "@/components/icons"
 import { Link } from "react-router"
 
 import {
@@ -16,7 +16,6 @@ import { Notice } from "@/components/notice"
 import { PendingUploads } from "@/components/pending-uploads"
 import { Input } from "@/components/ui/input"
 import { formatDate } from "@/lib/format"
-import { useUnseenReplies } from "@/lib/manager-replies"
 import { openGuide } from "@/lib/onboarding"
 
 type LoadState =
@@ -28,7 +27,6 @@ export function CustomerPicker() {
   const [state, setState] = useState<LoadState>({ status: "loading" })
   const [attempt, setAttempt] = useState(0)
   const [query, setQuery] = useState("")
-  const unseen = useUnseenReplies()
 
   useEffect(() => {
     const controller = new AbortController()
@@ -79,21 +77,6 @@ export function CustomerPicker() {
             >
               <CircleHelp className="size-5" />
             </button>
-            {/* FR-8.4：主管回覆了，這裡顯示還沒看的則數 */}
-            <Link
-              to="/escalations"
-              aria-label={
-                unseen > 0 ? `主管回覆 ${unseen} 則，查看` : "轉給主管的提問"
-              }
-              className="relative flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
-            >
-              <Bell className="size-5" />
-              {unseen > 0 && (
-                <span className="absolute top-1 right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-xs font-semibold text-white">
-                  {unseen}
-                </span>
-              )}
-            </Link>
           </div>
         </div>
         <h1 className="text-xl font-semibold">選擇拜訪客戶</h1>
@@ -111,16 +94,6 @@ export function CustomerPicker() {
       </header>
 
       <main className="flex-1 px-4 pt-3 pb-20">
-        {unseen > 0 && (
-          <Link
-            to="/escalations"
-            className="mb-3 flex min-h-12 press items-center gap-3 rounded-xl border-2 border-primary/30 bg-primary/10 px-4 py-2 text-sm shadow-lip-primary-soft"
-          >
-            <Bell className="size-4 shrink-0 text-primary" />
-            <span className="flex-1">主管回覆了你轉過去的 {unseen} 個提問</span>
-            <span className="shrink-0 font-medium text-primary">查看</span>
-          </Link>
-        )}
         <PendingUploads />
         {state.status === "ready" && state.cached && (
           <p className="mb-2 text-xs text-muted-foreground">

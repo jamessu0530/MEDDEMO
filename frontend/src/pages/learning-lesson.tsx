@@ -16,6 +16,7 @@ import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/lib/auth"
+import { celebrateCompletion } from "@/lib/completion-celebration"
 import { initialAnswer, lessonState, nextLesson } from "@/lib/learning"
 
 const TIPS: Record<string, string> = {
@@ -25,7 +26,7 @@ const TIPS: Record<string, string> = {
   "route-v1":
     "調整順路以前，先守住約好的拜訪時間。09:00 的診所排在 11:00 的藥局前面。",
   "visit-v1": "AI 整理不代表內容都正確。客戶沒說要下單，意向就留空。",
-  "ask-v1": "答案要能對到出處。文件沒說的，轉給主管確認後再答覆客戶。",
+  "ask-v1": "答案要能對到出處。文件沒說的，到頻道請主管確認後再答覆客戶。",
 }
 
 export function LearningLessonPage() {
@@ -80,6 +81,7 @@ function LessonContent({ lessonId }: { lessonId: string }) {
       const updated = await completeLesson(lessonId, answer)
       setCourse(updated)
       setPassed(true)
+      celebrateCompletion(replay ? "複習完成！" : "闖關成功！")
     } catch (error) {
       setFeedback(
         error instanceof ApiError

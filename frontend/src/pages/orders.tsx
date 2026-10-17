@@ -549,17 +549,35 @@ function CreateOrderDialog({
         </div>
         <div className="space-y-2 text-sm">
           <p>付款條件</p>
-          <SearchSelect
-            label="新訂單付款條件"
-            value={paymentTerm}
-            placeholder="請選擇本次訂單的付款條件"
-            disabled={busy || loadingCustomer || !customer}
-            options={Object.entries(PAYMENT_TERMS).map(([value, label]) => ({
-              value,
-              label,
-            }))}
-            onValueChange={setPaymentTerm}
-          />
+          {practice ? (
+            <select
+              aria-label="新訂單付款條件"
+              data-ui-demo="practice-payment-term"
+              className={`${SELECT} w-full`}
+              value={paymentTerm}
+              disabled={busy || loadingCustomer || !customer}
+              onChange={(event) => setPaymentTerm(event.target.value)}
+            >
+              <option value="">請選擇本次訂單的付款條件</option>
+              {Object.entries(PAYMENT_TERMS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <SearchSelect
+              label="新訂單付款條件"
+              value={paymentTerm}
+              placeholder="請選擇本次訂單的付款條件"
+              disabled={busy || loadingCustomer || !customer}
+              options={Object.entries(PAYMENT_TERMS).map(([value, label]) => ({
+                value,
+                label,
+              }))}
+              onValueChange={setPaymentTerm}
+            />
+          )}
         </div>
         {error && (
           <p role="alert" className="text-sm text-destructive">

@@ -1,4 +1,4 @@
-import type { LegMode, RouteStop } from "@/api/route"
+import type { LegMode, RoutePathStop } from "@/api/route"
 
 /**
  * 熊熊滾的座騎（docs/superpowers/specs/2026-10-07-ride-vehicles-design.md〈座騎〉）：七個縣市各一種特產，
@@ -33,11 +33,11 @@ export function anchorId(from: string | null): string {
 }
 
 // 點過的站照點的先後排（arrived_at 由早到晚）。照時間比、不照字串：小數秒的位數、時區寫法不一樣時字串順序會錯
-const byArrival = (stops: RouteStop[]) =>
+const byArrival = (stops: RoutePathStop[]) =>
   stops.filter((stop) => stop.arrived_at).sort((a, b) => Date.parse(a.arrived_at!) - Date.parse(b.arrived_at!))
 
 /** 熊熊滾停在哪：最後點的那一站；沒點過是 null（辦公室，沒有辦公室起點時第 1 站） */
-export function hereOf(stops: RouteStop[]): string | null {
+export function hereOf(stops: RoutePathStop[]): string | null {
   return byArrival(stops).at(-1)?.customer_id ?? null
 }
 
@@ -57,14 +57,14 @@ export function followsServer(serverHere: string | null, here: string | null, ta
  * 點了這一站就全部到過了：它還沒到過、其他站都到過（或這次剛點、arrive 還沒回來的 taps）。
  * 最後一段騎完時收起小卡、把收工旗子捲到畫面中間
  */
-export function finishesRoute(stops: RouteStop[], customerId: string, taps: readonly string[] = []): boolean {
+export function finishesRoute(stops: RoutePathStop[], customerId: string, taps: readonly string[] = []): boolean {
   return stops.every((stop) =>
     stop.customer_id === customerId ? stop.status !== "done" : stop.status === "done" || taps.includes(stop.customer_id)
   )
 }
 
 /** 從 from（null 是辦公室）騎到 to 那一站：往回、跳站都可以。交通方式照原本排好到那一站的 */
-export function legBetween(stops: RouteStop[], from: string | null, to: string, startCity: string | null): Leg {
+export function legBetween(stops: RoutePathStop[], from: string | null, to: string, startCity: string | null): Leg {
   const target = stops.find((stop) => stop.customer_id === to)
   const origin = from === null ? null : stops.find((stop) => stop.customer_id === from)
   return {
@@ -80,7 +80,7 @@ export function legBetween(stops: RouteStop[], from: string | null, to: string, 
  * 還沒點過站、熊停在辦公室時的座騎：辦公室縣市（沒有就第 1 站的）× 辦公室到第 1 站的交通方式。
  * 點第 1 站出發時騎的就是這一台（跨縣市半路才冒煙換），不會一起步就先換一台；沒有站是 null。不能重播。
  */
-export function officeLeg(stops: RouteStop[], startCity: string | null): Leg | null {
+export function officeLeg(stops: RoutePathStop[], startCity: string | null): Leg | null {
   const first = stops[0]
   if (!first) return null
   const city = startCity ?? first.city ?? ""
@@ -88,7 +88,7 @@ export function officeLeg(stops: RouteStop[], startCity: string | null): Leg | n
 }
 
 /** 停著的座騎是哪一段（點座騎重播）：倒數第二個點的（沒有就辦公室）→ 最後點的；沒點過是 null */
-export function lastLeg(stops: RouteStop[], startCity: string | null): Leg | null {
+export function lastLeg(stops: RoutePathStop[], startCity: string | null): Leg | null {
   const order = byArrival(stops)
   const last = order.at(-1)
   if (!last) return null

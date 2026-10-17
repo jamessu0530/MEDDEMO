@@ -23,9 +23,8 @@ from pypdf.errors import PyPdfError
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import AppUser, AskRecord, Attachment, Channel, ChannelMessage, Escalation, MemoryItem
+from app.models import AppUser, AskRecord, Attachment, Channel, ChannelMessage, MemoryItem
 from app.services import auth, channels
-from app.services.escalations import Asker, visible_to
 from app.services.retrieval import SIMPLE, to_tsvector_input
 
 # 單檔上限。整個請求另外由 Nginx 的 client_max_body_size 20m 擋
@@ -242,17 +241,7 @@ def urls(attachment: Attachment, user: AppUser) -> tuple[str, str | None]:
 
 def _ask_visible(session: Session, user: AppUser, ask_id: str) -> bool:
     record = session.get(AskRecord, ask_id)
-    if record is None:
-        return False
-    if record.user_id == user.id:
-        return True
-    # 轉給主管的提問：看得到那筆轉介的主管（與 IT）也看得到附件，回覆時才知道業務問的是哪一張
-    return session.scalar(
-        select(Escalation.id)
-        .join(AskRecord, AskRecord.id == Escalation.ask_id)
-        .join(Asker, Asker.id == AskRecord.user_id)
-        .where(Escalation.ask_id == ask_id, visible_to(user))
-    ) is not None
+    return record is not None and record.user_id == user.id
 
 
 def shared_upward(session: Session, attachment_id: int) -> bool:
@@ -270,7 +259,7 @@ def shared_upward(session: Session, attachment_id: int) -> bool:
 
 
 def can_see(session: Session, user: AppUser, attachment: Attachment) -> bool:
-    """附件看不看得到：看得到它所在的頻道、跟著重點往上傳了，或是自己的提問、轉給自己回覆的提問。"""
+    """附件看不看得到：看得到它所在的頻道、跟著重點往上傳了，或是自己的提問。"""
     if attachment.message_id is not None:
         if shared_upward(session, attachment.id):
             return True

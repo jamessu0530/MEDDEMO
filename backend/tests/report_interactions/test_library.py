@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from app.main import app
+from app.config import settings
 from app.models import AppUser, UserReportConfig
 from app.services import auth, report_library as library, reports
 
@@ -17,6 +18,31 @@ def state(**patch):
 
 def client_for(session, user="M1"):
     return TestClient(app), {"Authorization": f"Bearer {auth.create_token(session.get(AppUser, user))}"}
+
+
+def test_demo_role_keeps_each_logged_in_accounts_own_report_library(interaction_session, monkeypatch):
+    monkeypatch.setattr(settings(), "demo_role_switch", True)
+    monkeypatch.setitem(auth.DEMO_ROLE_USERS, "sales", "S1")
+    client = TestClient(app)
+    sessions = {
+        account: {"Authorization": f"Bearer {auth.create_token(interaction_session.get(AppUser, account), demo_role='sales')}"}
+        for account in ("S2", "S3")
+    }
+    created = client.post("/api/reports/library", headers=sessions["S2"], json={"config": config("S2 的私人報表").model_dump(mode="json")})
+    assert created.status_code == 200
+    body = created.json()
+    assert body["account_id"] == "S2"
+    report_id = body["active_report_id"]
+    for account in ("S1", "S3"):
+        headers = sessions.get(account) or client_for(interaction_session, account)[1]
+        workspace = client.get("/api/reports", headers=headers).json()
+        assert workspace["account_id"] == account
+        assert report_id not in {item["id"] for item in workspace["documents"]}
+        assert client.post("/api/reports/library/open", headers=headers, json={"report_id": report_id}).status_code == 404
+        assert client.put(f"/api/reports/library/{report_id}", headers=headers, json={"config": config("越權修改").model_dump(mode="json"), "revision": 1}).status_code == 404
+    saved = client.put(f"/api/reports/library/{report_id}", headers=sessions["S2"], json={"config": config("個人最新設定").model_dump(mode="json"), "revision": 1})
+    assert saved.status_code == 200
+    assert client.get("/api/reports", headers=sessions["S2"]).json()["config"]["name"] == "個人最新設定"
 
 
 def test_reading_legacy_does_not_rewrite_or_create_settings(interaction_session):

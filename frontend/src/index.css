@@ -243,13 +243,23 @@
 }
 
 .manager-map-corner:hover .manager-map-corner-material,
-.manager-map-widget[data-resizing="both"] .manager-map-corner-material {
+.manager-map-widget[data-resizing="both"] .manager-map-corner-material,
+.manager-route-panel[data-resizing] .manager-map-corner-material {
     background-color: rgb(255 255 255 / 10%);
 }
 
 .manager-map-corner:focus-visible .manager-map-corner-rim {
     opacity: 1;
     filter: drop-shadow(0 0 2px var(--ring)) drop-shadow(0 0 3px var(--ring));
+}
+
+.manager-route-panel[data-resizing] {
+    border-radius: 1.5rem;
+    outline: 2px solid color-mix(in srgb, var(--primary) 24%, transparent);
+}
+
+.manager-route-widgets > * {
+    flex-shrink: 0;
 }
 
 .manager-route-widgets > a.rounded-2xl,

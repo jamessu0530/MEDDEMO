@@ -774,6 +774,8 @@ class AskRecord(Base):
     user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), index=True)
     kind: Mapped[str]
     question: Mapped[str] = mapped_column(Text)
+    # Ghost 查詢仍走背景工作，但不得恢復為個人記憶或對話歷史。
+    ghost: Mapped[bool] = mapped_column(server_default="false")
     status: Mapped[str] = mapped_column(server_default="queued")
     answer: Mapped[str | None] = mapped_column(Text)
     # 知識題：引用的文件切片；數字題：最後一次查詢的結果表。畫面上當作依據顯示（FR-8.1、NFR-1）
@@ -781,6 +783,28 @@ class AskRecord(Base):
     error_message: Mapped[str | None]
     created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
     finished_at: Mapped[dt.datetime | None]
+
+
+class AssistantMemoryEntry(Base):
+    """登入帳號的長期對話。只存查詢識別碼，讀取時重新取得答案及附件權限。"""
+
+    __tablename__ = "assistant_memory_entry"
+    user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), primary_key=True)
+    entry_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    data: Mapped[dict[str, Any]]
+    created_at: Mapped[dt.datetime] = mapped_column(server_default=func.clock_timestamp())
+
+
+class AssistantMemoryNode(Base):
+    """每個節點獨立保存名稱、筆記與隱藏狀態，其他裝置不會覆蓋無關節點。"""
+
+    __tablename__ = "assistant_memory_node"
+    user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), primary_key=True)
+    node_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    node_id: Mapped[str] = mapped_column(Text)
+    label: Mapped[str | None]
+    note: Mapped[str | None] = mapped_column(Text)
+    deleted: Mapped[bool] = mapped_column(default=False)
 
 
 class QueryTrace(Base):
