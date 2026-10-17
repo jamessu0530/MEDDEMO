@@ -1,6 +1,6 @@
 # 每次 push 與 PR 都跑測試；推到 main 才建映像檔，並由 VM 上的 self-hosted runner 用 Helm 部署到 K3s
 # （chart 在 deploy/helm/meddemo，runner 用 deploy/setup-runner.sh 安裝）。跟 CARE 同一種做法。
-# 需要的 repo secrets：POSTGRES_PASSWORD、JWT_SECRET、DEMO_PASSWORD；第三方登入的五個選填
+# 需要的 repo secrets：POSTGRES_PASSWORD、JWT_SECRET、DEMO_PASSWORD；第三方登入的三個選填
 #   選填：ASR_API_KEY、TAIGI_API_KEY、LLM_API_KEY、EMBEDDING_API_KEY、VOICE_API_KEY、FIRECRAWL_API_KEY、COHERE_API_KEY、TYPESAFE_API_KEY、GOOGLE_MAPS_SERVER_KEY、GOOGLE_MAPS_BROWSER_KEY
 # 需要的 repo variables：SITE_URL
 # 用哪家服務、哪個模型這類參數不放 GitHub，寫在 deploy/helm/meddemo/values.yaml 的 config，改完推 main 就部署生效
@@ -301,8 +301,6 @@ jobs:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GITHUB_CLIENT_ID: ${{ secrets.OAUTH_GITHUB_CLIENT_ID }}
           GITHUB_CLIENT_SECRET: ${{ secrets.OAUTH_GITHUB_CLIENT_SECRET }}
-          FACEBOOK_APP_ID: ${{ secrets.FACEBOOK_APP_ID }}
-          FACEBOOK_APP_SECRET: ${{ secrets.FACEBOOK_APP_SECRET }}
           CALENDAR_ENCRYPTION_KEY: ${{ secrets.CALENDAR_ENCRYPTION_KEY }}
           CALENDAR_VAPID_PRIVATE_KEY: ${{ secrets.CALENDAR_VAPID_PRIVATE_KEY }}
           CALENDAR_SMTP_USERNAME: ${{ secrets.CALENDAR_SMTP_USERNAME }}
@@ -311,6 +309,7 @@ jobs:
           GRAFANA_CLOUD_PROMETHEUS_URL: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_URL }}
           GRAFANA_CLOUD_PROMETHEUS_USERNAME: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USERNAME }}
           GRAFANA_CLOUD_TOKEN: ${{ secrets.GRAFANA_CLOUD_TOKEN }}
+          GRAFANA_CLOUD_READ_TOKEN: ${{ secrets.GRAFANA_CLOUD_READ_TOKEN }}
         run: |
           # Secret 不放進 chart（跟 CARE 的 care-backend-secret 一樣），要比 chart 先建好，pod 一啟動就讀得到
           kubectl create namespace meddemo --dry-run=client -o yaml | kubectl apply -f -
@@ -337,9 +336,10 @@ jobs:
             --from-literal=JWT_SECRET="$JWT_SECRET" --from-literal=DEMO_PASSWORD="$DEMO_PASSWORD" \
             --from-literal=GOOGLE_CLIENT_ID="$GOOGLE_CLIENT_ID" \
             --from-literal=GITHUB_CLIENT_ID="$GITHUB_CLIENT_ID" --from-literal=GITHUB_CLIENT_SECRET="$GITHUB_CLIENT_SECRET" \
-            --from-literal=FACEBOOK_APP_ID="$FACEBOOK_APP_ID" --from-literal=FACEBOOK_APP_SECRET="$FACEBOOK_APP_SECRET" \
             --from-literal=CALENDAR_ENCRYPTION_KEY="$CALENDAR_ENCRYPTION_KEY" --from-literal=CALENDAR_VAPID_PRIVATE_KEY="$CALENDAR_VAPID_PRIVATE_KEY" \
             --from-literal=CALENDAR_SMTP_USERNAME="$CALENDAR_SMTP_USERNAME" --from-literal=CALENDAR_SMTP_PASSWORD="$CALENDAR_SMTP_PASSWORD" \
+            --from-literal=GRAFANA_CLOUD_PROMETHEUS_USERNAME="$GRAFANA_CLOUD_PROMETHEUS_USERNAME" \
+            --from-literal=GRAFANA_CLOUD_READ_TOKEN="$GRAFANA_CLOUD_READ_TOKEN" \
             --dry-run=client -o yaml | kubectl apply -f -
           monitoring_enabled=false
           if [ -n "$METRICS_TOKEN$GRAFANA_CLOUD_PROMETHEUS_URL$GRAFANA_CLOUD_PROMETHEUS_USERNAME$GRAFANA_CLOUD_TOKEN" ]; then

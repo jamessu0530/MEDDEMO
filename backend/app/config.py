@@ -3,7 +3,7 @@
 from functools import cache
 from pathlib import Path
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
@@ -44,15 +44,20 @@ class Settings(BaseSettings):
     # 展示時每個登入帳號可切換業務／主管／IT；關閉後示範 token 恢復原帳號權限。
     demo_role_switch: bool = False
     # 第三方登入。沒填的那家，登入頁與帳號設定就不出現它的按鈕。
-    # client id / app id 其實會出現在網頁上、不算祕密，跟 secret 放一起是為了設定時一次在同一個地方填完
+    # client id 其實會出現在網頁上、不算祕密，跟 secret 放一起是為了設定時一次在同一個地方填完
     google_client_id: str = ""
     github_client_id: str = ""
     github_client_secret: str = ""
-    facebook_app_id: str = ""
-    facebook_app_secret: str = ""
     redis_url: str = "redis://127.0.0.1:6379/0"
     # Alloy 專用的抓取金鑰；留空時 /metrics 回 404，不開放匿名讀取。
     metrics_token: str = ""
+    # IT 頁面由後端讀 Cloud Metrics；與 Alloy 的 metrics:write token 分開。
+    grafana_cloud_query_url: str = ""
+    grafana_cloud_prometheus_username: str = ""
+    grafana_cloud_read_token: str = ""
+    grafana_cloud_environment: str = "production"
+    grafana_cloud_refresh_seconds: int = Field(default=5, ge=5, le=15)
+    grafana_cloud_dashboard_url: str = "https://zealousdaffodil871.grafana.net/d/meddemo-api/meddemo-api"
     # 僅允許本機或 MEDDEMO 內網服務，不能將客戶索引送到任意外部網址。
     elasticsearch_url: str = ""
     elasticsearch_username: str = "elastic"

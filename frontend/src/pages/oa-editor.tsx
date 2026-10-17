@@ -17,7 +17,6 @@ import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { OaDemoButton } from "@/components/ui-demo/oa-demo-button"
 import { useAuth } from "@/lib/auth"
 import { pendingOa } from "@/lib/manager-counts"
 import { fillOaBlanks, oaMissing } from "@/lib/oa-legacy"
@@ -186,7 +185,6 @@ function OaEditor({ code, id }: { code?: string; id?: number }) {
         title={template?.title ?? "OA 表單"}
         subtitle={id ? "編輯草稿" : "建立申請"}
         backTo={id ? `/oa/forms/${id}` : "/oa/apps"}
-        trailing={<OaDemoButton disabled={!ready || Boolean(busy)} />}
       />
       {!ready && !error && (
         <p className="py-10 text-center text-sm text-muted-foreground">

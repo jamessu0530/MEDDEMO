@@ -16,7 +16,7 @@ export function DemoRoleSwitcher({ user }: { user: AuthUser }) {
   const [error, setError] = useState<string | null>(null)
   if (!user.demo) return null
 
-  async function select(role: Role | null) {
+  async function select(role: Role) {
     if (busy) return
     setBusy(true)
     setError(null)
@@ -46,7 +46,7 @@ export function DemoRoleSwitcher({ user }: { user: AuthUser }) {
           </p>
         </div>
         <div
-          className="flex items-center gap-1.5"
+          className="flex min-w-0 flex-wrap items-center gap-1.5"
           role="group"
           aria-label="選擇身分"
         >
@@ -58,7 +58,7 @@ export function DemoRoleSwitcher({ user }: { user: AuthUser }) {
               disabled={busy}
               onClick={() => void select(role)}
               className={cn(
-                "min-h-11 rounded-full border px-3 text-sm font-semibold transition-colors disabled:opacity-50",
+                "min-h-11 shrink-0 rounded-full border px-3 text-sm font-semibold whitespace-nowrap transition-colors disabled:opacity-50",
                 user.demo?.role === role
                   ? "border-primary bg-primary text-primary-foreground"
                   : "bg-background hover:bg-muted"
@@ -67,16 +67,6 @@ export function DemoRoleSwitcher({ user }: { user: AuthUser }) {
               {label}
             </button>
           ))}
-          {user.demo.role && (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void select(null)}
-              className="min-h-11 rounded-full px-2 text-xs font-semibold text-primary hover:bg-muted disabled:opacity-50"
-            >
-              回原帳號
-            </button>
-          )}
         </div>
         {error && (
           <p role="alert" className="w-full text-sm text-destructive">

@@ -19,6 +19,7 @@ import { clearMyPresence, loadMyPresence } from "@/lib/presence"
 import { realtime } from "@/lib/realtime"
 import { trimPath } from "@/lib/desktop-layout"
 import { useIsDesktop } from "@/lib/use-media-query"
+import { useKeyboardViewport } from "@/lib/use-keyboard-viewport"
 import { AdminPage } from "@/pages/admin"
 import { CalendarPage } from "@/pages/calendar"
 import { CalendarReminderHost } from "@/components/calendar/reminder-host"
@@ -226,6 +227,7 @@ export default function App() {
 }
 
 function ApplicationRoutes() {
+  useKeyboardViewport()
   const session = useAuth()
   return (
     <>
@@ -236,7 +238,7 @@ function ApplicationRoutes() {
           <Route element={<PhoneColumn />}>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
-            {/* 隱私權政策不用登入就要看得到：Google 與 Facebook 審核時會直接打開這個網址 */}
+            {/* 隱私權政策不用登入就要看得到：Google 審核時會直接打開這個網址 */}
             <Route path="/privacy" element={<PrivacyPage />} />
             {/* Google、GitHub 授權完導回來的頁面：登入流程也會走到，所以不能放在要登入的那一層裡 */}
             <Route path="/auth/github/callback" element={<OAuthCallbackPage provider="github" />} />

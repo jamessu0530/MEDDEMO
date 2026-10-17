@@ -16,6 +16,7 @@ export function HomeAsk({ userId, onApplied }: { userId: string; onApplied: (rou
     <>
       <div
         data-assistant-obstacle
+        data-route-ask
         className={cn(
           "pointer-events-none fixed inset-x-0 bottom-[calc(4.25rem+env(safe-area-inset-bottom))] z-20 mx-auto max-w-md px-2.5",
           // 電腦版沒有底部分頁列：貼著左欄底部

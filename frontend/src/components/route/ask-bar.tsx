@@ -1,16 +1,12 @@
-import { useEffect, useId, useRef, useState, type FormEvent } from "react"
+import { useEffect, useRef, useState, type FormEvent } from "react"
 import { Mic, SendHorizontal, Square } from "@/components/icons"
 
 import { Mascot } from "@/components/mascot"
 import type { Turn } from "@/api/asks"
-import { pageSnapshot } from "@/ask/conversation-context"
 import { useCurrentPageContext } from "@/ask/use-page-context"
-import { useQuestionSuggestions } from "@/ask/use-question-guidance"
-import {
-  shouldAcceptSuggestion,
-  suggestedCompletion,
-} from "@/ask/question-guidance"
-import { SuggestionHint } from "@/components/ask/question-suggestions"
+import { requestedUiDemo } from "@/lib/ui-demo"
+import { requestedPageDemoPath } from "@/lib/page-demo"
+import { useStartUiDemo } from "@/lib/use-start-ui-demo"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
@@ -30,12 +26,6 @@ type AskBarProps = {
   earlier?: Turn[]
 }
 
-const ROUTE_SUGGESTIONS = [
-  "幫我保留約訪時間，把今天的行程排順一點",
-  "幫我重新安排今天還沒完成的拜訪順序",
-  "幫我把同一區域的客戶排在一起",
-]
-
 /**
  * 跟熊熊滾說要怎麼排的輸入列（首頁與調整清單的底部）。右邊麥克風用錄拜訪的即時轉文字（voice/live-transcription.ts），
  * 講完再按一次，文字留在輸入框裡，業務看過再按送出。只有業務看得到。
@@ -48,35 +38,13 @@ export function AskBar({
   placeholder,
   inputLabel = "跟熊熊滾說要怎麼排",
   maxLength = 300,
-  suggestions = ROUTE_SUGGESTIONS,
-  earlier = [],
 }: AskBarProps) {
   const page = useCurrentPageContext()
   const [text, setText] = useState("")
-  const [lastQuestion, setLastQuestion] = useState("")
   const [listening, setListening] = useState(false)
   const [micError, setMicError] = useState<string | null>(null)
   const stopRef = useRef<(() => void) | null>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
-  const hintId = useId()
-  const nextSuggestions = suggestions.filter(
-    (suggestion) =>
-      suggestion !== lastQuestion && suggestion.length <= maxLength
-  )
-  const generated = useQuestionSuggestions(
-    { page: pageSnapshot(page), earlier, candidates: nextSuggestions },
-    !busy && !listening
-  )
-  const offered = (generated ?? nextSuggestions).filter(
-    (text) => text.length <= maxLength
-  )
-  const completion =
-    !busy && !listening ? suggestedCompletion(text, offered) : null
-
-  function fillQuestion(suggestion: string) {
-    setText(suggestion)
-    inputRef.current?.focus({ preventScroll: true })
-  }
+  const startDemo = useStartUiDemo()
 
   // 離開頁面時一定要關掉麥克風
   useEffect(() => () => stopRef.current?.(), [])
@@ -140,8 +108,13 @@ export function AskBar({
     const question = text.trim()
     if (!question || busy) return
     stopRef.current?.()
+    const demo = requestedUiDemo(question, page.path)
+    if (demo) {
+      setText("")
+      startDemo(demo, requestedPageDemoPath(question, page.path) ?? undefined)
+      return
+    }
     if (await onAsk(question)) {
-      setLastQuestion(question)
       setText("")
     }
   }
@@ -160,19 +133,11 @@ export function AskBar({
       ) : (
         <div className="flex gap-2">
           <Input
-            ref={inputRef}
             value={text}
             maxLength={maxLength}
             onChange={(event) => setText(event.target.value)}
-            placeholder={placeholder ?? offered[0] ?? "跟熊熊滾說要怎麼排…"}
+            placeholder={placeholder ?? "跟熊熊滾說要怎麼排…"}
             aria-label={inputLabel}
-            aria-describedby={completion ? hintId : undefined}
-            onKeyDown={(event) => {
-              if (shouldAcceptSuggestion(event, completion)) {
-                event.preventDefault()
-                fillQuestion(completion!)
-              }
-            }}
             className="h-12 bg-card placeholder:text-muted-foreground/60"
           />
           <Button
@@ -202,13 +167,6 @@ export function AskBar({
             <SendHorizontal className="size-5" />
           </Button>
         </div>
-      )}
-      {completion && (
-        <SuggestionHint
-          id={hintId}
-          suggestion={completion}
-          onAccept={() => fillQuestion(completion)}
-        />
       )}
       {listening && (
         <p className="px-1 text-xs text-primary">聽你說…講完再按一次麥克風</p>

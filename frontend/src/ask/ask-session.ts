@@ -92,7 +92,7 @@ function create(userId: string): NonNullable<typeof current> {
       }
       const demo = !file ? requestedUiDemo(question, snapshot?.path) : null
       if (demo) {
-        conversation.addUtterance("model", "typed", "要不要我操作給你看？", {
+        conversation.addUtterance("model", "typed", "好，現在操作給你看。", {
           demo,
           page: snapshot,
           demoPath:

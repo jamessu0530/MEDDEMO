@@ -4,7 +4,7 @@
 token 裡除了帳號還帶 sessionVersion，每次登入把資料庫的版號加一，每個請求比對兩邊。
 版號對不上就是這個帳號已經在別的裝置登入，舊 token 立刻失效，不必另外維護一張作廢清單。
 
-公司給的帳號在灌假資料時建好（之後 IT 可以在組織管理頁再開），用 Email 登入；另外任何人都能用 Google／GitHub／Facebook 登入，
+公司給的帳號在灌假資料時建好（之後 IT 可以在組織管理頁再開），用 Email 登入；另外任何人都能用 Google／GitHub 登入，
 第一次登入自動開一個業務帳號（見 api/auth.py 的 oauth_login）。
 """
 

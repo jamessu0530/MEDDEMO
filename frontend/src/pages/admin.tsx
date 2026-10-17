@@ -16,6 +16,7 @@ import {
   type OrgMember,
 } from "@/api/admin"
 import { ApiError } from "@/api/client"
+import { CloudMetricsPanel } from "@/components/admin/cloud-metrics-panel"
 import { ChannelsLink } from "@/components/channels-link"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
@@ -137,6 +138,8 @@ export function AdminPage() {
             label="客戶清單"
           />
         </div>
+
+        <CloudMetricsPanel />
 
         <div className="rounded-2xl border-2 bg-card p-4 shadow-lip">
           <h2 className="text-base font-semibold">共用業務的今日行程</h2>

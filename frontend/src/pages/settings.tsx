@@ -6,11 +6,9 @@ import { Link, useLocation, useNavigate } from "react-router"
 import {
   changePassword,
   deleteAccount,
-  linkProvider,
   signOutSession,
   unlinkProvider,
   updateProfile,
-  type OAuthCredential,
   type OAuthProviders,
 } from "@/api/auth"
 import { ApiError } from "@/api/client"
@@ -19,7 +17,7 @@ import { MyStatusSection } from "@/components/my-status"
 import { ProfilePhotoSection } from "@/components/profile-photo"
 import { LocationShareSection } from "@/components/route/location-share"
 import { TravelModeIcon } from "@/components/route/travel-mode-icon"
-import { FacebookButton, NotReadyButton, RedirectButton } from "@/components/oauth-buttons"
+import { NotReadyButton, RedirectButton } from "@/components/oauth-buttons"
 import { PageHeader } from "@/components/page-header"
 import { ContextHelp } from "@/components/context-help"
 import { Button } from "@/components/ui/button"
@@ -47,7 +45,7 @@ const ROLE_LABEL = { sales: "業務", manager: "主管", it: "IT" } as const
 // 後端要求至少 8 碼；這裡先擋一次，免得為了太短的密碼白跑一趟伺服器
 const MIN_LENGTH = 8
 
-const PROVIDERS: OAuthProvider[] = ["google", "github", "facebook"]
+const PROVIDERS: OAuthProvider[] = ["google", "github"]
 // 跟後端 services/auth.py 的名字規則一致；這裡先擋，錯誤訊息不必等伺服器
 const NAME_MIN = 2
 const NAME_MAX = 32
@@ -273,7 +271,7 @@ function NameEditor({ user }: { user: AuthUser }) {
 
 /**
  * 綁定的登入方式：公司給的 Email 帳號可以在這裡綁第三方帳號，之後在登入頁用它登入就回到這個帳號。
- * 三家一律列出來；伺服器還沒設定的那家按「綁定」說明還沒開放。
+ * Google、GitHub 一律列出來；伺服器還沒設定的那家按「綁定」說明還沒開放。
  */
 function LinkedAccounts({ user, providers }: { user: AuthUser; providers: OAuthProviders }) {
   const location = useLocation()
@@ -293,23 +291,6 @@ function LinkedAccounts({ user, providers }: { user: AuthUser; providers: OAuthP
   useEffect(() => {
     if ((location.state as { linked?: string } | null)?.linked) navigate(".", { replace: true, state: null })
   }, [location.state, navigate])
-
-
-  async function link(credential: OAuthCredential) {
-    if (busy) return
-    setBusy(credential.provider)
-    setError(null)
-    setDone(null)
-    try {
-      refreshUser(await linkProvider(credential))
-      setDone(`已綁定 ${PROVIDER_LABEL[credential.provider]}，下次在登入頁可以直接用它登入。`)
-    } catch (err) {
-      // 409 是這個第三方帳號已經綁在別人身上，後端的訊息直接顯示
-      setError(err instanceof Error ? err.message : "綁定沒有成功，請再試一次")
-    } finally {
-      setBusy(null)
-    }
-  }
 
   async function unlink(provider: OAuthProvider) {
     setConfirmOpen(false)
@@ -368,7 +349,7 @@ function LinkedAccounts({ user, providers }: { user: AuthUser; providers: OAuthP
                 解除綁定
               </Button>
             )
-          else if ((provider === "google" || provider === "github") && providers[provider])
+          else if (providers[provider])
             action = (
               <RedirectButton
                 provider={provider}
@@ -377,18 +358,6 @@ function LinkedAccounts({ user, providers }: { user: AuthUser; providers: OAuthP
                 label="綁定"
                 className="h-11 px-4"
                 disabled={busy !== null}
-                onError={showError}
-              />
-            )
-          else if (provider === "facebook" && providers.facebook)
-            action = (
-              <FacebookButton
-                appId={providers.facebook.app_id}
-                label="綁定"
-                variant="outline"
-                className="h-11 px-4"
-                disabled={busy !== null}
-                onToken={(token) => void link({ provider: "facebook", body: { access_token: token } })}
                 onError={showError}
               />
             )
@@ -545,7 +514,7 @@ export function SettingsPage() {
       <div className="flex min-h-svh flex-col">
         <PageHeader title="帳號設定" backTo={homePath(user.role)} />
         <section className="m-4 rounded-2xl border-2 bg-card p-4 text-sm leading-relaxed shadow-lip">
-          目前使用{ROLE_LABEL[user.role]}「{user.name}」。請先在上方按「回原帳號」，再修改{user.demo.account.name}的帳號設定。
+          目前使用{ROLE_LABEL[user.role]}「{user.name}」。示範身分下無法修改{user.demo.account.name}的帳號設定。
         </section>
       </div>
     )

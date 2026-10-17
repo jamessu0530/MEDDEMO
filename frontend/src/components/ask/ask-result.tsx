@@ -22,7 +22,7 @@ const STEP_LABEL: Record<TraceItem["step"], string> = {
 }
 
 /** 一個提問的答案：進行中顯示查到第幾輪；查完顯示答案與依據（結果表或出處），查不到可以轉主管（用藥題除外） */
-export function AskAnswer({ ask, onChange }: { ask: Ask; onChange: (ask: Ask) => void }) {
+export function AskAnswer({ ask, onChange, compact = false }: { ask: Ask; onChange: (ask: Ask) => void; compact?: boolean }) {
   if (!isFinished(ask)) {
     const last = ask.trace.at(-1)
     return (
@@ -35,12 +35,35 @@ export function AskAnswer({ ask, onChange }: { ask: Ask; onChange: (ask: Ask) =>
   if (ask.status === "failed") {
     return <p className="text-sm text-destructive">{ask.error_message}</p>
   }
-  const sources = ask.evidence?.sources ?? []
+  const hasEvidence = Boolean(
+    ask.evidence?.blocked_reason ||
+    ask.evidence?.columns?.length ||
+    ask.evidence?.sources?.length ||
+    ask.evidence?.items?.length ||
+    ask.evidence?.attachments?.length ||
+    ask.customers.length ||
+    ask.status === "no_evidence" ||
+    ask.status === "not_converged"
+  )
   return (
     <div className="flex flex-col gap-3">
       {ask.status === "no_evidence" && <p className="text-sm font-medium">查無依據</p>}
       {ask.status === "not_converged" && <p className="text-sm font-medium">查了三輪還答不完整，以下是已經查到的部分</p>}
       <p className="text-sm leading-relaxed whitespace-pre-line">{ask.answer}</p>
+      {compact && hasEvidence ? (
+        <details className="text-xs text-muted-foreground">
+          <summary className="cursor-pointer py-1">查看依據與相關操作</summary>
+          <AskEvidence ask={ask} onChange={onChange} />
+        </details>
+      ) : !compact && <AskEvidence ask={ask} onChange={onChange} />}
+    </div>
+  )
+}
+
+function AskEvidence({ ask, onChange }: { ask: Ask; onChange: (ask: Ask) => void }) {
+  const sources = ask.evidence?.sources ?? []
+  return (
+    <div className="flex flex-col gap-3">
       {ask.evidence?.blocked_reason && (
         <p className="rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">卡住的原因：{ask.evidence.blocked_reason}</p>
       )}

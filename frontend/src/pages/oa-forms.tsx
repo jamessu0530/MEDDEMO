@@ -16,7 +16,6 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { NativeSelect } from "@/components/ui/native-select"
-import { OaDemoButton } from "@/components/ui-demo/oa-demo-button"
 import { oaDateText } from "@/lib/approval"
 import { formatDateTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
@@ -117,7 +116,6 @@ export function OaFormsPage() {
       <OaNav />
       <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-4 px-4 pt-5 pb-10 lg:px-8">
         <div className="flex justify-end">
-          <OaDemoButton />
         </div>
         <div className="flex items-center justify-between gap-3">
           <p className="text-sm text-muted-foreground">

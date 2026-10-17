@@ -40,6 +40,10 @@ spec:
             {{- include "meddemo.searchEnv" . | nindent 12 }}
             - name: REDIS_URL
               value: redis://redis:6379/0
+            - name: GRAFANA_CLOUD_ENVIRONMENT
+              value: {{ .Values.monitoring.environment | quote }}
+            - name: GRAFANA_CLOUD_REFRESH_SECONDS
+              value: {{ .Values.monitoring.intervalSeconds | quote }}
             {{- if .Values.monitoring.enabled }}
             - name: METRICS_TOKEN
               valueFrom:

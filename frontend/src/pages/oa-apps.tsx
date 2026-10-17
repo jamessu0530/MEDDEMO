@@ -6,7 +6,6 @@ import { OaNav } from "@/components/oa-nav"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { OaDemoButton } from "@/components/ui-demo/oa-demo-button"
 import { businessGapText } from "@/lib/oa-legacy"
 import { cn } from "@/lib/utils"
 import { useAskPageContext } from "@/ask/use-page-context"
@@ -55,7 +54,6 @@ export function OaAppsPage() {
         title="OA 表單中心"
         subtitle="我的應用"
         backTo="/oa/forms"
-        trailing={<OaDemoButton disabled={!catalog} />}
       />
       <OaNav />
       <main className="mx-auto flex max-w-7xl flex-col gap-5 px-4 py-6 lg:px-8">

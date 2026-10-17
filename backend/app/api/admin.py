@@ -19,12 +19,17 @@ from app.api.auth import ItUser
 from app.db import get_session
 from app.models import AppUser, UserLocation
 from app.services import itinerary as itinerary_service
-from app.services import org_admin
+from app.services import cloud_metrics, org_admin
 from app.services.auth import EXTERNAL_ACCOUNT_ACTS_AS
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 SessionDep = Annotated[Session, Depends(get_session)]
 AssignableRole = Literal["sales", "manager"]
+
+
+@router.get("/metrics", response_model=cloud_metrics.CloudMetrics)
+def get_cloud_metrics(_: ItUser, window: cloud_metrics.MetricsWindow = "1h"):
+    return cloud_metrics.overview(window)
 
 
 class Unit(BaseModel):

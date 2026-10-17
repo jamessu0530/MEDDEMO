@@ -111,12 +111,12 @@ describe("全站自動問答", () => {
       oa
     )
   })
-  it("操作求助先邀請示範，不查詢或自動操作", async () => {
+  it("打字要求示範會回覆純文字與示範指令，不查詢公司資料", async () => {
     const session = askSessionFor("U01")
     await session.ask("我不會新增訂單，可以教我嗎？", undefined, page())
     expect(session.conversation.getSnapshot()).toMatchObject([
       { kind: "user" },
-      { kind: "model", demo: "create-order" },
+      { kind: "model", demo: "create-order", text: "好，現在操作給你看。" },
     ])
     expect(api.routeAsk).not.toHaveBeenCalled()
     expect(api.createAsk).not.toHaveBeenCalled()
@@ -143,7 +143,7 @@ describe("全站自動問答", () => {
     await session.ask("今天有幾個行程？", undefined, page())
     expect(api.routeAsk).toHaveBeenCalledOnce()
   })
-  it("報表操作求助使用新版流程，接受前不執行操作或查詢", async () => {
+  it("報表操作求助交給報表示範流程，不送出資料查詢", async () => {
     const session = askSessionFor("U01")
     await session.ask("報表怎麼匯出？", undefined, page())
     expect(session.conversation.getSnapshot()).toMatchObject([

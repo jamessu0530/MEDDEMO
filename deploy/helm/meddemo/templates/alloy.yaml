@@ -20,8 +20,8 @@ data:
         environment = {{ .Values.monitoring.environment | quote }},
       }]
       job_name = "meddemo/api"
-      scrape_interval = "30s"
-      scrape_timeout = "10s"
+      scrape_interval = {{ printf "%ds" (.Values.monitoring.intervalSeconds | int) | quote }}
+      scrape_timeout = {{ printf "%ds" (max 1 (sub (.Values.monitoring.intervalSeconds | int) 1)) | quote }}
       bearer_token = sys.env("METRICS_TOKEN")
       forward_to = [prometheus.remote_write.grafana_cloud.receiver]
     }
@@ -32,6 +32,9 @@ data:
         basic_auth {
           username = sys.env("GRAFANA_CLOUD_PROMETHEUS_USERNAME")
           password = sys.env("GRAFANA_CLOUD_TOKEN")
+        }
+        queue_config {
+          batch_send_deadline = "1s"
         }
       }
       wal {

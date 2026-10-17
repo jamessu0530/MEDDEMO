@@ -1,7 +1,7 @@
 """登入相關 API（FR-12）。
 
 三種帳號：公司給的（灌假資料時建好、或 IT 在組織管理頁開的，用 Email 密碼登入）、自己用 Email 建立的，
-以及用 Google／GitHub／Facebook 第一次登入時自動開的。後兩種都是業務，看示範業務的客戶。
+以及用 Google／GitHub 第一次登入時自動開的。後兩種都是業務，看示範業務的客戶。
 註冊與錯誤訊息的寫法照 flutterproject4（同一位作者的專案）。
 """
 
@@ -93,8 +93,11 @@ class AuthResponse(BaseModel):
 
 def _public(session: Session, user: AppUser, account: AppUser | None = None) -> UserPublic:
     account = account if account is not None else user
+    # 歷史綁定留在資料庫，只公開目前仍支援的登入方式。
     identities = session.scalars(
-        select(UserIdentity).where(UserIdentity.user_id == user.id).order_by(UserIdentity.provider)
+        select(UserIdentity).where(
+            UserIdentity.user_id == user.id, UserIdentity.provider.in_(oauth.PROVIDER_LABEL)
+        ).order_by(UserIdentity.provider)
     )
     acting = session.get(AppUser, user.acts_as_user_id) if user.acts_as_user_id else None
     return UserPublic(
@@ -187,7 +190,9 @@ def register(session: SessionDep, body: RegisterRequest):
     if session.scalar(select(AppUser.id).where(AppUser.email == email)):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="這個 Email 已經註冊過，請直接登入")
     # 同一個信箱之前用第三方登入開過帳號：提醒他用那個方式登入，不要再開一個
-    external = session.scalar(select(UserIdentity.provider).where(UserIdentity.email == email))
+    external = session.scalar(select(UserIdentity.provider).where(
+        UserIdentity.email == email, UserIdentity.provider.in_(oauth.PROVIDER_LABEL)
+    ))
     if external:
         label = oauth.PROVIDER_LABEL[external]
         raise HTTPException(
@@ -211,7 +216,10 @@ def login(session: SessionDep, body: LoginRequest):
         if str(exc) == auth.EMAIL_NOT_FOUND:
             # 這個信箱是用第三方登入開的帳號：講清楚要用哪個方式登入，不要只說找不到
             external = session.scalar(
-                select(UserIdentity.provider).where(UserIdentity.email == auth.normalize_email(body.email))
+                select(UserIdentity.provider).where(
+                    UserIdentity.email == auth.normalize_email(body.email),
+                    UserIdentity.provider.in_(oauth.PROVIDER_LABEL),
+                )
             )
             if external:
                 label = oauth.PROVIDER_LABEL[external]
@@ -307,21 +315,20 @@ def change_password(session: SessionDep, user: CurrentAccount, body: ChangePassw
 
 # ── 第三方登入 ────────────────────────────────────────────────────
 #
-# 任何人都能用 Google／GitHub／Facebook 登入：第一次登入自動開一個業務帳號（9/16 James 決定，
+# 任何人都能用 Google／GitHub 登入：第一次登入自動開一個業務帳號（9/16 James 決定，
 # 決賽評審用自己的帳號就能試）。自動開的帳號一律是業務，不會是主管；自己沒有客戶，
 # 看的是示範業務（auth.EXTERNAL_ACCOUNT_ACTS_AS）的路線與客戶。
 # 公司給的 Email 帳號也能到帳號設定綁第三方，之後用它登入就回到那個帳號。
 
-Provider = Literal["google", "github", "facebook"]
+Provider = Literal["google", "github"]
 
 
 class OAuthCredential(BaseModel):
-    """三家各自送來的憑證，只填自己那家用的欄位。"""
+    """兩家各自送來的憑證，只填自己那家用的欄位。"""
 
     credential: str | None = None  # Google：授權完導回時帶的 ID token
     code: str | None = None  # GitHub：授權碼
     redirect_uri: str | None = None  # GitHub：換 token 時要跟授權時的一樣
-    access_token: str | None = None  # Facebook：Facebook Login 給的 access token
 
 
 def _verify(provider: Provider, body: OAuthCredential, rejected_status: int = 401) -> oauth.ExternalIdentity:
@@ -333,13 +340,9 @@ def _verify(provider: Provider, body: OAuthCredential, rejected_status: int = 40
             if not body.credential:
                 raise missing
             return oauth.verify_google(body.credential)
-        if provider == "github":
-            if not (body.code and body.redirect_uri):
-                raise missing
-            return oauth.verify_github(body.code, body.redirect_uri)
-        if not body.access_token:
+        if not (body.code and body.redirect_uri):
             raise missing
-        return oauth.verify_facebook(body.access_token)
+        return oauth.verify_github(body.code, body.redirect_uri)
     except oauth.NotConfigured as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from None
     except oauth.OAuthError as exc:
@@ -450,7 +453,9 @@ def oauth_unlink(session: SessionDep, user: CurrentAccount, effective: CurrentUs
     if mine is not None:
         others = session.scalar(
             select(func.count()).select_from(UserIdentity).where(
-                UserIdentity.user_id == user.id, UserIdentity.provider != provider
+                UserIdentity.user_id == user.id,
+                UserIdentity.provider != provider,
+                UserIdentity.provider.in_(oauth.PROVIDER_LABEL),
             )
         )
         # 沒有密碼、也沒有別的第三方可以登入：解除了就永遠進不來

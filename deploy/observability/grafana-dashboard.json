@@ -12,15 +12,15 @@
   "id": null,
   "uid": "meddemo-api",
   "title": "MEDDEMO 系統監控",
-  "description": "顯示 MEDDEMO API 的請求量、錯誤率、回應時間，以及 Linux API 程式的 CPU 與記憶體用量。健康檢查與指標抓取不計入 API 流量。",
+  "description": "與 MEDDEMO IT 監控中心使用相同 Cloud Metrics。Alloy 每 5 秒收集；請求率、錯誤率及延遲統一使用最近 1 分鐘的樣本。健康檢查與指標抓取不計入 API 流量。",
   "tags": [
     "meddemo",
     "api"
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
-  "refresh": "30s",
+  "version": 2,
+  "refresh": "5s",
   "time": {
     "from": "now-1h",
     "to": "now"
@@ -143,7 +143,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(meddemo_http_requests_total{job=\"meddemo/api\",environment=~\"$environment\"}[$__rate_interval]))",
+          "expr": "sum(rate(meddemo_http_requests_total{job=\"meddemo/api\",environment=~\"$environment\"}[1m]))",
           "legendFormat": "每秒請求數",
           "datasource": {
             "type": "prometheus",
@@ -198,7 +198,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "(sum(rate(meddemo_http_requests_total{job=\"meddemo/api\",environment=~\"$environment\",status=~\"5..\"}[$__rate_interval])) or vector(0)) / clamp_min(sum(rate(meddemo_http_requests_total{job=\"meddemo/api\",environment=~\"$environment\"}[$__rate_interval])), 1e-9)",
+          "expr": "((sum(rate(meddemo_http_requests_total{job=\"meddemo/api\",environment=~\"$environment\",status=~\"5..\"}[1m]))) or (0 * sum(rate(meddemo_http_requests_total{job=\"meddemo/api\",environment=~\"$environment\"}[1m])))) / (sum(rate(meddemo_http_requests_total{job=\"meddemo/api\",environment=~\"$environment\"}[1m])) > 0)",
           "legendFormat": "伺服器錯誤率（5xx）",
           "datasource": {
             "type": "prometheus",
@@ -257,7 +257,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(meddemo_http_request_duration_seconds_bucket{job=\"meddemo/api\",environment=~\"$environment\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(meddemo_http_request_duration_seconds_bucket{job=\"meddemo/api\",environment=~\"$environment\"}[1m])))",
           "legendFormat": "回應時間（p95）",
           "datasource": {
             "type": "prometheus",
@@ -316,7 +316,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (method,route) (rate(meddemo_http_requests_total{job=\"meddemo/api\",environment=~\"$environment\"}[$__rate_interval]))",
+          "expr": "sum by (method,route) (rate(meddemo_http_requests_total{job=\"meddemo/api\",environment=~\"$environment\"}[1m]))",
           "legendFormat": "{{method}} {{route}}",
           "datasource": {
             "type": "prometheus",
@@ -466,7 +466,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.95, sum by (le,method,route) (rate(meddemo_http_request_duration_seconds_bucket{job=\"meddemo/api\",environment=~\"$environment\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le,method,route) (rate(meddemo_http_request_duration_seconds_bucket{job=\"meddemo/api\",environment=~\"$environment\"}[1m])))",
           "legendFormat": "{{method}} {{route}}",
           "datasource": {
             "type": "prometheus",
@@ -616,7 +616,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (status) (rate(meddemo_http_requests_total{job=\"meddemo/api\",environment=~\"$environment\"}[$__rate_interval]))",
+          "expr": "sum by (status) (rate(meddemo_http_requests_total{job=\"meddemo/api\",environment=~\"$environment\"}[1m]))",
           "legendFormat": "狀態碼 {{status}}",
           "datasource": {
             "type": "prometheus",
@@ -722,7 +722,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "rate(process_cpu_seconds_total{job=\"meddemo/api\",environment=~\"$environment\"}[$__rate_interval])",
+          "expr": "rate(process_cpu_seconds_total{job=\"meddemo/api\",environment=~\"$environment\"}[1m])",
           "legendFormat": "API 實例 {{instance}}",
           "datasource": {
             "type": "prometheus",
@@ -811,5 +811,20 @@
       },
       "description": "目前尚未完成的 API 請求數。"
     }
-  ]
+  ],
+  "timepicker": {
+    "refresh_intervals": [
+      "5s",
+      "10s",
+      "15s",
+      "1m",
+      "5m"
+    ],
+    "time_options": [
+      "15m",
+      "1h",
+      "6h",
+      "24h"
+    ]
+  }
 }

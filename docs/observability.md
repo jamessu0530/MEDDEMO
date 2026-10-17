@@ -4,9 +4,11 @@ Stack：<https://zealousdaffodil871.grafana.net/>。
 
 已建立 [MEDDEMO 系統監控儀表板](https://zealousdaffodil871.grafana.net/d/meddemo-api/meddemo-api) 與 [Cloud k6 的 MEDDEMO 專案](https://zealousdaffodil871.grafana.net/a/k6-app/projects/8492083)。Stack ID 為 `1848419`，k6 project ID 為 `8492083`，Cloud Prometheus username 為 `3621062`。這些 ID 不是金鑰。
 
-2026-10-16 已完成五個 GitHub Secrets 與兩個 Variables 的設定，並驗證指標與壓測結果可送進 Cloud。監控政策 `meddemo-metrics` 僅限此 Stack 的 `metrics:write`，token 於 **2027-01-14** 到期；k6 使用 `MEDDEMO CI` Stack token。正式站的持續收集要等這批程式提交並部署後才啟用；驗收時的指標來源標為 `local-validation`，來自暫時的本機 API。
+2026-10-16 已完成五個 GitHub Secrets 與兩個 Variables 的設定，並驗證指標與壓測結果可送進 Cloud。監控政策 `meddemo-metrics` 僅限此 Stack 的 `metrics:write`，token 於 **2027-01-14** 到期；k6 使用 `MEDDEMO CI` Stack token。當日驗收來源標為 `local-validation`，來自暫時的本機 API。
 
-API 的 Prometheus 指標由同一個 Pod 裡的 Grafana Alloy 每 30 秒抓一次，透過 HTTPS remote write 送進 Grafana Cloud Metrics。不需要在 VM 另外安裝 Prometheus，也不需要給 Alloy Kubernetes API 權限。
+2026-10-17 已建立 `meddemo-metrics-read` 政策與 `MEDDEMO IT Metrics Read` 金鑰，僅限此 Stack、`job="meddemo/api"` 的 `metrics:read`，於 **2027-01-15** 到期。已存入 `jamessu0530/MEDDEMO` 的 GitHub Actions Secret `GRAFANA_CLOUD_READ_TOKEN`，並使用實際儀表板的摘要、趨勢、路由與實例查詢驗證讀取成功；Cloud 已有 `production` 樣本。新的 IT 頁面與五秒收集設定仍須部署這批程式才會生效。
+
+API 的 Prometheus 指標由同一個 Pod 裡的 Grafana Alloy 每 5 秒抓一次，透過 HTTPS remote write 送進 Grafana Cloud Metrics。不需要在 VM 另外安裝 Prometheus，也不需要給 Alloy Kubernetes API 權限。
 
 ## 繁體中文呈現
 
@@ -45,6 +47,33 @@ kubectl -n meddemo logs deployment/api -c alloy --tail=50
 指標只記 HTTP 方法、路由樣板及狀態碼；不記原始 URL、query、客戶編號、帳號、請求內容或 token。未知路由統一記 `unmatched`。網站 Nginx 封鎖 `/metrics`，後端端點另外要求 `Authorization: Bearer <METRICS_TOKEN>`；沒設定 token 時回 404。
 
 目前 Dockerfile 每個 API 容器只有一個 Uvicorn process；若未來加 `--workers`，需先導入 Prometheus multiprocess 模式。CPU／記憶體是 Linux API process 的指標，macOS 本機不提供 `/proc` 指標。此版本未收集 worker、資料庫、整台 VM、日誌或 traces。Alloy WAL 使用暫存磁碟，Pod 重建會遺失尚未送出的資料。
+
+## IT 頁面的 Cloud 數值
+
+IT「組織管理」頁的系統監控中心直接讀取 Cloud Metrics，提供：
+
+- 12 張數值卡：範圍內請求量、每秒請求數、2xx／3xx 成功比例、p95／p99／平均回應時間、4xx／5xx 錯誤率、CPU、記憶體、處理中請求與成功收集實例數。
+- 6 組可互動趨勢：流量、p50／p95／p99 延遲、4xx／5xx、處理中請求、CPU、記憶體。可用滑鼠或左右鍵查看樣本、切換多條曲線的顯示。
+- API 路徑搜尋與請求量／慢速／5xx 排行、HTTP 狀態碼分布、逐一實例的收集與資源狀態、程序運行時間。
+- 15 分鐘、1 小時、6 小時、24 小時範圍，投影展示模式（Esc 離開）、暫停畫面、手動更新與 JSON 快照匯出。匯出內容不含金鑰。
+
+### 與 Grafana 對齊更新
+
+Alloy 收集、IT 頁面查詢及匯入用 Grafana dashboard 預設均為 **5 秒**。Helm 的 `monitoring.intervalSeconds` 同時設定 Alloy 與 API 回傳的刷新節奏；前端讀取 API 的 `refresh_seconds`，依五秒時鐘邊界查詢，不再保留三十秒快取。後端以時間範圍分開快取，每個時鐘邊界重新查詢；相同範圍的多位 IT 共用該次結果，頁面隱藏時停止查詢。Alloy 的上傳批次最多等待 1 秒。
+
+2026-10-17 已將更新後的 `deploy/observability/grafana-dashboard.json` 重新匯入 Grafana Cloud，以相同 UID 覆寫既有儀表板，並確認線上顯示 **5s**。日後修改 JSON 時也須重新匯入。JSON 預設 `refresh=5s`，流量、錯誤率與延遲統一用最近 `1m` 的樣本，避免 Grafana 的動態 rate interval 與 IT 頁面算出不同數值。IT 的「Grafana」按鈕帶入同一個環境、時間範圍和刷新節奏。
+
+五秒是收集與刷新節奏；資料仍須經過 Alloy 傳送與 Cloud 入庫，兩個畫面不是同一瞬間的原子更新。頁面分別顯示 **Cloud 最新樣本時間**、樣本已經過幾秒及頁面查詢時間，不以新查詢冒充新樣本。樣本超過 20 秒會提示延遲；5xx 達 1% 或 p95 達 1 秒會顯示觀測提示，這些是本頁門檻，不代表已建立 Cloud 告警規則。五秒收集的樣本量是原本三十秒設定的六倍。
+
+`GET /api/admin/metrics?window=15m|1h|6h|24h` 僅限 IT，後端以三個固定、並行的 PromQL 查詢取得摘要、趨勢、路由／狀態碼／實例細項；不接受任意 PromQL 或 Cloud 目的地。曲線最多約 361 點，依時間範圍採 5／15／60／300 秒步長。
+
+### 讀取連線
+
+GitHub Actions Secret **`GRAFANA_CLOUD_READ_TOKEN` 已於 2026-10-17 設定完成**。更換金鑰時，使用限定此 Stack 與 `job="meddemo/api"`、僅有 `metrics:read` 的 Cloud Access Policy token，更新同名 Secret。目前的 `meddemo-metrics` token 僅有 `metrics:write`，不能用來讀取。部署流程將讀取金鑰與既有 `GRAFANA_CLOUD_PROMETHEUS_USERNAME` 注入後端；查詢網址與 dashboard 連結在 Helm `config`，環境沿用 `monitoring.environment`。Cloud token 不會交給前端。查詢使用 [Grafana 官方 Cloud Metrics HTTP API](https://grafana.com/docs/grafana-cloud/send-data/metrics/metrics-prometheus/query-http-api/)。
+
+本機在 `backend/.env` 設 `GRAFANA_CLOUD_QUERY_URL`（Cloud Portal 顯示的 query endpoint，例如 `https://prometheus-prod-49-prod-ap-northeast-0.grafana.net/api/prom`）、`GRAFANA_CLOUD_PROMETHEUS_USERNAME` 與 `GRAFANA_CLOUD_READ_TOKEN`；`GRAFANA_CLOUD_REFRESH_SECONDS=5`。預設只看 `production`，要查看驗收資料時可設 `GRAFANA_CLOUD_ENVIRONMENT=local-validation`；不混入正式環境。
+
+未設定、權限不足、Cloud 連線失敗及沒有近期樣本都會說明。缺值顯示 `—`，沒有流量時不估算成功率或錯誤率；CPU 是使用核心數，記憶體為 MiB，僅涵蓋 API process。HTTP 狀態碼分布、請求總量、路由錯誤數採所選時間範圍；即時比率與路由 p95 採最近一分鐘。Grafana 入口仍需自己的 Grafana 登入。
 
 ## k6 本機執行
 

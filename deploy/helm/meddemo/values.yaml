@@ -12,6 +12,8 @@ monitoring:
   enabled: false
   secretName: meddemo-monitoring
   environment: production
+  # 比賽展示：Alloy 收集與 IT 儀表板共用同一個節奏。
+  intervalSeconds: 5
   alloyImage: grafana/alloy:v1.20.1
   resources:
     requests:
@@ -40,6 +42,9 @@ elasticsearch:
 # 這裡寫什麼鍵，ConfigMap 就產生同名的環境變數，新增參數不必改模板。留空＝用程式裡的預設值。
 # 金鑰不放這裡，放 GitHub Secrets（見下面的 secrets）。
 config:
+  # IT 頁面的 Cloud Metrics 查詢端點。讀取金鑰另放 GRAFANA_CLOUD_READ_TOKEN Secret。
+  GRAFANA_CLOUD_QUERY_URL: https://prometheus-prod-49-prod-ap-northeast-0.grafana.net/api/prom
+  GRAFANA_CLOUD_DASHBOARD_URL: https://zealousdaffodil871.grafana.net/d/meddemo-api/meddemo-api
   # 展示時讓新人自行略過課程；正式使用設 false，前後端都恢復五關解鎖。
   DEMO_SKIP_LEARNING: "true"
   # 每個登入帳號都可切換業務／主管／IT 示範身分；正式使用設 false。

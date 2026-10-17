@@ -2,10 +2,10 @@ import { useState, type FormEvent } from "react"
 import { Eye, EyeOff, Loader2 } from "@/components/icons"
 import { Link, Navigate, useLocation, useNavigate } from "react-router"
 
-import { login, oauthLogin, type OAuthCredential } from "@/api/auth"
+import { login } from "@/api/auth"
 import { CompanyLogo } from "@/components/company-logo"
 import { Mascot } from "@/components/mascot"
-import { FacebookButton, NotReadyButton, RedirectButton } from "@/components/oauth-buttons"
+import { NotReadyButton, RedirectButton } from "@/components/oauth-buttons"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -35,7 +35,6 @@ export function LoginPage() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const providers = useProviders()
-  const [oauthBusy, setOauthBusy] = useState(false)
   const [oauthError, setOauthError] = useState<string | null>(null)
   // 上一次是被系統登出的（登入已過期、帳號已在其他裝置登入），把原因說清楚
   const signedOut = readSignedOutReason()
@@ -68,24 +67,6 @@ export function LoginPage() {
       signIn(result)
       navigate(from ?? homePath(result.user.role), { replace: true })
     })
-  }
-
-  /**
-   * Facebook 拿到憑證之後送去後端換登入。第一次來的第三方帳號後端會自動開帳號；驗證失敗回 401，
-   * 訊息會說明要先用 Email 登入再到帳號設定綁定，照原文顯示。Google、GitHub 是整頁導走，結果在 callback 頁處理。
-   */
-  async function submitOAuth(credential: OAuthCredential) {
-    if (oauthBusy) return
-    setOauthBusy(true)
-    setOauthError(null)
-    setError(null)
-    try {
-      enter(await oauthLogin(credential))
-    } catch (err) {
-      setOauthError(err instanceof Error ? err.message : "連不上伺服器，請確認網路後再試一次")
-    } finally {
-      setOauthBusy(false)
-    }
   }
 
   return (
@@ -159,7 +140,7 @@ export function LoginPage() {
         </Button>
       </form>
 
-      {/* 三家一律列出來；伺服器還沒設定的那家按下去說明還沒開放。還沒問到設定前先不畫，免得按鈕閃一下換樣子 */}
+      {/* Google、GitHub 一律列出來；伺服器還沒設定的那家按下去說明還沒開放。還沒問到設定前先不畫，免得按鈕閃一下換樣子 */}
       {providers && (
         <section aria-label="其他登入方式" className="mt-6 flex flex-col gap-3">
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
@@ -175,7 +156,6 @@ export function LoginPage() {
               mode="login"
               label="使用 Google 帳戶登入"
               className="h-12 w-full gap-2 text-base"
-              disabled={oauthBusy}
               from={from}
               onError={setOauthError}
             />
@@ -195,7 +175,6 @@ export function LoginPage() {
               mode="login"
               label="使用 GitHub 登入"
               className="h-12 w-full gap-2 text-base"
-              disabled={oauthBusy}
               from={from}
               onError={setOauthError}
             />
@@ -207,32 +186,6 @@ export function LoginPage() {
               className="h-12 w-full gap-2 text-base"
               onNotReady={() => setOauthError(notReady("GitHub"))}
             />
-          )}
-          {providers.facebook ? (
-            <FacebookButton
-              appId={providers.facebook.app_id}
-              label="使用 Facebook 登入"
-              variant="brand"
-              className="h-12 w-full gap-2 text-base"
-              disabled={oauthBusy}
-              onToken={(token) => void submitOAuth({ provider: "facebook", body: { access_token: token } })}
-              onError={setOauthError}
-            />
-          ) : (
-            <NotReadyButton
-              provider="facebook"
-              label="使用 Facebook 登入"
-              variant="brand"
-              className="h-12 w-full gap-2 text-base"
-              onNotReady={() => setOauthError(notReady("Facebook"))}
-            />
-          )}
-
-          {oauthBusy && (
-            <p role="status" className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="size-4 animate-spin" />
-              登入中…
-            </p>
           )}
           {oauthError && (
             <p role="alert" className="rounded-xl bg-destructive/10 px-3 py-2.5 text-sm leading-relaxed text-destructive">

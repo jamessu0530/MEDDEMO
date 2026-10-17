@@ -44,7 +44,7 @@ export function AppShell({
           data-ui-demo-page
           className={cn(
             width === "column" && "lg:mx-auto lg:max-w-2xl",
-            pageAssistantPlacement(pathname) === "dock" && "pb-[var(--page-assistant-dock-space,16rem)]"
+            pageAssistantPlacement(pathname) === "dock" && "pb-[var(--page-assistant-dock-space,5rem)]"
           )}
         >
           {children}

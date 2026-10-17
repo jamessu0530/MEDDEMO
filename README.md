@@ -126,7 +126,7 @@ curl -X PUT localhost:8000/api/mock-systems/oa -H 'Content-Type: application/jso
 
 ## 登入（FR-12）
 
-三種帳號：公司給的（Email 加密碼，灌資料時建好，或由 IT 在組織管理頁開）、**任何人都能在登入頁「建立帳號」用 Email 自己開**、用 Google／GitHub／Facebook 登入自動開（見下一節）。自己開的兩種一律是業務，看示範業務林昱辰的客戶。註冊照 flutterproject4：名字、Email、密碼（至少 8 碼），建好直接登入；Email 已註冊或是第三方登入開的帳號，會提示要用哪種方式登入。沒有忘記密碼（要寄信，這次沒接）。建立帳號按 IP 每小時 20 個以防止大量註冊，不設全系統每日額度。
+三種帳號：公司給的（Email 加密碼，灌資料時建好，或由 IT 在組織管理頁開）、**任何人都能在登入頁「建立帳號」用 Email 自己開**、用 Google／GitHub 登入自動開（見下一節）。自己開的兩種一律是業務，看示範業務林昱辰的客戶。註冊照 flutterproject4：名字、Email、密碼（至少 8 碼），建好直接登入；Email 已註冊或是第三方登入開的帳號，會提示要用哪種方式登入。沒有忘記密碼（要寄信，這次沒接）。建立帳號按 IP 每小時 20 個以防止大量註冊，不設全系統每日額度。
 
 - **修改帳號**（照 flutterproject4）：帳號設定可以改名字、改密碼。
   - 名字規則照它的暱稱：2～32 字、擋不當用字。不照抄的兩處：那邊是遊戲排行榜 ID 所以不能重複、不能有空白；這裡是業務姓名，同名很正常，英文姓名要有空白（頭尾空白去掉、連續空白併成一個）。
@@ -144,7 +144,9 @@ curl -X PUT localhost:8000/api/mock-systems/oa -H 'Content-Type: application/jso
 - **Demo 身分切換**：展示環境設定 `DEMO_ROLE_SWITCH=true`（本機 `backend/.env`、部署 `values.yaml` 的 `config`）。每個登入帳號，包含自行註冊與第三方登入，都能在頁面上方按「業務／主管／IT」：分別展示林昱辰 U01 的訂單頁（`/orders`）、陳建宏 M01 的主管頁（`/manager`）、James A01 的組織管理頁（`/admin`），資料範圍與操作權限沿用該示範人物。按「回原帳號」恢復自己的身分；切換後重新整理仍保留，重新登入則回自己的身分。所有人操作共用示範資料。切換不改任何人的角色、密碼或登入版號，也不會把其他展示者登出；改密碼、刪帳號與第三方綁定仍只操作真正登入者。正式使用設為 `false`，切換入口隱藏，既有示範 token 立即恢復登入者原本的權限。
 - 被 IT 停用的帳號登不進來，已經登入的裝置下一個請求就收到「這個帳號已停用，請洽 IT」並回到登入頁。
 
-### Google、GitHub、Facebook 登入
+### Google、GitHub 登入
+
+Facebook 登入與綁定已移除；既有帳號及綁定紀錄保留，但 Facebook 不再列入可用登入方式。
 
 - **第三方登入通過供應商授權後，第一次登入自動開一個帳號**（9/16 決定：決賽評審用自己的 Google 就能直接試）；各家是否對一般用戶開放，仍取決於該供應商 App 的發佈及權限狀態。
   - 自動開的帳號**一律是業務**，不會變主管；工號是 `X` 開頭，跟公司帳號（`U01`、`M01`）分得出來。
@@ -155,8 +157,6 @@ curl -X PUT localhost:8000/api/mock-systems/oa -H 'Content-Type: application/jso
 - 各家驗證：
   - Google：整頁導去 Google 授權，導回 `/auth/google/callback` 時網址 `#` 後面帶著 ID token；前端比對 `state` 與 `nonce`，後端驗簽章、`aud` 是不是我們的 client id、有沒有過期。原本用 Identity Services 的按鈕（開彈出視窗），但在 LINE 的內建瀏覽器裡選完帳號，那個視窗會停在空白頁、登入結果交不回來，所以 10/1 改成跟 GitHub 一樣整頁導走。
   - GitHub：授權碼流程，前端用 `state` 防 CSRF，後端用 secret 換 access token 再拿使用者編號。
-  - Facebook：用 `debug_token` 確認 access token 有效**而且是發給我們這個 App 的**。flutterproject4 只打 `/me`，別的 App 拿到的 token 也能冒用；它另外有一段「不驗簽章」的後備流程，這裡都不照抄。
-  - Facebook 設定狀態（2026-10-16）：正式環境使用 App `1383302264866520`，管理員登入與既有帳號綁定已實測成功。另已建立 Consumer App `3035602213446731`，並填妥網站、隱私政策、刪除指示、圖示及 SDK 設定；申請 `public_profile` 進階存取時，Meta 明確要求連結已驗證的商家資產管理組合，因此尚未取得一般用戶公開登入權限，也尚未將正式環境切換到此 Consumer App。原有 `flutterfinal` 同樣顯示尚未發佈。以實際主控板要求為準，不能僅因建立 Consumer App 就視為免驗證。
 - 沒設定的那一家，登入頁與帳號設定就不出現它的按鈕（`GET /api/auth/providers`）。
 - **已經登入時的憑證錯誤回 400 不是 401**（改密碼時目前密碼打錯、綁定時第三方驗證失敗）：前端看到 401 會當成登入過期把人登出。
 - 自行註冊與第三方登入都沿用原有資料權限；外部 API 服務不設每帳號或全系統每日用量額度。
@@ -437,7 +437,7 @@ curl -X PUT localhost:8000/api/mock-systems/oa -H 'Content-Type: application/jso
 
 ### 熊熊滾操作示範
 
-在任一頁開啟熊熊滾助理並輸入「我不會新增訂單，可以教我嗎？」，熊熊滾會先詢問是否示範，按「好，操作給我看」才開始。語音辨識出同類操作求助，也會顯示邀請卡。第一版支援新增訂單：紫色箭頭依序打開訂單、選教學客戶、建立練習草稿、加入商品、填收貨資料並儲存。使用現有訂單介面與 `/orders/demo` 練習單，資料只留在頁面記憶體，最後只指向「發送至 SAP」說明正式流程。
+共用 AI 助理收合時只保留單行輸入列，展開後顯示連續文字對話；不提供建議題目、Tab 補字或獨立示範按鈕。在任一頁的助理輸入「操作給我看」或「我不會新增訂單，可以教我嗎？」並送出，就會直接開始示範。語音辨識出同類操作求助時，以文字提示使用者自行輸入示範要求。第一版支援新增訂單：紫色箭頭依序打開訂單、選教學客戶、建立練習草稿、加入商品、填收貨資料並儲存。使用現有訂單介面與 `/orders/demo` 練習單，資料只留在頁面記憶體，最後只指向「發送至 SAP」說明正式流程。
 
 使用者點擊、觸碰、滾輪捲動或按鍵時，會立即取消待執行動作並保留畫面供接手；切換到背景、調整視窗或離開流程也會停止，登出或換帳號會清空示範。程式自身的點擊與捲動不算接手。找不到可操作元件時停止，不會猜測座標。步驟與可操作元件固定登錄在 `frontend/src/lib/ui-demo.ts`，問答不能傳入任意選擇器或程式碼。
 
@@ -822,7 +822,6 @@ MEDDEMO 跟 CARE 共用 GCP 上的 care-vm：K3s、Helm、Traefik、HTTPS 憑證
 | `DEMO_PASSWORD` | secret | 灌資料建的公司帳號共用的登入密碼，至少 8 碼（太短灌資料會失敗）。沒設就是程式裡的預設值 `meddemo1234`，而這個 repo 是公開的，所以決賽前要設。改完要手動執行一次部署並勾選「重灌假資料」才會生效。 |
 | `GOOGLE_CLIENT_ID` | secret | 選填：Google 登入。Google Cloud Console 建「OAuth 用戶端 ID」（網頁應用程式），「已授權的重新導向 URI」填 `https://網址/auth/google/callback`（本機開發另加 `http://localhost:5173/auth/google/callback`）。 |
 | `OAUTH_GITHUB_CLIENT_ID`、`OAUTH_GITHUB_CLIENT_SECRET` | secret | 選填：GitHub 登入。GitHub Settings → Developer settings → OAuth Apps 建一個，Authorization callback URL 填 `https://網址/auth/github/callback`。GitHub Secrets 禁止 `GITHUB_` 前綴；本機 `.env` 與後端環境變數仍用 `GITHUB_CLIENT_ID`、`GITHUB_CLIENT_SECRET`。 |
-| `FACEBOOK_APP_ID`、`FACEBOOK_APP_SECRET` | secret | 選填：Facebook 登入。Meta for Developers 建立 MEDDEMO 專用 App，啟用「Facebook 登入」使用案例或產品，以及程式所需的 `email` 權限。應用程式網域填 `meddemo.jamessu2016.com`、網站網址與 JavaScript SDK 允許的網域填 `https://meddemo.jamessu2016.com/`，並啟用 JavaScript SDK。有效 OAuth 重新導向 URI 列入 `https://meddemo.jamessu2016.com/login`、`https://meddemo.jamessu2016.com/settings`（SDK 登入／綁定頁）。目前走 SDK 彈出視窗，不使用 `/auth/facebook/callback`。隱私政策填 `https://meddemo.jamessu2016.com/privacy`，用戶資料刪除指示填同頁的 `#delete`。公開登入另須符合 Meta 的權限及發佈要求。 |
 | `SITE_URL` | variable | `https://你的網址`，部署完會打它的 `/health` 確認網站正常 |
 | `ASR_API_KEY` | secret | 選填：語音辨識用的 Gemini 金鑰，沒填就沿用 `LLM_API_KEY` |
 | `TAIGI_API_KEY` | secret | 選填：Taigi AI Labs 台語 STT 正式金鑰；沒填時無法完成華語／台語雙語比對，確認頁會提示 |

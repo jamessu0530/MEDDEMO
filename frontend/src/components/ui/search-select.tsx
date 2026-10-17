@@ -166,6 +166,7 @@ export function SearchSelect(props: Props) {
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Content
+          data-slot="search-select-content"
           id={`${id}-panel`}
           role="dialog"
           aria-label={`選擇${label}`}

@@ -1,20 +1,19 @@
-import { useCallback, useEffect, useState } from "react"
+import { useEffect, useState } from "react"
 
 import { fetchProviders, type OAuthCredential, type OAuthProviders } from "@/api/auth"
 
 /*
- * 第三方登入（Google／GitHub／Facebook）的瀏覽器端工具。
- * 帳號是公司給的，第三方帳號不會自動開新帳號：要先用 Email 登入、到帳號設定綁定，之後才能用它登入。
+ * 第三方登入（Google／GitHub）的瀏覽器端工具。
+ * 第一次登入會自動建立帳號；公司給的帳號也能先用 Email 登入，再到帳號設定綁定。
  * 所以每一家都有兩種用途——「登入」與「綁定」，拿到的憑證一樣，只是送去的 API 不同（api/auth.ts）。
  */
 
-export type OAuthProvider = "google" | "github" | "facebook"
+export type OAuthProvider = "google" | "github"
 export type OAuthMode = "login" | "link"
 
 export const PROVIDER_LABEL: Record<OAuthProvider, string> = {
   google: "Google",
   github: "GitHub",
-  facebook: "Facebook",
 }
 
 /**
@@ -35,108 +34,6 @@ export function useProviders() {
   return providers
 }
 
-// ── 外部 SDK 動態載入 ──────────────────────────────────────────────
-
-export const FACEBOOK_SDK = "https://connect.facebook.net/zh_TW/sdk.js"
-
-// 同一支 script 只插一次；兩個元件同時要（登入頁的按鈕重畫）時共用同一個 Promise
-const scripts = new Map<string, Promise<void>>()
-
-function loadScript(src: string) {
-  const cached = scripts.get(src)
-  if (cached) return cached
-  const promise = new Promise<void>((resolve, reject) => {
-    const script = document.createElement("script")
-    script.src = src
-    script.async = true
-    script.defer = true
-    script.onload = () => resolve()
-    script.onerror = () => {
-      // 沒網路、被廣告阻擋器擋掉：拿掉這次的紀錄，按「再試一次」才會真的重新下載
-      script.remove()
-      scripts.delete(src)
-      reject(new Error("load failed"))
-    }
-    document.head.appendChild(script)
-  })
-  scripts.set(src, promise)
-  return promise
-}
-
-export type ScriptStatus = "idle" | "loading" | "ready" | "error"
-
-/**
- * 需要的頁面、而且伺服器有設定這一家時才下載 SDK（enabled 為 false 就不動）。
- * 失敗時回 error，畫面自己顯示說明與 retry，不讓整頁壞掉。
- */
-export function useScript(src: string, enabled: boolean) {
-  const [result, setResult] = useState<{ src: string; attempt: number; ok: boolean } | null>(null)
-  const [attempt, setAttempt] = useState(0)
-
-  useEffect(() => {
-    if (!enabled) return
-    let alive = true
-    loadScript(src).then(
-      () => alive && setResult({ src, attempt, ok: true }),
-      () => alive && setResult({ src, attempt, ok: false })
-    )
-    return () => {
-      alive = false
-    }
-  }, [src, enabled, attempt])
-
-  // 狀態由「這一次嘗試的結果回來了沒」推出來，不必在 effect 裡同步 setState
-  let status: ScriptStatus = "idle"
-  if (enabled) {
-    if (!result || result.src !== src || result.attempt !== attempt) status = "loading"
-    else status = result.ok ? "ready" : "error"
-  }
-  const retry = useCallback(() => setAttempt((n) => n + 1), [])
-  return { status, retry }
-}
-
-// ── Facebook JS SDK ──────────────────────────────────────────────
-
-type FacebookLoginResponse = { authResponse: { accessToken: string } | null }
-
-type FacebookSdk = {
-  init: (options: { appId: string; version: string; cookie: boolean; xfbml: boolean }) => void
-  login: (callback: (response: FacebookLoginResponse) => void, options: { scope: string }) => void
-}
-
-declare global {
-  interface Window {
-    FB?: FacebookSdk
-  }
-}
-
-let facebookAppId: string | null = null
-
-/**
- * 跳出 Facebook 登入視窗，回傳 access token；使用者自己關掉視窗回 null。
- * 一定要在按鈕的 click 裡直接呼叫（SDK 要先載好），中間不能 await 別的東西，否則手機瀏覽器會把彈出視窗擋掉。
- */
-export function facebookLogin(appId: string) {
-  return new Promise<string | null>((resolve, reject) => {
-    const FB = window.FB
-    if (!FB) {
-      reject(new Error("Facebook SDK 沒有載入"))
-      return
-    }
-    if (facebookAppId !== appId) {
-      FB.init({ appId, version: "v21.0", cookie: false, xfbml: false })
-      facebookAppId = appId
-    }
-    try {
-      // SDK 要求 callback 是一般函式，不能是 async function
-      FB.login((response) => resolve(response.authResponse?.accessToken ?? null), { scope: "public_profile,email" })
-    } catch (err) {
-      // 例如在 http 網址上呼叫：Facebook 只允許 https 頁面登入
-      reject(err)
-    }
-  })
-}
-
 // ── 整頁導走再導回 /auth/<provider>/callback（Google、GitHub）─────────────
 
 /*
@@ -145,8 +42,8 @@ export function facebookLogin(appId: string) {
  * 整頁導去授權、再導回 callback 頁（pages/oauth-callback.tsx），中間不開任何視窗。
  */
 
-/** 整頁導走的這兩家；Facebook 用 SDK 的彈出視窗 */
-export type RedirectProvider = "google" | "github"
+/** 透過整頁重新導向完成授權的供應商 */
+export type RedirectProvider = OAuthProvider
 
 export type OAuthPending = {
   state: string

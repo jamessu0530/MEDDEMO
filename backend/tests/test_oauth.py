@@ -1,6 +1,6 @@
 """第三方登入：第一次登入自動開業務帳號、Email 帳號也能綁、一個第三方帳號只屬於一個人。
 
-真的去打 Google／GitHub／Facebook 要有各家的 App 設定，測試裡把「驗證憑證」換成假的，
+真的去打 Google／GitHub 要有各家的 App 設定，測試裡把「驗證憑證」換成假的，
 只測我們自己的規則；各家驗證函式另外測「沒設定」與「憑證是假的」這兩種會擋下來的情況。
 """
 
@@ -43,8 +43,8 @@ def google_login(client, subject):
 
 
 def test_providers_hides_what_is_not_configured(client, env):
-    env(GOOGLE_CLIENT_ID="", GITHUB_CLIENT_ID="", GITHUB_CLIENT_SECRET="", FACEBOOK_APP_ID="", FACEBOOK_APP_SECRET="")
-    assert client.get("/api/auth/providers").json() == {"google": None, "github": None, "facebook": None}
+    env(GOOGLE_CLIENT_ID="", GITHUB_CLIENT_ID="", GITHUB_CLIENT_SECRET="")
+    assert client.get("/api/auth/providers").json() == {"google": None, "github": None}
     env(GOOGLE_CLIENT_ID="abc.apps.googleusercontent.com", GITHUB_CLIENT_ID="Iv1.x")
     body = client.get("/api/auth/providers").json()
     assert body["google"] == {"client_id": "abc.apps.googleusercontent.com"}
@@ -131,11 +131,10 @@ def test_linking_requires_being_signed_in_and_a_valid_credential(client, auth, f
 
 
 def test_real_verifiers_refuse_when_not_configured(env):
-    env(GOOGLE_CLIENT_ID="", GITHUB_CLIENT_ID="", GITHUB_CLIENT_SECRET="", FACEBOOK_APP_ID="", FACEBOOK_APP_SECRET="")
+    env(GOOGLE_CLIENT_ID="", GITHUB_CLIENT_ID="", GITHUB_CLIENT_SECRET="")
     for call in (
         lambda: oauth.verify_google("x"),
         lambda: oauth.verify_github("code", "https://example.com/cb"),
-        lambda: oauth.verify_facebook("token"),
     ):
         with pytest.raises(oauth.NotConfigured):
             call()
@@ -155,32 +154,45 @@ def test_google_rejects_a_forged_token(env, monkeypatch):
     assert settings().google_client_id == "abc.apps.googleusercontent.com"
 
 
-def test_facebook_token_for_another_app_is_rejected(env, monkeypatch):
-    """debug_token 說 token 有效，但是發給別的 App：不能讓別的 App 拿到的 token 冒用。"""
-    env(FACEBOOK_APP_ID="111", FACEBOOK_APP_SECRET="s")
+@pytest.mark.parametrize(
+    ("method", "suffix"),
+    [("POST", "/login"), ("POST", "/link"), ("DELETE", "")],
+)
+def test_facebook_endpoints_are_no_longer_supported(client, auth, env, method, suffix):
+    # 即使部署環境還留著舊金鑰，也不能重新開啟 Facebook。
+    env(FACEBOOK_APP_ID="legacy-app", FACEBOOK_APP_SECRET="legacy-secret")
+    response = client.request(
+        method,
+        f"/api/auth/oauth/facebook{suffix}",
+        json={"access_token": "legacy-token"},
+        headers=auth(),
+    )
+    assert response.status_code == 422
+    assert "facebook" not in client.get("/api/auth/providers").json()
 
-    class Response:
-        status_code = 200
 
-        def __init__(self, payload):
-            self._payload = payload
+def test_legacy_facebook_binding_is_hidden_and_cannot_prevent_lockout(client, engine, fake_google):
+    result = google_login(client, "g-legacy").json()
+    user_id = result["user"]["id"]
+    with Session(engine) as session:
+        session.add(UserIdentity(user_id=user_id, provider="facebook", subject="legacy-fb", email="old@example.com"))
+        session.commit()
 
-        def json(self):
-            return self._payload
+    headers = {"Authorization": f"Bearer {result['token']}"}
+    current = client.get("/api/auth/me", headers=headers)
+    assert current.status_code == 200
+    assert [identity["provider"] for identity in current.json()["linked"]] == ["google"]
+    # 唯一仍可用的是 Google：舊 Facebook 綁定不能讓帳號解除最後一種登入方式。
+    blocked = client.delete("/api/auth/oauth/google", headers=headers)
+    assert blocked.status_code == 409 and "唯一的登入方式" in blocked.json()["detail"]
+    with Session(engine) as session:
+        assert session.query(UserIdentity).filter_by(user_id=user_id, provider="facebook").count() == 1
 
-    def fake_get(url, params=None, timeout=None):
-        if url.endswith("/debug_token"):
-            return Response({"data": {"is_valid": True, "app_id": "999", "user_id": "fb-1"}})
-        return Response({"id": "fb-1"})
-
-    monkeypatch.setattr(oauth.httpx, "get", fake_get)
-    with pytest.raises(oauth.OAuthError):
-        oauth.verify_facebook("token-from-another-app")
-
-    def fake_get_ok(url, params=None, timeout=None):
-        if url.endswith("/debug_token"):
-            return Response({"data": {"is_valid": True, "app_id": "111", "user_id": "fb-1"}})
-        return Response({"id": "fb-1", "email": "a@b.c"})
-
-    monkeypatch.setattr(oauth.httpx, "get", fake_get_ok)
-    assert oauth.verify_facebook("good").subject == "fb-1"
+    # 舊綁定的信箱不能導致 KeyError，也不能叫人使用已移除的登入方式。
+    failed = client.post("/api/auth/login", json={"email": "old@example.com", "password": "unused"})
+    assert failed.status_code == 401 and "Facebook" not in failed.json()["detail"]
+    registered = client.post(
+        "/api/auth/register", json={"name": "新帳號", "email": "old@example.com", "password": "password-1234"}
+    )
+    assert registered.status_code == 201
+    assert registered.json()["user"]["id"] != user_id

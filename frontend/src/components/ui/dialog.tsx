@@ -6,7 +6,6 @@ import { Dialog as DialogPrimitive } from "radix-ui"
 
 import { Button } from "@/components/ui/button"
 import { XIcon } from "@/components/icons"
-import { PageDemoButton } from "@/components/ui-demo/page-demo-button"
 
 function Dialog({
   ...props
@@ -78,15 +77,6 @@ function DialogContent({
         }}
       >
         {children}
-        <div
-          data-ui-demo-entry
-          className={cn(
-            "absolute top-1.5",
-            showCloseButton ? "right-10" : "right-2"
-          )}
-        >
-          <PageDemoButton currentOnly iconOnly />
-        </div>
         {showCloseButton && (
           <DialogPrimitive.Close data-slot="dialog-close" asChild>
             <Button
@@ -108,7 +98,7 @@ function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="dialog-header"
-      className={cn("flex flex-col gap-2 pr-20", className)}
+      className={cn("flex flex-col gap-2 pr-10", className)}
       {...props}
     />
   )

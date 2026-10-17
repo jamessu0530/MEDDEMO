@@ -2,11 +2,12 @@ import { describe, expect, it } from "vitest"
 import { pageAssistantPlacement } from "./page-assistant"
 
 describe("各頁的 AI 輸入方式", () => {
-  it("已有專用輸入列的頁面仍可用浮動入口開啟共用助理", () => {
+  it("路線頁只保留原有的 AI 輸入列", () => {
+    for (const path of ["/route", "/route/", "/route/edit", "/route/edit/"])
+      expect(pageAssistantPlacement(path)).toBe("none")
+  })
+  it("報表與頻道可用浮動入口開啟共用助理", () => {
     for (const path of [
-      "/route",
-      "/route/",
-      "/route/edit",
       "/reports",
       "/channels",
       "/channels/2",

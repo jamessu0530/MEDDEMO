@@ -86,6 +86,21 @@ def test_only_it_can_open_the_org_admin(client, auth):
     assert client.get("/api/oa/inbox", headers=auth("A01")).status_code == 200
 
 
+def test_only_it_can_read_cloud_metrics(client, auth, monkeypatch, env):
+    from app.services import cloud_metrics
+
+    monkeypatch.setattr(cloud_metrics, "_cached", {})
+    env(GRAFANA_CLOUD_READ_TOKEN="")
+    assert client.get("/api/admin/metrics").status_code == 401
+    assert client.get("/api/admin/metrics", headers=auth("U01")).status_code == 403
+    assert client.get("/api/admin/metrics", headers=auth("M01")).status_code == 403
+    response = client.get("/api/admin/metrics", headers=auth("A01"))
+    assert response.status_code == 200
+    assert response.json()["status"] == "unconfigured"
+    assert response.json()["refresh_seconds"] == 5
+    assert client.get("/api/admin/metrics?window=invalid", headers=auth("A01")).status_code == 422
+
+
 def test_moving_a_manager_carries_the_team_and_their_region(tx, client, auth):
     # 代理 U01 的自建帳號不在樹上，轄區跟著 U01
     tx.add(AppUser(id="XTEST01", name="自建", role="sales", region="北區", acts_as_user_id="U01"))

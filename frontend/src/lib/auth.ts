@@ -33,7 +33,7 @@ export function canManage(role: Role) {
 }
 
 export type LinkedAccount = {
-  provider: "google" | "github" | "facebook"
+  provider: "google" | "github"
   email: string | null
   linked_at: string
 }

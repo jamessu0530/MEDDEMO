@@ -1,16 +1,5 @@
 import { useAskPageContext } from "@/ask/use-page-context"
-import { useCurrentPageContext } from "@/ask/use-page-context"
-import { useQuestionSuggestions } from "@/ask/use-question-guidance"
-import { pageSnapshot } from "@/ask/conversation-context"
-import type { Turn } from "@/api/asks"
-import {
-  shouldAcceptSuggestion,
-  suggestedCompletion,
-} from "@/ask/question-guidance"
-import {
-  QuestionSuggestions,
-  SuggestionHint,
-} from "@/components/ask/question-suggestions"
+import { useStartUiDemo } from "@/lib/use-start-ui-demo"
 import { ReportPageTooltip } from "@/components/reports/report-page-tooltip"
 import {
   useEffect,
@@ -190,7 +179,6 @@ import { useReportWorkspaceLayout } from "@/lib/report-workspace-layout"
 import { cn } from "@/lib/utils"
 import { uiDemo } from "@/lib/ui-demo-browser"
 import { requestedUiDemo } from "@/lib/ui-demo"
-import { UiDemoOffer } from "@/components/ui-demo/offer"
 
 type Boot =
   | { status: "ready"; workspace: ReportWorkspace }
@@ -1336,17 +1324,6 @@ function ReportDocument({
           title="報表工具"
           description="管理報表與書籤、編輯圖表，或匯出目前報表。"
         >
-          <button
-            type="button"
-            className="report-demo-start"
-            onClick={() => {
-              setToolsOpen(false)
-              uiDemo.start("report-tour")
-            }}
-          >
-            <FileChartColumn className="size-4" />
-            操作給我看
-          </button>
           <ReportDocumentControls
             config={config}
             library={library}
@@ -2843,12 +2820,6 @@ function CanvasVisual({
   )
 }
 
-const SUGGESTIONS = [
-  "新增客戶類型的業績環圈圖",
-  "把每月銷售改成按客戶類型堆疊直條圖",
-  "新增一頁經理看的業績與淨毛利分析",
-]
-
 /** visualViewport 在手機鍵盤打開時縮小，輸入膠囊跟著移到鍵盤上方。 */
 function useKeyboardInset() {
   const [inset, setInset] = useState(0)
@@ -2886,11 +2857,8 @@ function AiReportDock({
   onApply: (config: ReportConfig) => void
 }) {
   const [question, setQuestion] = useState("")
-  const [lastQuestion, setLastQuestion] = useState("")
-  const [turns, setTurns] = useState<Turn[]>([])
-  const page = useCurrentPageContext()
+  const startDemo = useStartUiDemo()
   const [expanded, setExpanded] = useState(false)
-  const [demoOffer, setDemoOffer] = useState(false)
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<{
     adjustment: ReportAdjustment
@@ -2903,33 +2871,8 @@ function AiReportDock({
   const keyboardInset = useKeyboardInset()
   const configKey = JSON.stringify(config)
   const activeResult = result?.base === configKey ? result.adjustment : null
-  const suggestions = available
-    ? (lastQuestion
-        ? [
-            "改成比較這個月和上個月的銷售",
-            "再加一張按客戶比較銷售額的長條圖",
-            "把銷售趨勢改成折線圖",
-            ...SUGGESTIONS,
-          ]
-        : SUGGESTIONS
-      ).filter((text) => text !== lastQuestion)
-    : ["教我用報表"]
-  const generated = useQuestionSuggestions(
-    {
-      page: pageSnapshot(page),
-      earlier: turns,
-      candidates: suggestions.slice(0, 8),
-    },
-    !busy && available
-  )
-  const offered = generated ?? suggestions
-  const completion = !busy ? suggestedCompletion(question, offered) : null
   const mascotState = busy ? "think" : activeResult ? "talk" : "idle"
 
-  function fillQuestion(text: string) {
-    setQuestion(text)
-    inputRef.current?.focus({ preventScroll: true })
-  }
   useEffect(() => {
     latestConfig.current = config
   }, [config])
@@ -2939,19 +2882,17 @@ function AiReportDock({
     const trimmed = text.trim()
     if (!trimmed || busy) return
     if (requestedUiDemo(trimmed, "/reports") === "report-tour") {
-      setDemoOffer(true)
-      setExpanded(true)
+      setExpanded(false)
       setResult(null)
       setError(null)
       setQuestion("")
       inputRef.current?.blur()
+      startDemo("report-tour")
       return
     }
     if (!available) return
-    setDemoOffer(false)
     const baseConfig = latestConfig.current
     const proposedConfig = activeResult?.config ?? baseConfig
-    const context = pageSnapshot(page)
     const base = JSON.stringify(baseConfig)
     const controller = new AbortController()
     controllerRef.current = controller
@@ -2973,21 +2914,6 @@ function AiReportDock({
         return
       }
       setResult({ adjustment, base })
-      setLastQuestion(trimmed)
-      setTurns((previous) =>
-        [
-          ...previous,
-          {
-            question: trimmed,
-            answer:
-              `${adjustment.message}${adjustment.config ? "\n這份調整尚未套用。" : ""}`.slice(
-                0,
-                1000
-              ),
-            page: context,
-          },
-        ].slice(-6)
-      )
       setQuestion("")
     } catch (err) {
       if (!controller.signal.aborted)
@@ -3007,25 +2933,17 @@ function AiReportDock({
   function apply() {
     if (!activeResult?.config) return
     onApply(activeResult.config)
-    setTurns((previous) =>
-      previous.map((turn, index) =>
-        index === previous.length - 1
-          ? {
-              ...turn,
-              answer: `${turn.answer}\n使用者已套用這份調整。`.slice(-1000),
-            }
-          : turn
-      )
-    )
     setResult(null)
     setQuestion("")
   }
 
   return (
     <div
-      className="pointer-events-none fixed inset-x-0 z-30 mx-auto max-w-md pb-[calc(0.75rem+env(safe-area-inset-bottom))] lg:max-w-3xl"
+      data-report-ai-dock
+      className="pointer-events-none fixed inset-x-0 z-30 mx-auto flex max-w-md flex-col pb-[calc(0.75rem+env(safe-area-inset-bottom))] lg:max-w-3xl"
       style={{
         bottom: keyboardInset || (bottomNavigation ? "4rem" : 0),
+        maxHeight: "calc(var(--app-visual-height, 100dvh) - 1rem)",
         ...(bounds && {
           left: bounds.left,
           right: "auto",
@@ -3034,17 +2952,15 @@ function AiReportDock({
         }),
       }}
     >
-      <div className="pointer-events-auto mx-auto max-w-3xl">
+      <div className="pointer-events-auto mx-auto flex min-h-0 w-full max-w-3xl flex-col">
         {(expanded || activeResult || error) && (
-          <div className="mb-3 max-h-[min(55dvh,28rem)] overflow-y-auto rounded-3xl border-2 bg-card p-4 shadow-xl">
+          <div className="mb-3 max-h-[min(55dvh,28rem)] min-h-0 overflow-y-auto rounded-3xl border-2 bg-card p-4 shadow-xl">
             <div className="mb-2 flex items-center justify-between gap-2">
               <p className="flex items-center gap-2 text-sm font-semibold">
                 <Mascot state={mascotState} size={32} />
-                {demoOffer
-                  ? "報表操作示範"
-                  : activeResult?.kind === "proposal"
-                    ? "AI 建議的調整"
-                    : "用一句話調整報表"}
+                {activeResult?.kind === "proposal"
+                  ? "AI 建議的調整"
+                  : "用一句話調整報表"}
               </p>
               <button
                 type="button"
@@ -3052,7 +2968,6 @@ function AiReportDock({
                 className="-mr-2 flex size-11 items-center justify-center rounded-full text-muted-foreground hover:bg-muted"
                 onClick={() => {
                   setExpanded(false)
-                  setDemoOffer(false)
                   setResult(null)
                   setError(null)
                 }}
@@ -3065,9 +2980,7 @@ function AiReportDock({
                 {error}
               </p>
             )}
-            {demoOffer ? (
-              <UiDemoOffer kind="report-tour" />
-            ) : activeResult ? (
+            {activeResult ? (
               <div aria-live="polite">
                 <p className="text-sm leading-relaxed">
                   {activeResult.message}
@@ -3132,13 +3045,6 @@ function AiReportDock({
                     </div>
                   </>
                 )}
-                <div className="mt-4">
-                  <QuestionSuggestions
-                    label="接著可以調整"
-                    suggestions={offered.slice(0, 3)}
-                    onSelect={fillQuestion}
-                  />
-                </div>
               </div>
             ) : (
               expanded && (
@@ -3148,19 +3054,6 @@ function AiReportDock({
                       ? "告訴 AI 你想看哪些數字、圖表與順序，它會先給你預覽。"
                       : "AI 尚未設定。你仍可用「自訂」選擇卡片、圖表與順序。"}
                   </p>
-                  <div className="flex flex-col gap-2">
-                    {SUGGESTIONS.map((text) => (
-                      <button
-                        key={text}
-                        type="button"
-                        disabled={!available || busy}
-                        onClick={() => fillQuestion(text)}
-                        className="min-h-11 rounded-xl bg-muted/60 px-3 py-2 text-left text-sm hover:bg-muted disabled:opacity-50"
-                      >
-                        {text}
-                      </button>
-                    ))}
-                  </div>
                 </>
               )
             )}
@@ -3169,7 +3062,7 @@ function AiReportDock({
         <form
           data-assistant-obstacle
           onSubmit={submit}
-          className="flex min-h-16 items-center gap-1 rounded-full border-2 border-primary/20 bg-card px-2 shadow-xl shadow-primary/10 focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/30"
+          className="flex min-h-16 shrink-0 items-center gap-1 rounded-full border-2 border-primary/20 bg-card px-2 shadow-xl shadow-primary/10 focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/30"
         >
           <button
             type="button"
@@ -3185,16 +3078,9 @@ function AiReportDock({
             value={question}
             maxLength={600}
             onChange={(event) => setQuestion(event.target.value)}
-            onKeyDown={(event) => {
-              if (shouldAcceptSuggestion(event, completion)) {
-                event.preventDefault()
-                fillQuestion(completion!)
-              }
-            }}
             disabled={busy}
             aria-label="用自然語言調整報表"
-            aria-describedby={completion ? "report-ai-completion" : undefined}
-            placeholder={busy ? "AI 正在調整…" : offered[0]}
+            placeholder={busy ? "AI 正在調整…" : "輸入報表調整需求…"}
             className="h-11 min-w-0 flex-1 bg-transparent px-2 text-base outline-none placeholder:text-muted-foreground/60 disabled:opacity-70"
           />
           <button
@@ -3215,15 +3101,6 @@ function AiReportDock({
             )}
           </button>
         </form>
-        {completion && (
-          <div className="mx-4 mt-1 rounded-xl bg-background/95">
-            <SuggestionHint
-              id="report-ai-completion"
-              suggestion={completion}
-              onAccept={() => fillQuestion(completion)}
-            />
-          </div>
-        )}
         {busy && (
           <p
             role="status"
