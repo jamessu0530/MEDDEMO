@@ -6,6 +6,7 @@ import {
   createUiDemo,
   canStartUiDemo,
   isUserTakeover,
+  createUiDemoTakeover,
   isUiDemoKind,
   matchesDemoPage,
   OA_APPS_DEMO_STEPS,
@@ -48,14 +49,54 @@ describe("訂單操作求助", () => {
 
 describe("使用者接手", () => {
   it.each(["pointerdown", "touchstart", "wheel", "keydown", "click"])(
-    "%s 立即中斷，程式產生的事件不中斷",
+    "%s 單次輸入不會中斷示範",
     (type) => {
-      expect(isUserTakeover({ type, isTrusted: true })).toBe(true)
+      expect(isUserTakeover({ type, isTrusted: true })).toBe(false)
       expect(isUserTakeover({ type, isTrusted: false })).toBe(false)
     }
   )
   it("捲動到目標所產生的 scroll 不中斷", () => {
     expect(isUserTakeover({ type: "scroll", isTrusted: true })).toBe(false)
+  })
+  it("只有雙擊或 Esc 才接手，Enter 與程式點擊不會中斷", () => {
+    expect(isUserTakeover({ type: "keydown", key: "Enter", isTrusted: true })).toBe(false)
+    expect(isUserTakeover({ type: "keydown", key: "Escape", isTrusted: true })).toBe(true)
+    expect(isUserTakeover({ type: "dblclick", isTrusted: true })).toBe(true)
+    expect(isUserTakeover({ type: "dblclick", isTrusted: false })).toBe(false)
+  })
+  it.each(["mouse", "touch", "pen"])("%s 兩次完整點擊才解除；相容 click 不會被算成第二次", (pointerType) => {
+    const takeover = createUiDemoTakeover()
+    const tap = (at: number, x = 40) => {
+      expect(takeover({ type: "pointerdown", isTrusted: true, pointerType, pointerId: 1, clientX: x, clientY: 50, timeStamp: at })).toBe(false)
+      return takeover({ type: "pointerup", isTrusted: true, pointerType, pointerId: 1, clientX: x, clientY: 50, timeStamp: at + 30 })
+    }
+    expect(tap(0)).toBe(false)
+    expect(takeover({ type: "click", isTrusted: true })).toBe(false)
+    expect(tap(200)).toBe(true)
+    expect(tap(300)).toBe(false)
+  })
+  it("相隔太久、不同位置、拖曳或長按都不是連點兩下", () => {
+    const takeover = createUiDemoTakeover()
+    function tap(at: number, x = 10, distance = 0, duration = 30) {
+      takeover({ type: "pointerdown", isTrusted: true, pointerId: 1, clientX: x, timeStamp: at })
+      return takeover({ type: "pointerup", isTrusted: true, pointerId: 1, clientX: x + distance, timeStamp: at + duration })
+    }
+    expect(tap(0)).toBe(false)
+    expect(tap(1000)).toBe(false)
+    expect(tap(1100, 200)).toBe(false)
+    expect(tap(1200, 200, 50)).toBe(false)
+    expect(tap(1300, 200, 0, 600)).toBe(false)
+  })
+  it("拖出去再拉回也不算點一下；右鍵不計入連點", () => {
+    const takeover = createUiDemoTakeover()
+    const event = { isTrusted: true, pointerId: 1, clientX: 10, timeStamp: 0 }
+    takeover({ ...event, type: "pointerdown" })
+    takeover({ ...event, type: "pointermove", clientX: 100, timeStamp: 50 })
+    expect(takeover({ ...event, type: "pointerup", timeStamp: 100 })).toBe(false)
+    takeover({ ...event, type: "pointerdown", timeStamp: 150 })
+    expect(takeover({ ...event, type: "pointerup", timeStamp: 180 })).toBe(false)
+    takeover({ ...event, type: "pointerdown", button: 2, timeStamp: 200 })
+    expect(takeover({ ...event, type: "pointerup", button: 2, timeStamp: 220 })).toBe(false)
   })
 })
 
@@ -114,6 +155,23 @@ function setup(
 }
 
 describe("示範執行與取消", () => {
+  it("視窗與鍵盤改變尺寸時重新定位指標，保持示範與後續點擊", async () => {
+    let x = 10
+    const act = vi.fn()
+    const demo = createUiDemo({
+      pathname: () => "/orders",
+      listen: () => () => {},
+      target: () => ({ rect: () => ({ x, y: 20, width: 40, height: 40 }), scroll: () => {}, connected: () => true, act }),
+    }, [{ target: "new-order", page: "/orders", action: "click", text: "建立訂單" }])
+    demo.start()
+    await vi.advanceTimersByTimeAsync(250)
+    x = 120
+    demo.refresh()
+    expect(demo.getSnapshot()).toMatchObject({ status: "running", rect: { x: 120 } })
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(act).toHaveBeenCalledOnce()
+    expect(demo.getSnapshot().status).toBe("completed")
+  })
   it("尚未同意不操作，同意後才逐步執行；最後只指向發送鈕", async () => {
     const { demo, acted, unlisten } = setup()
     await vi.advanceTimersByTimeAsync(30_000)

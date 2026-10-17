@@ -514,11 +514,56 @@ export type DemoEnvironment = {
   listen: (interrupt: () => void) => () => void
 }
 
-export const isUserTakeover = (event: Pick<Event, "type" | "isTrusted">) =>
+type DemoInput = Pick<Event, "type" | "isTrusted"> & {
+  key?: string
+  pointerId?: number
+  pointerType?: string
+  isPrimary?: boolean
+  button?: number
+  clientX?: number
+  clientY?: number
+  timeStamp?: number
+}
+
+export const isUserTakeover = (event: DemoInput) =>
   event.isTrusted &&
-  ["pointerdown", "touchstart", "wheel", "keydown", "click"].includes(
-    event.type
-  )
+  (event.type === "dblclick" || (event.type === "keydown" && event.key === "Escape"))
+
+/** Count completed taps, so touch compatibility clicks cannot count twice. */
+export function createUiDemoTakeover() {
+  let down: { id: number; x: number; y: number; at: number } | null = null
+  let tap: { x: number; y: number; at: number; type: string } | null = null
+  return (event: DemoInput) => {
+    if (!event.isTrusted) return false
+    if (isUserTakeover(event)) return true
+    const x = event.clientX ?? 0, y = event.clientY ?? 0, at = event.timeStamp ?? 0
+    if (event.type === "pointercancel" || event.isPrimary === false) {
+      down = null
+      tap = null
+    } else if (event.type === "pointerdown") {
+      if ((event.button ?? 0) === 0)
+        down = { id: event.pointerId ?? 0, x, y, at }
+      else { down = null; tap = null }
+    } else if (event.type === "pointermove" && down && Math.hypot(x - down.x, y - down.y) > 12) {
+      down = null
+      tap = null
+    } else if (event.type === "pointerup") {
+      const start = down
+      down = null
+      if (!start || start.id !== (event.pointerId ?? 0) || at - start.at > 400 || Math.hypot(x - start.x, y - start.y) > 12) {
+        tap = null
+        return false
+      }
+      const type = event.pointerType ?? "mouse"
+      if (tap && tap.type === type && at - tap.at >= 0 && at - tap.at <= 420 && Math.hypot(x - tap.x, y - tap.y) <= 28) {
+        tap = null
+        return true
+      }
+      tap = { x, y, at, type }
+    }
+    return false
+  }
+}
 
 const INITIAL: DemoState = {
   kind: "create-order",
@@ -558,12 +603,14 @@ export function createUiDemo(
   let runId = 0
   let controller: AbortController | null = null
   let unlisten: (() => void) | null = null
+  let activeTarget: DemoTarget | null = null
   const listeners = new Set<() => void>()
   function publish(patch: Partial<DemoState>) {
     state = { ...state, ...patch }
     listeners.forEach((listener) => listener())
   }
   function cleanup() {
+    activeTarget = null
     controller?.abort()
     controller = null
     unlisten?.()
@@ -607,6 +654,7 @@ export function createUiDemo(
           await delay(100, signal)
         }
         if (!target) throw new Error("target unavailable")
+        activeTarget = target
         target.scroll()
         await delay(200, signal)
         publish({ rect: target.rect() })
@@ -617,6 +665,7 @@ export function createUiDemo(
         await delay(220, signal)
         if (signal.aborted) return
         if (!samePage() || !target.connected()) throw new Error("page changed")
+        publish({ rect: target.rect() })
         target.act(step.action, step.value)
         await delay(step.action === "point" ? 1800 : 650, signal)
       }
@@ -673,6 +722,10 @@ export function createUiDemo(
       void run(controller.signal, preset, activeSteps)
     },
     stop,
+    refresh() {
+      if (state.status === "running" && activeTarget?.connected())
+        publish({ rect: activeTarget.rect() })
+    },
     dismiss() {
       cleanup()
       publish(INITIAL)
