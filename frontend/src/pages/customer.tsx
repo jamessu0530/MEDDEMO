@@ -15,7 +15,6 @@ import {
   type ProfileStats,
 } from "@/api/customers"
 import { LastOrderSection } from "@/components/last-order-section"
-import { CustomerStorefront } from "@/components/customer-storefront"
 import { NextNotes } from "@/components/next-notes"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
@@ -229,7 +228,6 @@ export function CustomerPage() {
     />
   )
   const competitorList = <Competitors competitors={profile.competitors} />
-  const storefront = <CustomerStorefront key={customer.id} customer={{ name: customer.name, city: profile.city, area: profile.area }} clinic={customer.type === "clinic"} />
 
   return (
     <div className="flex min-h-svh flex-col">
@@ -253,7 +251,6 @@ export function CustomerPage() {
         <main className="flex flex-1 items-start gap-6 px-6 pt-4 pb-10">
           <div className="flex min-w-0 flex-1 flex-col gap-4">
             {alerts}
-            {storefront}
             {brief}
             {numbers}
             {pendingItems}
@@ -285,7 +282,6 @@ export function CustomerPage() {
       ) : (
         <main className="flex flex-1 flex-col gap-4 px-4 pt-4 pb-28">
           {alerts}
-          {storefront}
           {brief}
           {nextNotes}
           {lastOrderSection}
@@ -317,7 +313,7 @@ export function CustomerPage() {
       </Dialog>
 
       {!desktop && (
-        <div className="fixed inset-x-0 bottom-0 z-10 mx-auto flex max-w-md gap-2 border-t bg-card px-4 pt-3 pb-[max(env(safe-area-inset-bottom),0.75rem)]">
+        <div data-page-footer className="fixed inset-x-0 bottom-0 z-10 mx-auto flex max-w-md gap-2 border-t bg-card px-4 pt-3 pb-[max(env(safe-area-inset-bottom),0.75rem)]">
           {/* 每種客戶都有談判卡：連鎖是顧客導向，獨立藥局與診所是成本導向 */}
           <Button variant="outline" className="h-12 flex-1 gap-1.5" onClick={toNegotiation}>
             <Handshake className="size-4" />

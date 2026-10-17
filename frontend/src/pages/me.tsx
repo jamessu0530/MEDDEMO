@@ -7,6 +7,7 @@ import { UserAvatar } from "@/components/user-avatar"
 import { Mascot } from "@/components/mascot"
 import { MedalWall } from "@/components/me/medal-wall"
 import { MonthlySales, TopCustomers } from "@/components/me/sales-charts"
+import { PersonalMemory } from "@/components/me/personal-memory"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
 import { useAuth } from "@/lib/auth"
@@ -80,6 +81,11 @@ export function MePage() {
               <Stat value={String(state.me.stats.customers)} label="名下客戶" />
               <Stat value={formatWan(state.me.stats.sales_last_year, 0)} label="近一年業績" />
             </div>
+          </>
+        )}
+        <PersonalMemory />
+        {state.status === "ready" && user && (
+          <>
             <Link to="/mascots" className="flex min-h-20 items-center gap-3 rounded-2xl border-2 bg-card px-4 py-3 shadow-lip"><Mascot state="hi" size={54} /><span className="min-w-0 flex-1 text-base font-semibold">熊熊衣櫃</span><ChevronRight className="size-4 shrink-0 text-muted-foreground" /></Link>
             <MedalWall medals={state.me.medals} userId={user.id} />
             <section className="rounded-3xl border-2 bg-card p-4 shadow-lip">

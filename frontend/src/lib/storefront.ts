@@ -1,4 +1,9 @@
-export type StorefrontCustomer = { name: string; city: string; area: string }
+export type StorefrontCustomer = {
+  name: string
+  city: string
+  area: string
+  address?: string | null
+}
 export type StorefrontCandidate = {
   displayName?: string | null
   formattedAddress?: string | null
@@ -17,7 +22,11 @@ function storeName(value: string) {
 }
 
 export function storefrontQuery(customer: StorefrontCustomer) {
-  return [customer.city, customer.area, customer.name.replace(/\s*·\s*/g, " ")]
+  return [
+    customer.address ||
+      [customer.city, customer.area].filter(Boolean).join(" "),
+    customer.name.replace(/\s*·\s*/g, " "),
+  ]
     .filter(Boolean)
     .join(" ")
 }
@@ -47,9 +56,14 @@ export function findStorefront<T extends StorefrontCandidate>(
   const matches = candidates.filter((candidate) => {
     const name = storeName(candidate.displayName ?? "")
     const address = normalize(candidate.formattedAddress ?? "")
+    const street = normalize(customer.address ?? "")
+      .replace(/^\d{3,6}/, "")
+      .replace(/^臺灣/, "")
+      .match(/(?:市|縣).+?號/)?.[0]
     return (
       name.replace(/店$/, "") === expected.replace(/店$/, "") &&
-      districts.some((district) => address.includes(city + district))
+      districts.some((district) => address.includes(city + district)) &&
+      (!street || address.includes(street))
     )
   })
   return matches.length === 1 ? matches[0] : null

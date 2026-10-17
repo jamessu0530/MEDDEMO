@@ -37,6 +37,24 @@ describe("Google 店家核對", () => {
     ).toBeNull()
   })
 
+  it("清單有完整地址時，也核對道路與門牌，避免同區同名店套錯照片", () => {
+    const full = { ...customer, address: "台北市大安區忠孝東路四段1號" }
+    expect(findStorefront(full, [match])).toBe(match)
+    expect(
+      findStorefront(full, [
+        { ...match, formattedAddress: "台北市大安區忠孝東路四段11號" },
+      ])
+    ).toBeNull()
+    expect(
+      findStorefront(full, [
+        { ...match, formattedAddress: "台北市大安區復興南路四段1號" },
+      ])
+    ).toBeNull()
+    expect(storefrontQuery(full)).toBe(
+      "台北市大安區忠孝東路四段1號 康泰連鎖藥局 忠孝店"
+    )
+  })
+
   it("不把街道名稱当作行政區", () => {
     expect(
       findStorefront(customer, [

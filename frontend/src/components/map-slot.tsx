@@ -1,4 +1,13 @@
-import { Component, lazy, Suspense, useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from "react"
+import {
+  Component,
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react"
 
 import { getMapsConfig, type MapsConfig } from "@/api/maps"
 import type { RouteStop, TodayMap, TravelMode } from "@/api/route"
@@ -36,10 +45,26 @@ function subscribeAuth(listener: () => void) {
 const readAuthFailed = () => authFailed
 
 /** 主管頁的地圖區塊：團隊或一位業務的路線。className 是地圖的高度，手機是 h-64 */
-export function MapSlot({ routes, removed, className = "h-64" }: { routes: RepRoute[]; removed?: RemovedStop[]; className?: string }) {
+export function MapSlot({
+  routes,
+  removed,
+  className = "h-64",
+}: {
+  routes: RepRoute[]
+  removed?: RemovedStop[]
+  className?: string
+}) {
   return (
     <MapGate className={className}>
-      {(config, onFail) => <RouteMap config={config} routes={routes} removed={removed} className={className} onFail={onFail} />}
+      {(config, onFail) => (
+        <RouteMap
+          config={config}
+          routes={routes}
+          removed={removed}
+          className={className}
+          onFail={onFail}
+        />
+      )}
     </MapGate>
   )
 }
@@ -59,7 +84,14 @@ export function HomeMapSlot({
 }) {
   return (
     <MapGate className={className}>
-      {(config, onFail) => <HomeMap config={config} className={className} onFail={onFail} {...props} />}
+      {(config, onFail) => (
+        <HomeMap
+          config={config}
+          className={className}
+          onFail={onFail}
+          {...props}
+        />
+      )}
     </MapGate>
   )
 }
@@ -73,19 +105,28 @@ export function MapGate({
   className,
   children,
   fallback = <MapFallback />,
+  config: providedConfig,
 }: {
   className: string
   children: (config: NonNullable<MapsConfig>, onFail: () => void) => ReactNode
   fallback?: ReactNode
+  // 清單內多張照片共用已讀取的設定，避免每列重複請求。
+  config?: MapsConfig
 }) {
   // undefined：還在問；null：沒有瀏覽器金鑰
-  const [config, setConfig] = useState<MapsConfig | undefined>(undefined)
+  const [loadedConfig, setConfig] = useState<MapsConfig | undefined>(undefined)
+  const config = providedConfig === undefined ? loadedConfig : providedConfig
   // load/chunk 失敗（地圖那包下載不下來、React 錯誤邊界接住的例外）；金鑰被拒走下面的 rejected，不記在這裡
   const [failed, setFailed] = useState(false)
   // 金鑰被拒：裝在模組裡的 gm_authFailure，整個頁面只會呼叫一次，可能發生在這個元件還沒掛上的空檔
-  const rejected = useSyncExternalStore(subscribeAuth, readAuthFailed, readAuthFailed)
+  const rejected = useSyncExternalStore(
+    subscribeAuth,
+    readAuthFailed,
+    readAuthFailed
+  )
 
   useEffect(() => {
+    if (providedConfig !== undefined) return
     const controller = new AbortController()
     getMapsConfig(controller.signal)
       .then(setConfig)
@@ -93,7 +134,7 @@ export function MapGate({
         if (!controller.signal.aborted) setConfig(null)
       })
     return () => controller.abort()
-  }, [])
+  }, [providedConfig])
 
   const onFail = useCallback(() => setFailed(true), [])
 
@@ -103,18 +144,28 @@ export function MapGate({
   if (config === null) return fallback
   return (
     <MapBoundary onFail={onFail}>
-      <Suspense fallback={<MapPlaceholder className={className} />}>{children(config, onFail)}</Suspense>
+      <Suspense fallback={<MapPlaceholder className={className} />}>
+        {children(config, onFail)}
+      </Suspense>
     </MapBoundary>
   )
 }
 
 export function MapPlaceholder({ className }: { className: string }) {
-  return <div aria-hidden className={cn("animate-pulse rounded-2xl bg-muted", className)} />
+  return (
+    <div
+      aria-hidden
+      className={cn("animate-pulse rounded-2xl bg-muted", className)}
+    />
+  )
 }
 
 export function MapFallback() {
   return (
-    <p data-map-fallback className="rounded-xl bg-muted px-3 py-2.5 text-center text-xs text-muted-foreground">
+    <p
+      data-map-fallback
+      className="rounded-xl bg-muted px-3 py-2.5 text-center text-xs text-muted-foreground"
+    >
       地圖暫時載入不了
     </p>
   )
@@ -124,7 +175,10 @@ export function MapFallback() {
  * 地圖那一包是要畫地圖時才下載的，收訊不好就會失敗；沒有錯誤邊界的話 React 會卸載整頁，
  * 連清單都看不到。擋在地圖這一區，換成說明。React 的錯誤邊界只能用 class 元件寫（pages/ask.tsx 同）。
  */
-class MapBoundary extends Component<{ onFail: () => void; children: ReactNode }, { failed: boolean }> {
+class MapBoundary extends Component<
+  { onFail: () => void; children: ReactNode },
+  { failed: boolean }
+> {
   state = { failed: false }
 
   static getDerivedStateFromError() {

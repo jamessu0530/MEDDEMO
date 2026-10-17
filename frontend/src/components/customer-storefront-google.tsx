@@ -9,7 +9,10 @@ import {
 } from "@/components/icons"
 
 import type { MapsConfig } from "@/api/maps"
-import { StorefrontFallback } from "@/components/customer-storefront"
+import {
+  StorefrontFallback,
+  StorefrontThumbnailFallback,
+} from "@/components/customer-storefront"
 import { LoadWatch } from "@/components/map-load-watch"
 import {
   findStorefront,
@@ -28,10 +31,12 @@ export default function GoogleStorefront({
   customer,
   config,
   onFail,
+  compact = false,
 }: {
   customer: StorefrontCustomer
   config: NonNullable<MapsConfig>
   onFail: () => void
+  compact?: boolean
 }) {
   return (
     <APIProvider
@@ -41,15 +46,21 @@ export default function GoogleStorefront({
       onError={onFail}
     >
       <LoadWatch onFail={onFail} />
-      <StorefrontSearch customer={customer} />
+      <StorefrontSearch customer={customer} compact={compact} />
     </APIProvider>
   )
 }
 
-function StorefrontSearch({ customer }: { customer: StorefrontCustomer }) {
+function StorefrontSearch({
+  customer,
+  compact,
+}: {
+  customer: StorefrontCustomer
+  compact: boolean
+}) {
   const places = useMapsLibrary("places")
   const [state, setState] = useState<SearchState>({ status: "loading" })
-  const { name, city, area } = customer
+  const { name, city, area, address } = customer
   const query = storefrontQuery(customer)
 
   // 連 Google 程式或 Places library 都載不下來時，也不能讓這一區一直轉圈。
@@ -82,7 +93,7 @@ function StorefrontSearch({ customer }: { customer: StorefrontCustomer }) {
     })
       .then(async ({ places: candidates }) => {
         if (cancelled) return
-        const place = findStorefront({ name, city, area }, candidates)
+        const place = findStorefront({ name, city, area, address }, candidates)
         if (!place) {
           setState({ status: "missing" })
           return
@@ -101,7 +112,14 @@ function StorefrontSearch({ customer }: { customer: StorefrontCustomer }) {
     return () => {
       cancelled = true
     }
-  }, [places, query, name, city, area])
+  }, [places, query, name, city, area, address])
+
+  if (compact)
+    return state.status === "ready" ? (
+      <StorefrontThumbnail place={state.place} />
+    ) : (
+      <StorefrontThumbnailFallback />
+    )
 
   if (state.status === "loading")
     return <StorefrontLoading text="正在 Google 找這家店的照片…" />
@@ -113,7 +131,51 @@ function StorefrontSearch({ customer }: { customer: StorefrontCustomer }) {
     return (
       <StorefrontFallback text="Google 店家照片暫時載入不了，可以到 Google 地圖查看。" />
     )
-  return state.status === "ready" ? <StorefrontGallery place={state.place} /> : null
+  return state.status === "ready" ? (
+    <StorefrontGallery place={state.place} />
+  ) : null
+}
+
+function StorefrontThumbnail({ place }: { place: google.maps.places.Place }) {
+  const photo = place.photos?.[0]
+  const [failed, setFailed] = useState(false)
+  if (!photo || failed) return <StorefrontThumbnailFallback />
+  return (
+    <div>
+      <img
+        src={photo.getURI({ maxWidth: 320, maxHeight: 240 })}
+        alt={`${place.displayName ?? "店家"}的照片`}
+        loading="lazy"
+        className="h-20 w-24 rounded-lg bg-muted object-cover"
+        onError={() => setFailed(true)}
+      />
+      <p
+        className="mt-1 truncate text-[9px] leading-tight text-muted-foreground"
+        translate="no"
+      >
+        Google Maps
+      </p>
+      {photo.authorAttributions.map((author, index) => (
+        <p
+          key={index}
+          className="truncate text-[9px] leading-tight text-muted-foreground"
+        >
+          {author.uri ? (
+            <a
+              href={author.uri}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline"
+            >
+              {author.displayName}
+            </a>
+          ) : (
+            author.displayName
+          )}
+        </p>
+      ))}
+    </div>
+  )
 }
 
 function StorefrontGallery({ place }: { place: google.maps.places.Place }) {

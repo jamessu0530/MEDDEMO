@@ -8,7 +8,8 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react"
-import { Loader2, Mic, Minus, Send } from "@/components/icons"
+import { ChevronDown, Loader2, Mic, SendHorizontal } from "@/components/icons"
+import { useLocation } from "react-router"
 
 import type { Ask } from "@/api/asks"
 import { askSessionFor } from "@/ask/ask-session"
@@ -19,8 +20,9 @@ import {
 } from "@/ask/assistant-window"
 import { useConversation } from "@/ask/use-conversation"
 import { useCurrentPageContext } from "@/ask/use-page-context"
+import { hasPageAssistant } from "@/ask/page-assistant"
+import { useAssistantInset } from "@/ask/use-assistant-inset"
 import { EntryView } from "@/components/ask/entry-view"
-import { AskMemoryMap } from "@/components/ask/memory-map"
 import type { VoiceSession } from "@/components/ask/voice-dock"
 import { AttachButton, DraftFiles } from "@/components/attachments/draft-files"
 import { LearningAiGate } from "@/components/learning/ai-gate"
@@ -31,109 +33,67 @@ import { Input } from "@/components/ui/input"
 import { addDraftFiles, shrinkPhoto, type DraftFile } from "@/lib/attachments"
 import { useAuth } from "@/lib/auth"
 import { askScopeText } from "@/lib/scope"
+import { FIXED_COLUMN } from "@/lib/desktop-layout"
 import { cn } from "@/lib/utils"
 
 const loadVoiceDock = () => import("@/components/ask/voice-dock")
 
-/** 掛在登入外框中，所有頁面共用同一扇窗；收起時保留文字草稿、對話與查詢。 */
+/** 各頁的底部輸入列；共用對話與草稿，答案直接在輸入列上方展開。 */
 export function Assistant() {
   const user = useAuth()?.user
+  const { pathname, search } = useLocation()
+  const active = hasPageAssistant(pathname, search)
+  const inset = useAssistantInset(active)
   const open = useSyncExternalStore(
     assistantWindow.subscribe,
     assistantWindow.getSnapshot
   )
-  const [visited, setVisited] = useState(false)
-  if (open && !visited) setVisited(true)
-  const trigger = useRef<HTMLButtonElement>(null)
-  const panel = useRef<HTMLElement>(null)
-  const close = () => {
-    closeAssistant()
-    trigger.current?.focus()
-  }
+  useEffect(() => closeAssistant(), [pathname])
   useEffect(() => {
-    if (!open) return
+    if (!open || !active) return
     const onKey = (event: KeyboardEvent) => {
       const dialog =
         event.target instanceof Element
           ? event.target.closest('[role="dialog"]')
           : null
-      if (
-        event.key === "Escape" &&
-        !event.defaultPrevented &&
-        (!dialog || dialog === panel.current)
-      ) {
+      if (event.key === "Escape" && !event.defaultPrevented && !dialog) {
         closeAssistant()
-        trigger.current?.focus()
+        document
+          .getElementById("page-assistant-input")
+          ?.focus({ preventScroll: true })
       }
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [open])
+  }, [open, active])
   if (!user) return null
   return (
-    <>
-      <button
-        ref={trigger}
-        type="button"
-        aria-label={open ? "熊熊滾助理已開啟" : "問熊熊滾"}
-        aria-expanded={open}
-        aria-controls="assistant-panel"
-        onClick={() => {
-          setVisited(true)
-          openAssistant()
-        }}
-        className={cn(
-          "fixed right-3 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-30 flex min-h-12 items-center gap-2 rounded-full border-2 border-primary/25 bg-card px-3 py-1 shadow-lg lg:right-6 lg:bottom-5",
-          open && "hidden"
-        )}
-      >
-        <Mascot state="hi" size={40} bust />
-        <span className="text-sm font-semibold">問熊熊滾</span>
-      </button>
-      {(open || visited) && (
-        <section
-          ref={panel}
-          id="assistant-panel"
-          role="dialog"
-          aria-modal="false"
-          aria-labelledby="assistant-title"
-          aria-describedby="assistant-context"
-          hidden={!open}
-          className={cn(
-            "fixed right-2 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] left-2 z-40 flex h-[min(42rem,calc(100dvh-6rem))] flex-col overflow-hidden rounded-2xl border-2 bg-background shadow-2xl lg:right-5 lg:bottom-4 lg:left-auto lg:h-[min(46rem,calc(100dvh-2rem))] lg:w-[30rem] lg:max-w-[calc(100vw-16rem)]",
-            !open && "hidden"
-          )}
-        >
-          <header className="flex shrink-0 items-center gap-2 border-b bg-card px-4 py-2.5">
-            <Mascot state="hi" size={36} bust />
-            <div className="min-w-0 flex-1">
-              <h2 id="assistant-title" className="font-semibold">
-                熊熊滾助理
-              </h2>
-              <p className="text-xs text-muted-foreground">
-                直接問，也可以問其他頁面的事
-              </p>
-            </div>
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              onClick={close}
-              aria-label="收起熊熊滾"
-            >
-              <Minus className="size-5" />
-            </Button>
-          </header>
-          <LearningAiGate embedded active={open}>
-            <AssistantContent open={open} />
-          </LearningAiGate>
-        </section>
+    <div
+      data-page-assistant
+      hidden={!active}
+      className={cn(
+        FIXED_COLUMN,
+        "pointer-events-none z-30 px-2.5 py-2",
+        !active && "hidden"
       )}
-    </>
+      style={{ bottom: inset }}
+    >
+      <div className="pointer-events-auto">
+        <LearningAiGate embedded compact active={active}>
+          <AssistantContent open={open && active} active={active} />
+        </LearningAiGate>
+      </div>
+    </div>
   )
 }
 
-function AssistantContent({ open }: { open: boolean }) {
+function AssistantContent({
+  open,
+  active,
+}: {
+  open: boolean
+  active: boolean
+}) {
   const user = useAuth()?.user
   const page = useCurrentPageContext()
   const asking = askSessionFor(user?.id ?? "")
@@ -145,7 +105,7 @@ function AssistantContent({ open }: { open: boolean }) {
   const [preparing, setPreparing] = useState(false)
   const preparingRef = useRef(false)
   const [voiceOn, setVoiceOn] = useState(false)
-  if (!open && voiceOn) setVoiceOn(false)
+  if (!active && voiceOn) setVoiceOn(false)
   const [session, setSession] = useState<VoiceSession | null>(null)
   const [VoiceDock, setVoiceDock] = useState(() => lazy(loadVoiceDock))
   const [notice, setNotice] = useState<{
@@ -176,6 +136,7 @@ function AssistantContent({ open }: { open: boolean }) {
   async function submit(text: string) {
     const trimmed = text.trim()
     if (!trimmed || busy || preparingRef.current) return
+    openAssistant()
     const snapshot = {
       path: page.path,
       title: page.title,
@@ -223,34 +184,45 @@ function AssistantContent({ open }: { open: boolean }) {
   }
   return (
     <>
-      <div className="shrink-0 border-b bg-primary/5 px-4 py-2">
-        <p
-          id="assistant-context"
-          className="truncate text-xs font-medium text-primary"
-        >
-          正在參考：{page.title}
-        </p>
-      </div>
-      <div
-        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-4"
-        aria-label="與熊熊滾的對話"
+      <section
+        id="page-assistant-answers"
+        hidden={!open}
+        aria-label="與熊熊滾的共用對話"
+        className={cn(
+          "mb-2 max-h-[min(42dvh,24rem)] overflow-y-auto overscroll-contain rounded-2xl border bg-card p-3 shadow-lg",
+          !open && "hidden"
+        )}
       >
-        <AskMemoryMap
-          entries={entries}
-          edits={asking.mapEdits}
-          onJump={(id) =>
-            requestAnimationFrame(() => {
-              const element = document.getElementById(`ask-entry-${id}`)
-              element?.scrollIntoView({ behavior: "smooth", block: "nearest" })
-              element?.focus({ preventScroll: true })
-            })
-          }
-        />
-        <div className="mt-4 flex flex-col gap-4">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="truncate text-xs font-semibold text-primary">
+              熊熊滾 · {page.title}
+            </p>
+            {user && (
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                {askScopeText(user)}
+              </p>
+            )}
+          </div>
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            className="size-9 shrink-0"
+            aria-label="收起 AI 回覆"
+            onClick={() => {
+              closeAssistant()
+              inputRef.current?.focus({ preventScroll: true })
+            }}
+          >
+            <ChevronDown className="size-4" />
+          </Button>
+        </div>
+        <div className="flex flex-col gap-3">
           {entries.length === 0 && (
             <div className="flex flex-col gap-2">
               <p className="text-sm text-muted-foreground">
-                可以接著這個頁面問，也能換個話題
+                可以接著{page.title}問，也能延續其他頁的對話
               </p>
               {page.suggestions.map((example) => (
                 <button
@@ -295,9 +267,9 @@ function AssistantContent({ open }: { open: boolean }) {
           )}
           <div ref={bottomRef} />
         </div>
-      </div>
-      <div className="flex shrink-0 flex-col gap-2 border-t bg-card p-3">
-        {open && voiceOn && (
+      </section>
+      <div className="flex flex-col gap-2 rounded-2xl border-2 bg-background/95 p-2 shadow-lip backdrop-blur">
+        {active && voiceOn && (
           <VoiceBoundary onFail={failVoice}>
             <Suspense
               fallback={
@@ -325,11 +297,6 @@ function AssistantContent({ open }: { open: boolean }) {
           }}
           className="flex flex-col gap-1.5"
         >
-          {user && !session && (
-            <p className="text-xs text-muted-foreground">
-              {askScopeText(user)}
-            </p>
-          )}
           {pickError && <p className="text-xs text-destructive">{pickError}</p>}
           {!session && (
             <DraftFiles
@@ -339,10 +306,21 @@ function AssistantContent({ open }: { open: boolean }) {
             />
           )}
           <div className="flex gap-1.5">
+            <button
+              type="button"
+              className="flex w-8 shrink-0 items-center justify-center rounded-lg hover:bg-accent"
+              aria-label={open ? "收起共用對話" : "展開共用對話"}
+              aria-expanded={open}
+              aria-controls="page-assistant-answers"
+              onClick={() => (open ? closeAssistant() : openAssistant())}
+            >
+              <Mascot state={busy ? "think" : "hi"} size={32} bust />
+            </button>
             {!session && (
               <AttachButton onPick={pick} disabled={busy} multiple={false} />
             )}
             <Input
+              id="page-assistant-input"
               ref={inputRef}
               value={question}
               maxLength={500}
@@ -355,10 +333,10 @@ function AssistantContent({ open }: { open: boolean }) {
                   ? "打字也能問"
                   : files.length
                     ? "想問檔案的什麼？"
-                    : "直接問熊熊滾…"
+                    : `問問${page.title}…`
               }
               aria-label="輸入問題"
-              className="h-11 min-w-0 bg-background"
+              className="h-12 min-w-0 border-0 bg-transparent px-1 shadow-none"
             />
             {!voiceOn && (
               <Button
@@ -370,6 +348,7 @@ function AssistantContent({ open }: { open: boolean }) {
                 onClick={() => {
                   setNotice(null)
                   setVoiceOn(true)
+                  openAssistant()
                 }}
                 aria-label="用說的問"
               >
@@ -386,7 +365,7 @@ function AssistantContent({ open }: { open: boolean }) {
               {busy ? (
                 <Loader2 className="size-4 animate-spin" />
               ) : (
-                <Send className="size-4" />
+                <SendHorizontal className="size-4" />
               )}
             </Button>
           </div>

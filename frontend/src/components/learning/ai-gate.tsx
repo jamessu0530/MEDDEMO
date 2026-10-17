@@ -12,13 +12,42 @@ import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/lib/auth"
 
-export function LearningAiGate({ children, embedded = false, active = true }: { children: ReactNode; embedded?: boolean; active?: boolean }) {
+export function LearningAiGate({
+  children,
+  embedded = false,
+  active = true,
+  compact = false,
+}: {
+  children: ReactNode
+  embedded?: boolean
+  active?: boolean
+  compact?: boolean
+}) {
   const user = useAuth()?.user
   if (user?.role !== "sales") return children
-  return <SalesGate key={user.id} embedded={embedded} active={active}>{children}</SalesGate>
+  return (
+    <SalesGate
+      key={user.id}
+      embedded={embedded}
+      active={active}
+      compact={compact}
+    >
+      {children}
+    </SalesGate>
+  )
 }
 
-function SalesGate({ children, embedded, active }: { children: ReactNode; embedded: boolean; active: boolean }) {
+function SalesGate({
+  children,
+  embedded,
+  active,
+  compact,
+}: {
+  children: ReactNode
+  embedded: boolean
+  active: boolean
+  compact: boolean
+}) {
   const [course, setCourse] = useState<Course | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [attempt, setAttempt] = useState(0)
@@ -40,10 +69,48 @@ function SalesGate({ children, embedded, active }: { children: ReactNode; embedd
   }, [attempt, active])
 
   if (course?.ai_unlocked) return children
+  if (compact)
+    return (
+      <div className="flex min-h-14 items-center gap-2 rounded-2xl border-2 bg-card p-2 shadow-lip">
+        <LockKeyhole className="ml-1 size-4 shrink-0 text-muted-foreground" />
+        <p className="min-w-0 flex-1 text-xs text-muted-foreground">
+          {error ||
+            (course ? "完成新人課程即可使用熊熊滾" : "讀取 AI 使用資格中…")}
+        </p>
+        {error ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              setError(null)
+              setAttempt((value) => value + 1)
+            }}
+          >
+            重試
+          </Button>
+        ) : (
+          course && (
+            <Button size="sm" variant="outline" asChild>
+              <Link to="/first-week">繼續課程</Link>
+            </Button>
+          )
+        )}
+      </div>
+    )
   return (
-    <div className={embedded ? "min-h-0 flex-1 overflow-y-auto" : "flex min-h-svh flex-col"}>
+    <div
+      className={
+        embedded ? "min-h-0 flex-1 overflow-y-auto" : "flex min-h-svh flex-col"
+      }
+    >
       {!embedded && <PageHeader title="AI 問答" backTo="/" />}
-      <main className={embedded ? "flex flex-col items-center gap-4 px-5 py-6 text-center" : "flex flex-1 flex-col items-center gap-5 px-5 pt-10 pb-28 text-center"}>
+      <main
+        className={
+          embedded
+            ? "flex flex-col items-center gap-4 px-5 py-6 text-center"
+            : "flex flex-1 flex-col items-center gap-5 px-5 pt-10 pb-28 text-center"
+        }
+      >
         {error ? (
           <Notice
             text={error}

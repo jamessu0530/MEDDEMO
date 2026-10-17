@@ -40,7 +40,10 @@ export function BottomNav() {
   const fromRef = useRef(lastIndex)
   // FR-4.3：手機裡還有沒送出的錄音，訂單首頁顯示筆數，進去可看待送出清單
   const pending = items.filter((item) => item.state === "pending").length
-  const path = pathname.length > 1 && pathname.endsWith("/") ? pathname.slice(0, -1) : pathname
+  const path =
+    pathname.length > 1 && pathname.endsWith("/")
+      ? pathname.slice(0, -1)
+      : pathname
   const active = TABS.findIndex((tab) => tab.to === path)
 
   useLayoutEffect(() => {
@@ -66,8 +69,14 @@ export function BottomNav() {
 
   return (
     // 外層不吃點擊，只有那一條列可以按：列的左右和下面露出來的內容照樣捲得動
-    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-20 mx-auto max-w-md px-2.5 pb-[calc(0.5rem+env(safe-area-inset-bottom))] lg:hidden">
-      <nav aria-label="主要選單" className="pointer-events-auto relative flex rounded-full border bg-card p-1 shadow-lg shadow-black/10 dark:shadow-black/50">
+    <div
+      data-page-footer
+      className="pointer-events-none fixed inset-x-0 bottom-0 z-20 mx-auto max-w-md px-2.5 pb-[calc(0.5rem+env(safe-area-inset-bottom))] lg:hidden"
+    >
+      <nav
+        aria-label="主要選單"
+        className="pointer-events-auto relative flex rounded-full border bg-card p-1 shadow-lg shadow-black/10 dark:shadow-black/50"
+      >
         <span
           ref={pillRef}
           aria-hidden
@@ -76,7 +85,10 @@ export function BottomNav() {
             GLIDE,
             active < 0 && "hidden"
           )}
-          style={{ width: `calc((100% - 0.5rem) / ${TABS.length})`, transform: `translateX(${Math.max(active, 0) * 100}%)` }}
+          style={{
+            width: `calc((100% - 0.5rem) / ${TABS.length})`,
+            transform: `translateX(${Math.max(active, 0) * 100}%)`,
+          }}
         />
         {TABS.map(({ to, label, icon: Icon }, index) => (
           <NavLink
@@ -105,7 +117,12 @@ export function BottomNav() {
                   {pending}
                 </span>
               )}
-              {to === "/channels" && unread > 0 && <UnreadDot count={unread} className="absolute -top-1.5 -right-2.5" />}
+              {to === "/channels" && unread > 0 && (
+                <UnreadDot
+                  count={unread}
+                  className="absolute -top-1.5 -right-2.5"
+                />
+              )}
             </span>
             {label}
           </NavLink>

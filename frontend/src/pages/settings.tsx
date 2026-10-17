@@ -1,3 +1,4 @@
+import { PersonalMemory } from "@/components/me/personal-memory"
 import { useEffect, useState, type FormEvent, type ReactNode } from "react"
 import { ChevronRight, Loader2, LogOut } from "@/components/icons"
 import { Link, useLocation, useNavigate } from "react-router"
@@ -554,6 +555,7 @@ export function SettingsPage() {
     <div className="flex min-h-svh flex-col">
       <PageHeader title="帳號設定" backTo={homePath(user.role)} />
       <main className="flex flex-1 flex-col gap-5 px-4 pt-4 pb-10">
+        {user.role !== "sales" && <PersonalMemory />}
         <section className="rounded-2xl border-2 bg-card p-4 shadow-lip">
           <NameEditor user={user} />
           <p className="mt-1 text-sm text-muted-foreground">

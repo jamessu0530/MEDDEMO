@@ -8,6 +8,10 @@ import {
   type Customer,
 } from "@/api/customers"
 import { BottomNav } from "@/components/bottom-nav"
+import {
+  CustomerStorefrontList,
+  CustomerStorefrontThumbnail,
+} from "@/components/customer-storefront"
 import { Notice } from "@/components/notice"
 import { PendingUploads } from "@/components/pending-uploads"
 import { Input } from "@/components/ui/input"
@@ -155,11 +159,15 @@ export function CustomerPicker() {
           </p>
         )}
         {visible.length > 0 && (
-          <ul className="flex flex-col gap-2">
-            {visible.map((customer) => (
-              <CustomerRow key={customer.id} customer={customer} />
-            ))}
-          </ul>
+          <CustomerStorefrontList
+            offline={state.status === "ready" && state.cached}
+          >
+            <ul className="flex flex-col gap-2">
+              {visible.map((customer) => (
+                <CustomerRow key={customer.id} customer={customer} />
+              ))}
+            </ul>
+          </CustomerStorefrontList>
         )}
       </main>
       <BottomNav />
@@ -169,11 +177,19 @@ export function CustomerPicker() {
 
 function CustomerRow({ customer }: { customer: Customer }) {
   return (
-    <li>
+    <li className="flex items-start gap-3 rounded-xl border-2 bg-card p-3 shadow-lip">
+      <CustomerStorefrontThumbnail
+        customer={{
+          name: customer.name,
+          city: customer.city ?? "",
+          area: customer.area ?? "",
+          address: customer.address,
+        }}
+      />
       <Link
         to={`/customers/${customer.id}`}
         state={{ backTo: "/customers" }}
-        className="flex items-center gap-2 rounded-xl border-2 bg-card py-3 pr-2 pl-4 shadow-lip press"
+        className="flex min-h-20 min-w-0 flex-1 press items-center gap-2 rounded-lg"
       >
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-3">
