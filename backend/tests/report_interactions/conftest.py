@@ -37,6 +37,13 @@ def interaction_engine():
         assert today_function is not None
         with engine.begin() as conn:
             conn.exec_driver_sql(today_function.group())
+            # 升級商品 View 會授權給此角色；本組不跑完整 seed，須自行補齊，不能依賴其他測試先建立。
+            # 角色由整個 PostgreSQL 叢集共用，已有角色時保留原本的設定與權限。
+            conn.exec_driver_sql("""DO $$ BEGIN
+                IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'semantic_reader') THEN
+                    CREATE ROLE semantic_reader NOLOGIN;
+                END IF;
+            END $$;""")
         yield engine
     finally:
         engine.dispose()
