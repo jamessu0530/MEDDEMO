@@ -1,6 +1,97 @@
 .planner-page {
   --planner-accent: var(--primary);
 }
+.planner-workspace {
+  container: planner / inline-size;
+}
+.planner-navigation {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.5rem;
+}
+.planner-view-controls {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.5rem;
+}
+.planner-toolbar .planner-jump-date {
+  flex: 1;
+  width: 9rem;
+}
+@container planner (min-width: 52rem) {
+  .planner-navigation {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .planner-toolbar .planner-jump-date {
+    flex: none;
+  }
+}
+@container planner (max-width: 20rem) {
+  .planner-view-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .planner-toolbar .planner-jump-date {
+    flex: none;
+    width: 100%;
+  }
+  .planner-view-switcher {
+    margin-left: 0;
+  }
+}
+.planner-view-indicator {
+  transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.planner-view-stage {
+  view-transition-name: planner-calendar;
+}
+.planner-view-stage[data-transition="fallback"] {
+  animation: planner-view-enter 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+:root.planner-view-changing {
+  view-transition-name: none;
+}
+:root.planner-view-changing::view-transition {
+  pointer-events: none;
+}
+::view-transition-group(planner-calendar) {
+  animation-duration: 280ms;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+::view-transition-old(planner-calendar) {
+  animation: planner-view-leave 180ms ease-out both;
+}
+::view-transition-new(planner-calendar) {
+  animation: planner-view-enter 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes planner-view-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes planner-view-leave {
+  to {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.99);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .planner-view-indicator {
+    transition: none;
+  }
+  .planner-view-stage[data-transition="fallback"],
+  ::view-transition-group(planner-calendar),
+  ::view-transition-old(planner-calendar),
+  ::view-transition-new(planner-calendar) {
+    animation: none;
+  }
+}
 .planner-form input:not([type="checkbox"]),
 .planner-form select,
 .planner-form textarea,

@@ -32,6 +32,7 @@ import {
   EventChip,
 } from "@/components/calendar/calendar-views"
 import { EventDialog } from "@/components/calendar/event-dialog"
+import { useCalendarViewTransition } from "@/components/calendar/use-calendar-view-transition"
 import { NoteDialog } from "@/components/note-dialog"
 import { NoteRow } from "@/components/note-row"
 import { Notice } from "@/components/notice"
@@ -110,6 +111,7 @@ function CalendarWorkspacePage({
       return "month"
     }
   })
+  const transitionView = useCalendarViewTransition(view, setView)
   const [workspace, setWorkspace] = useState<api.CalendarWorkspace | null>(null)
   const [events, setEvents] = useState<api.CalendarEvent[]>([])
   const [legacy, setLegacy] = useState(new Map<string, CalendarDay>())
@@ -275,16 +277,25 @@ function CalendarWorkspacePage({
         !e.attendees.some((a) => a.is_me && a.status === "declined")
     )
   const shownEvents = visibleEvents(events)
-  useAskPageContext({ facts: [
-    `日曆檢視：${VIEWS.find(([value]) => value === view)?.[1] ?? view}`,
-    `選取日期：${anchor}`,
-    `顯示期間：${days[0]} 至 ${days.at(-1)}`,
-    `搜尋：${query.trim() || "無"}`,
-    `顯示中的日曆：${calendars.filter((calendar) => calendar.visible).map((calendar) => calendar.name).join("、") || "尚未載入"}`,
-    `顯示拜訪備忘：${showLegacy ? "是" : "否"}`,
-    ...(loading ? ["日曆資料載入中"] : [`目前範圍可見行程：${shownEvents.length} 筆`]),
-    ...(requestedEvent ? [`選取行程編號：${requestedEvent}`] : []),
-  ] })
+  useAskPageContext({
+    facts: [
+      `日曆檢視：${VIEWS.find(([value]) => value === view)?.[1] ?? view}`,
+      `選取日期：${anchor}`,
+      `顯示期間：${days[0]} 至 ${days.at(-1)}`,
+      `搜尋：${query.trim() || "無"}`,
+      `顯示中的日曆：${
+        calendars
+          .filter((calendar) => calendar.visible)
+          .map((calendar) => calendar.name)
+          .join("、") || "尚未載入"
+      }`,
+      `顯示拜訪備忘：${showLegacy ? "是" : "否"}`,
+      ...(loading
+        ? ["日曆資料載入中"]
+        : [`目前範圍可見行程：${shownEvents.length} 筆`]),
+      ...(requestedEvent ? [`選取行程編號：${requestedEvent}`] : []),
+    ],
+  })
   const dayEvents = shownEvents.filter((e) => onDay(e, anchor))
   const today = workspace?.today ?? dateKey(new Date())
   const canCreate = calendars.some((c) => c.can_edit)
@@ -309,7 +320,7 @@ function CalendarWorkspacePage({
     )
   }
   function changeView(next: CalendarView) {
-    setView(next)
+    transitionView(next)
     try {
       localStorage.setItem("meddemo:calendar-view", next)
     } catch {
@@ -419,7 +430,10 @@ function CalendarWorkspacePage({
   )
 
   return (
-    <div aria-busy={!workspace && !error} className="planner-page flex min-h-svh flex-col">
+    <div
+      aria-busy={!workspace && !error}
+      className="planner-page flex min-h-svh flex-col"
+    >
       <PageHeader
         title="日曆"
         subtitle="安排每一天"
@@ -495,79 +509,95 @@ function CalendarWorkspacePage({
               拖曳行程右側可改期。日／週檢視可拖曳底部調整結束時間。
             </p>
           </aside>
-          <div className="min-w-0 flex-1 space-y-4">
-            <div className="planner-toolbar flex flex-wrap items-center gap-2">
-              <div className="flex items-center gap-1">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label="上一段日期"
-                  onClick={() => navigate(-1)}
+          <div className="planner-workspace min-w-0 flex-1 space-y-4">
+            <div className="planner-toolbar planner-navigation">
+              <div className="flex min-w-0 items-center gap-2">
+                <div className="flex shrink-0 items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="上一段日期"
+                    onClick={() => navigate(-1)}
+                  >
+                    <ChevronLeft />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="下一段日期"
+                    onClick={() => navigate(1)}
+                  >
+                    <ChevronRight />
+                  </Button>
+                </div>
+                <h2
+                  className={cn(
+                    "min-w-0 flex-1 truncate text-base font-semibold sm:text-lg",
+                    view === "day" &&
+                      anchor === today &&
+                      "text-red-600 dark:text-red-400"
+                  )}
+                  title={
+                    view === "day"
+                      ? dayTitle(anchor)
+                      : monthTitle(anchor.slice(0, 7))
+                  }
                 >
-                  <ChevronLeft />
-                </Button>
+                  {view === "day"
+                    ? dayTitle(anchor)
+                    : monthTitle(anchor.slice(0, 7))}
+                </h2>
                 <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label="下一段日期"
-                  onClick={() => navigate(1)}
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setAnchor(workspace?.today ?? dateKey(new Date()))
+                    setQuery("")
+                  }}
                 >
-                  <ChevronRight />
+                  今天
                 </Button>
               </div>
-              <h2
-                className={cn(
-                  "min-w-0 flex-1 text-lg font-semibold sm:flex-none",
-                  view === "day" &&
-                    anchor === today &&
-                    "text-red-600 dark:text-red-400"
-                )}
-              >
-                {view === "day"
-                  ? dayTitle(anchor)
-                  : monthTitle(anchor.slice(0, 7))}
-              </h2>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setAnchor(workspace?.today ?? dateKey(new Date()))
-                  setQuery("")
-                }}
-              >
-                今天
-              </Button>
-              <input
-                type="date"
-                aria-label="跳到日期"
-                className="!w-36 text-sm"
-                value={anchor}
-                onChange={(e) => {
-                  if (e.target.value) {
-                    setAnchor(e.target.value)
-                    setQuery("")
-                  }
-                }}
-              />
-              <div
-                className="flex rounded-xl bg-muted p-1 sm:ml-auto"
-                role="group"
-                aria-label="日曆檢視"
-              >
-                {VIEWS.map(([value, label]) => (
-                  <button
-                    type="button"
-                    key={value}
-                    aria-pressed={value === view}
-                    className={cn(
-                      "min-h-8 rounded-lg px-3 text-sm",
-                      view === value && "bg-card font-semibold shadow-sm"
-                    )}
-                    onClick={() => changeView(value)}
-                  >
-                    {label}
-                  </button>
-                ))}
+              <div className="planner-view-controls">
+                <input
+                  type="date"
+                  aria-label="跳到日期"
+                  className="planner-jump-date text-sm"
+                  value={anchor}
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      setAnchor(e.target.value)
+                      setQuery("")
+                    }
+                  }}
+                />
+                <div
+                  className="planner-view-switcher relative isolate ml-auto grid shrink-0 grid-cols-4 rounded-xl bg-muted p-1"
+                  role="group"
+                  aria-label="日曆檢視"
+                >
+                  <span
+                    aria-hidden="true"
+                    className="planner-view-indicator pointer-events-none absolute inset-y-1 left-1 w-[calc((100%-0.5rem)/4)] rounded-lg bg-card shadow-sm"
+                    style={{
+                      transform: `translateX(${VIEWS.findIndex(([value]) => value === view) * 100}%)`,
+                    }}
+                  />
+                  {VIEWS.map(([value, label]) => (
+                    <button
+                      type="button"
+                      key={value}
+                      aria-pressed={value === view}
+                      className={cn(
+                        "relative min-h-8 rounded-lg px-2 text-sm sm:px-3",
+                        view === value && "font-semibold"
+                      )}
+                      onClick={() => changeView(value)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
             <div className="planner-toolbar flex items-center gap-2">
@@ -596,7 +626,10 @@ function CalendarWorkspacePage({
               </Button>
             </div>
             <details className="rounded-xl border bg-card p-3 xl:hidden">
-              <summary data-ui-demo-open="disclosure" className="cursor-pointer text-sm">
+              <summary
+                data-ui-demo-open="disclosure"
+                className="cursor-pointer text-sm"
+              >
                 顯示的日曆（{calendars.filter((c) => c.visible).length}）
               </summary>
               <div className="pt-3">{filters}</div>
@@ -689,101 +722,114 @@ function CalendarWorkspacePage({
                 onDragEnd={drop}
                 onDragCancel={() => setDragTitle("")}
               >
-                {query.trim() ? (
-                  searchError ? (
-                    <Notice text={searchError} />
-                  ) : search?.query === query.trim() ? (
-                    <>
-                      <p className="text-xs text-muted-foreground">
-                        {search.truncated
-                          ? "顯示前 100 個行程系列"
-                          : `${visibleEvents(search.events).length} 個符合的行程`}
-                      </p>
-                      <CalendarListView
-                        days={[]}
-                        today={today}
-                        events={visibleEvents(search.events)}
-                        selected={anchor}
-                        onOpen={open}
-                        onCreate={create}
-                        search
-                      />
-                    </>
-                  ) : (
-                    <p
-                      role="status"
-                      className="py-8 text-center text-sm text-muted-foreground"
-                    >
-                      搜尋中…
-                    </p>
-                  )
-                ) : view === "month" ? (
-                  <CalendarMonthView
-                    days={days}
-                    events={shownEvents}
-                    today={today}
-                    selected={anchor}
-                    onSelect={setAnchor}
-                    onOpen={open}
-                    onCreate={create}
-                    legacy={showLegacy ? legacy : new Map()}
-                  />
-                ) : view === "week" || view === "day" ? (
-                  <CalendarTimeView
-                    days={days}
-                    events={shownEvents}
-                    today={today}
-                    selected={anchor}
-                    onSelect={setAnchor}
-                    onOpen={open}
-                    onCreate={create}
-                  />
-                ) : (
-                  <CalendarListView
-                    days={days.filter((d) => d.startsWith(anchor.slice(0, 7)))}
-                    today={today}
-                    events={shownEvents}
-                    selected={anchor}
-                    onOpen={open}
-                    onCreate={create}
-                  />
-                )}
-                {!query.trim() && view === "month" && (
-                  <section className="mt-4 space-y-3 rounded-2xl border bg-card p-4">
-                    <div className="flex items-center justify-between gap-2">
-                      <h3
-                        className={cn(
-                          "text-sm font-semibold",
-                          anchor === today && "text-red-600 dark:text-red-400"
-                        )}
-                      >
-                        {dayTitle(anchor)}
-                      </h3>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        disabled={!canCreate}
-                        onClick={() => create(anchor)}
-                      >
-                        <Plus />
-                        新增
-                      </Button>
-                    </div>
-                    {dayEvents.length ? (
-                      dayEvents.map((event) => (
-                        <EventChip
-                          key={eventKey(event)}
-                          event={event}
+                <div
+                  key={view}
+                  className="planner-view-stage"
+                  data-view={view}
+                  data-transition={
+                    typeof document.startViewTransition === "function"
+                      ? "native"
+                      : "fallback"
+                  }
+                >
+                  {query.trim() ? (
+                    searchError ? (
+                      <Notice text={searchError} />
+                    ) : search?.query === query.trim() ? (
+                      <>
+                        <p className="text-xs text-muted-foreground">
+                          {search.truncated
+                            ? "顯示前 100 個行程系列"
+                            : `${visibleEvents(search.events).length} 個符合的行程`}
+                        </p>
+                        <CalendarListView
+                          days={[]}
+                          today={today}
+                          events={visibleEvents(search.events)}
+                          selected={anchor}
                           onOpen={open}
+                          onCreate={create}
+                          search
                         />
-                      ))
+                      </>
                     ) : (
-                      <p className="text-sm text-muted-foreground">
-                        這天沒有行程，按「新增」安排活動。
+                      <p
+                        role="status"
+                        className="py-8 text-center text-sm text-muted-foreground"
+                      >
+                        搜尋中…
                       </p>
-                    )}
-                  </section>
-                )}
+                    )
+                  ) : view === "month" ? (
+                    <CalendarMonthView
+                      days={days}
+                      events={shownEvents}
+                      today={today}
+                      selected={anchor}
+                      onSelect={setAnchor}
+                      onOpen={open}
+                      onCreate={create}
+                      legacy={showLegacy ? legacy : new Map()}
+                    />
+                  ) : view === "week" || view === "day" ? (
+                    <CalendarTimeView
+                      days={days}
+                      events={shownEvents}
+                      today={today}
+                      selected={anchor}
+                      onSelect={setAnchor}
+                      onOpen={open}
+                      onCreate={create}
+                    />
+                  ) : (
+                    <CalendarListView
+                      days={days.filter((d) =>
+                        d.startsWith(anchor.slice(0, 7))
+                      )}
+                      today={today}
+                      events={shownEvents}
+                      selected={anchor}
+                      onOpen={open}
+                      onCreate={create}
+                    />
+                  )}
+                  {!query.trim() && view === "month" && (
+                    <section className="mt-4 space-y-3 rounded-2xl border bg-card p-4">
+                      <div className="flex items-center justify-between gap-2">
+                        <h3
+                          className={cn(
+                            "text-sm font-semibold",
+                            anchor === today && "text-red-600 dark:text-red-400"
+                          )}
+                        >
+                          {dayTitle(anchor)}
+                        </h3>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={!canCreate}
+                          onClick={() => create(anchor)}
+                        >
+                          <Plus />
+                          新增
+                        </Button>
+                      </div>
+                      {dayEvents.length ? (
+                        dayEvents.map((event) => (
+                          <EventChip
+                            key={eventKey(event)}
+                            event={event}
+                            onOpen={open}
+                          />
+                        ))
+                      ) : (
+                        <p className="text-sm text-muted-foreground">
+                          這天沒有行程，按「新增」安排活動。
+                        </p>
+                      )}
+                    </section>
+                  )}
+                </div>
                 <DragOverlay>
                   {dragTitle && (
                     <div className="max-w-60 rounded-xl border bg-card px-3 py-2 text-sm shadow-lg">
