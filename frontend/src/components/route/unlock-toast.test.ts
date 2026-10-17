@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest"
 import { UnlockToast } from "@/components/route/unlock-toast"
 
 describe("UnlockToast", () => {
-  it("寫解鎖了哪一面，點了進個人頁", () => {
+  it("寫解鎖了哪一面，點了直接看個人獎牌", () => {
     const html = renderToStaticMarkup(
       createElement(
         MemoryRouter,
@@ -20,7 +20,7 @@ describe("UnlockToast", () => {
       )
     )
     expect(html).toContain("解鎖銀牌：跑過 3 家藥局")
-    expect(html).toContain('href="/me"')
+    expect(html).toContain('href="/me?view=achievements"')
     expect(html).toContain('role="status"')
     // 電腦版對齊路線欄，寬度跟著首頁的並排／單欄切換
     expect(html).toContain("lg:left-[calc(var(--app-sidebar-width)+1.5rem)]")

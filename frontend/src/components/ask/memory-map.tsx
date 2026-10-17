@@ -7,6 +7,7 @@ import {
 } from "react"
 import {
   ArrowUpRight,
+  ChevronRight,
   Focus,
   List,
   Loader2,
@@ -49,10 +50,12 @@ export function AskMemoryMap({
   entries,
   edits,
   onJump,
+  compact = false,
 }: {
   entries: Entry[]
   edits: MapEditsStore
   onJump: (id: number) => void
+  compact?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const changes = useSyncExternalStore(edits.subscribe, edits.getSnapshot)
@@ -72,29 +75,48 @@ export function AskMemoryMap({
   }
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <div className="memory-map-entry mt-3 flex items-center gap-3 rounded-xl border bg-card px-3 py-2">
-        <Waypoints
-          className="size-5 shrink-0 text-primary"
-          strokeWidth={1.75}
-          aria-hidden="true"
-        />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-xs font-medium">
-            {current?.label || "把查過的問題串起來"}
-          </p>
-          <p className="mt-0.5 truncate text-xs text-muted-foreground">
-            {current
-              ? `${current.meta} · ${graph.total} 題查詢`
-              : "問題、文件與頻道記憶的關聯"}
-          </p>
-        </div>
+      {compact ? (
         <DialogTrigger asChild>
-          <Button variant="outline" size="sm" className="shrink-0 gap-1.5">
-            記憶地圖
-            <span className="text-xs text-muted-foreground">3D</span>
-          </Button>
+          <button
+            type="button"
+            className="flex min-h-14 w-full items-center gap-3 px-4 py-3 text-left text-sm transition-colors hover:bg-muted/60 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+          >
+            <Waypoints
+              aria-hidden
+              className="size-5 shrink-0 text-muted-foreground"
+            />
+            <span className="flex-1 font-medium">記憶地圖</span>
+            <ChevronRight
+              aria-hidden
+              className="size-4 shrink-0 text-muted-foreground"
+            />
+          </button>
         </DialogTrigger>
-      </div>
+      ) : (
+        <div className="memory-map-entry mt-3 flex items-center gap-3 rounded-xl border bg-card px-3 py-2">
+          <Waypoints
+            className="size-5 shrink-0 text-primary"
+            strokeWidth={1.75}
+            aria-hidden="true"
+          />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs font-medium">
+              {current?.label || "把查過的問題串起來"}
+            </p>
+            <p className="mt-0.5 truncate text-xs text-muted-foreground">
+              {current
+                ? `${current.meta} · ${graph.total} 題查詢`
+                : "問題、文件與頻道記憶的關聯"}
+            </p>
+          </div>
+          <DialogTrigger asChild>
+            <Button variant="outline" size="sm" className="shrink-0 gap-1.5">
+              記憶地圖
+              <span className="text-xs text-muted-foreground">3D</span>
+            </Button>
+          </DialogTrigger>
+        </div>
+      )}
       <DialogContent
         showCloseButton={false}
         className="memory-map-dialog"

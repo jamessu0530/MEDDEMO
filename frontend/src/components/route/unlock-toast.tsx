@@ -21,7 +21,7 @@ export function UnlockToast({ medals, onDone }: { medals: Medal[]; onDone: () =>
   // 電腦版沒有底部分頁，輸入列貼著左欄底部（底在 1rem）：一樣疊在它上面、寬度跟左欄一樣，不壓到側邊欄與右邊的地圖
   return (
     <Link
-      to="/me"
+      to="/me?view=achievements"
       role="status"
       className={cn(
         "fixed inset-x-4 bottom-[calc(env(safe-area-inset-bottom)+8rem)] z-20 flex min-h-12 items-center gap-3 rounded-2xl border-2 bg-card px-4 py-3 shadow-lip press animate-in fade-in slide-in-from-bottom-2 motion-reduce:animate-none",
