@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.models import Customer, Product, SalesTransaction, SapQuotationDraft, Visit
 from app.pricing import supply_price
 from app.services import promo_packs
+from app.services.product_catalog import visible_catalog_products
 from app.services.promo_packs import Pack
 from app.timeutil import local_date
 
@@ -241,10 +242,12 @@ def build(session: Session, customer: Customer) -> LastOrder | None:
         return None
     current = promo_packs.current_packs(session)
     previous = promo_packs.period_packs(session, (line.pack.promotion_name for _, line in rows if line.pack))
-    products = {p.sku: p for p in session.scalars(select(Product).where(Product.sku.in_({line.sku for _, line in rows})))}
+    products = {p.sku: p for p in session.scalars(select(Product).where(Product.sku.in_({line.sku for _, line in rows}), visible_catalog_products()))}
     lines = []
     for source, line in rows:
-        product = products[line.sku]
+        product = products.get(line.sku)
+        if product is None:
+            continue
         if line.pack:
             repeat, change = compare(line.pack, line.qty, previous[line.pack.promotion_name], current, product.name)
         else:
@@ -254,6 +257,8 @@ def build(session: Session, customer: Customer) -> LastOrder | None:
             supply_price=supply_price(product.unit_price, customer.type), qty=line.qty, pack=line.pack,
             source=source.kind, change=change, repeat=repeat,
         ))
+    if not lines:
+        return None
     lines.sort(key=lambda line: line.change is None)  # sort 是穩定的：同一組裡照原本的順序
     return LastOrder(
         order=next((s for s in used if s.kind == "order"), None),

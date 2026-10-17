@@ -64,8 +64,8 @@ def test_first_read_builds_the_suggestion_ordered_by_distance(tx):
     assert all(s.source == "model" and s.duration_minutes == 40 for s in view.stops)
     times = [s.planned_time for s in view.stops]
     assert times == sorted(times) and times[0] > "09:30"
-    # 「需立即處理」那家鎖在第一站，其他幾站的順序是所有排法裡車程最短的
-    assert view.urgent and view.stops[0].customer_id == view.urgent["customer_id"]
+    # 不再自動鎖定警示客戶，排序仍須遵守習慣並縮短車程。
+    assert view.urgent is None
     customers = {c.id: c for c in tx.scalars(select(Customer).where(Customer.id.in_([s.customer_id for s in view.stops])))}
     ids = [s.customer_id for s in view.stops]
     points = [catalog.REGION_OFFICE["TW.N"]] + [(customers[cid].lat, customers[cid].lng) for cid in ids]
@@ -127,11 +127,12 @@ def test_misjudge_also_lowers_that_kind_of_reminder(tx):
     assert tx.get(RouteSnooze, ("U01", target.customer_id)) is not None
 
 
-def test_any_button_on_the_urgent_stop_clears_the_card(tx):
+def test_legacy_itineraries_do_not_expose_risk_alert_cards(tx):
     itinerary = service.get_or_create(tx, "U01")
-    urgent = service.view(tx, itinerary).urgent
-    service.apply_feedback(tx, "U01", urgent["customer_id"], "pin", 1)
+    itinerary.urgent = {"customer_id": "C001", "headline": "舊警示"}
+    tx.flush()
     assert service.view(tx, itinerary).urgent is None
+    assert service.progress(tx, itinerary).urgent is None
 
 
 def test_a_stale_version_is_refused(tx):
@@ -164,6 +165,8 @@ def test_a_finished_visit_moves_to_the_front(tx):
 def test_added_stops_go_where_they_detour_least(tx):
     itinerary = service.get_or_create(tx, "U01")
     on_route = [s.customer_id for s in service.view(tx, itinerary).stops]
+    tx.scalar(select(ItineraryStop).where(ItineraryStop.itinerary_id == itinerary.id, ItineraryStop.customer_id == on_route[0])).locked = True
+    tx.flush()
     mine = tx.scalars(select(Customer.id).where(Customer.owner_user_id == "U01", Customer.id.not_in(on_route))).first()
     theirs = tx.scalars(select(Customer.id).where(Customer.owner_user_id == "U02")).first()
     tx.add(RouteSnooze(user_id="U01", customer_id=mine, until=dt.date(2026, 10, 30)))
@@ -388,14 +391,15 @@ def test_habits_that_cannot_be_kept_are_skipped_today_with_the_reason(tx):
     plain = service.view(tx, service.get_or_create(tx, "U01"))
     ids = [s.customer_id for s in plain.stops]
     spec = route_habits.HabitSpec
-    # 「第三家排第一」跟「需立即處理那家排第一站」的鎖打架；「第四家排最後」與較新的「第五家排最後」也打架
+    # 「第三家排第一」跟較新的「第一家排第一」習慣打架；「第四家排最後」與較新的「第五家排最後」也打架
     first = route_habits.create(tx, "U01", spec("first", by_customer(ids[2])), "manual")
     older = route_habits.create(tx, "U01", spec("last", by_customer(ids[3])), "manual")
     newer = route_habits.create(tx, "U01", spec("last", by_customer(ids[4])), "manual")
+    fixed = route_habits.create(tx, "U01", spec("first", by_customer(ids[0])), "manual")
     view = rebuild(tx)
     skipped = {h.id: h for h in view.skipped_habits}
     assert set(skipped) == {first.id, older.id}
-    assert skipped[first.id].reason == f"跟『{plain.stops[0].customer_name} 排第一站』衝突"
+    assert skipped[first.id].reason == f"跟『{fixed.text}』衝突"
     assert skipped[older.id].reason == f"跟『{newer.text}』衝突" and skipped[older.id].conflict
     assert view.stops[0].customer_id == ids[0] and view.stops[-1].customer_id == ids[4]
     assert view.violations == []
@@ -409,15 +413,16 @@ def test_only_the_habits_that_actually_conflict_are_skipped(tx):
     plain = service.view(tx, service.get_or_create(tx, "U01"))
     ids = [s.customer_id for s in plain.stops]
     spec = route_habits.HabitSpec
-    # h1 跟鎖、跟 h2、h3 都不衝突，排得進去；h2、h3「排第一」兩兩衝突，也都各自跟「需立即處理那家排第一站」的鎖衝突
+    # h1 跟鎖、跟 h2、h3 都不衝突，排得進去；h2、h3「排第一」兩兩衝突，也都各自跟較新的「第一家排第一」習慣衝突
     h1 = route_habits.create(tx, "U01", spec("precedence", by_customer(ids[3]), by_customer(ids[4])), "manual")
     h2 = route_habits.create(tx, "U01", spec("first", by_customer(ids[1])), "manual")
     h3 = route_habits.create(tx, "U01", spec("first", by_customer(ids[2])), "manual")
+    fixed = route_habits.create(tx, "U01", spec("first", by_customer(ids[0])), "manual")
     view = rebuild(tx)
     skipped = {h.id: h for h in view.skipped_habits}
     assert h1.id not in skipped
-    assert skipped[h2.id].reason == f"跟『{h3.text}』衝突"
-    assert skipped[h3.id].reason == f"跟『{plain.stops[0].customer_name} 排第一站』衝突"
+    assert skipped[h2.id].reason == f"跟『{fixed.text}』衝突"
+    assert skipped[h3.id].reason == f"跟『{fixed.text}』衝突"
     assert view.stops[0].customer_id == ids[0]
     assert view.violations == []
 
@@ -435,7 +440,7 @@ def test_the_view_lists_todays_rules_and_what_the_order_breaks(tx):
     assert rule.text == f"{names[ids[3]]} 排在 {names[ids[1]]} 前面"
     assert rule.id in view.violations
     assert [(p.before, p.after) for p in view.precedences] == [(ids[3], ids[1])]
-    assert view.stops[0].locked and not view.stops[1].locked
+    assert not any(stop.locked for stop in view.stops)
 
 
 def test_added_stops_get_the_habit_defaults_and_keep_the_habit_rules(tx):
@@ -508,6 +513,7 @@ def test_preview_recomputes_times_without_saving(tx):
 def test_preview_inserts_a_new_stop_with_the_habit_defaults(tx):
     itinerary = service.get_or_create(tx, "U01")
     before = service.view(tx, itinerary)
+    before.stops[0].locked = True  # 模擬使用者在草稿鎖住第一站
     on_route = [s.customer_id for s in before.stops]
     [mine] = not_on_route(tx, on_route)
     route_habits.create(tx, "U01", route_habits.HabitSpec("duration", by_customer(mine), duration_minutes=20), "manual")
@@ -675,13 +681,14 @@ def test_optimized_keeps_the_rules_and_says_what_they_cost(tx):
     tx.execute(delete(RouteHabit).where(RouteHabit.user_id == "U01"))
     itinerary = service.get_or_create(tx, "U01")
     draft = service.draft_of(tx, itinerary)
+    draft.stops[0].locked = True  # 鎖定由使用者決定
     ids = [s.customer_id for s in draft.stops]
     names = {s.customer_id: s.customer_name for s in service.view(tx, itinerary).stops}
     draft.stops = [draft.stops[0], *reversed(draft.stops[1:])]
     draft.precedences = [(ids[4], ids[1])]
     result = service.optimized(tx, itinerary, draft)
     order = [s.customer_id for s in result.draft.stops]
-    # 第一站是「需立即處理」那家，鎖著；今天的先後一定守
+    # 第一站由使用者鎖住；今天的先後一定守
     assert order[0] == ids[0] and order.index(ids[4]) < order.index(ids[1]) and result.conflict == []
     assert any(line.startswith(f"守住『{names[ids[4]]} 排在 {names[ids[1]]} 前面』，比不守多") for line in result.costs)
     assert service.broken_rules(tx, itinerary, result.draft) == []

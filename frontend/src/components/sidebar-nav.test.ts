@@ -33,8 +33,8 @@ describe("SidebarNav", () => {
   })
 
   it("主管端的分頁照 view 標目前這一項", () => {
-    const html = render("manager", { notices: 3 }, "/manager", "?view=notices")
-    expect(activeText(html)).toContain("風險通報")
+    const html = render("manager", { oa: 3 }, "/manager", "?view=oa")
+    expect(activeText(html)).toContain("簽核")
     expect(html).toContain(">3<")
   })
 

@@ -132,5 +132,5 @@ def test_deleting_an_account_deletes_its_photo(tx, client):
 
 
 def test_uploads_count_against_their_own_limit():
-    assert usage.buckets_for("POST", "/api/avatars/me", "multipart/form-data; boundary=x") == ["avatar"]
+    assert usage.buckets_for("POST", "/api/avatars/me") == ["avatar"]
     assert usage.buckets_for("GET", "/api/avatars") == []

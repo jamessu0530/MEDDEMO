@@ -1,18 +1,18 @@
-"""熊熊滾的主動發言與風險通報（app/jobs/channels.py、services/risk.py），以及回答時看得到附圖與看板（services/channel_ai.py）。
+"""熊熊滾的主動發言（app/jobs/channels.py），以及回答時看得到附圖與看板（services/channel_ai.py）。
 
 時間一律用真實的台灣日期：示範對話、訊息、熊熊滾讀出來的到期日都是真實時間。
 """
 
 import datetime as dt
 
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 from test_attachments import photo
 from test_channel_memory import channel_by_name, existing, say
 
 from app.jobs import channels as channel_jobs
-from app.models import Attachment, ChannelMessage, ManagerNotice, MemoryItem, Visit
-from app.services import attachments, channel_ai, risk
+from app.models import AppUser, Attachment, ChannelMessage
+from app.services import attachments, channel_ai, channels
 from app.services.knowledge import KnowledgeAnswer
 from app.timeutil import TAIPEI
 
@@ -34,33 +34,16 @@ def ai_messages(session: Session, channel_id: int) -> list[ChannelMessage]:
     ))
 
 
-# ---- 風險通報進小組頻道 ----
-
-
-def test_a_risk_notice_also_lands_in_the_reps_team_channel(tx):
-    visit = tx.scalar(select(Visit).where(Visit.user_id == "U01", Visit.status == "synced").order_by(Visit.id))
-    tx.execute(delete(ManagerNotice).where(ManagerNotice.visit_id == visit.id))
-    visit.fields_final = {**(visit.fields_final or {}), "complaint": "測試：外盒破損"}
-    notice = risk.notify_manager(tx, visit)
+def test_legacy_risk_messages_are_hidden_and_do_not_count_as_unread(tx):
     team = channel_by_name(tx, "陳建宏小組")
-    message = tx.scalar(select(ChannelMessage).where(ChannelMessage.visit_id == visit.id))
-    assert (message.channel_id, message.kind, message.author_id) == (team.id, "notice", None)
-    assert message.body.startswith("林昱辰拜訪") and "客訴：測試：外盒破損" in message.body
-    assert f"風險分 {notice.score}" in message.body
-
-
-def test_no_team_channel_means_no_channel_notice(tx):
-    visit = tx.scalar(select(Visit).where(Visit.user_id == "U01", Visit.status == "synced").order_by(Visit.id.desc()))
-    tx.execute(delete(ManagerNotice).where(ManagerNotice.visit_id == visit.id))
-    visit.fields_final = {**(visit.fields_final or {}), "complaint": "測試：沒有小組頻道"}
-    team = channel_by_name(tx, "陳建宏小組")
-    tx.execute(delete(ChannelMessage).where(ChannelMessage.channel_id == team.id))
-    tx.execute(delete(MemoryItem).where(MemoryItem.channel_id == team.id))
-    from app.models import Channel
-
-    tx.execute(delete(Channel).where(Channel.id == team.id))
-    assert risk.notify_manager(tx, visit) is not None
-    assert tx.scalar(select(ChannelMessage).where(ChannelMessage.visit_id == visit.id)) is None
+    user = tx.get(AppUser, "U01")
+    before = channels.unread_counts(tx, user, [team.id])
+    message = ChannelMessage(channel_id=team.id, kind="notice", body="舊版風險通報")
+    tx.add(message)
+    tx.flush()
+    assert message.id not in {row.id for row, _ in channels.messages(tx, team.id)}
+    assert channels.messages(tx, team.id, after=message.id - 1) == []
+    assert channels.unread_counts(tx, user, [team.id]) == before
 
 
 # ---- 週摘要 ----

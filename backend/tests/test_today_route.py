@@ -5,7 +5,7 @@ import datetime as dt
 from sqlalchemy.orm import Session
 
 from app.models import Customer, RouteSignalWeight, RouteSnooze
-from app.services import customer_profile, route_model, today_route
+from app.services import route_model, today_route
 
 TODAY = dt.date(2026, 10, 28)
 
@@ -34,11 +34,8 @@ def test_every_rep_picks_their_own_customers(engine):
         seen |= picked
 
 
-def test_urgent_card_explains_the_first_pick(engine):
-    result = pick(engine)
-    assert result.urgent.customer_id == result.picked[0]["candidate"].customer_id
-    assert result.urgent.headline == today_route.SIGNAL_LABEL[result.picked[0]["signal"]]
-    assert result.urgent.detail
+def test_route_recommendations_do_not_create_risk_alert_cards(engine):
+    assert pick(engine).urgent is None
 
 
 def test_snoozed_customer_is_not_picked(engine):
@@ -122,16 +119,6 @@ def test_labels_for_several_customers_at_once(tx):
     found = today_route.labels(tx, "U01", list(ids))
     assert set(found) == set(ids)
     assert found[ids[0]] == today_route.label(tx, "U01", ids[0])
-
-
-def test_the_urgent_card_does_not_borrow_the_last_order_sentence(engine):
-    # 「上次訂的…促銷變了」只放在客戶檔案，首頁需立即處理那張卡的背景不拿它
-    with Session(engine) as session:
-        highlights = customer_profile.build_profile(session, session.get(Customer, "C001")).highlights
-        assert any(h.startswith(customer_profile.LAST_ORDER_PREFIX) for h in highlights)
-        candidate = next(c for c in route_model.candidates(session, TODAY, owner_id="U01") if c.customer_id == "C001")
-        urgent = today_route._urgent(session, candidate, "interval", "進貨間隔拉長")
-    assert urgent.note and not urgent.note.startswith(customer_profile.LAST_ORDER_PREFIX)
 
 
 def test_done_visits_are_only_the_ones_confirmed_today_in_taipei(tx):

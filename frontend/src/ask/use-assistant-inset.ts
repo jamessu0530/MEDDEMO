@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import { useLocation } from "react-router"
 
 /** 輸入列放在目前頁面的底部操作列／手機鍵盤上方。 */
-export function useAssistantInset(active = true) {
+export function useAssistantInset(active = true, floating = false) {
   const { pathname, search } = useLocation()
   const [inset, setInset] = useState(0)
   useEffect(() => {
@@ -27,6 +27,24 @@ export function useAssistantInset(active = true) {
           )
             bottom = Math.max(bottom, window.innerHeight - bounds.top)
         })
+      if (floating) {
+        const footerTop = window.innerHeight - bottom
+        document
+          .querySelectorAll<HTMLElement>("[data-assistant-obstacle]")
+          .forEach((element) => {
+            if (element.closest('[role="dialog"]')) return
+            resize.observe(element)
+            const bounds = element.getBoundingClientRect()
+            if (
+              bounds.width &&
+              bounds.height &&
+              bounds.top >= 0 &&
+              bounds.bottom >= footerTop - 24 &&
+              bounds.top < footerTop
+            )
+              bottom = Math.max(bottom, window.innerHeight - bounds.top + 8)
+          })
+      }
       setInset(Math.max(0, bottom))
     }
     const schedule = () => {
@@ -36,6 +54,7 @@ export function useAssistantInset(active = true) {
     const observer = new MutationObserver(schedule)
     observer.observe(document.body, { childList: true, subtree: true })
     window.addEventListener("resize", schedule)
+    if (floating) window.addEventListener("scroll", schedule, true)
     window.visualViewport?.addEventListener("resize", schedule)
     window.visualViewport?.addEventListener("scroll", schedule)
     schedule()
@@ -44,9 +63,10 @@ export function useAssistantInset(active = true) {
       observer.disconnect()
       resize.disconnect()
       window.removeEventListener("resize", schedule)
+      window.removeEventListener("scroll", schedule, true)
       window.visualViewport?.removeEventListener("resize", schedule)
       window.visualViewport?.removeEventListener("scroll", schedule)
     }
-  }, [pathname, search, active])
+  }, [pathname, search, active, floating])
   return inset
 }

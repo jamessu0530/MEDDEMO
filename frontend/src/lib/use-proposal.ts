@@ -1,6 +1,9 @@
 import { useState } from "react"
 
 import { ApiError } from "@/api/client"
+import type { Turn } from "@/api/asks"
+import { pageSnapshot } from "@/ask/conversation-context"
+import { useCurrentPageContext } from "@/ask/use-page-context"
 import { applyProposal, askRoute, optimizeRoute, type RouteProposal, type TodayRoute } from "@/api/route"
 
 // idle：沒在問；asking：等熊熊滾（輸入列換成「熊熊滾想一下…」）；open：對照卡開著。
@@ -20,12 +23,20 @@ const OFFLINE = "連不上伺服器，請再試一次。"
 export function useProposal({ userId, onApplied }: { userId: string | null; onApplied: (route: TodayRoute) => void }) {
   const [state, setState] = useState<ProposalState>({ status: "idle" })
   const [error, setError] = useState<string | null>(null)
+  const [turns, setTurns] = useState<Turn[]>([])
+  const page = useCurrentPageContext()
 
   async function run(send: () => Promise<RouteProposal>) {
+    const context = pageSnapshot(page)
     setError(null)
     setState({ status: "asking" })
     try {
       const proposal = await send()
+      setTurns((previous) => [...previous, {
+        question: proposal.question || "幫我把今天的行程排順一點",
+        answer: [proposal.summary, proposal.text, ...proposal.notes, ...proposal.conflict, proposal.kind === "proposal" ? "這份提案尚未套用。" : "目前尚未變更行程。"].filter(Boolean).join("\n").slice(0, 1000),
+        page: context,
+      }].slice(-6))
       setState({ status: "open", proposal, applying: false, stale: false, error: null })
       return true
     } catch (reason) {
@@ -44,6 +55,7 @@ export function useProposal({ userId, onApplied }: { userId: string | null; onAp
     setState({ ...state, applying: true, error: null })
     try {
       const route = await applyProposal(userId, proposal.id)
+      setTurns((previous) => previous.map((turn, index) => index === previous.length - 1 ? { ...turn, answer: `${turn.answer}\n使用者已套用這份提案。`.slice(-1000) } : turn))
       setState({ status: "idle" })
       onApplied(route)
     } catch (reason) {
@@ -68,5 +80,5 @@ export function useProposal({ userId, onApplied }: { userId: string | null; onAp
 
   const close = () => setState({ status: "idle" })
 
-  return { state, error, ask, optimize, apply, pick, retry, close }
+  return { state, error, turns, ask, optimize, apply, pick, retry, close }
 }

@@ -53,7 +53,7 @@ def _now() -> dt.datetime:
 def _active_channels(session: Session, since: dt.datetime) -> list[channels.ChannelInfo]:
     ids = session.scalars(
         select(ChannelMessage.channel_id)
-        .where(ChannelMessage.created_at >= since, ChannelMessage.kind.in_(("user", "notice")), ChannelMessage.deleted_at.is_(None))
+        .where(ChannelMessage.created_at >= since, ChannelMessage.kind == "user", ChannelMessage.deleted_at.is_(None))
         .distinct()
     )
     rows = list(session.scalars(select(Channel).where(Channel.id.in_(list(ids)))))
@@ -67,7 +67,7 @@ def _week_prompt(session: Session, info: channels.ChannelInfo, since: dt.datetim
         .where(
             ChannelMessage.channel_id == info.id,
             ChannelMessage.created_at >= since,
-            ChannelMessage.kind.in_(("user", "notice")),
+            ChannelMessage.kind == "user",
             ChannelMessage.deleted_at.is_(None),
         )
         .order_by(ChannelMessage.id)
@@ -84,7 +84,7 @@ def _week_prompt(session: Session, info: channels.ChannelInfo, since: dt.datetim
     )
     parts = ["上週的訊息（由舊到新）："]
     for message, author in rows:
-        who = "風險通報" if message.kind == "notice" else author
+        who = "舊版系統訊息" if message.kind == "notice" else author
         notes = "".join(f"〔附件：{a.caption or a.filename}〕" for a in files.get(message.id, []))
         parts.append(f"{message.created_at.astimezone(TAIPEI):%m/%d %H:%M} {who}：{message.body}{notes}")
     parts.append("\n這個頻道的重點：")
@@ -95,7 +95,7 @@ def _week_prompt(session: Session, info: channels.ChannelInfo, since: dt.datetim
 
 
 def weekly(session: Session, llm: LLM, now: dt.datetime | None = None) -> list[int]:
-    """過去七天有人發言（或有風險通報）、沒封存的頻道，各貼一則週摘要。某個頻道失敗就記 log、跳過。
+    """過去七天有人發言（或有舊版系統訊息）、沒封存的頻道，各貼一則週摘要。某個頻道失敗就記 log、跳過。
     回傳貼了的頻道。"""
     since = (now or _now()) - WEEK
     posted: list[int] = []

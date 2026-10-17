@@ -69,11 +69,11 @@ def shared_cities(db):
 
 def region_ranking(db, region: str) -> dict[str, list[str]]:
     """這一區近 90 天每個類別進貨金額由高到低的料號。用客戶的區算，跟服務裡照組織樹取範圍的寫法互相對照。"""
-    ranked: dict[str, list[str]] = {}
+    ranked: dict[str, list[str]] = {category: [] for category in CATEGORIES}
     for category, sku in db.execute(text("""
         SELECT p.category, t.sku FROM sales_transaction t
         JOIN customer c ON c.id = t.customer_id
-        JOIN product p ON p.sku = t.sku
+        JOIN v_product p ON p.sku = t.sku
         WHERE t.date > app_today() - 90
         GROUP BY p.category, t.sku
         ORDER BY sum(t.amount) DESC, t.sku
@@ -116,7 +116,8 @@ def test_a_rep_it_just_created_is_on_day_one_and_can_access_shared_customers(tx,
     assert len(page["key_customers"]) == 5
     # 同一區的進貨排名不看自己名下有沒有客戶
     assert {line["category"] for line in page["product_lines"]} == CATEGORIES
-    assert all(len(line["top"]) == 3 for line in page["product_lines"])
+    assert all(len(line["top"]) <= 3 for line in page["product_lines"])
+    assert all(not item["sku"].startswith(("HS-", "RX-", "OT-", "MD-", "DEMO-")) for line in page["product_lines"] for item in line["top"])
 
 
 def test_newcomer_means_the_first_thirty_days(tx, client, auth):
@@ -172,7 +173,7 @@ def test_product_lines_list_the_companys_best_sellers_of_that_category(client, a
     north = client.get("/api/first-week", headers=auth("U01")).json()["product_lines"]
     # 每條產品線一區，照人員主檔的順序
     assert [line["category"] for line in north] == ["保健品", "慢性處方", "一般用藥", "醫材"]
-    counts = dict(db.execute(text("SELECT category, count(*) FROM product GROUP BY 1")).all())
+    counts = dict(db.execute(text("SELECT category, count(*) FROM v_product GROUP BY 1")).all())
     products = {p.sku: p for p in db.execute(select(Product.sku, Product.name, Product.category, Product.unit_price, Product.aliases))}
     ranking = region_ranking(db, "北區")
     for line in north:

@@ -545,7 +545,7 @@ export function SettingsPage() {
       <div className="flex min-h-svh flex-col">
         <PageHeader title="帳號設定" backTo={homePath(user.role)} />
         <section className="m-4 rounded-2xl border-2 bg-card p-4 text-sm leading-relaxed shadow-lip">
-          目前正在展示{ROLE_LABEL[user.role]}「{user.name}」。請先在上方按「回原帳號」，再修改{user.demo.account.name}的帳號設定。
+          目前使用{ROLE_LABEL[user.role]}「{user.name}」。請先在上方按「回原帳號」，再修改{user.demo.account.name}的帳號設定。
         </section>
       </div>
     )

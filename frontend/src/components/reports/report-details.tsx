@@ -136,7 +136,7 @@ export function ReportDetailsDialog({
           error instanceof Error ? error.message : "匯出失敗，請再試一次"
         )
     } finally {
-      if (!controller.signal.aborted) setExporting(false)
+      setExporting(false)
     }
   }
 

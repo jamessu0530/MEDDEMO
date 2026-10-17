@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react"
+import { Activity, useEffect, useState, type ReactNode } from "react"
 import { createBrowserRouter, Navigate, Outlet, Route, useLocation, useNavigate, useParams } from "react-router"
 import { RouterProvider } from "react-router/dom"
 
@@ -17,6 +17,7 @@ import { clearAvatars, loadAvatars } from "@/lib/avatars"
 import { clearPreferences, loadPreferences } from "@/lib/preferences"
 import { clearMyPresence, loadMyPresence } from "@/lib/presence"
 import { realtime } from "@/lib/realtime"
+import { trimPath } from "@/lib/desktop-layout"
 import { useIsDesktop } from "@/lib/use-media-query"
 import { AdminPage } from "@/pages/admin"
 import { CalendarPage } from "@/pages/calendar"
@@ -37,6 +38,8 @@ import { LearningLessonPage } from "@/pages/learning-lesson"
 import { ProductLearningPage } from "@/pages/product-learning"
 import { OaFormPage } from "@/pages/oa-form"
 import { OaFormsPage } from "@/pages/oa-forms"
+import { OaAppsPage } from "@/pages/oa-apps"
+import { OaEditorPage } from "@/pages/oa-editor"
 import { OAuthCallbackPage } from "@/pages/oauth-callback"
 import { LoginPage } from "@/pages/login"
 import { MePage } from "@/pages/me"
@@ -84,7 +87,7 @@ function CatalogEntry() {
 /** 沒登入的頁：電腦版也照手機的寬度置中 */
 function PhoneColumn() {
   return (
-    <div className="lg:mx-auto lg:max-w-md">
+    <div data-ui-demo-page className="lg:mx-auto lg:max-w-md">
       <Outlet />
     </div>
   )
@@ -145,13 +148,27 @@ function RequireAuth() {
   return (
     <>
       <AppShell user={session.user}>
+        <ReportSession key={session.user.id} />
         <Outlet />
       </AppShell>
-      <Assistant key={session.user.id} />
       <CalendarReminderHost key={`calendar-${session.user.id}`} />
       {/* FR-11：第一次打開時說明三個主要操作，登入之後才顯示 */}
       <Onboarding />
     </>
+  )
+}
+
+/** 暫時去其他頁時保留整個報表工作區；隱藏時暫停訂閱、刷新及對話框。 */
+function ReportSession() {
+  const { pathname } = useLocation()
+  const active = trimPath(pathname) === "/reports"
+  const [visited, setVisited] = useState(active)
+  if (active && !visited) setVisited(true)
+  if (!visited) return null
+  return (
+    <Activity mode={active ? "visible" : "hidden"}>
+      <ReportsPage />
+    </Activity>
   )
 }
 
@@ -209,6 +226,7 @@ export default function App() {
 }
 
 function ApplicationRoutes() {
+  const session = useAuth()
   return (
     <>
       {/* 以手機為主：手機與平板維持手機的寬度置中；電腦版（≥1024px）登入後的頁由 AppShell 排，沒登入的頁照舊置中 */}
@@ -252,7 +270,8 @@ function ApplicationRoutes() {
             <Route path="/rides" element={<RidesPage />} />
             <Route path="/me" element={<MePage />} />
             <Route path="/mascots" element={<MascotsPage />} />
-            <Route path="/reports" element={<ReportsPage />} />
+            {/* 工作區由 RequireAuth 保留，換頁回來不會重新建立。 */}
+            <Route path="/reports" element={null} />
             {/* 舊語音書籤改為開啟全站助理 */}
             <Route path="/voice" element={<AssistantEntry />} />
             <Route path="/customers/:customerId" element={<CustomerPage />} />
@@ -264,6 +283,9 @@ function ApplicationRoutes() {
             <Route path="/visits/:visitId" element={<VisitPage />} />
             <Route path="/escalations" element={<EscalationsPage />} />
             <Route path="/oa/forms" element={<OaFormsPage />} />
+            <Route path="/oa/apps" element={<OaAppsPage />} />
+            <Route path="/oa/new/:code" element={<OaEditorPage />} />
+            <Route path="/oa/forms/:formId/edit" element={<OaEditorPage />} />
             <Route path="/oa/forms/:formId" element={<OaFormPage />} />
             <Route
               path="/manager"
@@ -292,6 +314,7 @@ function ApplicationRoutes() {
           </Route>
         </InkRoutes>
       </div>
+      <Assistant key={session?.user.id ?? "guest"} />
       <InkOverlay />
       <UiDemoOverlay />
     </>

@@ -15,6 +15,7 @@ export function HomeAsk({ userId, onApplied }: { userId: string; onApplied: (rou
   return (
     <>
       <div
+        data-assistant-obstacle
         className={cn(
           "pointer-events-none fixed inset-x-0 bottom-[calc(4.25rem+env(safe-area-inset-bottom))] z-20 mx-auto max-w-md px-2.5",
           // 電腦版沒有底部分頁列：貼著左欄底部
@@ -27,6 +28,7 @@ export function HomeAsk({ userId, onApplied }: { userId: string; onApplied: (rou
           busy={state.status === "asking"}
           error={flow.error}
           onAsk={flow.ask}
+          earlier={flow.turns}
         />
       </div>
       {state.status === "open" && (

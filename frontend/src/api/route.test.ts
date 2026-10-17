@@ -3,6 +3,11 @@ import { describe, expect, it } from "vitest"
 import { normalizeRoute, type TodayRoute } from "@/api/route"
 
 describe("normalizeRoute", () => {
+  it("讀取舊快取時清掉已移除的警示", () => {
+    const old = { stops: [], urgent: { customer_id: "a", headline: "舊警示" } } as unknown as TodayRoute
+    expect(normalizeRoute(old).urgent).toBeNull()
+  })
+
   it("手機上存的舊行程補上每段的交通方式與辦公室", () => {
     const old = { travel_mode: "scooter", stops: [{ customer_id: "a" }] } as unknown as TodayRoute
     const route = normalizeRoute(old)
@@ -15,6 +20,7 @@ describe("normalizeRoute", () => {
     expect(normalizeRoute(older).stops[0].travel_mode).toBe("drive")
     const fresh = {
       id: 7,
+      urgent: null,
       travel_mode: "drive",
       start_city: "台北市",
       office_start: false,

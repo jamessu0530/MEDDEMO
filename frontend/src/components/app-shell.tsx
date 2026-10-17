@@ -2,7 +2,7 @@ import type { ReactNode } from "react"
 import { useLocation } from "react-router"
 
 import { AppSidebar } from "@/components/app-sidebar"
-import { hasPageAssistant } from "@/ask/page-assistant"
+import { pageAssistantPlacement } from "@/ask/page-assistant"
 import { DemoRoleSwitcher } from "@/components/demo-role-switcher"
 import type { AuthUser } from "@/lib/auth"
 import { pageWidth } from "@/lib/desktop-layout"
@@ -26,24 +26,25 @@ export function AppShell({
   const width = pageWidth(pathname)
   const desktop = useIsDesktop()
   const collapsed = useSidebarCollapsed()
-  if (width === "bare")
-    return <div className="lg:mx-auto lg:max-w-md">{children}</div>
+  const bare = width === "bare"
+  // 錄音頁也保留同一層外框，避免切換時把保留中的報表工作區一起卸載。
   return (
     <>
       {/* 手機上整條側邊欄是隱藏的，不要掛上去，免得它的計數器還在背景一直抓資料 */}
-      {desktop && (
+      {desktop && !bare && (
         <AppSidebar
           user={user}
           collapsed={collapsed}
           onToggle={() => setSidebarCollapsed(!collapsed)}
         />
       )}
-      <div className="lg:pl-[var(--app-sidebar-width)]">
-        <DemoRoleSwitcher user={user} />
+      <div className={bare ? "lg:mx-auto lg:max-w-md" : "lg:pl-[var(--app-sidebar-width)]"}>
+        {!bare && <DemoRoleSwitcher user={user} />}
         <div
+          data-ui-demo-page
           className={cn(
             width === "column" && "lg:mx-auto lg:max-w-2xl",
-            hasPageAssistant(pathname, search) && "pb-24"
+            pageAssistantPlacement(pathname, search) === "dock" && "pb-[var(--page-assistant-dock-space,16rem)]"
           )}
         >
           {children}

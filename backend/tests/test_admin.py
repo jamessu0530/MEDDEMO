@@ -1,7 +1,7 @@
 """組織管理與 IT（backend/app/services/org_admin.py、api/admin.py）。
 
 IT 坐在組織樹的根節點上，路徑就是 TW：截到任何共享層級都還是 TW，所以全公司看得到也動得了，
-跟「主管看得到屬下」是同一個式子。主管端的提問、通報、簽核也改看組織樹，組織一改就跟著走。
+跟「主管看得到屬下」是同一個式子。主管端的提問、簽核也改看組織樹，組織一改就跟著走。
 
 會改組織的測試都跑在一條連線的交易裡（tx fixture，定義在 conftest.py）：API 的每個請求與測試本身共用這條連線，
 測完整個回滾，別的測試看到的還是原本灌好的組織。
@@ -16,8 +16,7 @@ from sqlalchemy.orm import Session
 from app import realtime
 from app.config import settings
 from app.main import app
-from app.models import AppUser, AskRecord, Escalation, OaApprovalStep, OaExpenseForm, OrgChangeLog, SapEmployee, Visit
-from app.services import risk
+from app.models import AppUser, AskRecord, Escalation, OaApprovalStep, OaExpenseForm, OrgChangeLog, SapEmployee
 from app.services.org import paths_from_reports
 from app.services.scope import SELF, Scope
 from app.services.sql_executor import run_readonly
@@ -83,7 +82,7 @@ def test_only_it_can_open_the_org_admin(client, auth):
     assert all(not u["id"].startswith("X") for u in chart["users"])
     assert member(chart, "U01")["customer_count"] == 53  # 50 家加新竹那三家
     # 主管端 IT 也進得去
-    assert client.get("/api/manager/notices", headers=auth("A01")).status_code == 200
+    assert client.get("/api/manager/customer-priority", headers=auth("A01")).status_code == 200
     assert client.get("/api/oa/inbox", headers=auth("A01")).status_code == 200
 
 
@@ -133,11 +132,7 @@ def test_changing_a_reps_manager_moves_their_pending_approval(tx, client, auth):
     assert decided["steps"][-1]["name"] == "James"
 
 
-def test_notices_and_escalations_reach_the_direct_manager_and_it(tx, client, auth):
-    visit = tx.scalar(select(Visit).where(Visit.user_id == "U02", Visit.status == "synced").order_by(Visit.id))
-    visit.fields_final = {**(visit.fields_final or {}), "complaint": "測試：補貨延遲"}
-    notice = risk.notify_manager(tx, visit)
-    assert notice.manager_id == "M01"
+def test_escalations_reach_the_direct_manager_and_it(tx, client, auth):
     # 自建帳號不在樹上：他轉出去的提問換算成代理的 U01，送到 U01 的主管
     tx.add(AppUser(id="XTEST02", name="自建", role="sales", region="北區", acts_as_user_id="U01"))
     tx.flush()
@@ -146,20 +141,11 @@ def test_notices_and_escalations_reach_the_direct_manager_and_it(tx, client, aut
     tx.add(Escalation(ask_id="test-admin-ask", question="測試：換貨"))
     tx.commit()
 
-    def notices(user_id):
-        return {n["id"] for n in client.get("/api/manager/notices", headers=auth(user_id)).json()}
-
     def escalations(user_id):
         return {e["ask_id"] for e in client.get("/api/escalations", headers=auth(user_id)).json()}
 
-    assert notice.id in notices("M01") and notice.id in notices("A01") and notice.id not in notices("M02")
     assert "test-admin-ask" in escalations("M01") and "test-admin-ask" in escalations("A01")
     assert "test-admin-ask" not in escalations("M02")
-
-    # 業務換了主管，通報跟著人走（不看通報當時記的 manager_id）
-    client.put("/api/admin/users/U02/manager", json={"manager_id": "M02"}, headers=auth("A01"))
-    assert notice.id in notices("M02") and notice.id not in notices("M01")
-
 
 def test_a_deactivated_account_cannot_sign_in(tx, client, auth):
     token = auth("U05")
@@ -233,7 +219,7 @@ def test_promoting_hands_the_customers_over_and_takes_effect_without_signing_in_
     assert chart["log"][0]["detail"] == "王冠宇從業務升為中區主管，50 家客戶移交給林昱辰"
     # 權限每個請求都讀資料庫：同一張 token 馬上就是主管
     assert client.get("/api/auth/me", headers=token).json()["role"] == "manager"
-    assert client.get("/api/manager/notices", headers=token).status_code == 200
+    assert client.get("/api/manager/customer-priority", headers=token).status_code == 200
 
     # 底下沒有人，可以降回業務
     chart = client.put(

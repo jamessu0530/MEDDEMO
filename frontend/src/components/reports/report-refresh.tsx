@@ -7,6 +7,7 @@ import {
 } from "@/lib/report-refresh"
 
 export function ReportRefreshControls({
+  compact = false,
   seconds,
   busy,
   loadedAt,
@@ -14,6 +15,7 @@ export function ReportRefreshControls({
   onChange,
   onRefresh,
 }: {
+  compact?: boolean
   seconds: RefreshSeconds
   busy: boolean
   loadedAt: string | null
@@ -22,9 +24,15 @@ export function ReportRefreshControls({
   onRefresh: () => void
 }) {
   const fullLoadedTime = reportLoadedTime(loadedAt)
-  const loadedTime = loadedAt && Number.isFinite(Date.parse(loadedAt))
-    ? new Intl.DateTimeFormat("zh-TW", { timeZone: "Asia/Taipei", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(loadedAt))
-    : fullLoadedTime
+  const loadedTime =
+    loadedAt && Number.isFinite(Date.parse(loadedAt))
+      ? new Intl.DateTimeFormat("zh-TW", {
+          timeZone: "Asia/Taipei",
+          hour: "2-digit",
+          minute: "2-digit",
+          hourCycle: "h23",
+        }).format(new Date(loadedAt))
+      : fullLoadedTime
   const current = useRef({ busy, onRefresh })
   const lastAttempt = useRef(0)
   useEffect(() => {
@@ -57,6 +65,46 @@ export function ReportRefreshControls({
       window.removeEventListener("online", check)
     }
   }, [seconds])
+  if (compact)
+    return (
+      <div className="report-refresh-summary" aria-label="資料更新">
+        <div className="report-refresh-line">
+          <p role="status" title={fullLoadedTime}>
+            資料截至 {asOf ?? "載入中"} · 更新 {loadedTime}
+          </p>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onRefresh}
+            aria-label={busy ? "正在刷新" : "刷新資料"}
+          >
+            {busy ? (
+              <LoaderCircle className="size-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="size-3.5" />
+            )}
+          </button>
+        </div>
+        <details>
+          <summary>更新設定</summary>
+          <label className="report-refresh-interval">
+            自動刷新
+            <select
+              aria-label="自動刷新間隔"
+              value={seconds}
+              onChange={(event) =>
+                onChange(Number(event.target.value) as RefreshSeconds)
+              }
+            >
+              <option value="0">關閉</option>
+              <option value="60">每 1 分鐘</option>
+              <option value="300">每 5 分鐘</option>
+              <option value="900">每 15 分鐘</option>
+            </select>
+          </label>
+        </details>
+      </div>
+    )
   return (
     <div
       className="mt-3 flex min-w-0 flex-wrap items-center gap-2 border-t pt-3"

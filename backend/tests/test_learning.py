@@ -15,7 +15,7 @@ from app.tasks import redis
 
 ANSWERS = {
     "customer-v1": {"opened": True, "priority": "promise"},
-    "product-v1": {"view": "promotions", "sku": "DEMO-A", "quantity": "12"},
+    "product-v1": {"view": "promotions", "sku": "C130082", "quantity": "12"},
     "route-v1": {"order": ["clinic", "pharmacy"]},
     "visit-v1": {"reviewed": True, "competitor": "御松田", "intent": ""},
     "ask-v1": {"asked": True, "source_opened": True, "action": "escalate"},

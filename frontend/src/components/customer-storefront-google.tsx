@@ -125,7 +125,7 @@ function StorefrontSearch({
     return <StorefrontLoading text="正在 Google 找這家店的照片…" />
   if (state.status === "missing")
     return (
-      <StorefrontFallback text="Google 尚未找到店名與地區都符合的店家。示範客戶可能沒有實際店面，可以到 Google 地圖確認。" />
+      <StorefrontFallback text="Google 尚未找到店名與地區都符合的店家，可以到 Google 地圖進一步確認。" />
     )
   if (state.status === "error")
     return (

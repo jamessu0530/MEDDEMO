@@ -31,7 +31,7 @@ def test_disabled_demo_keeps_normal_permissions(client, auth):
     assert client.get("/api/auth/me", headers=authorization).json()["demo"] is None
     assert client.post("/api/auth/demo-role", headers=authorization, json={"role": "it"}).status_code == 403
     assert client.get("/api/admin/org", headers=authorization).status_code == 403
-    assert client.get("/api/manager/notices", headers=authorization).status_code == 403
+    assert client.get("/api/manager/customer-priority", headers=authorization).status_code == 403
 
 
 @pytest.mark.parametrize("account_id", ["U01", "U02", "M02", "A01"])
@@ -52,7 +52,7 @@ def test_every_account_can_switch_without_changing_accounts(client, auth, tx, en
         account_id, claims["sv"], claims["exp"],
     )
     assert client.get("/api/auth/me", headers=headers(result["token"])).json() == result["user"]
-    assert client.get("/api/manager/notices", headers=headers(result["token"])).status_code == (403 if role == "sales" else 200)
+    assert client.get("/api/manager/customer-priority", headers=headers(result["token"])).status_code == (403 if role == "sales" else 200)
     assert client.get("/api/admin/org", headers=headers(result["token"])).status_code == (200 if role == "it" else 403)
     tx.expire_all()
     for user_id, original in before.items():
@@ -76,7 +76,7 @@ def test_switches_keep_original_account_and_restore_it(client, auth, env):
 def test_manager_data_scope_matches_demo_manager(client, auth, env):
     env(DEMO_ROLE_SWITCH="true")
     demo = switch(client, auth("U04"), "manager")
-    for path in ("/api/manager/notices", "/api/oa/inbox"):
+    for path in ("/api/manager/customer-priority", "/api/oa/inbox"):
         expected = client.get(path, headers=auth("M01"))
         actual = client.get(path, headers=headers(demo["token"]))
         assert expected.status_code == actual.status_code == 200
@@ -92,7 +92,7 @@ def test_disabling_demo_revokes_existing_demo_permissions(client, auth, env):
     me = client.get("/api/auth/me", headers=authorization).json()
     assert me["id"] == "U02" and me["role"] == "sales" and me["demo"] is None
     assert client.get("/api/admin/org", headers=authorization).status_code == 403
-    assert client.get("/api/manager/notices", headers=authorization).status_code == 403
+    assert client.get("/api/manager/customer-priority", headers=authorization).status_code == 403
 
 
 def test_logout_invalidates_real_account_only(client, auth, tx, env):

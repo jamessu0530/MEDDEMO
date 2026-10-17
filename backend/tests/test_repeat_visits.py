@@ -42,12 +42,12 @@ def test_same_as_last_time_becomes_this_months_quote(client, providers, engine):
         "relative": [{"product_text": "Premium 小口", "sku": "F749579", "promo_code": premium, "delta": 1}],
     }))
     intent = {(i["sku"], i["promo_code"]): i for i in visit["fields"]["intent"]}
-    # 忠孝店上次訂的 22 列，威鎮不要
-    assert len(intent) == 21 and ("D120013", None) not in intent
+    # 舊訂單只複製仍在型錄的真實品項，這次再排除威鎮。
+    assert {sku for sku, _ in intent} == {"F749579", "F763630", "C130082"}
     assert intent[("F749579", premium)]["qty"] == 2
     assert intent[("F763630", None)] == {"product_text": "40EXa眼藥水", "sku": "F763630", "qty": 57, "unit": "瓶", "promo_code": None}
     snapshot = visit["repeat_last"]
-    assert (snapshot["said"], snapshot["copied"], snapshot["except_names"]) == (SAID, 21, ["威鎮凝膠"])
+    assert (snapshot["said"], snapshot["copied"], snapshot["except_names"]) == (SAID, 3, ["威鎮凝膠"])
     assert snapshot["order"] == {"order_no": "SO20261005-C001", "date": "2026-10-05"}
     assert [c["text"] for c in snapshot["changes"]] == [
         "中口這期沒了，只剩小口（買 22 送 1，$3,080）", "從買 10 送 2 變成買 15 送 2，一口 $800 → $1,200",
@@ -68,7 +68,7 @@ def test_same_as_last_time_becomes_this_months_quote(client, providers, engine):
 
 def test_same_as_last_time_for_a_customer_who_never_ordered(client, providers, monkeypatch):
     monkeypatch.setattr(last_order, "build", lambda session, customer: None)
-    spoken = [{"product_text": "魚油", "sku": "HS-FO30", "qty": 20, "unit": "盒", "promo_code": None}]
+    spoken = [{"product_text": "魚油", "sku": "F764521", "qty": 20, "unit": "盒", "promo_code": None}]
     visit = draft(client, providers, RepeatExtractor({"all": True, "except_skus": [], "relative": []}, intent=spoken))
     assert visit["fields"]["intent"] == spoken
     assert visit["error_message"] == repeat_order.EMPTY_NOTE and visit["repeat_last"]["empty"] is True

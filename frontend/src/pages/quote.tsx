@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { useAskPageContext } from "@/ask/use-page-context"
 import { useNavigate, useParams } from "react-router"
 
 import { ApiError } from "@/api/client"
@@ -141,6 +142,13 @@ export function QuotePage() {
   // 送不出去的原因，寫在按鈕上
   const blocked = quoteBlocked({ plainCount: chosen.length, packCount: chosenPacks.length, discount, route, reason })
   const hasLines = items.length > 0 || promotion !== null
+  useAskPageContext({ facts: [
+    `客戶編號：${customerId}`,
+    ...(state.status === "ready" ? [`客戶：${state.customer.name}`] : ["客戶報價資料尚未載入"]),
+    `報價草稿選取品項：${chosen.map((line) => `${line.item.name}（${line.qty} ${line.item.unit}）`).join("、") || "尚未選取"}`,
+    `折扣草稿：${discountText || "未填寫"}%`,
+    `報價尚未送出${blocked ? `；尚待確認：${blocked}` : ""}`,
+  ] })
 
   function fillFromLast() {
     if (!last) return
@@ -358,7 +366,7 @@ function PromotionSection({ promotion, packCounts, quantities, notes, onPackChan
       </div>
       {promotion.pm_note && (
         <details className="rounded-xl border-2 bg-card px-4 py-1 text-xs shadow-lip">
-          <summary className="flex min-h-11 cursor-pointer items-center font-medium">整張訂單的活動</summary>
+          <summary data-ui-demo-open="disclosure" className="flex min-h-11 cursor-pointer items-center font-medium">整張訂單的活動</summary>
           <p className="whitespace-pre-line text-muted-foreground">{promotion.pm_note}</p>
           <p className="mt-2 mb-2 text-muted-foreground">系統不算滿額贈與禮券，給你跟客戶談的時候參考。</p>
         </details>

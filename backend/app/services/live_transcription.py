@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models import Customer, Product
+from app.services.product_catalog import visible_catalog_products
 from app.services.transcription import hotword_terms
 from app.services.speech_languages import LIVE_LANGUAGE_CODES, SpeechLanguage
 from app.services.voice import API_VERSION, mint_token
@@ -42,7 +43,7 @@ def vocabulary(session: Session, customer_id: str | None) -> list[str]:
     if customer:
         words += [customer.name, *(part.strip() for part in customer.name.split("·"))]
     words += hotword_terms()
-    products = session.execute(select(Product.name, Product.aliases).where(Product.common).order_by(Product.sku)).all()
+    products = session.execute(select(Product.name, Product.aliases).where(Product.common, visible_catalog_products()).order_by(Product.sku)).all()
     words += [name for name, _ in products]
     words += [alias for _, aliases in products for alias in aliases]
     return list(dict.fromkeys(word for word in words if word))[:MAX_VOCABULARY]

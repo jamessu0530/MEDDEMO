@@ -4,7 +4,12 @@ import { MousePointer2, Square, X } from "@/components/icons"
 import { useLocation, useNavigate } from "react-router"
 import { Mascot } from "@/components/mascot"
 import { Button } from "@/components/ui/button"
-import { ORDER_DEMO_STEPS } from "@/lib/ui-demo"
+import {
+  canStartUiDemo,
+  isUiDemoKind,
+  matchesDemoPage,
+  UI_DEMOS,
+} from "@/lib/ui-demo"
 import { uiDemo } from "@/lib/ui-demo-browser"
 import "./ui-demo.css"
 
@@ -14,15 +19,42 @@ export function UiDemoOverlay() {
   const { pathname, search, key, state: locationState } = useLocation()
   const navigate = useNavigate()
   useEffect(() => {
-    if (pathname === "/orders" && locationState?.startOrderDemo) {
-      uiDemo.start()
-      navigate({ pathname, search }, { replace: true, state: { ...locationState, startOrderDemo: false } })
+    const path = pathname.replace(/\/$/, "")
+    const kind =
+      isUiDemoKind(locationState?.startUiDemo) &&
+      canStartUiDemo(locationState.startUiDemo, path)
+        ? locationState.startUiDemo
+        : path === "/reports" && locationState?.startReportDemo
+          ? "report-tour"
+          : path === "/orders" && locationState?.startOrderDemo
+            ? "create-order"
+            : null
+    if (kind) {
+      uiDemo.start(kind)
+      navigate(
+        { pathname, search },
+        {
+          replace: true,
+          state: {
+            ...locationState,
+            startOrderDemo: false,
+            startReportDemo: false,
+            startUiDemo: undefined,
+          },
+        }
+      )
     }
   }, [pathname, search, key, locationState, navigate])
   useEffect(() => {
-    if (!["/orders", "/orders/demo"].includes(pathname))
+    const current = uiDemo.getSnapshot()
+    if (
+      current.status === "running" &&
+      (current.kind === "page-tour"
+        ? current.pageKey !== pathname + search
+        : !matchesDemoPage(UI_DEMOS[current.kind].paths, pathname))
+    )
       uiDemo.stop("已離開示範流程，現在由你操作。")
-  }, [pathname])
+  }, [pathname, search, state.kind])
   if (state.status === "idle") return null
   const running = state.status === "running"
   const rect = state.rect
@@ -77,7 +109,9 @@ export function UiDemoOverlay() {
           />
           <p className="min-w-0 flex-1 text-sm font-semibold">
             {running
-              ? `熊熊滾示範中 · ${state.step}／${ORDER_DEMO_STEPS.length}`
+              ? state.total
+                ? `熊熊滾示範中 · ${state.step}／${state.total}`
+                : "熊熊滾準備示範中…"
               : state.status === "completed"
                 ? "示範完成"
                 : "示範已停止"}

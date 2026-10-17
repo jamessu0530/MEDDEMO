@@ -19,7 +19,7 @@ export const SIGNAL_LABEL: Record<RouteSignal, string> = {
   routine: "例行",
 }
 
-// 最上面「需立即處理」那一張；今天沒有夠急的事就是 null
+// 舊版快取的相容資料；讀取時清空，不再顯示警示卡片。
 export type RouteUrgent = {
   customer_id: string
   customer_name: string
@@ -251,6 +251,7 @@ export function normalizeRoute(route: TodayRoute): TodayRoute {
   return {
     ...route,
     id: route.id ?? 0,
+    urgent: null,
     travel_mode: dayMode,
     start_city: route.start_city ?? null,
     office_start: route.office_start ?? true,

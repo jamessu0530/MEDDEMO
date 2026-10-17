@@ -144,7 +144,7 @@ def _prompt(session: Session, info: ChannelInfo, asked: ChannelMessage) -> str:
     rows = session.execute(
         select(ChannelMessage, AppUser.name)
         .outerjoin(AppUser, AppUser.id == ChannelMessage.author_id)
-        .where(ChannelMessage.channel_id == info.id, ChannelMessage.id <= asked.id)
+        .where(ChannelMessage.channel_id == info.id, ChannelMessage.id <= asked.id, ChannelMessage.kind != "notice")
         .order_by(ChannelMessage.id.desc())
         .limit(CONTEXT_MESSAGES)
     ).all()[::-1]
@@ -181,7 +181,7 @@ def _label(item) -> str:
 
 
 def _line(message: ChannelMessage, author_name: str | None, files: list[Attachment] = ()) -> str:
-    who = {"ai": "熊熊滾", "notice": "風險通報"}.get(message.kind, author_name)
+    who = {"ai": "熊熊滾", "notice": "舊版系統訊息"}.get(message.kind, author_name)
     notes = "".join(f"〔附件：{f.caption or f.filename}〕" for f in files)
     return f"{message.created_at.astimezone(TAIPEI):%m/%d %H:%M} {who}：{message.body}{notes}"
 

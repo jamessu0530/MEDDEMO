@@ -79,9 +79,12 @@ def _load(session: Session, user: AppUser, order_id: str, lock=False) -> SalesOr
     return order
 
 
-def _products(session: Session, items) -> dict[str, Product]:
+def _products(session: Session, items, *, for_write: bool = False) -> dict[str, Product]:
     skus = {item.sku if isinstance(item, ItemInput) else item["sku"] for item in items}
-    found = {row.sku: row for row in session.scalars(select(Product).where(Product.sku.in_(skus)))}
+    query = select(Product).where(Product.sku.in_(skus))
+    if for_write:
+        query = query.where(visible_catalog_products())
+    found = {row.sku: row for row in session.scalars(query)}
     if set(found) != skus:
         raise OrderError("部分產品已不存在，請重新選擇產品")
     return found
@@ -129,7 +132,7 @@ def detail(session: Session, user: AppUser, order_id: str):
 def create(session: Session, user: AppUser, body: OrderInput):
     customer(session, user, body.customer_id)
     customer(session, user, body.ship_to_id)
-    _products(session, body.items)
+    _products(session, body.items, for_write=True)
     key = uuid.uuid4().hex
     today = customer_profile.app_today(session)
     payload = body.model_dump(exclude={"items"})
@@ -149,7 +152,7 @@ def save(session: Session, user: AppUser, order_id: str, body: SaveInput):
         raise OrderError("訂單已被其他頁面修改，請重新載入後再編輯", 409)
     customer(session, user, body.customer_id)
     customer(session, user, body.ship_to_id)
-    _products(session, body.items)
+    _products(session, body.items, for_write=True)
     for key, value in body.model_dump(exclude={"items", "revision"}).items():
         setattr(order, key, value)
     order.items = [item.model_dump(mode="json") for item in body.items]
@@ -174,13 +177,13 @@ def submit(session: Session, user: AppUser, order_id: str, revision: int):
         raise OrderError("請填寫完整收貨地址")
     if order.shipping_date < customer_profile.app_today(session):
         raise OrderError("指定出貨日期不能早於資料基準日")
-    products = _products(session, order.items)
+    products = _products(session, order.items, for_write=True)
     for item in order.items:
         status, message, _, _ = price_check(products[item["sku"]], target.type, Decimal(item["unit_price"]))
         if status in {"red", "gray"}:
             raise OrderError(f"{products[item['sku']].name}：{message}")
     if writeback.is_mock_down("sap"):
-        raise OrderError("SAP 展示服務暫時無法連線，草稿已保留，請稍後重試", 503)
+        raise OrderError("SAP 暫時無法連線，草稿已保留，請稍後重試", 503)
     quote_no = f"WEB-{order.id}"
     for index, item in enumerate(order.items):
         price = Decimal(item["unit_price"])

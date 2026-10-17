@@ -7,6 +7,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.models import AppUser, LearningCompletion, Product
+from app.services.product_catalog import visible_catalog_products
 from app.services.achievement_catalog import LESSON_STEPS, PRODUCT_CATEGORIES, lesson_id, medal_details
 from app.services.learning import LearningError
 from app.timeutil import TAIPEI
@@ -62,7 +63,7 @@ def courses(session: Session, user: AppUser) -> list[dict[str, Any]]:
 
 def _reference(session: Session, kind: str) -> list[Product]:
     # Prefer the common items learners also encounter in the normal product picker.
-    products = list(session.scalars(select(Product).where(Product.category == PRODUCT_CATEGORIES[kind])
+    products = list(session.scalars(select(Product).where(Product.category == PRODUCT_CATEGORIES[kind], visible_catalog_products())
         .order_by(Product.common.desc(), Product.sku).limit(3)))
     if not products:
         raise LearningError("這個品類的型錄暫時沒有品項，請稍後再試", 409)

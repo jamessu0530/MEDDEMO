@@ -423,10 +423,11 @@ def test_only_common_products_are_handed_to_the_ai_and_the_speech_recognizer(db)
     common = {r[0] for r in rows(db, "SELECT sku FROM product WHERE common")}
     expected = {p[0] for p in catalog.PRODUCTS} | {p[0] for p in catalog.PROMO_PRODUCTS} | set(catalog.COMMON_REAL_PRODUCTS)
     assert common == expected
+    visible_expected = {p[0] for p in catalog.PROMO_PRODUCTS} | set(catalog.COMMON_REAL_PRODUCTS)
     with Session(db) as session:
-        assert {hint.sku for hint in extraction.product_hints(session)} == expected
+        assert {hint.sku for hint in extraction.product_hints(session)} == visible_expected
         hotwords = transcription.load_hotwords(session)
-    assert "虎讚" in hotwords and "魚油" in hotwords
+    assert "固循魚油" in hotwords and "魚油 30 入" not in hotwords
     assert "日本獅王細潔寬薄牙刷炭能抗菌" not in hotwords
 
 

@@ -27,7 +27,7 @@ app = FastAPI(title="中化裕民業務 AI 助理")
 if not settings().jwt_secret:
     # 寧可每次重啟就要重新登入，也不要放一把寫死的預設密鑰在公開的 repo 裡
     logging.getLogger(__name__).warning("沒有設定 JWT_SECRET，這次啟動隨機產生一把：重啟之後所有人要重新登入")
-# 會呼叫 Gemini 的入口都有用量上限（第六週）：有登入就按帳號算，沒登入的入口按 IP 算
+# 僅註冊、頻道發言、換頭像保留每小時防洗版限制；外部 API 服務不設用量額度。
 app.middleware("http")(usage.limit_usage)
 # Wrap the rate limiter as well, so rejected requests are included in metrics.
 install_metrics(app)

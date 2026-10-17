@@ -144,8 +144,8 @@ def test_bounded_validated_questions(client, auth, updates):
     assert client.post(PATH, headers=auth("M01"), json=body(**updates)).status_code == 422
 
 
-def test_advice_has_its_own_usage_limit():
-    assert usage.buckets_for("POST", PATH) == ["priority_advice"]
+def test_advice_has_no_usage_limit():
+    assert usage.buckets_for("POST", PATH) == []
     assert usage.buckets_for("POST", "/api/manager/customer-priority/preview") == []
 
 

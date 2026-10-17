@@ -1,15 +1,14 @@
 /** 全站共用的對話與查詢。切頁或收起視窗不中止；登出、換人登入才清空。 */
-import { isFinished, routeAsk, type AskKind, type Turn } from "@/api/asks"
-import {
-  createConversation,
-  type Conversation,
-  type ToolRun,
-} from "@/ask/conversation"
+import { routeAsk, type AskKind, type Turn } from "@/api/asks"
+import { createConversation, type Conversation } from "@/ask/conversation"
+import { recentConversationTurns } from "@/ask/conversation-context"
 import { createMapEditsStore, type MapEditsStore } from "@/ask/memory-map-edits"
 import type { AskPageContext } from "@/ask/page-context"
 import { runAsk } from "@/ask/run-ask"
 import { onAuthChange, readUser } from "@/lib/auth"
-import { wantsOrderDemo } from "@/lib/ui-demo"
+import { requestedUiDemo } from "@/lib/ui-demo"
+import { requestedPageDemoPath } from "@/lib/page-demo"
+import { oaPageHelp } from "@/ask/oa-page-help"
 
 export type AskSession = {
   conversation: Conversation
@@ -22,20 +21,7 @@ export type AskSession = {
 }
 
 function earlierTurns(conversation: Conversation): Turn[] {
-  return conversation
-    .getSnapshot()
-    .filter((entry): entry is ToolRun => entry.kind === "tool")
-    .filter(
-      (run) =>
-        run.clarification || (run.ask && isFinished(run.ask) && run.ask.answer)
-    )
-    .slice(-3)
-    .map((run) => ({
-      question: run.question,
-      answer: (run.clarification || run.ask?.answer || "").slice(0, 300),
-      ...(run.page ? { page: run.page } : {}),
-      ...(run.clarification && run.hasFile ? { has_file: true } : {}),
-    }))
+  return recentConversationTurns(conversation.getSnapshot(), 3, 300)
 }
 
 let current: { userId: string; session: AskSession; end: () => void } | null =
@@ -94,10 +80,26 @@ function create(userId: string): NonNullable<typeof current> {
         ? { path: page.path, title: page.title, facts: [...page.facts] }
         : undefined
       const earlier = earlierTurns(conversation)
-      const utteranceId = conversation.addUtterance("user", "typed", question)
-      if (!file && wantsOrderDemo(question)) {
+      const utteranceId = conversation.addUtterance("user", "typed", question, {
+        page: snapshot,
+      })
+      const pageHelp = !file ? oaPageHelp(question, snapshot) : null
+      if (pageHelp) {
+        conversation.addUtterance("model", "typed", pageHelp, {
+          page: snapshot,
+        })
+        return
+      }
+      const demo = !file ? requestedUiDemo(question, snapshot?.path) : null
+      if (demo) {
         conversation.addUtterance("model", "typed", "要不要我操作給你看？", {
-          demo: "create-order",
+          demo,
+          page: snapshot,
+          demoPath:
+            demo === "page-tour"
+              ? (requestedPageDemoPath(question, snapshot?.path) ??
+                snapshot?.path)
+              : undefined,
         })
         return
       }

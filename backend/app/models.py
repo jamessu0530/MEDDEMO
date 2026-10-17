@@ -557,7 +557,7 @@ OA_STEP_STATUSES = ("waiting", "pending", "done")
 # auto_approved：模型有把握，系統直接核准（services/approvals.py）
 OA_ACTIVITY_ACTIONS = ("submitted", "approved", "rejected", "returned", "commented", "auto_approved")
 # trip：出差單，拜訪確認後自動開；discount：優惠（報價折扣）；contract：合約（連鎖續約與費率）
-OA_FORM_KINDS = ("trip", "discount", "contract")
+OA_FORM_KINDS = ("trip", "discount", "contract", "legacy")
 # 規則算出來最高要簽到哪一級：區處主管、業務處長、總經理
 OA_REQUIRED_LEVELS = ("manager", "director", "gm")
 PENDING_CONTRACT_INDEX = "uq_oa_expense_form_pending_contract"
@@ -576,8 +576,10 @@ class OaExpenseForm(Base):
         one_of("required_level", OA_REQUIRED_LEVELS, "required_level"),
         # 出差單跟著一次拜訪；優惠與合約是業務自己送的，內容記在 payload
         CheckConstraint(
-            "(kind = 'trip' AND visit_id IS NOT NULL AND trip_date IS NOT NULL AND payload IS NULL)"
+            "(kind = 'trip' AND customer_id IS NOT NULL AND visit_id IS NOT NULL AND trip_date IS NOT NULL AND payload IS NULL)"
             " OR (kind IN ('discount', 'contract') AND visit_id IS NULL AND trip_date IS NULL"
+            "     AND customer_id IS NOT NULL AND payload IS NOT NULL AND request_date IS NOT NULL)"
+            " OR (kind = 'legacy' AND visit_id IS NULL AND trip_date IS NULL"
             "     AND payload IS NOT NULL AND request_date IS NOT NULL)",
             name="kind_fields",
         ),
@@ -596,7 +598,7 @@ class OaExpenseForm(Base):
     trip_date: Mapped[dt.date | None]
     # 送單當下的系統日（app_today()），特徵就是照這一天算的。出差單沒有
     request_date: Mapped[dt.date | None]
-    customer_id: Mapped[str] = mapped_column(ForeignKey("customer.id"))
+    customer_id: Mapped[str | None] = mapped_column(ForeignKey("customer.id"))
     purpose: Mapped[str]
     unit_name: Mapped[str]
     # 申請內容。優惠：quote_no、discount_pct、list_amount、amount、cost、reason；

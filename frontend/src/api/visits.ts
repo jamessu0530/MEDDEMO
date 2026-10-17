@@ -31,15 +31,6 @@ export type WritebackItem = {
   attempt: number
 }
 
-// 確認送出時這次提到競品或客訴，後端算這家的風險分並通報主管
-export type RiskNotice = {
-  score: number
-  max: number
-  items: string[]
-  reason: string
-  manager_name: string
-}
-
 // 講了跟上次一樣、或跟上次比加減時，展開那一刻的快照（後端 services/repeat_order.py）
 export type RepeatSnapshot = {
   said: string | null
@@ -76,8 +67,6 @@ export type Visit = {
   reminder: { due_date: string; note: string } | null
   // 這次提到、而這家客戶以前確認過的拜訪從沒提過的競品，畫面上標「首次」
   first_competitors: string[]
-  // 只有確認送出、而且這次提到競品或客訴時才有
-  risk_notice: RiskNotice | null
   oa_form_id: number | null
   // 沒講跟上次一樣、也沒講跟上次比的加減是 null
   repeat_last: RepeatSnapshot | null

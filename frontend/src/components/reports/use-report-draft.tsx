@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { useBlocker } from "react-router"
 import { validateReportDraft } from "@/api/reports"
 import {
   Dialog,
@@ -45,13 +44,6 @@ export function useReportDraft({
   ) => void
   onSave: () => Promise<boolean>
 }) {
-  const blocker = useBlocker(
-    ({ currentLocation, nextLocation }) =>
-      dirty &&
-      (currentLocation.pathname !== nextLocation.pathname ||
-        currentLocation.search !== nextLocation.search ||
-        currentLocation.hash !== nextLocation.hash)
-  )
   const [recoverable, setRecoverable] = useState(() => {
     if (!accountId || typeof window === "undefined") return null
     try {
@@ -121,6 +113,18 @@ export function useReportDraft({
     return () => window.clearTimeout(timer)
   }, [accountId, reportId, dirty, recoverable, flush])
 
+  const latestFlush = useRef(flush)
+  useEffect(() => {
+    latestFlush.current = flush
+  }, [flush])
+  // 暫時隱藏工作區前，立即保留最後一次修改，不必等草稿的延遲寫入。
+  useEffect(
+    () => () => {
+      latestFlush.current()
+    },
+    []
+  )
+
   const requestAction = useCallback(
     (label: string, action: () => void | Promise<void>) => {
       if (saving) return
@@ -170,19 +174,17 @@ export function useReportDraft({
       if (!controller.signal.aborted)
         setError(err instanceof Error ? err.message : "草稿暫時無法復原。")
     } finally {
-      if (!controller.signal.aborted) setRestoring(false)
+      setRestoring(false)
     }
   }
   async function continueAfterSave() {
-    if (!pending && blocker.state !== "blocked") return
+    if (!pending) return
     setLeaving(true)
     try {
       if (await onSave()) {
-        if (pending) {
-          const action = pending.action
-          setPending(null)
-          await action()
-        } else if (blocker.state === "blocked") blocker.proceed()
+        const action = pending.action
+        setPending(null)
+        await action()
       } else setError("儲存未成功，草稿仍保留。請重試，或保留草稿後繼續。")
     } finally {
       setLeaving(false)
@@ -194,7 +196,7 @@ export function useReportDraft({
       const action = pending.action
       setPending(null)
       await action()
-    } else if (blocker.state === "blocked") blocker.proceed()
+    }
   }
   return {
     requestAction,
@@ -254,11 +256,10 @@ export function useReportDraft({
           </DialogContent>
         </Dialog>
         <Dialog
-          open={!!pending || blocker.state === "blocked"}
+          open={!!pending}
           onOpenChange={(open) => {
             if (!open && !leaving && !saving) {
               setPending(null)
-              if (blocker.state === "blocked") blocker.reset()
             }
           }}
         >
@@ -266,7 +267,7 @@ export function useReportDraft({
             <DialogHeader>
               <DialogTitle>報表尚未儲存</DialogTitle>
               <DialogDescription>
-                {pending?.label ?? "離開報表"}
+                {pending?.label}
                 前，可先儲存到帳號，或保留本機草稿後繼續。草稿只包含報表設定，不含查詢結果，會在此裝置保留 14 天。
               </DialogDescription>
             </DialogHeader>
@@ -282,7 +283,6 @@ export function useReportDraft({
                 disabled={leaving || saving}
                 onClick={() => {
                   setPending(null)
-                  if (blocker.state === "blocked") blocker.reset()
                 }}
               >
                 繼續編輯

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react"
+import { useAskPageContext } from "@/ask/use-page-context"
 import { CloudOff, Loader2, Mic, X } from "@/components/icons"
 import { useNavigate, useParams } from "react-router"
 
@@ -28,7 +29,7 @@ type Phase =
   | { name: "idle" }
   | { name: "recording"; startedAt: number }
   | { name: "uploading" }
-  // 錄音存在手機，恢復連線或過了用量上限的時間自動送出（FR-4.3）；reason 是伺服器說明的原因
+  // 錄音存在手機，恢復連線或服務恢復後自動重試（FR-4.3）；reason 是伺服器說明的原因
   | { name: "saved"; offline: boolean; reason?: string }
   | { name: "error"; message: string; canResend: boolean }
 
@@ -85,6 +86,11 @@ export function RecordVisit() {
   const savedRef = useRef(false)
   const discardRef = useRef(false)
   const customerNameRef = useRef<string | null>(null)
+  useAskPageContext({ facts: [
+    `客戶編號：${customerId}`,
+    ...(customerName ? [`客戶：${customerName}`] : ["客戶資料尚未載入"]),
+    `錄音階段：${phase.name}`,
+  ] })
 
   useEffect(() => {
     const controller = new AbortController()
@@ -168,7 +174,7 @@ export function RecordVisit() {
     } catch (error) {
       const message = error instanceof Error ? error.message : "上傳失敗"
       if (isTemporary(error) && savedRef.current) {
-        // 到了用量上限（429）也先存在手機，畫面上寫清楚原因，不要說成沒訊號
+        // 服務暫時拒絕請求（429）也先存在手機，畫面上寫清楚原因，不要說成沒訊號
         const reason =
           error instanceof ApiError && error.status === 429
             ? message
@@ -461,7 +467,7 @@ function SavedOnPhone({
       </div>
       <p className="w-full rounded-xl border-2 bg-card px-4 py-3 text-left text-sm text-muted-foreground shadow-lip">
         {reason
-          ? "錄音先存在手機，過了上限的時間會自動送出，不需要再操作一次。"
+          ? "錄音先存在手機，稍後會自動重試，不需要再操作一次。"
           : "回到有收訊的地方會自動送出，不需要再操作一次。"}
       </p>
       <Button className="h-12 w-full text-base" onClick={onContinue}>

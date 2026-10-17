@@ -7,6 +7,7 @@
 import json
 
 import catalog
+import generate
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
@@ -16,7 +17,7 @@ from app.main import app
 from app.services import festivals, negotiation, payment_terms
 from app.services.documents import index_documents
 
-CATEGORY = {product[0]: product[2] for product in catalog.PRODUCTS}
+CATEGORY = {product["sku"]: product["category"] for product in generate.real_product_rows()}
 # 方法卡（catalog.METHOD_CARDS）：談判卡照這家客戶的情況帶出相關的卡
 RIVAL = "御松田來搶陳列位：先守住櫃檯旁那一格"
 FISH_OIL = "魚油進貨變慢：先看架位，再談價格"
@@ -24,6 +25,58 @@ CAMPAIGN = "檔期要提前 21 天送單：從活動日往回推"
 SMALL_LOT = "獨立藥局小口進貨：算一盒賺多少給老闆看"
 GENERICS = "慢箋量在長的診所：帶學名藥比價表去"
 DISCOUNT = "客戶開口要折扣：先問量，超過 3% 不要當場答應"
+
+
+# 保留原有進貨頻率、時間與金額情境，品項改成可供選取的現有型錄。
+REAL_SKUS = {
+    'HS-FO30': 'F740752',
+    'HS-FO90': 'F742015',
+    'HS-CA60': 'F742015-30',
+    'HS-PB30': 'F742455',
+    'HS-LT30': 'F747326',
+    'HS-VB60': 'F747326-30',
+    'HS-VC100': 'F748774',
+    'HS-VD60': 'F749043',
+    'HS-GL60': 'F749775',
+    'HS-CQ30': 'F760077',
+    'HS-ZN60': 'F761999',
+    'HS-FE30': 'F762495',
+    'HS-MV60': 'F762505',
+    'HS-CL30': 'F762512',
+    'RX-AML5': 'A010063',
+    'RX-LOS50': 'A010087',
+    'RX-MET500': 'A010197',
+    'RX-GLI2': 'A010599',
+    'RX-ATV10': 'A010939',
+    'RX-ROS10': 'A020569',
+    'RX-CLO75': 'A021096',
+    'RX-ASP100': 'A024202',
+    'RX-OME20': 'A024226',
+    'RX-ALL100': 'B060234',
+    'RX-TAM02': 'B290349',
+    'RX-BIS5': 'B290435',
+    'OT-AC500': 'C130082-S1',
+    'OT-IB200': 'D390232',
+    'OT-CF10': 'F741856-30',
+    'OT-CS120': 'F744969-30',
+    'OT-AL10': 'F747814',
+    'OT-GA12': 'F747876',
+    'OT-EY15': 'F748602',
+    'OT-PT10': 'F748767',
+    'OT-LX20': 'F749108',
+    'OT-MW500': 'F749562',
+    'MD-MASK50': 'D140503',
+    'MD-GLU50': 'F702509',
+    'MD-BPM': 'F702516',
+    'MD-THM': 'F702695',
+}
+
+
+@pytest.fixture(autouse=True)
+def valid_catalog_sales(tx):
+    for original, current in REAL_SKUS.items():
+        tx.execute(text("UPDATE sales_transaction SET sku = :current WHERE sku = :original"), {"original": original, "current": current})
+    tx.flush()
 
 
 @pytest.fixture
@@ -131,8 +184,8 @@ def test_gaps_are_what_most_chains_nearby_stock_and_this_one_does_not(client, en
     # 北區另外 31 家連鎖，近 90 天 21 家進了葉黃素、19 家進了鐵劑，忠孝店半年沒進過。
     # 口罩只有 12 家進（不到一半）、止痛錠不在雙 11 的主推品類，都不列
     assert card["gaps"] == [
-        {"sku": "HS-LT30", "name": "葉黃素 30 入", "peers_with": 21, "peers_total": 31},
-        {"sku": "HS-FE30", "name": "鐵劑 30 入", "peers_with": 19, "peers_total": 31},
+        {"sku": "F747326", "name": "欣樂樂愛思 18T/BTL（F747326）", "peers_with": 21, "peers_total": 31},
+        {"sku": "F762495", "name": "中化360維生素D3軟膠囊 60粒", "peers_with": 19, "peers_total": 31},
     ]
     with engine.connect() as conn:
         bought = set(conn.execute(text(
@@ -164,30 +217,40 @@ def gap_skus(client, customer_id):
     return [gap["sku"] for gap in card_of(client, customer_id)["gaps"]]
 
 
+def test_legacy_products_are_not_recommended_even_with_recent_sales(client, tx):
+    add_order(tx, "C001", "HS-FO30", 5)
+    for customer_id in tx.execute(text("SELECT id FROM customer WHERE type = 'chain' AND region = '北區' AND id <> 'C001'")).scalars():
+        add_order(tx, customer_id, "HS-LT30", 5)
+    card = card_of(client, "C001")
+    assert "HS-FO30" not in {item["sku"] for item in card["shelf"]["items"]}
+    assert "HS-LT30" not in {item["sku"] for item in card["gaps"]}
+    assert tx.scalar(text("SELECT count(*) FROM sales_transaction WHERE sku = 'HS-LT30'")) > 0
+
+
 @pytest.mark.parametrize(("days_ago", "still_a_gap"), [(100, False), (200, True)])
 def test_this_customer_stocks_an_item_if_it_bought_it_within_half_a_year(client, tx, days_ago, still_a_gap):
     # 「這家沒進過」看近 180 天：忠孝店 100 天前進過葉黃素就不算缺口，200 天前進的不算數
-    assert "HS-LT30" in gap_skus(client, "C001")
-    add_order(tx, "C001", "HS-LT30", days_ago)
-    assert ("HS-LT30" in gap_skus(client, "C001")) is still_a_gap
+    assert "F747326" in gap_skus(client, "C001")
+    add_order(tx, "C001", "F747326", days_ago)
+    assert ("F747326" in gap_skus(client, "C001")) is still_a_gap
 
 
 @pytest.mark.parametrize(("days_ago", "becomes_a_gap"), [(100, False), (80, True)])
 def test_peers_stock_an_item_only_if_they_bought_it_in_the_last_90_days(client, tx, days_ago, becomes_a_gap):
     # 口罩：北區其他 31 家連鎖近 90 天只有 12 家進，不到一半。給沒進的那 19 家各補一筆進貨：
     # 補在 80 天前，31 家都有進，口罩變成缺口；補在 100 天前，半年內看是都進過，但「同區有進」只看近 90 天，不算
-    assert "MD-MASK50" not in gap_skus(client, "C001")
+    assert "D140503" not in gap_skus(client, "C001")
     without = tx.execute(text(
         "SELECT id FROM customer WHERE type = 'chain' AND region = '北區' AND id <> 'C001' AND id NOT IN "
-        "(SELECT customer_id FROM sales_transaction WHERE sku = 'MD-MASK50' AND date > app_today() - 90)"
+        "(SELECT customer_id FROM sales_transaction WHERE sku = 'D140503' AND date > app_today() - 90)"
     )).scalars().all()
     assert len(without) == 19
     for customer_id in without:
-        add_order(tx, customer_id, "MD-MASK50", days_ago)
+        add_order(tx, customer_id, "D140503", days_ago)
     gaps = card_of(client, "C001")["gaps"]
-    assert ("MD-MASK50" in [gap["sku"] for gap in gaps]) is becomes_a_gap
+    assert ("D140503" in [gap["sku"] for gap in gaps]) is becomes_a_gap
     if becomes_a_gap:
-        assert gaps[0] == {"sku": "MD-MASK50", "name": "醫用口罩 50 入", "peers_with": 31, "peers_total": 31}
+        assert gaps[0] == {"sku": "D140503", "name": "ANTI-A 500ML", "peers_with": 31, "peers_total": 31}
 
 
 def test_without_a_festival_the_rest_of_the_card_still_shows(client, company_docs, tmp_path, monkeypatch):

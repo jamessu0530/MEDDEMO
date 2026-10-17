@@ -7,7 +7,6 @@ import {
   Loader2,
   Map as MapIcon,
   Route,
-  TriangleAlert,
 } from "@/components/icons"
 import { Link, useNavigate, useSearchParams } from "react-router"
 
@@ -17,11 +16,8 @@ import {
   arriveAt,
   cacheRoute,
   getTodayRoute,
-  sendRouteFeedback,
   setLegMode,
   type LegMode,
-  type RouteAction,
-  type RouteUrgent,
   type TodayRoute,
 } from "@/api/route"
 import { getVehicles, sendRides } from "@/api/vehicles"
@@ -43,13 +39,9 @@ import { useHomeSplitLayout } from "@/lib/home-layout"
 import { ridesOf, type Leg } from "@/lib/rides"
 import { applyProgress } from "@/lib/route-progress"
 import { TRAVEL_MODE_LABEL } from "@/lib/travel-mode"
-import { urgentCard } from "@/lib/urgent-card"
 import { useIsDesktop } from "@/lib/use-media-query"
 import { cn } from "@/lib/utils"
 import { FirstWeekEntry } from "@/pages/first-week"
-
-// 急件卡收起來要多久（跟卡片外層的 duration-300 一樣）
-const URGENT_CLOSE_MS = 300
 
 type LoadState =
   | { status: "loading" }
@@ -62,8 +54,6 @@ type LoadState =
  * 今日路線（/route）：一天要跑哪幾家、順序、以及每一家為什麼被排進來。
  * 版面照 Duolingo 的主畫面（docs/superpowers/specs/2026-10-01-duolingo-home-design.md）：
  * 頂部是圖示加數字的狀態列和紫色橫幅，路線是一顆顆蛇行往下的圓鈕（components/route-path.tsx）。
- * 最上面是「需立即處理」，業務按三顆鈕給回饋（插入下一站／暫緩／誤判），
- * 後端直接改存著的今日行程（services/itinerary.py），回來的就是改好的那一份。
  * 路線可以切成「地圖」（components/route/home-map-panel.tsx）：同一份行程畫在 Google 地圖上，下一站一按就導航。
  */
 export function TodayPage() {
@@ -89,24 +79,11 @@ export function TodayPage() {
   // 座騎圖鑑收集了幾台（路線最底下的入口）：拿不到就是 null，入口只寫名字
   const [collected, setCollected] = useState<{ ridden: number; total: number } | null>(null)
   const [collectedTick, setCollectedTick] = useState(0)
-  // 熊在騎嗎（RoutePath 的 onRidingChange）；剛點了急件那一站、arrive 回來把它拿掉時留下的那一張（lib/urgent-card.ts）
-  const [riding, setRiding] = useState(false)
-  const [heldUrgent, setHeldUrgent] = useState<RouteUrgent | null>(null)
   // 點站回來時要套到的那一份：arrive 是非同步的，閉包裡的 state 可能已經舊了
   const latest = useRef(state)
   useEffect(() => {
     latest.current = state
   }, [state])
-
-  // 留下的急件卡：熊到了就收（約 300ms 收完再拿掉；減少動態效果時直接拿掉）
-  const closingUrgent =
-    state.status === "ready" && (urgentCard(state.route.urgent, heldUrgent, riding)?.closing ?? false)
-  useEffect(() => {
-    if (!closingUrgent) return
-    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches
-    const timer = window.setTimeout(() => setHeldUrgent(null), still ? 0 : URGENT_CLOSE_MS)
-    return () => window.clearTimeout(timer)
-  }, [closingUrgent])
 
   useEffect(() => {
     if (!userId) return
@@ -162,7 +139,7 @@ export function TodayPage() {
   }, [userId])
 
   // 切到地圖（或從客戶檔案回到地圖）時，把切換捲到固定的頁首正下面：地圖的高度是照這個位置算的，
-  // 上面有新人卡、需立即處理時不捲的話，地圖下半與底下那張卡會被輸入列蓋住
+  // 上面有新人卡時不捲的話，地圖下半與底下那張卡會被輸入列蓋住
   useEffect(() => {
     const node = switchRef.current
     if (!onMap || !node) return
@@ -173,11 +150,6 @@ export function TodayPage() {
   if (!user) return null // 沒登入進不來（App.tsx 會導去登入頁），這行只是讓型別成立
 
   const route = state.status === "ready" ? state.route : null
-  const urgent = route?.urgent ?? null
-  // 行程上又有急件（重新載入、別人改過）：留著的那一張就不要了，之後按三顆鈕拿掉新的那一張時才不會又冒出來
-  if (urgent && heldUrgent) setHeldUrgent(null)
-  const card = route ? urgentCard(urgent, heldUrgent, riding) : null
-
   // 開始騎一段（點站、點座騎重播；減少動態效果或量不到位置而直接停好也算）：送出騎過的座騎（每騎一次送一次）
   function recordRide(leg: Leg) {
     // 送完（含補送先前存起來的）重拿一次圖鑑的數字
@@ -197,8 +169,6 @@ export function TodayPage() {
         const current = latest.current
         const next = current.status === "ready" ? applyProgress(current.route, progress) : null
         if (next && current.status === "ready") {
-          // 點的是急件那一站：卡片先留著，熊到了才收（lib/urgent-card.ts），路線不會在騎到一半往上跳
-          if (current.route.urgent && !next.urgent) setHeldUrgent(current.route.urgent)
           setState({ status: "ready", route: next, cached: current.cached })
           cacheRoute(user.id, next)
           // 畫面上是連不上時的舊行程：時間與車程也可能是舊的，背景再讀一次整份
@@ -231,27 +201,6 @@ export function TodayPage() {
     setAttempt((n) => n + 1)
   }
 
-  // 三顆鈕：後端改今天的行程，回來的就是改好的那一份。行程剛被別人改過（409）、
-  // 或這家剛被別人跑完拿掉了（404）都重新載入最新的
-  async function feedback(action: RouteAction, message: string) {
-    if (!user || !urgent || !route) return
-    setBusy(true)
-    try {
-      const next = await sendRouteFeedback(user.id, urgent.customer_id, action, route.version)
-      setState({ status: "ready", route: next, cached: false })
-      setHint(message)
-      setBusy(false)
-    } catch (error) {
-      if (error instanceof ApiError && (error.status === 409 || error.status === 404)) {
-        setHint(error.message)
-        reload()
-        return
-      }
-      setHint(error instanceof ApiError ? error.message : "連不上伺服器，這次沒有改到，請再試一次。")
-      setBusy(false)
-    }
-  }
-
   // 換一段的交通方式：後端重算之後回整份行程。行程剛被別人改過（409）、
   // 或這兩家已經不相鄰（422，例如剛被別人拖過）都重新載入最新的
   async function pickMode(from: string | null, to: string, mode: LegMode) {
@@ -272,10 +221,6 @@ export function TodayPage() {
       setBusy(false)
     }
   }
-
-  const pin = () => feedback("pin", "已插到下一站，之後這類提醒會排前面一點。")
-  const snooze = () => feedback("snooze", "先暫緩，三天內不會再排這家。")
-  const misjudge = () => feedback("misjudge", "知道了，這類提醒會少排一點。")
 
   return (
     <div
@@ -380,49 +325,6 @@ export function TodayPage() {
           />
         )}
 
-        {card && (
-          // 收起來：高度與透明度一起收（grid 的 1fr → 0fr），底下的路線跟著平順往上。
-          // 外距放在卡片上、不放在外層的 padding：padding 收不掉，最後會再跳 8px
-          <div
-            data-urgent-card={card.closing ? "closing" : card.stale ? "stale" : "live"}
-            aria-hidden={card.closing || undefined}
-            className={cn(
-              "grid transition-[grid-template-rows,opacity] duration-300 ease-out motion-reduce:transition-none",
-              card.closing ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr]"
-            )}
-          >
-            <div className="min-h-0 overflow-hidden">
-              <article className="mb-2 flex flex-col gap-2 rounded-2xl border-2 border-destructive/30 bg-destructive/10 p-4 shadow-lip-destructive-soft">
-                <span className="flex items-center gap-1 self-start rounded-md bg-destructive px-2 py-1 text-xs font-semibold text-white">
-                  <TriangleAlert className="size-3" />
-                  需立即處理 · {card.urgent.headline}
-                </span>
-                <Link
-                  to={`/customers/${card.urgent.customer_id}`}
-                  tabIndex={card.closing ? -1 : undefined}
-                  className="flex min-h-11 items-center text-base leading-snug font-semibold"
-                >
-                  {card.urgent.customer_name}
-                </Link>
-                <p className="text-xs leading-relaxed">{card.urgent.detail}</p>
-                {card.urgent.note && <p className="text-xs leading-relaxed text-muted-foreground">{card.urgent.note}</p>}
-                {/* 留著的那一張（這一站已經到過）鈕不能按 */}
-                <div className="mt-1 flex gap-2">
-                  <Button variant="danger" className="h-11 flex-1" disabled={busy || card.stale} onClick={pin}>
-                    插入下一站
-                  </Button>
-                  <Button variant="outline" className="h-11 w-16 shrink-0" disabled={busy || card.stale} onClick={snooze}>
-                    暫緩
-                  </Button>
-                  <Button variant="outline" className="h-11 w-16 shrink-0" disabled={busy || card.stale} onClick={misjudge}>
-                    誤判
-                  </Button>
-                </div>
-              </article>
-            </div>
-          </div>
-        )}
-
         {mappable && !split && <ViewSwitch ref={switchRef} onMap={onMap} onChange={showView} />}
         {route &&
           (route.stops.length === 0 ? (
@@ -458,7 +360,6 @@ export function TodayPage() {
                   onArrive={arrive}
                   unsaved={unsaved}
                   onRide={recordRide}
-                  onRidingChange={setRiding}
                   collected={collected}
                 />
               )}

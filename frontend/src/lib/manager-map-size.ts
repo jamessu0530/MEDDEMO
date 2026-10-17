@@ -30,14 +30,14 @@ export function saveManagerMapSize(accountId: string, size: ManagerMapSize) {
 }
 
 /** 兩側盡量保留 18rem；窄桌面或大字體時，至少各保留可用寬度的 40%。 */
-export function managerMapLimits(availableWidth: number, fontSize: number, viewportHeight: number, mapTop = 6 * fontSize): MapSizeLimits {
+export function managerMapLimits(availableWidth: number, fontSize: number, viewportHeight: number, mapTop = 6 * fontSize, reservedHeight = 4 * fontSize): MapSizeLimits {
   const sidePercent = availableWidth > 0 ? Math.min((18 * fontSize / availableWidth) * 100, 40) : 40
   const minHeight = 16 * fontSize
   return {
     minWidth: Math.max(25, sidePercent),
     maxWidth: Math.min(80, 100 - sidePercent),
     minHeight,
-    maxHeight: Math.max(minHeight, Math.min(48 * fontSize, viewportHeight - mapTop - 4 * fontSize)),
+    maxHeight: Math.max(minHeight, Math.min(48 * fontSize, viewportHeight - mapTop - reservedHeight)),
   }
 }
 

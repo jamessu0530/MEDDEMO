@@ -53,16 +53,6 @@ SIGNAL_LABEL = {
 
 
 @dataclass
-class Urgent:
-    customer_id: str
-    customer_name: str
-    signal: str
-    headline: str
-    detail: str
-    note: str | None
-
-
-@dataclass
 class Feedback:
     """業務按過的暫緩與誤判（存在伺服器，load_feedback 讀出來）。"""
 
@@ -78,7 +68,7 @@ class Pick:
     rep: AppUser
     done: list[tuple[Visit, Customer]]
     picked: list[dict]  # {"candidate", "signal", "reason", ...}
-    urgent: Urgent | None
+    urgent: None = None
 
 
 def done_visits(session: Session, user_id: str, today: dt.date) -> list[tuple[Visit, Customer]]:
@@ -230,36 +220,6 @@ def _signal_and_reason(candidate: route_model.Candidate, today: dt.date) -> tupl
     return "routine", "還沒有拜訪紀錄"
 
 
-# 卡片說明用客戶檔案的「進門前三分鐘」，這裡挑跟排進來的理由同一件事的那一句
-HIGHLIGHT_KEYWORD = {
-    "commitment": "已過期限",
-    "ar": "帳款",
-    "interval": "進貨間隔",
-    "contract": "合約",
-}
-
-
-def _urgent(session: Session, candidate: route_model.Candidate, signal: str, reason: str) -> Urgent:
-    """需立即處理的那張卡：說明的文字跟客戶檔案的「進門前三分鐘」同一套，不另外生成。"""
-    customer = session.get(Customer, candidate.customer_id)
-    highlights = customer_profile.build_profile(session, customer).highlights
-    keyword = HIGHLIGHT_KEYWORD.get(signal)
-    matched = next((h for h in highlights if keyword and keyword in h), None)
-    detail = matched or reason
-    # 補一句別的提醒當背景，例如「間隔拉長」旁邊再提「上次提到競品」。「上次訂的…促銷變了」只放客戶檔案，不拿來當背景
-    note = next(
-        (h for h in highlights if h != detail and not h.startswith(customer_profile.LAST_ORDER_PREFIX)), None
-    )
-    return Urgent(
-        customer_id=candidate.customer_id,
-        customer_name=candidate.name,
-        signal=signal,
-        headline=SIGNAL_LABEL[signal],
-        detail=detail,
-        note=note,
-    )
-
-
 def _label(candidate: route_model.Candidate, today: dt.date, due: dt.date | None, opportunity: str | None) -> tuple[str, str, bool]:
     """這家為什麼排進來（訊號、一句理由），以及是不是還沒處理的逾期承諾。"""
     # 承諾到期之後又去過，就當作處理完了：系統沒有結案紀錄，只能這樣判斷
@@ -377,8 +337,4 @@ def pick(session: Session, user_id: str, feedback: Feedback | None = None) -> Pi
             best = {**best, "signal": "opportunity", "reason": best["opportunity"]}
             picked[replaceable[-1]] = best
 
-    urgent = None
-    # 只有真的有事才給卡片：「很久沒拜訪」是排序的理由，但不值得用紅卡叫業務立刻處理
-    if picked and picked[0]["signal"] not in ("routine", "visit"):
-        urgent = _urgent(session, picked[0]["candidate"], picked[0]["signal"], picked[0]["reason"])
-    return Pick(today=today, rep=rep, done=done, picked=picked, urgent=urgent)
+    return Pick(today=today, rep=rep, done=done, picked=picked)

@@ -61,9 +61,9 @@ def test_the_demo_route_rides_from_new_taipei_into_hsinchu(tx):
     service.reset_today(tx, catalog.DEMO_USER_ID)
     view = service.view(tx, service.get_or_create(tx, catalog.DEMO_USER_ID))
     cities = [stop.city for stop in view.stops]
-    # 「需立即處理」那家照舊鎖在第一站
-    assert view.urgent and view.urgent["customer_name"] == "福安連鎖藥局 · 板橋店"
-    assert view.stops[0].customer_id == view.urgent["customer_id"]
+    # 首頁已移除緊急卡，模型挑站後依順路安排，不自動鎖住第一站。
+    assert view.urgent is None
+    assert not any(stop.locked for stop in view.stops)
     # 有一站在新竹，前一站在新北：評審看得到從新北騎進新竹時半路換車
     assert "新竹市" in cities
     hsinchu = cities.index("新竹市")

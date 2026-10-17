@@ -44,18 +44,18 @@ def test_sync_upgrades_a_catalog_without_common_or_its_view(catalog_conn):
     conn.exec_driver_sql("ALTER TABLE product DROP COLUMN common CASCADE")
     assert conn.scalar(text("SELECT to_regclass('v_product')")) is None
     sync_product_catalog(conn)
-    assert conn.scalar(text("SELECT common FROM v_product WHERE sku = 'HS-FO30'")) is True
+    assert conn.scalar(text("SELECT common FROM product WHERE sku = 'HS-FO30'")) is True
     assert conn.scalar(text("SELECT common FROM v_product WHERE sku = 'C490191'")) is True
     assert conn.scalar(text("SELECT common FROM v_product WHERE sku = 'F762505'")) is False
     conn.exec_driver_sql("SET LOCAL ROLE semantic_reader")
-    assert conn.scalar(text("SELECT count(*) FROM v_product")) == 60 + len(generate.read_real_products())
+    assert conn.scalar(text("SELECT count(*) FROM v_product")) == 20 + len(generate.read_real_products())
 
 
 def test_ai_catalog_includes_products_without_sales_for_every_region(engine):
     assert run_readonly(engine, "SELECT count(*) FROM v_monthly_sales WHERE sku = 'F762505'").rows == [[0]]
     for path in ("TW.N.M01.U01", "TW.C.M02.U03", "TW.S.M03.U04"):
         scope = Scope(path=path)
-        assert run_readonly(engine, "SELECT count(*) FROM v_product", scope).rows == [[60 + len(generate.read_real_products())]]
+        assert run_readonly(engine, "SELECT count(*) FROM v_product", scope).rows == [[20 + len(generate.read_real_products())]]
         assert run_readonly(engine, "SELECT sku, product_name, unit FROM v_product WHERE sku = 'F762505'", scope).rows == [
             ["F762505", "中化360海藻鈣錠 60錠", "瓶"],
         ]

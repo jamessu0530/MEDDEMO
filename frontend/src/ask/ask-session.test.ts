@@ -56,6 +56,61 @@ afterEach(() => {
   vi.useRealTimers()
 })
 describe("全站自動問答", () => {
+  it("OA 缺件直接依目前畫面回答，跨頁公司問題仍交給共用查詢", async () => {
+    const session = askSessionFor("U01")
+    const oa = {
+      path: "/oa/forms/123/edit",
+      title: "供應商建立請求",
+      facts: ["缺少必填資料：聯絡電話、銀行資料"],
+    }
+    await session.ask("這張表單還缺什麼資料？", undefined, oa)
+    expect(session.conversation.getSnapshot()).toMatchObject([
+      { kind: "user" },
+      { kind: "model", text: expect.stringContaining("聯絡電話、銀行資料") },
+    ])
+    expect(api.routeAsk).not.toHaveBeenCalled()
+    await session.ask("公司的付款規定是什麼？", undefined, oa)
+    expect(api.routeAsk).toHaveBeenCalledTimes(1)
+    expect(api.createAsk).toHaveBeenCalledTimes(1)
+  })
+  it("OA 提問有附檔時照原本的 AI 查詢，不拿頁面缺件取代附檔問題", async () => {
+    const session = askSessionFor("U01")
+    const oa = {
+      path: "/oa/forms/123/edit",
+      title: "供應商建立請求",
+      facts: ["缺少必填資料：銀行資料"],
+    }
+    await session.ask(
+      "這張表單還缺什麼資料？",
+      new File(["receipt"], "receipt.txt"),
+      oa
+    )
+    expect(api.routeAsk).toHaveBeenCalledTimes(1)
+    expect(api.createAsk).toHaveBeenCalledTimes(1)
+  })
+  it("送出接續問題時也帶上先前 OA 的當頁即時問答", async () => {
+    const session = askSessionFor("U01")
+    const oa = {
+      path: "/oa/new/6071",
+      title: "申請單",
+      facts: ["缺少必填資料：申請目的"],
+    }
+    await session.ask("這張表單還缺什麼資料？", undefined, oa)
+    const response = session.conversation.getSnapshot()[1]
+    await session.ask("那有哪些公司規定需要核對？", undefined, oa)
+    expect(api.routeAsk).toHaveBeenCalledWith(
+      "那有哪些公司規定需要核對？",
+      false,
+      [
+        {
+          question: "這張表單還缺什麼資料？",
+          answer: response.kind === "model" ? response.text : "",
+          page: oa,
+        },
+      ],
+      oa
+    )
+  })
   it("操作求助先邀請示範，不查詢或自動操作", async () => {
     const session = askSessionFor("U01")
     await session.ask("我不會新增訂單，可以教我嗎？", undefined, page())
@@ -65,6 +120,62 @@ describe("全站自動問答", () => {
     ])
     expect(api.routeAsk).not.toHaveBeenCalled()
     expect(api.createAsk).not.toHaveBeenCalled()
+  })
+  it("一般頁面的操作求助保留當時路徑，切頁後不會改為另一頁", async () => {
+    const session = askSessionFor("U01")
+    const context = { path: "/calendar?view=week", title: "日曆", facts: [] }
+    await session.ask("操作給我看", undefined, context)
+    context.path = "/customers"
+    expect(session.conversation.getSnapshot()[1]).toMatchObject({
+      demo: "page-tour",
+      demoPath: "/calendar?view=week",
+    })
+    expect(api.routeAsk).not.toHaveBeenCalled()
+    expect(api.createAsk).not.toHaveBeenCalled()
+  })
+  it("指定日曆操作會提供日曆入口，資料問題仍走查詢", async () => {
+    const session = askSessionFor("U01")
+    await session.ask("教我用日曆", undefined, page())
+    expect(session.conversation.getSnapshot()[1]).toMatchObject({
+      demo: "page-tour",
+      demoPath: "/calendar",
+    })
+    await session.ask("今天有幾個行程？", undefined, page())
+    expect(api.routeAsk).toHaveBeenCalledOnce()
+  })
+  it("報表操作求助使用新版流程，接受前不執行操作或查詢", async () => {
+    const session = askSessionFor("U01")
+    await session.ask("報表怎麼匯出？", undefined, page())
+    expect(session.conversation.getSnapshot()).toMatchObject([
+      { kind: "user" },
+      { kind: "model", demo: "report-tour" },
+    ])
+    expect(api.routeAsk).not.toHaveBeenCalled()
+    expect(api.createAsk).not.toHaveBeenCalled()
+  })
+  it("帶報表情境的介面求助能辨識，數據問題仍走查詢", async () => {
+    const session = askSessionFor("U01")
+    const report = { path: "/reports", title: "報表", facts: [] }
+    await session.ask("這頁怎麼篩選？", undefined, report)
+    expect(session.conversation.getSnapshot()[1]).toMatchObject({
+      demo: "report-tour",
+    })
+    await session.ask("報表的銷售為什麼減少？", undefined, report)
+    expect(api.routeAsk).toHaveBeenCalledTimes(1)
+    expect(api.createAsk).toHaveBeenCalledTimes(1)
+  })
+  it("我的申請單操作求助可就地邀請，進度問題仍走查詢", async () => {
+    const session = askSessionFor("U01")
+    const oa = { path: "/oa/forms/42/edit", title: "費用申請", facts: [] }
+    await session.ask("這個表單怎麼填？", undefined, oa)
+    expect(session.conversation.getSnapshot()[1]).toMatchObject({
+      demo: "oa-tour",
+    })
+    expect(api.routeAsk).not.toHaveBeenCalled()
+    expect(api.createAsk).not.toHaveBeenCalled()
+    await session.ask("我的申請單為什麼還在審核？", undefined, oa)
+    expect(api.routeAsk).toHaveBeenCalledTimes(1)
+    expect(api.createAsk).toHaveBeenCalledTimes(1)
   })
   it("自動判斷，頁面快照不隨切頁或外部修改改變", async () => {
     let decide: (value: unknown) => void = () => {}

@@ -33,7 +33,7 @@ export type ChannelMember = { id: string; name: string; status: PresenceStatus }
 
 export type ChannelMessage = {
   id: number
-  // user 人發的；ai 熊熊滾；notice 拜訪的風險通報
+  // user 人發的；ai 熊熊滾；notice 拜訪的系統訊息
   kind: "user" | "ai" | "notice"
   author_id: string | null
   author_name: string | null
@@ -45,7 +45,7 @@ export type ChannelMessage = {
   attachments: Attachment[]
   // IT 刪掉的訊息：內容已經換成固定的一句
   deleted: boolean
-  // 風險通報附的拜訪，點了進拜訪結果頁
+  // 系統訊息附的拜訪，點了進拜訪結果頁
   visit_id?: string | null
   // 有沒有叫熊熊滾
   mentions_ai: boolean

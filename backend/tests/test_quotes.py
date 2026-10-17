@@ -23,11 +23,12 @@ def client(engine, sign_in):
     redis().flushdb()
 
 
-def test_quote_items_are_what_the_customer_usually_buys(client):
+def test_quote_items_fall_back_to_real_catalog_when_history_only_has_legacy_skus(client):
     items = client.get("/api/customers/C001/quote-items").json()
-    fish = next(i for i in items if i["sku"] == "HS-FO30")
-    # 康泰忠孝店是連鎖：魚油 30 入建議售價 450 元，打 9 折是 405 元
-    assert fish["unit_price"] == 405
+    fish = next(i for i in items if i["sku"] == "C130082")
+    # 舊假料號不供選取，改用型錄金舒胃平；連鎖供貨折數照舊。
+    assert all(not i["sku"].startswith(("HS-", "RX-", "OT-", "MD-")) for i in items)
+    assert fish["unit_price"] == 72
     assert fish["usual_qty"] > 0 and fish["unit"] == "盒"
 
 

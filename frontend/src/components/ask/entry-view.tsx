@@ -6,7 +6,8 @@ import { AskAnswer, TracePanel } from "@/components/ask/ask-result"
 import { AttachmentGallery } from "@/components/attachments/attachment-gallery"
 import { Mascot } from "@/components/mascot"
 import { UiDemoOffer } from "@/components/ui-demo/offer"
-import { wantsOrderDemo } from "@/lib/ui-demo"
+import { requestedUiDemo } from "@/lib/ui-demo"
+import { requestedPageDemoPath } from "@/lib/page-demo"
 
 const TOOL_LABEL = {
   data: "公司資料",
@@ -25,14 +26,14 @@ type EntryViewProps = {
 
 export function EntryView({ entry, ...actions }: EntryViewProps) {
   if (entry.kind === "tool") return <ToolCard run={entry} {...actions} />
-  if (entry.kind === "model" && entry.demo === "create-order")
-    return <UiDemoOffer />
+  if (entry.kind === "model" && entry.demo)
+    return <UiDemoOffer kind={entry.demo} path={entry.demoPath} />
   if (entry.kind === "user") {
     // 語音那句是 Gemini 另外做的語音轉文字，常有同音錯字；打字的是業務原文，不必標
     return (
       <>
-        <div className="ml-10 flex flex-col items-end gap-1 self-end">
-          <p className="rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-sm text-primary-foreground">
+        <div className="ml-auto flex w-fit max-w-[88%] flex-col items-end gap-1.5">
+          <p className="rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-sm leading-relaxed [overflow-wrap:anywhere] whitespace-pre-wrap text-primary-foreground">
             {entry.text}
           </p>
           {entry.attachment && (
@@ -45,16 +46,22 @@ export function EntryView({ entry, ...actions }: EntryViewProps) {
             <p className="text-xs text-muted-foreground">語音辨識，僅供參考</p>
           )}
         </div>
-        {entry.source === "voice" && wantsOrderDemo(entry.text) && (
-          <UiDemoOffer />
+        {entry.source === "voice" && requestedUiDemo(entry.text) && (
+          <UiDemoOffer
+            kind={requestedUiDemo(entry.text) ?? undefined}
+            path={requestedPageDemoPath(entry.text) ?? undefined}
+          />
         )}
       </>
     )
   }
   return (
-    <p className="mr-10 self-start rounded-2xl rounded-bl-md border-2 bg-card px-4 py-2.5 text-sm leading-relaxed">
-      {entry.text}
-    </p>
+    <div className="mr-3 flex flex-col items-start gap-1.5">
+      <p className="pl-1 text-xs font-medium text-muted-foreground">熊熊滾</p>
+      <p className="rounded-2xl rounded-tl-md bg-muted/60 px-4 py-3 text-sm leading-relaxed [overflow-wrap:anywhere] whitespace-pre-wrap">
+        {entry.text}
+      </p>
+    </div>
   )
 }
 
@@ -67,7 +74,7 @@ function ToolCard({
 }: Omit<EntryViewProps, "entry"> & { run: ToolRun }) {
   const done = run.error !== null || (run.ask !== null && isFinished(run.ask))
   return (
-    <section className="mr-4 rounded-2xl border border-dashed bg-card px-4 py-3">
+    <section className="min-w-0 rounded-xl border bg-card px-3 py-3 [overflow-wrap:anywhere] sm:px-4">
       <p className="mb-2 text-xs text-muted-foreground">
         {run.askKind ? TOOL_LABEL[run.askKind] : "查詢"}：
         {run.question || "（沒有問題內容）"}

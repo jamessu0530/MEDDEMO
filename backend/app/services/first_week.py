@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.models import CUSTOMER_TYPES, AppUser, Customer, DocumentChunk, Product, SalesTransaction, SapEmployee
 from app.services import method_cards
+from app.services.product_catalog import visible_catalog_products
 from app.services.customer_profile import RECENT_DAYS, app_today
 from app.services.scope import SHARING_LEVEL, Scope
 
@@ -138,7 +139,7 @@ def _product_lines(session: Session, scope: Scope, employee: SapEmployee | None,
 
     產品線照人員主檔；自己沒有主檔的（自建帳號）看代理的那位業務的，連他也沒有就是全部類別。
     """
-    sku_counts = dict(session.execute(select(Product.category, func.count()).group_by(Product.category)).all())
+    sku_counts = dict(session.execute(select(Product.category, func.count()).where(visible_catalog_products()).group_by(Product.category)).all())
     employee = employee or session.get(SapEmployee, scope.acting_user_id)
     lines = employee.product_lines if employee else sorted(sku_counts)
     ranked = session.execute(
@@ -147,6 +148,7 @@ def _product_lines(session: Session, scope: Scope, employee: SapEmployee | None,
         .join(Customer, Customer.id == SalesTransaction.customer_id)
         .where(
             Product.category.in_(lines),
+            visible_catalog_products(),
             SalesTransaction.date > since,
             # 業績數字共享到整個轄區：同區業務看到的排名一樣，不只算自己名下的客戶
             scope.customers_at(SHARING_LEVEL["sales_figures"]),

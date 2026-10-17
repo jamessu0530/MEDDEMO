@@ -1,9 +1,9 @@
 import { useState } from "react"
-import { CircleAlert, RotateCw, TriangleAlert } from "@/components/icons"
+import { CircleAlert, RotateCw } from "@/components/icons"
 import { useNavigate } from "react-router"
 
 import { remainingStops } from "@/api/route"
-import { retryWriteback, type RiskNotice, type Visit, type WritebackItem, type WritebackTarget } from "@/api/visits"
+import { retryWriteback, type Visit, type WritebackItem, type WritebackTarget } from "@/api/visits"
 import { Mascot } from "@/components/mascot"
 import { Button } from "@/components/ui/button"
 import { CompetitorNames } from "@/components/visit/competitor-names"
@@ -104,7 +104,6 @@ export function ResultView({ visit, onChange }: { visit: Visit; onChange: (visit
           </span>
         </div>
       ) : null}
-      {visit.risk_notice && <RiskNoticeCard notice={visit.risk_notice} />}
       {visit.reminder && (
         <p className="rounded-xl bg-muted px-4 py-3 text-sm">
           追蹤提醒已建立：{formatDate(visit.reminder.due_date)} {visit.reminder.note}
@@ -123,28 +122,6 @@ export function ResultView({ visit, onChange }: { visit: Visit; onChange: (visit
       <Button variant="outline" className="h-12 text-base" onClick={() => navigate("/customers")}>
         回客戶清單
       </Button>
-    </div>
-  )
-}
-
-/** 原型「競品御松田已加入風險分，主管同步收到通報」：照後端算的結果寫，不寫死是競品 */
-function RiskNoticeCard({ notice }: { notice: RiskNotice }) {
-  return (
-    <div className="flex gap-3 rounded-xl border-2 border-destructive/30 bg-destructive/10 px-4 py-3 shadow-lip-destructive-soft">
-      <TriangleAlert className="mt-0.5 size-4 shrink-0 text-destructive" />
-      <div className="min-w-0 flex-1">
-        <p className="text-sm leading-relaxed">
-          {notice.reason}，這家目前 <span className="font-semibold tabular-nums">{notice.score}/{notice.max}</span> 項風險，已通報主管
-          {notice.manager_name}
-        </p>
-        {notice.items.length > 0 && (
-          <ul className="mt-1.5 flex list-disc flex-col gap-0.5 pl-4 text-xs leading-relaxed text-foreground/80">
-            {notice.items.map((item) => (
-              <li key={item}>{item}</li>
-            ))}
-          </ul>
-        )}
-      </div>
     </div>
   )
 }

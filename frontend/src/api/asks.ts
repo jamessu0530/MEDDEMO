@@ -78,6 +78,19 @@ export const isFinished = (ask: Ask) => ask.status !== "queued" && ask.status !=
 /** 這段對話前面答完的一輪：送出下一題時帶著，要看前文才懂的會先改寫成完整問句 */
 export type Turn = { question: string; answer: string; page?: AskPageContext; has_file?: boolean }
 
+export type QuestionSuggestionsInput = {
+  page: AskPageContext
+  earlier: Turn[]
+  candidates: string[]
+}
+
+export function suggestQuestions(input: QuestionSuggestionsInput, signal?: AbortSignal) {
+  return request<{ suggestions: string[] }>("/api/asks/suggestions", {
+    ...jsonBody("POST", input),
+    signal,
+  })
+}
+
 /** 自動挑來源；無法確定意圖時回自然語言 clarification。question 是整理後的問句。 */
 export type RouteResult = {
   kind: AskKind | null

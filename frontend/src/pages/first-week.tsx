@@ -129,7 +129,7 @@ export function FirstWeekPage() {
               />
             )}
             <details className="group rounded-2xl border-2 bg-card shadow-lip">
-              <summary className="cursor-pointer px-4 py-4 text-sm font-semibold">
+              <summary data-ui-demo-open="disclosure" className="cursor-pointer px-4 py-4 text-sm font-semibold">
                 我的轄區、產品與第一週參考資料
               </summary>
               <div className="flex flex-col gap-6 border-t px-3 py-4">
@@ -240,7 +240,7 @@ function ProfileSection({ data }: { data: FirstWeek }) {
       {/* 自建與第三方登入的帳號沒有人員主檔，下面列的是代理的那位示範業務的轄區與客戶 */}
       {employee.proxy_of && (
         <p className="mt-2 rounded-xl bg-primary/10 px-3 py-2 text-xs leading-relaxed text-primary">
-          你看的是示範業務{employee.proxy_of}的資料。
+          目前共用{employee.proxy_of}的客戶與路線資料。
         </p>
       )}
       <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">

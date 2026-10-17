@@ -1,11 +1,10 @@
 import { useAskPageContext } from "@/ask/use-page-context"
 import { useEffect, useState, type ReactNode } from "react"
-import { ChartNoAxesCombined, ChevronRight, Network, Settings, TriangleAlert } from "@/components/icons"
+import { ChartNoAxesCombined, ChevronRight, Network, Settings } from "@/components/icons"
 import { Link, useNavigate, useSearchParams } from "react-router"
 
 import { listEscalations, replyEscalation, type Escalation } from "@/api/escalations"
 import { customerTypeLabel, listMyMethods, updateMethod, type MethodCard } from "@/api/methods"
-import { listNotices, markNoticeSeen, type ManagerNotice } from "@/api/notices"
 import { listAutoApproved, listOaInbox, type OaFormDetail, type OaFormItem } from "@/api/oa"
 import { AttachmentGallery } from "@/components/attachments/attachment-gallery"
 import { ChannelsLink } from "@/components/channels-link"
@@ -27,30 +26,26 @@ import { useAuth, type AuthUser } from "@/lib/auth"
 import { OA_STATUS_LABEL, formatProbability, oaDateText } from "@/lib/approval"
 import { formatDateTime } from "@/lib/format"
 import { itemParam, nextAfter, pickItem } from "@/lib/master-detail"
-import { pendingOa, unseenNotices, usePendingOa, useUnseenNotices } from "@/lib/manager-counts"
+import { pendingOa, usePendingOa } from "@/lib/manager-counts"
 import { tagLabel } from "@/lib/methods"
 import { useIsDesktop } from "@/lib/use-media-query"
 import { cn } from "@/lib/utils"
-import type { CustomerLocationState } from "@/pages/customer"
 
-// 主管端的分頁：團隊行程（預設）、客戶策略、提問、風險通報、簽核、方法卡。
+// 主管端的分頁：團隊行程（預設）、客戶策略、提問、簽核、方法卡。
 // 記在網址上，從客戶檔案回來還停在同一頁
-const VIEWS = ["routes", "priority", "asks", "notices", "oa", "methods"] as const
+const VIEWS = ["routes", "priority", "asks", "oa", "methods"] as const
 type View = (typeof VIEWS)[number]
 const VIEW_TITLE: Record<View, string> = {
   routes: "團隊行程",
   priority: "客戶策略",
   asks: "待回覆的提問",
-  notices: "風險通報",
   oa: "OA 簽核",
   methods: "方法卡",
 }
-const VIEW_TAB: Record<View, string> = { routes: "行程", priority: "客戶策略", asks: "提問", notices: "風險通報", oa: "簽核", methods: "方法卡" }
+const VIEW_TAB: Record<View, string> = { routes: "行程", priority: "客戶策略", asks: "提問", oa: "簽核", methods: "方法卡" }
 type Tab = "open" | "answered"
 type LoadState = { status: "loading" } | { status: "error" } | { status: "ready"; items: Escalation[] }
-type NoticeState = { status: "loading" } | { status: "error" } | { status: "ready"; items: ManagerNotice[] }
 
-const NOTICES_PATH = "/manager?view=notices"
 // 標頭的圖示按鈕用固定的 44px，不跟著放大字體變大，標題才不會被擠掉（components/channels-link.tsx 同）
 const HEADER_BUTTON = "flex size-[44px] shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
 
@@ -75,7 +70,7 @@ function useItemParam(): [number | null, (id: number | null) => void] {
   return [itemParam(params.get("item")), select]
 }
 
-/** 主管端（FR-8.4 延伸）：看團隊今天的行程、回覆業務轉過來的提問、看風險通報、簽申請單（出差單、優惠、合約）、寫方法卡。主管看自己底下的人，IT 看全公司 */
+/** 主管端（FR-8.4 延伸）：看團隊今天的行程、回覆業務轉過來的提問、簽申請單（出差單、優惠、合約）、寫方法卡。主管看自己底下的人，IT 看全公司 */
 export function ManagerPage() {
   const user = useAuth()?.user
   const [params, setParams] = useSearchParams()
@@ -85,10 +80,8 @@ export function ManagerPage() {
     ...(params.get("item") ? [`選取項目編號：${params.get("item")}`] : []),
   ] })
   // 分頁上的數字（lib/manager-counts.ts）：每分鐘問一次，切換分頁時馬上再問一次
-  const noticeCount = useUnseenNotices()
   const oaCount = usePendingOa()
   useEffect(() => {
-    void unseenNotices.refresh()
     void pendingOa.refresh()
   }, [view])
 
@@ -132,14 +125,6 @@ export function ManagerPage() {
             )}
           >
             {VIEW_TAB[value]}
-            {value === "notices" && noticeCount > 0 && (
-              <span
-                aria-label={`未讀 ${noticeCount} 則`}
-                className="flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-xs font-semibold text-white"
-              >
-                {noticeCount}
-              </span>
-            )}
             {value === "oa" && oaCount > 0 && (
               <span
                 aria-label={`待簽 ${oaCount} 張`}
@@ -169,8 +154,6 @@ export function ManagerPage() {
           <CustomerPriorityPanel />
         ) : view === "asks" ? (
           <EscalationsPanel />
-        ) : view === "notices" ? (
-          <NoticesPanel onSeen={() => void unseenNotices.refresh()} />
         ) : view === "oa" ? (
           <OaInboxPanel />
         ) : (
@@ -364,160 +347,6 @@ function ReplyForm({ item, onReplied }: { item: Escalation; onReplied: (item: Es
   )
 }
 
-/** 風險通報（原型「回寫完成」的「主管同步收到通報」）：業務確認拜訪時提到競品或客訴，這家的風險分通報到這裡 */
-function NoticesPanel({ onSeen }: { onSeen: () => void }) {
-  const navigate = useNavigate()
-  const desktop = useIsDesktop()
-  const [requested, select] = useItemParam()
-  const user = useAuth()?.user
-  const [state, setState] = useState<NoticeState>({ status: "loading" })
-  const [attempt, setAttempt] = useState(0)
-
-  useEffect(() => {
-    const controller = new AbortController()
-    listNotices(controller.signal)
-      .then((items) => setState({ status: "ready", items }))
-      .catch(() => {
-        if (!controller.signal.aborted) setState({ status: "error" })
-      })
-    return () => controller.abort()
-  }, [attempt])
-
-  function seen(next: ManagerNotice) {
-    setState((current) =>
-      current.status === "ready"
-        ? { status: "ready", items: current.items.map((item) => (item.id === next.id ? next : item)) }
-        : current
-    )
-    onSeen()
-  }
-
-  return (
-    <>
-      {user && <p className="text-xs text-muted-foreground">{whose(user)}的業務確認拜訪時提到競品或客訴，會通報到這裡</p>}
-      {state.status === "loading" && <p className="py-10 text-center text-sm text-muted-foreground">載入中…</p>}
-      {state.status === "error" && (
-        <Notice
-          text="連不上伺服器，風險通報沒有載入。"
-          action={{
-            label: "重新載入",
-            onClick: () => {
-              setState({ status: "loading" })
-              setAttempt((n) => n + 1)
-            },
-          }}
-          secondary={{ label: "回首頁", onClick: () => navigate("/") }}
-        />
-      )}
-      {state.status === "ready" && state.items.length === 0 && (
-        <p className="py-10 text-center text-sm text-muted-foreground">目前沒有風險通報。</p>
-      )}
-      {state.status === "ready" &&
-        state.items.length > 0 &&
-        (desktop ? (
-          <NoticeSplit items={state.items} requested={requested} onSelect={select} onSeen={seen} />
-        ) : (
-          state.items.map((item) => <NoticeCard key={item.id} item={item} onSeen={seen} />)
-        ))}
-    </>
-  )
-}
-
-/** 電腦版：左邊一列一則通報（未讀的標「未讀」），右邊打開選中的那則；按「知道了」停在同一則 */
-function NoticeSplit({
-  items,
-  requested,
-  onSelect,
-  onSeen,
-}: {
-  items: ManagerNotice[]
-  requested: number | null
-  onSelect: (id: number) => void
-  onSeen: (item: ManagerNotice) => void
-}) {
-  const selected = pickItem(items, requested)
-  return (
-    <MasterDetail
-      list={items.map((item) => (
-        <ListRow key={item.id} selected={item.id === selected?.id} onSelect={() => onSelect(item.id)}>
-          <span className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-            <span className="min-w-0 truncate">
-              {formatDateTime(item.created_at)} · 業務 {item.rep_name}
-            </span>
-            {item.seen_at === null && <span className="shrink-0 rounded-md bg-destructive/10 px-2 py-0.5 text-destructive">未讀</span>}
-          </span>
-          <span className="truncate text-sm font-medium">{item.customer_name}</span>
-          <span className="text-xs text-muted-foreground tabular-nums">
-            {item.reason} · {item.score}/{item.max} 項風險
-          </span>
-        </ListRow>
-      ))}
-      detail={selected && <NoticeCard key={selected.id} item={selected} onSeen={onSeen} />}
-    />
-  )
-}
-
-function NoticeCard({ item, onSeen }: { item: ManagerNotice; onSeen: (item: ManagerNotice) => void }) {
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const unseen = item.seen_at === null
-
-  async function markSeen() {
-    setBusy(true)
-    setError(null)
-    try {
-      onSeen(await markNoticeSeen(item.id))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "沒有標成已讀，請再試一次")
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <article className={cn("rounded-2xl border-2 bg-card p-4 shadow-lip", unseen && "border-destructive/40")}>
-      <div className="flex items-center justify-between gap-2">
-        <p className="min-w-0 text-xs text-muted-foreground">
-          {formatDateTime(item.created_at)} · 業務 {item.rep_name}
-        </p>
-        {unseen && (
-          <span className="shrink-0 rounded-md bg-destructive/10 px-2 py-0.5 text-xs text-destructive">未讀</span>
-        )}
-      </div>
-      {/* 回來時停在風險通報，不是提問；電腦版選中的那一張記在 ?item=，一起帶回去（手機不看 item） */}
-      <Link
-        to={`/customers/${item.customer_id}`}
-        state={{ backTo: `${NOTICES_PATH}&item=${item.id}` } satisfies CustomerLocationState}
-        className="flex min-h-11 items-center gap-1 font-medium"
-      >
-        <span className="min-w-0 flex-1 leading-snug">{item.customer_name}</span>
-        <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
-      </Link>
-      <p className="flex items-start gap-1.5 text-sm">
-        <TriangleAlert className="mt-0.5 size-4 shrink-0 text-destructive" />
-        <span>
-          {item.reason}，這家目前 <span className="font-semibold tabular-nums">{item.score}/{item.max}</span> 項風險
-        </span>
-      </p>
-      {item.items.length > 0 && (
-        <ul className="mt-2 flex list-disc flex-col gap-0.5 rounded-lg bg-muted py-2 pr-3 pl-7 text-xs leading-relaxed text-foreground/80">
-          {item.items.map((line) => (
-            <li key={line}>{line}</li>
-          ))}
-        </ul>
-      )}
-      {error && <p className="mt-2 text-xs text-destructive">{error}</p>}
-      {unseen ? (
-        <Button variant="outline" className="mt-3 h-11 w-full" disabled={busy} onClick={markSeen}>
-          知道了
-        </Button>
-      ) : (
-        item.seen_at && <p className="mt-2 text-xs text-muted-foreground">{formatDateTime(item.seen_at)} 看過</p>
-      )}
-    </article>
-  )
-}
-
 /** 簽核匣：等簽的出差單、優惠與合約申請；下面另外列模型有把握、系統已經核准的單，給主管事後查 */
 function OaInboxPanel() {
   const navigate = useNavigate()
@@ -558,10 +387,11 @@ function OaInboxPanel() {
       {user && (
         <p className="text-xs text-muted-foreground">
           {user.role === "it"
-            ? "全公司還沒簽的出差單、優惠與合約申請都在這裡，IT 可以代簽"
-            : "你團隊業務的出差單、優惠與合約申請，會送到這裡簽核"}
+            ? "全公司待簽的出差單、優惠、合約與 OA 申請都在這裡，IT 可以代簽"
+            : "團隊的出差單、優惠、合約與 OA 申請，會送到這裡簽核"}
         </p>
       )}
+      <Link to="/oa/apps" className="self-start text-sm text-primary underline">前往 OA 表單中心</Link>
       {notice && <p className="rounded-lg bg-primary/10 px-3 py-2 text-sm text-primary">{notice}</p>}
       {state.status === "loading" && <p className="py-10 text-center text-sm text-muted-foreground">載入中…</p>}
       {state.status === "error" && (
@@ -841,7 +671,7 @@ function MyMethodCard({
         ))}
       </div>
       <details className="mt-2">
-        <summary className="flex min-h-9 cursor-pointer items-center text-xs text-primary">看做法全文</summary>
+        <summary data-ui-demo-open="disclosure" className="flex min-h-9 cursor-pointer items-center text-xs text-primary">看做法全文</summary>
         <p className="mt-1 rounded-lg bg-muted px-3 py-2 text-xs leading-relaxed whitespace-pre-line">{card.approach}</p>
       </details>
       <p className="mt-2 text-xs">

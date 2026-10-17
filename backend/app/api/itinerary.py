@@ -549,7 +549,7 @@ def arrive(session: SessionDep, customer_id: str, user: CurrentUser):
 
 @router.post("/today/ask", response_model=ProposalOut)
 def ask_route(session: SessionDep, body: AskInput, user: CurrentUser):
-    """跟熊熊滾說要怎麼排：一次 Gemini 把話翻成操作，回對照卡（還沒套用）。算進用量上限（usage.py）。"""
+    """跟熊熊滾說要怎麼排：一次 Gemini 把話翻成操作，回對照卡（還沒套用）。"""
     try:
         proposal = itinerary_ai.ask(session, _rep_id(user), body.question.strip(), body.customer_id)
     except NotConfigured:

@@ -194,7 +194,7 @@ function DatasetWorkspace({ onClose }: { onClose: () => void }) {
           reason instanceof Error ? reason.message : "操作未完成，請重試"
         )
     } finally {
-      if (alive.current) setBusy(false)
+      setBusy(false)
     }
   }
   function guard(label: string, action: () => void, reset = false) {

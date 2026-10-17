@@ -83,7 +83,7 @@ function progress(extra: Partial<RouteProgress> = {}): RouteProgress {
 }
 
 describe("applyProgress", () => {
-  it("換掉每站的狀態、到過的時間、跑了幾站與需立即處理，其他照原本的", () => {
+  it("換掉每站的狀態、到過的時間、跑了幾站，其他照原本的", () => {
     const before = route()
     const after = applyProgress(before, progress())
     expect(after).not.toBeNull()
@@ -102,8 +102,8 @@ describe("applyProgress", () => {
     expect(before.stops[0].status).toBe("next")
   })
 
-  it("需立即處理那家還沒到過就留著卡", () => {
-    expect(applyProgress(route(), progress({ urgent }))!.urgent).toEqual(urgent)
+  it("舊後端的警示資料也不再保留", () => {
+    expect(applyProgress(route(), progress({ urgent }))!.urgent).toBeNull()
   })
 
   it("不是同一份行程（IT 重置過）回 null", () => {

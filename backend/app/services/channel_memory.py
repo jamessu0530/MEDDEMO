@@ -111,7 +111,7 @@ def marker_key(channel_id: int) -> str:
 
 
 def schedule(channel_id: int) -> None:
-    """有人發言（或風險通報）之後呼叫。搶到標記的才排，兩分鐘內再多的訊息都併進同一次。
+    """有人發言（或舊版系統訊息）之後呼叫。搶到標記的才排，兩分鐘內再多的訊息都併進同一次。
     Redis 連不上就記 log：下一則訊息進來會再排，沒整理到的訊息一起補上。"""
     try:
         if redis().set(marker_key(channel_id), 1, nx=True, ex=MARKER_TTL_SECONDS):
@@ -161,7 +161,7 @@ def _new_messages(session: Session, channel: Channel) -> list[tuple[ChannelMessa
         .where(
             ChannelMessage.channel_id == channel.id,
             ChannelMessage.id > (channel.memory_through_id or 0),
-            ChannelMessage.kind.in_(("user", "notice")),
+            ChannelMessage.kind == "user",
             ChannelMessage.deleted_at.is_(None),
         )
         .order_by(ChannelMessage.id)
@@ -231,7 +231,7 @@ def _prompt(
         parts.append(f"[id {item.id}]（{'、'.join(flags)}）{item.text}{attachments}")
     parts.append("\n還沒整理過的新訊息（由舊到新；附件的原檔照編號順序附在最前面）：")
     for message, author in batch:
-        who = "風險通報" if message.kind == "notice" else author
+        who = "舊版系統訊息" if message.kind == "notice" else author
         when = message.created_at.astimezone(TAIPEI)
         line = f"[#{message.id}] {when:%m/%d %H:%M} {who}：{message.body}"
         line += "".join(_file_note(a, included) for a in files.get(message.id, []))

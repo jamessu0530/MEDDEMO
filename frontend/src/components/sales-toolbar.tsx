@@ -26,7 +26,7 @@ export function SalesToolbar({ user, children }: { user: AuthUser; children?: Re
               <span className="truncate">{user.name}</span>
               <span className="truncate">
                 {user.region}
-                {user.acting_as && ` · 示範：${user.acting_as.name}的客戶`}
+                {user.acting_as && ` · 共用：${user.acting_as.name}的客戶`}
               </span>
             </span>
             <ChevronRight className="size-3.5 shrink-0" />

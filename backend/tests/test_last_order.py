@@ -138,10 +138,10 @@ def current_code(engine, name):
 
 def test_last_order_of_a_store_whose_packs_changed(client, engine):
     last = client.get("/api/customers/C001/last-order").json()
-    # 10/5 進貨比 9/30 報價新、差 5 天：進貨整張照抄（18 項），報價補上 4 個口；魚油兩邊都有，照進貨
+    # 舊訂單仍可追溯，但不把 18 個虛構料號帶進再次訂購；保留 4 個有效促銷品項。
     assert last["order"] == {"order_no": "SO20261005-C001", "date": "2026-10-05"}
     assert last["quote"] == {"quote_no": "Q20260930-0001", "date": "2026-09-30"}
-    assert len(last["lines"]) == 18 + 4 and last["changed"] == 3
+    assert len(last["lines"]) == 4 and last["changed"] == 3
     first = last["lines"][:3]
     assert [(line["pack"]["name"], line["change"]["kind"]) for line in first] == [
         ("40EXa眼藥水(中口)", "pack_gone"), ("金舒胃平(小口)", "terms"), ("威鎮凝膠", "promo_gone"),
@@ -156,21 +156,17 @@ def test_last_order_of_a_store_whose_packs_changed(client, engine):
     assert [line["repeat"] for line in first] == [
         {"sku": "F763630", "qty": 57}, {"promo_code": current_code(engine, "金舒胃平(小口)"), "packs": 3}, {"sku": "D120013", "qty": 22},
     ]
-    # 沒變的：進貨照金額由大到小，報價補的口在最後
-    assert last["lines"][3]["sku"] == "HS-FO90" and last["lines"][3]["source"] == "order"
+    # 有效但沒變的促銷品項仍保留。
     premium = last["lines"][-1]
     assert (premium["pack"]["name"], premium["change"], premium["repeat"]) == (
         "Premium眼藥水(小口)", None, {"promo_code": current_code(engine, "Premium眼藥水(小口)"), "packs": 1},
     )
-    with engine.connect() as conn:
-        fish_qty = conn.execute(text("SELECT qty FROM sales_transaction WHERE order_no = 'SO20261005-C001' AND sku = 'HS-FO30'")).scalar_one()
-    fish = next(line for line in last["lines"] if line["sku"] == "HS-FO30")
-    assert (fish["source"], fish["qty"], fish["pack"], fish["unit"], fish["supply_price"]) == ("order", fish_qty, None, "盒", 405)
+    assert all(not line["sku"].startswith(("HS-", "RX-", "OT-", "MD-", "DEMO-")) for line in last["lines"])
 
 
 def test_unchanged_packs_carry_no_warning(client):
     last = client.get("/api/customers/C009/last-order").json()
-    assert last["changed"] == 0 and len(last["lines"]) == 15 + 2
+    assert last["changed"] == 0 and len(last["lines"]) == 2
     assert [line["pack"]["name"] for line in last["lines"] if line["pack"]] == ["Premium眼藥水(小口)", "骨營膠囊600T(小口)"]
 
 

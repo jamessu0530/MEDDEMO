@@ -370,7 +370,7 @@ def progress(session: Session, itinerary: Itinerary) -> Progress:
     ]
     return Progress(
         itinerary_id=itinerary.id, stops=stops, done=sum(1 for s in stops if s.status == "done"), total=len(stops),
-        urgent=_pending_urgent(day, open_),
+        urgent=None,
     )
 
 
@@ -798,9 +798,8 @@ def _create(session: Session, rep: AppUser, today: dt.date, existing: Itinerary 
     items = {item["candidate"].customer_id: item for item in picked.picked}
     customers = _customers(session, list(items))
     habits = route_habits.for_day(session, rep.id, today)
-    urgent_id = picked.urgent.customer_id if picked.urgent else None
     open_ = [
-        _new_open(customers[cid], "model", (item["signal"], item["reason"]), habits, locked=cid == urgent_id)
+        _new_open(customers[cid], "model", (item["signal"], item["reason"]), habits)
         for cid, item in items.items()
     ]
     start, points = _points(session, rep, today, picked.done, {}, [o.customer for o in open_])
@@ -808,12 +807,6 @@ def _create(session: Session, rep: AppUser, today: dt.date, existing: Itinerary 
     minutes = travel.matrix(points, rep.travel_mode).minutes
     stops = [o.plan_stop(n + 1) for n, o in enumerate(open_)]
     locks = []
-    if picked.urgent:
-        # 「需立即處理」那家鎖在第一站，其他照順路排；業務之後可以拖走或解鎖
-        locks.append(route_planner.Rule(
-            id=f"lock:{urgent_id}", text=f"{picked.urgent.customer_name} 排第一站",
-            kind="lock", customer_ids=(urgent_id,), position=0,
-        ))
     result, skipped, reasons = _fit_habits(start, stops, locks, habits, [o.customer for o in open_], minutes)
     # 只剩鎖也排不出來（不會發生）就照模型挑的順序
     order = [s.customer_id for s in result.slots] if isinstance(result, route_planner.Schedule) else list(items)
@@ -822,7 +815,7 @@ def _create(session: Session, rep: AppUser, today: dt.date, existing: Itinerary 
     itinerary.suggested = [
         {"customer_id": cid, "signal": items[cid]["signal"], "reason": items[cid]["reason"]} for cid in order
     ]
-    itinerary.urgent = dataclasses.asdict(picked.urgent) if picked.urgent else None
+    itinerary.urgent = None
     itinerary.skipped_habit_ids = skipped
     # 保留生成版本的 JSON 中繼資料，即使所有客戶都暫緩、沒有任何站也能辨認。
     # _reasons 只讀被跳過的習慣編號，這個保留欄位不會成為畫面上的習慣理由。
@@ -1198,7 +1191,7 @@ def _compose(
     return ItineraryView(
         id=itinerary.id, date=itinerary.date, rep=rep, version=itinerary.version,
         done=len(day.done) + sum(1 for o in open_ if o.customer.id in day.arrivals), total=len(stops),
-        urgent=_pending_urgent(day, open_),
+        urgent=None,
         stops=stops, travel_minutes=planned.travel_minutes, travel_km=round(total_km, 1),
         finish_time=planned.slots[-1].leave.strftime("%H:%M") if planned.slots else None,
         estimated=matrix.estimated, travel_mode=rep.travel_mode,
@@ -1220,13 +1213,6 @@ def _open_statuses(day: _Day, open_: list[_Open]) -> list[str]:
     return [
         "done" if o.customer.id in day.arrivals else "next" if n == upcoming else "todo" for n, o in enumerate(open_)
     ]
-
-
-def _pending_urgent(day: _Day, open_: list[_Open]) -> dict | None:
-    """需立即處理那張卡：那家還沒跑、也還沒到過才給（view 與 progress 共用）。"""
-    urgent = day.itinerary.urgent
-    pending_ids = {o.customer.id for o in open_} - set(day.arrivals)
-    return urgent if urgent and urgent["customer_id"] in pending_ids else None
 
 
 def _habit_ids(habits: list[RouteHabit], stop: _Open, rule_customers: dict[int, set[str]]) -> list[int]:

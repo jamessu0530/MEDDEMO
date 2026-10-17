@@ -23,18 +23,17 @@ describe("sidebarItems", () => {
   })
 
   it("主管：主管端的五個分頁，加上頻道", () => {
-    expect(labels("manager")).toEqual({ main: ["團隊行程", "客戶策略", "提問", "風險通報", "簽核", "方法卡"], more: ["我的報表", "訂單", "頻道", "商品與促銷"] })
+    expect(labels("manager")).toEqual({ main: ["團隊行程", "客戶策略", "提問", "簽核", "方法卡"], more: ["我的報表", "訂單", "頻道", "商品與促銷"] })
   })
 
   it("IT：組織管理在最前面，接著是主管端", () => {
-    expect(labels("it")).toEqual({ main: ["組織管理", "團隊行程", "客戶策略", "提問", "風險通報", "簽核", "方法卡"], more: ["我的報表", "訂單", "頻道", "商品與促銷"] })
+    expect(labels("it")).toEqual({ main: ["組織管理", "團隊行程", "客戶策略", "提問", "簽核", "方法卡"], more: ["我的報表", "訂單", "頻道", "商品與促銷"] })
   })
 
   it("數字掛在對的項目上", () => {
     expect(item("sales", "銷售").badge).toBe("uploads")
     expect(item("sales", "頻道").badge).toBe("channels")
     expect(item("sales", "主管回覆").badge).toBe("replies")
-    expect(item("manager", "風險通報").badge).toBe("notices")
     expect(item("manager", "簽核").badge).toBe("oa")
     expect(item("it", "頻道").badge).toBe("channels")
   })

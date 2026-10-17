@@ -1,4 +1,16 @@
 import { useAskPageContext } from "@/ask/use-page-context"
+import { useCurrentPageContext } from "@/ask/use-page-context"
+import { useQuestionSuggestions } from "@/ask/use-question-guidance"
+import { pageSnapshot } from "@/ask/conversation-context"
+import type { Turn } from "@/api/asks"
+import {
+  shouldAcceptSuggestion,
+  suggestedCompletion,
+} from "@/ask/question-guidance"
+import {
+  QuestionSuggestions,
+  SuggestionHint,
+} from "@/components/ask/question-suggestions"
 import { ReportPageTooltip } from "@/components/reports/report-page-tooltip"
 import {
   useEffect,
@@ -15,6 +27,8 @@ import {
   ArrowUp,
   Check,
   Download,
+  ChevronRight,
+  Ellipsis,
   Eye,
   FileChartColumn,
   GripVertical,
@@ -51,6 +65,9 @@ import { ReportChart } from "@/components/reports/report-chart"
 import { ReportDocumentControls } from "@/components/reports/report-document-controls"
 import { ReportExportDialog } from "@/components/reports/report-export"
 import { ReportRefreshControls } from "@/components/reports/report-refresh"
+import { ReportSheet } from "@/components/reports/report-sheet"
+import { reportSummaryPair } from "@/lib/report-summary"
+import "@/components/reports/report-workspace.css"
 import { ReportDatasetLauncher } from "@/components/reports/report-datasets"
 import { ReportDataFields } from "@/components/reports/report-fields"
 import { ReportRibbon } from "@/components/reports/report-ribbon"
@@ -160,6 +177,7 @@ import {
   type ReportFilter,
   type ReportFilterOptions,
   type ReportPage,
+  type ReportPeriod,
   type ReportVisual,
   type ReportSelectionGroup,
   type ReportSelectionPoint,
@@ -170,6 +188,9 @@ import {
 import { useIsDesktop } from "@/lib/use-media-query"
 import { useReportWorkspaceLayout } from "@/lib/report-workspace-layout"
 import { cn } from "@/lib/utils"
+import { uiDemo } from "@/lib/ui-demo-browser"
+import { requestedUiDemo } from "@/lib/ui-demo"
+import { UiDemoOffer } from "@/components/ui-demo/offer"
 
 type Boot =
   | { status: "ready"; workspace: ReportWorkspace }
@@ -189,6 +210,8 @@ export function ReportsPage() {
   const [boot, setBoot] = useState<Boot | null>(null)
   const [attempt, setAttempt] = useState(0)
   useEffect(() => {
+    // Activity 恢復效果時沿用已載入的工作區，只有初次進入或重試才讀取。
+    if (boot) return
     const controller = new AbortController()
     getReports(controller.signal)
       .then((workspace) => {
@@ -203,7 +226,7 @@ export function ReportsPage() {
           })
       })
     return () => controller.abort()
-  }, [attempt])
+  }, [attempt, boot])
 
   if (!user) return null
   const primaryNavigation = user.role === "sales"
@@ -221,7 +244,10 @@ export function ReportsPage() {
     )
   return (
     <div className="min-h-svh pb-24 lg:pb-0">
-      <PageHeader title={primaryNavigation ? "報表" : "我的報表"} backTo={primaryNavigation ? undefined : homePath(user.role)} />
+      <PageHeader
+        title={primaryNavigation ? "報表" : "我的報表"}
+        backTo={primaryNavigation ? undefined : homePath(user.role)}
+      />
       <main className="p-4">
         {boot?.status === "error" ? (
           <Notice
@@ -311,7 +337,8 @@ function ReportDocument({
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null)
   const [retry, setRetry] = useState(0)
   const readonly = library.readonly === true
-  const [editing, setEditing] = useState(isDesktop && !readonly)
+  const [editing, setEditing] = useState(false)
+  const [toolsOpen, setToolsOpen] = useState(false)
   const [lastLoadedAt, setLastLoadedAt] = useState<string | null>(null)
   const [lastAsOf, setLastAsOf] = useState(workspace.as_of)
   const [selectedId, setSelectedId] = useState<string | null>(
@@ -376,11 +403,34 @@ function ReportDocument({
     card: ReportCard
     point?: ReportSelectionPoint
   } | null>(null)
+  useEffect(() => {
+    let preparedRun = 0
+    const prepare = () => {
+      const demo = uiDemo.getSnapshot()
+      if (
+        demo.status !== "running" ||
+        demo.kind !== "report-tour" ||
+        demo.runId === preparedRun
+      )
+        return
+      preparedRun = demo.runId
+      setToolsOpen(false)
+      setFiltersOpen(false)
+      setMobileInspector(false)
+      setGallery(false)
+      setPageSettings(false)
+      setFocusId(null)
+      setExportView(null)
+      setDetailView(null)
+      setTooltip(null)
+    }
+    prepare()
+    return uiDemo.subscribe(prepare)
+  }, [])
   const [saving, setSaving] = useState(false)
   const [notice, setNotice] = useState<{ text: string; error: boolean } | null>(
     null
   )
-  const saveController = useRef<AbortController | null>(null)
   const pages = reportPages(config)
   const currentPage = pages.find((page) => page.id === pageId) ?? pages[0]
   const pageCards = config.cards.filter(
@@ -398,12 +448,26 @@ function ReportDocument({
       : selectedId
         ? [selectedId]
         : []
+  const readingPair =
+    !editing &&
+    !isDesktop &&
+    !pageObjects.length &&
+    !pageCards.some((card) => drills[card.id]?.steps.length)
+      ? reportSummaryPair(
+          pageCards.map((card) => ({
+            ...card,
+            hidden: visibility[card.id] ?? card.hidden,
+          }))
+        )
+      : null
   const layoutConfig = studioLayoutConfig({
     ...config,
-    cards: config.cards.map((card) => ({
-      ...card,
-      hidden: visibility[card.id] ?? card.hidden,
-    })),
+    cards: config.cards
+      .filter((card) => card.id !== readingPair?.trendId)
+      .map((card) => ({
+        ...card,
+        hidden: visibility[card.id] ?? card.hidden,
+      })),
     objects: (config.objects ?? []).map((object) => ({
       ...object,
       hidden: visibility[object.id] ?? object.hidden,
@@ -447,15 +511,33 @@ function ReportDocument({
   const dateFallback = asOf
     ? reportPeriodRange(config.period, asOf, config.date_range)
     : { start: "", end: "" }
-  useAskPageContext({ title: `${config.name} · ${currentPage.name}`, facts: [
-    `報表：${config.name}`, `報表分頁：${currentPage.name}`, `期間：${config.period}`,
-    `資料基準日：${asOf}`, `日期範圍：${dateFallback.start} 至 ${dateFallback.end}`,
-    ...(currentPage.date_range ? [`頁面日期範圍：${JSON.stringify(currentPage.date_range)}`] : []),
-    `報表篩選：${JSON.stringify(config.filters ?? [])}`, `頁面篩選：${JSON.stringify(currentPage.filters ?? [])}`,
-    `選取條件：${JSON.stringify(selectionGroups)}`, `業務編號：${config.owner_id ?? "未指定"}`, `客戶類型：${config.customer_type ?? "全部"}`,
-    `導覽篩選：${JSON.stringify(queryConfig.navigation_filters ?? [])}`, `切片器選取：${JSON.stringify(queryConfig.canvas_selections ?? [])}`,
-    ...(selected ? [`選取圖表：${selected.title}`, `圖表指標：${selected.metric}；分類：${selected.dimension}`, `圖表篩選：${JSON.stringify(selected.filters ?? [])}`] : []),
-  ] })
+  useAskPageContext({
+    title: `${config.name} · ${currentPage.name}`,
+    facts: [
+      `報表：${config.name}`,
+      `報表分頁：${currentPage.name}`,
+      `期間：${config.period}`,
+      `資料基準日：${asOf}`,
+      `日期範圍：${dateFallback.start} 至 ${dateFallback.end}`,
+      ...(currentPage.date_range
+        ? [`頁面日期範圍：${JSON.stringify(currentPage.date_range)}`]
+        : []),
+      `報表篩選：${JSON.stringify(config.filters ?? [])}`,
+      `頁面篩選：${JSON.stringify(currentPage.filters ?? [])}`,
+      `選取條件：${JSON.stringify(selectionGroups)}`,
+      `業務編號：${config.owner_id ?? "未指定"}`,
+      `客戶類型：${config.customer_type ?? "全部"}`,
+      `導覽篩選：${JSON.stringify(queryConfig.navigation_filters ?? [])}`,
+      `切片器選取：${JSON.stringify(queryConfig.canvas_selections ?? [])}`,
+      ...(selected
+        ? [
+            `選取圖表：${selected.title}`,
+            `圖表指標：${selected.metric}；分類：${selected.dimension}`,
+            `圖表篩選：${JSON.stringify(selected.filters ?? [])}`,
+          ]
+        : []),
+    ],
+  })
 
   const filterOptions = workspace.filter_options ?? {
     ...emptyFilterOptions(),
@@ -478,6 +560,7 @@ function ReportDocument({
     queryRef.current = queryConfig
   }, [queryConfig])
   useEffect(() => {
+    if (snapshot?.key === queryKey && snapshot.attempt === retry) return
     const controller = new AbortController()
     const requested = queryRef.current
     getReportData(requested, controller.signal)
@@ -508,8 +591,7 @@ function ReportDocument({
           })
       })
     return () => controller.abort()
-  }, [queryKey, retry])
-  useEffect(() => () => saveController.current?.abort(), [])
+  }, [queryKey, retry, snapshot])
 
   function change(next: ReportConfig) {
     const normalized = normalizeReportConfig(pruneStudioReferences(next))
@@ -602,8 +684,7 @@ function ReportDocument({
   async function save() {
     if (readonly) return false
     const submitted = config
-    const controller = new AbortController()
-    saveController.current = controller
+    // 已按下的儲存要完成；切去其他頁暫停工作區時不取消這次寫入。
     setSaving(true)
     setNotice(null)
     try {
@@ -611,14 +692,10 @@ function ReportDocument({
         ? await saveReportDocument(
             library.active_report_id,
             submitted,
-            library.revision,
-            controller.signal
+            library.revision
           )
         : null
-      const stored =
-        nextLibrary?.config ??
-        (await saveReportConfig(submitted, controller.signal))
-      if (controller.signal.aborted) return false
+      const stored = nextLibrary?.config ?? (await saveReportConfig(submitted))
       if (nextLibrary) setLibrary(nextLibrary)
       setDraft((current) =>
         JSON.stringify(current.config) === JSON.stringify(submitted)
@@ -629,14 +706,13 @@ function ReportDocument({
       setNotice({ text: "報表已儲存到你的帳號。", error: false })
       return true
     } catch (err) {
-      if (!controller.signal.aborted)
-        setNotice({
-          text: err instanceof Error ? err.message : "沒有儲存成功，請再試一次",
-          error: true,
-        })
+      setNotice({
+        text: err instanceof Error ? err.message : "沒有儲存成功，請再試一次",
+        error: true,
+      })
       return false
     } finally {
-      if (!controller.signal.aborted) setSaving(false)
+      setSaving(false)
     }
   }
   function selectCard(id: string) {
@@ -1144,17 +1220,52 @@ function ReportDocument({
   })
 
   return (
-    <div ref={workspaceLayout.ref} className="min-h-svh min-w-0 bg-muted/30">
+    <div
+      ref={workspaceLayout.ref}
+      className={cn(
+        "report-workspace min-h-svh min-w-0",
+        editing && "report-workspace-editing"
+      )}
+    >
       <PageHeader
-        title="報表工作區"
+        title={isDesktop ? config.name : "報表"}
         backTo={primaryNavigation ? undefined : backTo}
         trailing={
-          (editing || dirty) && (
-            <div className="flex items-center gap-1 pr-2">
+          <div className="report-header-actions">
+            {!readonly && (
               <Button
-                className="h-10 rounded-lg px-3 shadow-none"
+                variant="ghost"
+                className="report-edit-button"
+                aria-pressed={editing}
+                data-ui-demo={
+                  editing ? "report-finish-editing" : "report-start-editing"
+                }
+                onClick={() => {
+                  setEditing(!editing)
+                  setMobileInspector(false)
+                  const demo = uiDemo.getSnapshot()
+                  if (
+                    !editing &&
+                    !(demo.status === "running" && demo.kind === "report-tour")
+                  ) {
+                    setDrills({})
+                    setSelectionGroups([])
+                  }
+                }}
+              >
+                {editing ? (
+                  <Check className="size-4" />
+                ) : (
+                  <Pencil className="size-4" />
+                )}
+                {editing ? "完成編輯" : "編輯報表"}
+              </Button>
+            )}
+            {dirty && (
+              <Button
+                className="report-save-button"
                 onClick={() => void save()}
-                disabled={saving || !dirty}
+                disabled={saving}
               >
                 {saving ? (
                   <LoaderCircle className="size-4 animate-spin" />
@@ -1163,238 +1274,359 @@ function ReportDocument({
                 )}
                 儲存
               </Button>
-            </div>
-          )
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="report-more-button"
+              aria-label="更多報表操作"
+              data-ui-demo="report-more"
+              aria-haspopup="dialog"
+              onClick={() => setToolsOpen(true)}
+            >
+              <Ellipsis className="size-5" />
+            </Button>
+          </div>
         }
       />
-      <div className="border-b bg-card px-3 py-3 lg:px-5">
-        <ReportDocumentControls
-          config={config}
-          library={library}
-          pageId={currentPage.id}
-          exploration={exploreSnapshot()}
-          dirty={dirty}
-          saving={saving}
-          onOpen={onOpen}
-          onLibraryChange={setLibrary}
-          requestAction={draftProtection.requestAction}
-          flushDraft={draftProtection.flush}
-          onBookmark={(bookmark) => {
-            change(
-              applyReportBookmark(
-                config,
-                bookmark.state,
-                workspace.owners.map((owner) => owner.id)
-              )
-            )
-            if (pages.some((page) => page.id === bookmark.state.page_id))
-              setPageId(bookmark.state.page_id)
-            setSelectionGroups([])
-            setDrills({})
-            setMatrixViews({})
-            if (bookmark.state.exploration)
-              restoreExplore(bookmark.state.exploration)
-            setSelectedId(null)
-            setNotice({
-              text: `已套用檢視書籤「${bookmark.name}」。`,
-              error: false,
-            })
-          }}
-        />
-        {readonly && (
-          <p
-            className="mb-3 rounded-md border bg-muted/40 p-3 text-xs leading-relaxed"
-            role="status"
+      <div className="report-toolbar">
+        <div className="report-reading-controls">
+          <NativeSelect
+            aria-label="報表期間"
+            data-ui-demo="report-period"
+            className="report-period-select"
+            value={config.period}
+            onChange={(event) => {
+              const period = event.target.value as ReportPeriod
+              if (period === "custom") setFiltersOpen(true)
+              else change({ ...config, period, date_range: null })
+            }}
           >
-            唯讀共享 · 來自 {library.shared_from?.name} · 設定快照版本{" "}
-            {library.shared_from?.revision}
-            。切片器與探索只影響這次檢視；資料按你自己的權限重新查詢。需要編輯請另存新報表。
+            {Object.entries(PERIODS).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </NativeSelect>
+          <button
+            type="button"
+            className="report-scope-button"
+            onClick={() => setFiltersOpen(true)}
+            aria-label="篩選報表"
+            data-ui-demo="report-filters"
+            aria-haspopup="dialog"
+          >
+            <SlidersHorizontal className="size-4 shrink-0" />
+            <span>
+              {filtered ? "已套用篩選" : (ready?.scope_label ?? "篩選")}
+            </span>
+            {filtered && (
+              <span className="size-1.5 shrink-0 rounded-full bg-primary" />
+            )}
+          </button>
+        </div>
+        {readonly && (
+          <p className="report-readonly-note" role="status">
+            唯讀共享 · 來自 {library.shared_from?.name}
           </p>
         )}
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            {editing ? (
-              <input
-                aria-label="報表名稱"
-                value={config.name}
-                maxLength={40}
-                onChange={(event) =>
-                  change({ ...config, name: event.target.value || "我的報表" })
-                }
-                onBlur={(event) => {
-                  const name = event.target.value.trim() || "我的報表"
-                  if (name !== config.name) change({ ...config, name })
-                }}
-                className="w-full min-w-0 rounded border border-transparent bg-transparent py-0.5 text-lg font-semibold outline-none focus:border-primary"
-              />
-            ) : (
-              <h2 className="truncate text-lg font-semibold">{config.name}</h2>
-            )}
-          </div>
-          <div
-            className="flex shrink-0 items-center gap-1 rounded-lg border bg-muted/50 p-1"
-            aria-label="報表模式"
-          >
-            <button
-              type="button"
-              className={cn(
-                "flex min-h-9 items-center gap-1.5 rounded-md px-3 text-xs",
-                !editing && "bg-card font-medium shadow-sm"
-              )}
-              aria-pressed={!editing}
-              onClick={() => {
-                setEditing(false)
-                setMobileInspector(false)
-              }}
-            >
-              <Eye className="size-3.5" />
-              檢視
-            </button>
-            <button
-              type="button"
-              className={cn(
-                "flex min-h-9 items-center gap-1.5 rounded-md px-3 text-xs",
-                editing && "bg-card font-medium shadow-sm"
-              )}
-              aria-pressed={editing}
-              disabled={readonly}
-              onClick={() => {
-                setEditing(true)
-                setDrills({})
-                setSelectionGroups([])
-                if (!dockedPanels) setMobileInspector(true)
-              }}
-            >
-              <Pencil className="size-3.5" />
-              編輯
-            </button>
-          </div>
-        </div>
-        <ReportRibbon
-          editing={editing}
-          onInsert={addObject}
-          panels={studioPanels}
-          onPanel={(key) =>
-            setStudioPanels((current) => ({ ...current, [key]: !current[key] }))
-          }
-          onAnalytics={() => {
-            setMobileInspector(true)
-            setStudioPanels((current) => ({
-              ...current,
-              layers: false,
-              filters: false,
-            }))
-          }}
+        <ReportSheet
+          open={toolsOpen}
+          onOpenChange={setToolsOpen}
+          title="報表工具"
+          description="管理報表與書籤、編輯圖表，或匯出目前報表。"
         >
-          {(editing || history.length > 0 || future.length > 0) && (
-            <>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-11"
-                aria-label="復原上一次調整"
-                disabled={readonly || !history.length}
-                onClick={undo}
-              >
-                <RotateCcw className="size-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-11"
-                aria-label="重做上一次復原"
-                disabled={readonly || !future.length}
-                onClick={redo}
-              >
-                <RotateCw className="size-4" />
-              </Button>
-            </>
-          )}
-          <ReportDatasetLauncher
-            onClose={() => setDatasetEpoch((value) => value + 1)}
-          />
-          {editing && (
-            <Button
-              variant="outline"
-              className="h-10 rounded-md border shadow-none"
-              disabled={config.cards.length >= 24 || pageCards.length >= 12}
-              onClick={() => setGallery(true)}
-            >
-              <Plus className="size-4" />
-              新增視覺效果
-            </Button>
-          )}
-          <Button
-            variant={filtersOpen ? "secondary" : "ghost"}
-            className="h-10 rounded-md px-3 shadow-none"
-            onClick={() => setFiltersOpen((open) => !open)}
-            aria-expanded={filtersOpen}
-            aria-controls="report-filters"
+          <button
+            type="button"
+            className="report-demo-start"
+            onClick={() => {
+              setToolsOpen(false)
+              uiDemo.start("report-tour")
+            }}
           >
-            <SlidersHorizontal className="size-4" />
-            切片器
-            {filtered && <span className="size-1.5 rounded-full bg-primary" />}
-          </Button>
-          {editing && (
-            <NativeSelect
-              aria-label="套用報表範本"
-              className="h-10 max-w-36 rounded-md border text-base shadow-none"
-              value=""
-              onChange={(event) => {
-                if (!event.target.value) return
-                change(
-                  structuredClone(
-                    workspace.templates[
-                      event.target.value as "sales" | "manager"
-                    ]
-                  )
+            <FileChartColumn className="size-4" />
+            操作給我看
+          </button>
+          <ReportDocumentControls
+            config={config}
+            library={library}
+            pageId={currentPage.id}
+            exploration={exploreSnapshot()}
+            dirty={dirty}
+            saving={saving}
+            onOpen={onOpen}
+            onLibraryChange={setLibrary}
+            requestAction={draftProtection.requestAction}
+            flushDraft={draftProtection.flush}
+            onBookmark={(bookmark) => {
+              change(
+                applyReportBookmark(
+                  config,
+                  bookmark.state,
+                  workspace.owners.map((owner) => owner.id)
                 )
-                setPageId("overview")
-                setSelectedId(null)
-                setSelectionGroups([])
+              )
+              if (pages.some((page) => page.id === bookmark.state.page_id))
+                setPageId(bookmark.state.page_id)
+              setSelectionGroups([])
+              setDrills({})
+              setMatrixViews({})
+              if (bookmark.state.exploration)
+                restoreExplore(bookmark.state.exploration)
+              setSelectedId(null)
+              setNotice({
+                text: `已套用檢視書籤「${bookmark.name}」。`,
+                error: false,
+              })
+            }}
+          />
+          {readonly && (
+            <p
+              className="mb-3 rounded-md border bg-muted/40 p-3 text-xs leading-relaxed"
+              role="status"
+            >
+              唯讀共享 · 來自 {library.shared_from?.name} · 設定快照版本{" "}
+              {library.shared_from?.revision}
+              。切片器與探索只影響這次檢視；資料按你自己的權限重新查詢。需要編輯請另存新報表。
+            </p>
+          )}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              {editing ? (
+                <input
+                  aria-label="報表名稱"
+                  value={config.name}
+                  maxLength={40}
+                  onChange={(event) =>
+                    change({
+                      ...config,
+                      name: event.target.value || "我的報表",
+                    })
+                  }
+                  onBlur={(event) => {
+                    const name = event.target.value.trim() || "我的報表"
+                    if (name !== config.name) change({ ...config, name })
+                  }}
+                  className="w-full min-w-0 rounded border border-transparent bg-transparent py-0.5 text-lg font-semibold outline-none focus:border-primary"
+                />
+              ) : (
+                <h2 className="truncate text-lg font-semibold">
+                  {config.name}
+                </h2>
+              )}
+            </div>
+            <div
+              className="flex shrink-0 items-center gap-1 rounded-lg border bg-muted/50 p-1"
+              aria-label="報表模式"
+            >
+              <button
+                type="button"
+                className={cn(
+                  "flex min-h-9 items-center gap-1.5 rounded-md px-3 text-xs",
+                  !editing && "bg-card font-medium shadow-sm"
+                )}
+                aria-pressed={!editing}
+                onClick={() => {
+                  setToolsOpen(false)
+                  setEditing(false)
+                  setMobileInspector(false)
+                }}
+              >
+                <Eye className="size-3.5" />
+                檢視
+              </button>
+              <button
+                type="button"
+                className={cn(
+                  "flex min-h-9 items-center gap-1.5 rounded-md px-3 text-xs",
+                  editing && "bg-card font-medium shadow-sm"
+                )}
+                aria-pressed={editing}
+                disabled={readonly}
+                onClick={() => {
+                  setToolsOpen(false)
+                  setEditing(true)
+                  setDrills({})
+                  setSelectionGroups([])
+                  if (!dockedPanels) setMobileInspector(true)
+                }}
+              >
+                <Pencil className="size-3.5" />
+                編輯
+              </button>
+            </div>
+          </div>
+          {editing && (
+            <ReportRibbon
+              editing={editing}
+              onInsert={addObject}
+              panels={studioPanels}
+              onPanel={(key) =>
+                setStudioPanels((current) => ({
+                  ...current,
+                  [key]: !current[key],
+                }))
+              }
+              onAnalytics={() => {
+                setToolsOpen(false)
+                setMobileInspector(true)
+                setStudioPanels((current) => ({
+                  ...current,
+                  layers: false,
+                  filters: false,
+                }))
               }}
             >
-              <option value="">套用範本</option>
-              <option value="sales">業務報表</option>
-              <option value="manager">經理報表</option>
-            </NativeSelect>
+              {(editing || history.length > 0 || future.length > 0) && (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-11"
+                    aria-label="復原上一次調整"
+                    disabled={readonly || !history.length}
+                    onClick={undo}
+                  >
+                    <RotateCcw className="size-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-11"
+                    aria-label="重做上一次復原"
+                    disabled={readonly || !future.length}
+                    onClick={redo}
+                  >
+                    <RotateCw className="size-4" />
+                  </Button>
+                </>
+              )}
+              <ReportDatasetLauncher
+                onClose={() => setDatasetEpoch((value) => value + 1)}
+              />
+              {editing && (
+                <Button
+                  variant="outline"
+                  className="h-10 rounded-md border shadow-none"
+                  disabled={config.cards.length >= 24 || pageCards.length >= 12}
+                  onClick={() => {
+                    setToolsOpen(false)
+                    setGallery(true)
+                  }}
+                >
+                  <Plus className="size-4" />
+                  新增視覺效果
+                </Button>
+              )}
+              <Button
+                variant={filtersOpen ? "secondary" : "ghost"}
+                className="h-10 rounded-md px-3 shadow-none"
+                onClick={() => {
+                  setToolsOpen(false)
+                  setFiltersOpen(true)
+                }}
+                aria-expanded={filtersOpen}
+                aria-controls="report-filters"
+              >
+                <SlidersHorizontal className="size-4" />
+                切片器
+                {filtered && (
+                  <span className="size-1.5 rounded-full bg-primary" />
+                )}
+              </Button>
+              {editing && (
+                <NativeSelect
+                  aria-label="套用報表範本"
+                  className="h-10 max-w-36 rounded-md border text-base shadow-none"
+                  value=""
+                  onChange={(event) => {
+                    if (!event.target.value) return
+                    change(
+                      structuredClone(
+                        workspace.templates[
+                          event.target.value as "sales" | "manager"
+                        ]
+                      )
+                    )
+                    setPageId("overview")
+                    setSelectedId(null)
+                    setSelectionGroups([])
+                  }}
+                >
+                  <option value="">套用範本</option>
+                  <option value="sales">業務報表</option>
+                  <option value="manager">經理報表</option>
+                </NativeSelect>
+              )}
+              <Button
+                data-ui-demo="report-export"
+                variant="outline"
+                className="h-10 rounded-md border shadow-none"
+                onClick={() => {
+                  setToolsOpen(false)
+                  setExportView({})
+                }}
+              >
+                <Download className="size-4" />
+                完整匯出
+              </Button>
+              <span
+                className="ml-auto text-xs text-muted-foreground"
+                role="status"
+              >
+                {readonly ? "唯讀共享設定" : dirty ? "● 尚未儲存" : "已儲存"}
+              </span>
+            </ReportRibbon>
           )}
-          <Button
-            variant="outline"
-            className="h-10 rounded-md border shadow-none"
-            onClick={() => setExportView({})}
-          >
-            <Download className="size-4" />
-            完整匯出
-          </Button>
-          <span className="ml-auto text-xs text-muted-foreground" role="status">
-            {readonly ? "唯讀共享設定" : dirty ? "● 尚未儲存" : "已儲存"}
-          </span>
-        </ReportRibbon>
-        <ReportRefreshControls
-          seconds={config.refresh_seconds ?? 0}
-          busy={loading}
-          loadedAt={lastLoadedAt}
-          asOf={asOf}
-          onRefresh={() => setRetry((n) => n + 1)}
-          onChange={(refresh_seconds) => change({ ...config, refresh_seconds })}
-        />
-        {filtersOpen && (
-          <div
-            id="report-filters"
-            className="mt-3 min-w-0 space-y-3 border-t pt-3"
-          >
+          {!editing && (
+            <div className="report-reading-tools">
+              <Button
+                data-ui-demo="report-export"
+                variant="outline"
+                onClick={() => {
+                  setToolsOpen(false)
+                  setExportView({})
+                }}
+              >
+                <Download className="size-4" />
+                完整匯出
+              </Button>
+              <button
+                type="button"
+                aria-pressed={multipleSelection}
+                onClick={() => setMultipleSelection((value) => !value)}
+                className="report-tool-row"
+              >
+                多選聯動{multipleSelection ? "：開啟" : "：關閉"}
+              </button>
+              <ContextHelp label="圖表互動方式">
+                <p>
+                  點選資料點可聯動篩選。點圖表右上角可查看精確數值、逐筆明細或切換下鑽動作。
+                </p>
+              </ContextHelp>
+            </div>
+          )}
+        </ReportSheet>
+        <ReportSheet
+          open={filtersOpen}
+          onOpenChange={setFiltersOpen}
+          title="篩選報表"
+          description="調整期間與報表或分頁的資料範圍。"
+        >
+          <div id="report-filters" className="min-w-0 space-y-5">
             <div className="grid min-w-0 gap-3 lg:grid-cols-2">
               {asOf ? (
-                <ReportPeriodEditor
-                  period={config.period}
-                  range={config.date_range}
-                  fallback={dateFallback}
-                  asOf={asOf}
-                  onChange={(period, date_range) =>
-                    change({ ...config, period, date_range })
-                  }
-                />
+                <div data-ui-demo="report-filter-period">
+                  <ReportPeriodEditor
+                    period={config.period}
+                    range={config.date_range}
+                    fallback={dateFallback}
+                    asOf={asOf}
+                    onChange={(period, date_range) =>
+                      change({ ...config, period, date_range })
+                    }
+                  />
+                </div>
               ) : (
                 <p className="text-xs text-muted-foreground">
                   正在取得報表基準日…
@@ -1485,7 +1717,7 @@ function ReportDocument({
               </button>
             )}
           </div>
-        )}
+        </ReportSheet>
         {notice && (
           <p
             role={notice.error ? "alert" : "status"}
@@ -1522,8 +1754,8 @@ function ReportDocument({
       )}
       <main
         className={cn(
-          "grid min-w-0 gap-4 p-3 pb-[calc(9rem+env(safe-area-inset-bottom))] lg:p-5 lg:pb-[calc(9rem+env(safe-area-inset-bottom))]",
-          primaryNavigation && "pb-[calc(13rem+env(safe-area-inset-bottom))]",
+          "report-main grid min-w-0 gap-4",
+          primaryNavigation && "report-main-with-navigation",
           editing &&
             dockedPanels &&
             (studioPanels.data
@@ -1531,7 +1763,7 @@ function ReportDocument({
               : "grid-cols-[minmax(0,1fr)_18rem]")
         )}
       >
-        {editing && studioPanels.data && (
+        {editing && studioPanels.data && dockedPanels && (
           <aside
             aria-label="資料欄位面板"
             className={cn(
@@ -1584,37 +1816,42 @@ function ReportDocument({
               </span>
             </div>
           )}
-          {editing && !dockedPanels && (
-            <details
-              open={studioPanels.filters || studioPanels.layers}
-              className="mb-3 rounded-lg border bg-card p-3"
-            >
-              <summary className="min-h-9 text-xs">篩選與圖層</summary>
-              {studioPanels.filters && asOf && (
-                <ReportFilterPane
+          {editing &&
+            !dockedPanels &&
+            (studioPanels.filters || studioPanels.layers) && (
+              <details
+                open={studioPanels.filters || studioPanels.layers}
+                className="mb-3 rounded-lg border bg-card p-3"
+              >
+                <summary className="min-h-9 text-xs">篩選與圖層</summary>
+                {studioPanels.filters && asOf && (
+                  <ReportFilterPane
+                    config={config}
+                    pageId={currentPage.id}
+                    cardId={selected?.id}
+                    options={filterOptions}
+                    asOf={asOf}
+                    onChange={change}
+                  />
+                )}
+                <StudioLayers
                   config={config}
                   pageId={currentPage.id}
-                  cardId={selected?.id}
-                  options={filterOptions}
-                  asOf={asOf}
+                  selected={activeSelection}
+                  onSelect={(ids) => {
+                    setStudioSelection(ids)
+                    setSelectedId(ids.at(-1) ?? null)
+                  }}
                   onChange={change}
                 />
-              )}
-              <StudioLayers
-                config={config}
-                pageId={currentPage.id}
-                selected={activeSelection}
-                onSelect={(ids) => {
-                  setStudioSelection(ids)
-                  setSelectedId(ids.at(-1) ?? null)
-                }}
-                onChange={change}
-              />
-            </details>
-          )}
+              </details>
+            )}
 
           <div
-            className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground"
+            className={cn(
+              "mb-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground",
+              !editing && "sr-only"
+            )}
             aria-live="polite"
           >
             {(editing || reportPages(config).length > 1) && (
@@ -1647,30 +1884,6 @@ function ReportDocument({
               </Button>
             )}
           </div>
-          {!editing && (
-            <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
-              <button
-                type="button"
-                aria-pressed={multipleSelection}
-                onClick={() => setMultipleSelection((value) => !value)}
-                className={cn(
-                  "min-h-10 rounded-md border px-3",
-                  multipleSelection &&
-                    "border-primary bg-primary/10 text-primary"
-                )}
-              >
-                多選{multipleSelection ? "：開啟" : ""}
-              </button>
-              <ContextHelp label="圖表互動方式">
-                <p>
-                  點選資料點可聯動篩選、查看明細或下鑽日期；每張圖可以切換點選動作。
-                </p>
-                <p>
-                  開啟多選後，同一張圖的選取範圍合併，不同圖表的條件則同時套用。
-                </p>
-              </ContextHelp>
-            </div>
-          )}
           <div className="mb-3 space-y-2">
             <ReportFilterChips
               options={filterOptions}
@@ -1832,6 +2045,58 @@ function ReportDocument({
                         (group) => group.source_id === card.id
                       )?.points ?? []
                     }
+                    companion={
+                      readingPair?.totalId === card.id
+                        ? (() => {
+                            const trend = queryConfig.cards.find(
+                              (item) => item.id === readingPair.trendId
+                            )
+                            const trendData = trend
+                              ? cardData(trend.id)
+                              : undefined
+                            return trend && trendData ? (
+                              <div className="report-hero-trend">
+                                <button
+                                  type="button"
+                                  className="report-trend-heading"
+                                  onClick={() => setFocusId(trend.id)}
+                                >
+                                  {trend.title}
+                                  <ChevronRight className="size-3.5" />
+                                </button>
+                                <ReportRenderFrame loading={loading}>
+                                  <ReportChart
+                                    card={trend}
+                                    data={trendData}
+                                    plotOnly
+                                    pointActionLabel={
+                                      {
+                                        filter: "篩選",
+                                        details: "查看逐筆明細",
+                                        drill: "下鑽",
+                                        page: "跨頁分析",
+                                        tooltip: "查看提示頁",
+                                      }[pointAction(trend)]
+                                    }
+                                    onHoverData={(point) =>
+                                      openTooltip(trend, point)
+                                    }
+                                    onHoverEnd={closeTooltipLater}
+                                    onSelectData={(point) =>
+                                      explorePoint(trend.id, point)
+                                    }
+                                    selections={
+                                      selectionGroups.find(
+                                        (group) => group.source_id === trend.id
+                                      )?.points ?? []
+                                    }
+                                  />
+                                </ReportRenderFrame>
+                              </div>
+                            ) : null
+                          })()
+                        : undefined
+                    }
                     onSelect={layout.onSelect}
                     onFocus={() => setFocusId(card.id)}
                     onPoint={explorePoint}
@@ -1874,7 +2139,10 @@ function ReportDocument({
             </div>
           )}
           <div
-            className="mt-4 flex items-center overflow-x-auto border-t border-b bg-card"
+            className={cn(
+              "report-page-tabs mt-4 flex items-center overflow-x-auto",
+              !editing && pages.length === 1 && "hidden"
+            )}
             aria-label="報表分頁"
           >
             {pages.map((page) => (
@@ -1893,7 +2161,7 @@ function ReportDocument({
                 className={cn(
                   "min-h-11 shrink-0 border-t-2 border-transparent px-4 text-xs",
                   page.id === currentPage.id
-                    ? "border-t-amber-400 bg-amber-50 font-semibold text-slate-800 dark:bg-amber-400/10 dark:text-amber-100"
+                    ? "border-t-primary bg-primary/5 font-medium text-foreground"
                     : "text-muted-foreground hover:bg-muted"
                 )}
               >
@@ -1922,13 +2190,31 @@ function ReportDocument({
               </>
             )}
           </div>
-          <p className="mt-2 text-xs text-muted-foreground">
-            {editing && "最多 5 頁，每頁 12 個圖表。 · "}金額：新台幣
-          </p>
+          <footer className="report-footer">
+            {ready && (
+              <p>
+                {formatDate(ready.start)} 至 {formatDate(ready.end)} ·
+                金額：新台幣
+              </p>
+            )}
+            <ReportRefreshControls
+              compact
+              seconds={config.refresh_seconds ?? 0}
+              busy={loading}
+              loadedAt={lastLoadedAt}
+              asOf={asOf}
+              onRefresh={() => setRetry((n) => n + 1)}
+              onChange={(refresh_seconds) =>
+                change({ ...config, refresh_seconds })
+              }
+            />
+            {editing && <p>最多 5 頁，每頁 12 個圖表。</p>}
+          </footer>
         </div>
         {editing && dockedPanels && (
           <aside
             aria-label="視覺效果設定面板"
+            data-ui-demo="report-inspector"
             className="sticky top-16 max-h-[calc(100dvh-5rem)] min-w-0 self-start overflow-y-auto rounded-lg border bg-card p-3 pb-24"
           >
             {studioPanels.filters && asOf && (
@@ -1995,7 +2281,10 @@ function ReportDocument({
           showCloseButton={false}
           className="inset-x-0 top-auto bottom-0 mx-auto grid max-h-[88dvh] max-w-none translate-x-0 translate-y-0 grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden rounded-t-2xl rounded-b-none border p-0 shadow-xl sm:max-w-xl"
         >
-          <DialogHeader className="flex-row items-center justify-between border-b px-4 py-2">
+          <DialogHeader
+            data-ui-demo="report-inspector"
+            className="flex-row items-center justify-between border-b px-4 py-2"
+          >
             <div>
               <DialogTitle className="text-sm">
                 {selectedObject ? "編輯畫布物件" : "編輯圖表"}
@@ -2012,12 +2301,23 @@ function ReportDocument({
               variant="ghost"
               className="size-11"
               aria-label="關閉視覺效果設定"
+              data-ui-demo="report-inspector-close"
               onClick={() => setMobileInspector(false)}
             >
               <X className="size-4" />
             </Button>
           </DialogHeader>
           <div className="overflow-y-auto overscroll-contain p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+            {studioPanels.data && (
+              <details className="mb-5 rounded-xl bg-muted/30 p-3">
+                <summary className="min-h-10 text-sm">資料欄位</summary>
+                <ReportDataFields
+                  key={datasetEpoch}
+                  onField={assignField}
+                  onDataset={addDataset}
+                />
+              </details>
+            )}
             {selectedObject ? (
               <StudioObjectInspector
                 key={`${selectedObject.id}/${datasetEpoch}`}
@@ -2129,8 +2429,20 @@ function ReportDocument({
           if (!open) setFocusId(null)
         }}
       >
-        <DialogContent className="max-h-[92dvh] overflow-y-auto rounded-xl border shadow-xl sm:max-w-4xl">
-          <DialogHeader>
+        <DialogContent
+          showCloseButton={false}
+          className="max-h-[92dvh] overflow-y-auto rounded-xl border shadow-xl sm:max-w-4xl"
+        >
+          <button
+            type="button"
+            className="absolute top-2 right-2 flex size-11 items-center justify-center rounded-full text-muted-foreground"
+            aria-label="關閉圖表檢視"
+            data-ui-demo="report-focus-close"
+            onClick={() => setFocusId(null)}
+          >
+            <X className="size-4" />
+          </button>
+          <DialogHeader data-ui-demo="report-focused-content" className="pr-10">
             <DialogTitle>{focused?.title}</DialogTitle>
             <DialogDescription>放大檢視 · 分組彙總與精確數值</DialogDescription>
           </DialogHeader>
@@ -2182,6 +2494,11 @@ function ReportDocument({
               正在載入資料…
             </p>
           )}
+          {focusedData?.note && (
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              {focusedData.note}
+            </p>
+          )}
           {focused && (
             <div className="flex flex-wrap gap-2">
               <Button
@@ -2224,7 +2541,7 @@ function ReportDocument({
           onClose={() => setExportView(null)}
         />
       )}
-      {!readonly && (
+      {!readonly && editing && (
         <AiReportDock
           bottomNavigation={primaryNavigation && !isDesktop}
           bounds={workspaceLayout.dockBounds}
@@ -2274,6 +2591,7 @@ function ReportRenderFrame({
 }
 
 function CanvasVisual({
+  companion,
   card,
   layout,
   filterOptions,
@@ -2292,6 +2610,7 @@ function CanvasVisual({
   matrixView,
   onMatrixViewChange,
 }: {
+  companion?: ReactNode
   card: ReportCard
   layout: ReportLayoutRender
   filterOptions: ReportFilterOptions
@@ -2361,17 +2680,21 @@ function CanvasVisual({
         } as CSSProperties
       }
       className={cn(
-        "min-w-0 self-start overflow-hidden rounded-lg border bg-card p-3 shadow-sm lg:p-4",
+        "report-visual min-w-0 self-start overflow-hidden bg-card",
+        card.visual === "kpi" && "report-kpi",
+        companion && "report-hero",
         !layout.mobile && !layout.customMove && span,
         layout.fixedHeight && "report-fixed-visual flex flex-col",
         editing && selected
-          ? "border-amber-400 ring-1 ring-amber-400"
+          ? "border-primary ring-1 ring-primary"
           : "border-border",
         isDragging && "z-20 opacity-80 shadow-xl"
       )}
       aria-label={card.title}
+      data-report-metric={card.metric}
+      data-selected={editing && selected ? true : undefined}
     >
-      <div className="mb-3 flex items-start gap-1.5">
+      <div className="report-visual-heading flex items-start gap-1.5">
         {editing && (
           <button
             ref={layout.customMove ? undefined : setActivatorNodeRef}
@@ -2394,35 +2717,42 @@ function CanvasVisual({
               type="button"
               onClick={onSelect}
               aria-pressed={selected}
+              data-ui-demo="report-visual-edit"
               className="min-h-6 w-full text-left text-sm leading-snug font-semibold wrap-break-word"
             >
               {card.title}
             </button>
           ) : (
-            <h3 className="text-base leading-snug font-semibold wrap-break-word">
+            <h3 className="report-visual-title leading-snug wrap-break-word">
               {card.title}
             </h3>
           )}
           {card.visual === "kpi" ? (
+            editing &&
             card.title !== METRICS[card.metric].label && (
               <p className="mt-1 text-xs text-muted-foreground">
                 {METRICS[card.metric].label}
               </p>
             )
-          ) : (
+          ) : editing ? (
             <p className="mt-1 text-xs text-muted-foreground">
               {METRICS[card.metric].label} · {DIMENSIONS[card.dimension]}
               {card.legend ? ` / ${DIMENSIONS[card.legend]}` : ""}
             </p>
-          )}
+          ) : null}
         </div>
         <button
           type="button"
-          className="-mt-2 -mr-2 flex size-9 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted"
+          className="report-focus-button -mt-2 -mr-2 flex size-11 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted"
           aria-label={`放大檢視：${card.title}`}
+          data-ui-demo="report-visual-focus"
           onClick={onFocus}
         >
-          <Maximize2 className="size-3.5" />
+          {editing ? (
+            <Maximize2 className="size-3.5" />
+          ) : (
+            <ChevronRight className="size-4" />
+          )}
         </button>
       </div>
       <div
@@ -2430,7 +2760,7 @@ function CanvasVisual({
           layout.fixedHeight ? "min-h-0 flex-1 overflow-auto" : "contents"
         }
       >
-        {!editing && (
+        {!editing && !!explore.state?.steps.length && (
           <ReportExploreControls
             card={card}
             disabled={loading || !data}
@@ -2458,7 +2788,7 @@ function CanvasVisual({
             layout.fixedHeight
               ? undefined
               : card.visual === "kpi"
-                ? { minHeight: valueHeight }
+                ? { minHeight: editing ? valueHeight : 0 }
                 : card.visual === "table"
                   ? { height: tableHeight }
                   : undefined
@@ -2467,6 +2797,7 @@ function CanvasVisual({
           {data ? (
             <ReportRenderFrame loading={loading}>
               <ReportChart
+                summary={!editing}
                 card={card}
                 data={data}
                 onHoverData={editing ? undefined : onHover}
@@ -2501,7 +2832,8 @@ function CanvasVisual({
             />
           )}
         </div>
-        {data?.note && (
+        {companion}
+        {editing && data?.note && (
           <p className="mt-3 border-t pt-2 text-xs leading-relaxed text-muted-foreground">
             {data.note}
           </p>
@@ -2554,7 +2886,11 @@ function AiReportDock({
   onApply: (config: ReportConfig) => void
 }) {
   const [question, setQuestion] = useState("")
+  const [lastQuestion, setLastQuestion] = useState("")
+  const [turns, setTurns] = useState<Turn[]>([])
+  const page = useCurrentPageContext()
   const [expanded, setExpanded] = useState(false)
+  const [demoOffer, setDemoOffer] = useState(false)
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<{
     adjustment: ReportAdjustment
@@ -2567,7 +2903,33 @@ function AiReportDock({
   const keyboardInset = useKeyboardInset()
   const configKey = JSON.stringify(config)
   const activeResult = result?.base === configKey ? result.adjustment : null
+  const suggestions = available
+    ? (lastQuestion
+        ? [
+            "改成比較這個月和上個月的銷售",
+            "再加一張按客戶比較銷售額的長條圖",
+            "把銷售趨勢改成折線圖",
+            ...SUGGESTIONS,
+          ]
+        : SUGGESTIONS
+      ).filter((text) => text !== lastQuestion)
+    : ["教我用報表"]
+  const generated = useQuestionSuggestions(
+    {
+      page: pageSnapshot(page),
+      earlier: turns,
+      candidates: suggestions.slice(0, 8),
+    },
+    !busy && available
+  )
+  const offered = generated ?? suggestions
+  const completion = !busy ? suggestedCompletion(question, offered) : null
   const mascotState = busy ? "think" : activeResult ? "talk" : "idle"
+
+  function fillQuestion(text: string) {
+    setQuestion(text)
+    inputRef.current?.focus({ preventScroll: true })
+  }
   useEffect(() => {
     latestConfig.current = config
   }, [config])
@@ -2575,8 +2937,21 @@ function AiReportDock({
 
   async function ask(text: string) {
     const trimmed = text.trim()
-    if (!trimmed || busy || !available) return
+    if (!trimmed || busy) return
+    if (requestedUiDemo(trimmed, "/reports") === "report-tour") {
+      setDemoOffer(true)
+      setExpanded(true)
+      setResult(null)
+      setError(null)
+      setQuestion("")
+      inputRef.current?.blur()
+      return
+    }
+    if (!available) return
+    setDemoOffer(false)
     const baseConfig = latestConfig.current
+    const proposedConfig = activeResult?.config ?? baseConfig
+    const context = pageSnapshot(page)
     const base = JSON.stringify(baseConfig)
     const controller = new AbortController()
     controllerRef.current = controller
@@ -2589,7 +2964,7 @@ function AiReportDock({
     try {
       const adjustment = await adjustReport(
         trimmed,
-        baseConfig,
+        proposedConfig,
         controller.signal
       )
       if (controller.signal.aborted) return
@@ -2598,13 +2973,29 @@ function AiReportDock({
         return
       }
       setResult({ adjustment, base })
+      setLastQuestion(trimmed)
+      setTurns((previous) =>
+        [
+          ...previous,
+          {
+            question: trimmed,
+            answer:
+              `${adjustment.message}${adjustment.config ? "\n這份調整尚未套用。" : ""}`.slice(
+                0,
+                1000
+              ),
+            page: context,
+          },
+        ].slice(-6)
+      )
+      setQuestion("")
     } catch (err) {
       if (!controller.signal.aborted)
         setError(
           err instanceof Error ? err.message : "AI 這次沒有完成調整，請再試一次"
         )
     } finally {
-      if (!controller.signal.aborted) setBusy(false)
+      setBusy(false)
     }
   }
 
@@ -2616,6 +3007,16 @@ function AiReportDock({
   function apply() {
     if (!activeResult?.config) return
     onApply(activeResult.config)
+    setTurns((previous) =>
+      previous.map((turn, index) =>
+        index === previous.length - 1
+          ? {
+              ...turn,
+              answer: `${turn.answer}\n使用者已套用這份調整。`.slice(-1000),
+            }
+          : turn
+      )
+    )
     setResult(null)
     setQuestion("")
   }
@@ -2639,9 +3040,11 @@ function AiReportDock({
             <div className="mb-2 flex items-center justify-between gap-2">
               <p className="flex items-center gap-2 text-sm font-semibold">
                 <Mascot state={mascotState} size={32} />
-                {activeResult?.kind === "proposal"
-                  ? "AI 建議的調整"
-                  : "用一句話調整報表"}
+                {demoOffer
+                  ? "報表操作示範"
+                  : activeResult?.kind === "proposal"
+                    ? "AI 建議的調整"
+                    : "用一句話調整報表"}
               </p>
               <button
                 type="button"
@@ -2649,6 +3052,7 @@ function AiReportDock({
                 className="-mr-2 flex size-11 items-center justify-center rounded-full text-muted-foreground hover:bg-muted"
                 onClick={() => {
                   setExpanded(false)
+                  setDemoOffer(false)
                   setResult(null)
                   setError(null)
                 }}
@@ -2661,7 +3065,9 @@ function AiReportDock({
                 {error}
               </p>
             )}
-            {activeResult ? (
+            {demoOffer ? (
+              <UiDemoOffer kind="report-tour" />
+            ) : activeResult ? (
               <div aria-live="polite">
                 <p className="text-sm leading-relaxed">
                   {activeResult.message}
@@ -2726,6 +3132,13 @@ function AiReportDock({
                     </div>
                   </>
                 )}
+                <div className="mt-4">
+                  <QuestionSuggestions
+                    label="接著可以調整"
+                    suggestions={offered.slice(0, 3)}
+                    onSelect={fillQuestion}
+                  />
+                </div>
               </div>
             ) : (
               expanded && (
@@ -2741,7 +3154,7 @@ function AiReportDock({
                         key={text}
                         type="button"
                         disabled={!available || busy}
-                        onClick={() => void ask(text)}
+                        onClick={() => fillQuestion(text)}
                         className="min-h-11 rounded-xl bg-muted/60 px-3 py-2 text-left text-sm hover:bg-muted disabled:opacity-50"
                       >
                         {text}
@@ -2754,6 +3167,7 @@ function AiReportDock({
           </div>
         )}
         <form
+          data-assistant-obstacle
           onSubmit={submit}
           className="flex min-h-16 items-center gap-1 rounded-full border-2 border-primary/20 bg-card px-2 shadow-xl shadow-primary/10 focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/30"
         >
@@ -2771,21 +3185,27 @@ function AiReportDock({
             value={question}
             maxLength={600}
             onChange={(event) => setQuestion(event.target.value)}
-            disabled={busy || !available}
+            onKeyDown={(event) => {
+              if (shouldAcceptSuggestion(event, completion)) {
+                event.preventDefault()
+                fillQuestion(completion!)
+              }
+            }}
+            disabled={busy}
             aria-label="用自然語言調整報表"
-            placeholder={
-              busy
-                ? "AI 正在調整…"
-                : available
-                  ? "想看什麼？告訴 AI…"
-                  : "AI 尚未設定，先試試自訂"
-            }
-            className="h-11 min-w-0 flex-1 bg-transparent px-2 text-base outline-none placeholder:text-muted-foreground disabled:opacity-70"
+            aria-describedby={completion ? "report-ai-completion" : undefined}
+            placeholder={busy ? "AI 正在調整…" : offered[0]}
+            className="h-11 min-w-0 flex-1 bg-transparent px-2 text-base outline-none placeholder:text-muted-foreground/60 disabled:opacity-70"
           />
           <button
             type="submit"
             aria-label="送出報表調整需求"
-            disabled={busy || !available || !question.trim()}
+            disabled={
+              busy ||
+              (!available &&
+                requestedUiDemo(question, "/reports") !== "report-tour") ||
+              !question.trim()
+            }
             className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground disabled:bg-muted disabled:text-muted-foreground"
           >
             {busy ? (
@@ -2795,6 +3215,15 @@ function AiReportDock({
             )}
           </button>
         </form>
+        {completion && (
+          <div className="mx-4 mt-1 rounded-xl bg-background/95">
+            <SuggestionHint
+              id="report-ai-completion"
+              suggestion={completion}
+              onAccept={() => fillQuestion(completion)}
+            />
+          </div>
+        )}
         {busy && (
           <p
             role="status"

@@ -11,15 +11,14 @@ import {
   Network,
   Pill,
   Route,
-  TriangleAlert,
   type LucideIcon,
 } from "@/components/icons"
 
 import type { Role } from "@/lib/auth"
 import { trimPath } from "@/lib/desktop-layout"
 
-/** 項目旁的數字：待送出的錄音、頻道未讀、主管回覆、風險通報未讀、待簽 */
-export type SidebarBadge = "uploads" | "channels" | "replies" | "notices" | "oa"
+/** 項目旁的數字：待送出的錄音、頻道未讀、主管回覆、待簽 */
+export type SidebarBadge = "uploads" | "channels" | "replies" | "oa"
 export type SidebarItem = { to: string; label: string; icon: LucideIcon; badge?: SidebarBadge }
 export type SidebarGroups = { main: SidebarItem[]; more: SidebarItem[] }
 
@@ -42,19 +41,18 @@ const SALES: SidebarGroups = {
   ],
 }
 
-// 主管端的六個分頁（pages/manager.tsx 的 VIEWS），主管與 IT 共用
+// 主管端的五個分頁（pages/manager.tsx 的 VIEWS），主管與 IT 共用
 const MANAGER: SidebarItem[] = [
   { to: "/manager", label: "團隊行程", icon: Route },
   { to: "/manager?view=priority", label: "客戶策略", icon: ChartNoAxesCombined },
   { to: "/manager?view=asks", label: "提問", icon: MessageCircleQuestion },
-  { to: "/manager?view=notices", label: "風險通報", icon: TriangleAlert, badge: "notices" },
   { to: "/manager?view=oa", label: "簽核", icon: ClipboardCheck, badge: "oa" },
   { to: "/manager?view=methods", label: "方法卡", icon: BookOpenText },
 ]
 const CHANNELS: SidebarItem = { to: "/channels", label: "頻道", icon: MessagesSquare, badge: "channels" }
 const CATALOG: SidebarItem = { to: "/products", label: "商品與促銷", icon: Pill }
 const ADMIN: SidebarItem = { to: "/admin", label: "組織管理", icon: Network }
-const MANAGER_VIEWS = ["priority", "asks", "notices", "oa", "methods"]
+const MANAGER_VIEWS = ["priority", "asks", "oa", "methods"]
 
 export function sidebarItems(role: Role): SidebarGroups {
   if (role === "sales") return SALES

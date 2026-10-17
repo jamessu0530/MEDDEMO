@@ -244,7 +244,7 @@ def messages(
     stmt = (
         select(ChannelMessage, AppUser.name)
         .outerjoin(AppUser, AppUser.id == ChannelMessage.author_id)
-        .where(ChannelMessage.channel_id == channel_id)
+        .where(ChannelMessage.channel_id == channel_id, ChannelMessage.kind != "notice")
     )
     if around is not None:
         older = list(session.execute(stmt.where(ChannelMessage.id <= around).order_by(ChannelMessage.id.desc()).limit(AROUND + 1)))
@@ -287,13 +287,6 @@ def post_mascot(session: Session, channel_id: int, body: str, reply_to_id: int |
     """熊熊滾發言：回答 reply_to_id 那一則（services/channel_ai.py），或自己主動發的週摘要、逾期提醒（reply_to_id 是 None）。
     不判斷 @，熊熊滾不會自己叫自己。"""
     message = _write(session, channel_id, kind="ai", body=body, reply_to_id=reply_to_id)
-    session.refresh(message)
-    return message
-
-
-def post_notice(session: Session, channel_id: int, body: str, visit_id: str) -> ChannelMessage:
-    """風險通報：拜訪提到競品或客訴、通報主管的同時，在小組頻道貼一則（services/risk.py）。"""
-    message = _write(session, channel_id, kind="notice", body=body, visit_id=visit_id)
     session.refresh(message)
     return message
 
@@ -341,6 +334,7 @@ def unread_counts(session: Session, user: AppUser, channel_ids: list[int]) -> di
             ChannelMessage.channel_id.in_(channel_ids),
             ChannelMessage.id > func.coalesce(last_read, 0),
             ChannelMessage.author_id.is_distinct_from(user.id),
+            ChannelMessage.kind != "notice",
         )
         .group_by(ChannelMessage.channel_id)
     )
@@ -352,7 +346,7 @@ def last_message_at(session: Session, channel_ids: list[int]) -> dict[int, dt.da
         return {}
     rows = session.execute(
         select(ChannelMessage.channel_id, func.max(ChannelMessage.created_at))
-        .where(ChannelMessage.channel_id.in_(channel_ids))
+        .where(ChannelMessage.channel_id.in_(channel_ids), ChannelMessage.kind != "notice")
         .group_by(ChannelMessage.channel_id)
     )
     return dict(rows.all())

@@ -386,8 +386,8 @@ def test_ai_availability_requires_supported_provider_and_key(env):
     assert reports.ai_available() is True
 
 
-def test_ai_adjustment_has_usage_limit_but_manual_reports_do_not():
-    assert usage.buckets_for("POST", "/api/reports/adjust") == ["reports_adjust"]
+def test_ai_adjustment_and_manual_reports_have_no_usage_limit():
+    assert usage.buckets_for("POST", "/api/reports/adjust") == []
     assert usage.buckets_for("POST", "/api/reports/data") == []
     assert usage.buckets_for("PUT", "/api/reports/config") == []
 

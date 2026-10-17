@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.llm import LLM, Media, get_llm
 from app.models import Product
+from app.services.product_catalog import visible_catalog_products
 from app.services.promo_packs import Pack, packs_by_code
 from app.services.speech_names import NameMatcher, recent_product_skus
 
@@ -158,7 +159,7 @@ MAX_EXTRA_PRODUCTS = 32
 def product_hints(session: Session, transcript: str = "", customer_id: str | None = None) -> list[ProductHint]:
     """常用品項、這家最近進過的品項，加上完整型錄的相關候選。"""
     recent = set(session.scalars(recent_product_skus(customer_id))) if customer_id else set()
-    query = select(Product.sku, Product.name, Product.unit, Product.aliases, Product.common).order_by(Product.sku)
+    query = select(Product.sku, Product.name, Product.unit, Product.aliases, Product.common).where(visible_catalog_products()).order_by(Product.sku)
     if not transcript.strip():
         query = query.where(Product.common | Product.sku.in_(recent))
     common, matched = [], []

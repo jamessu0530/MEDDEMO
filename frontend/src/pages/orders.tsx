@@ -1,5 +1,10 @@
 import { useAskPageContext } from "@/ask/use-page-context"
-import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react"
+import {
+  useEffect,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react"
 import {
   ChevronLeft,
   ChevronRight,
@@ -10,6 +15,7 @@ import { Link, useNavigate, useSearchParams } from "react-router"
 import {
   createOrder,
   getOrderCustomer,
+  getOrderCustomers,
   getOrders,
   type OrderCustomer,
   type OrderList,
@@ -33,7 +39,6 @@ import {
 import { formatDate, formatTaipeiDateTime } from "@/lib/format"
 import { ORDER_STATUS, PAYMENT_TERMS, orderMoney } from "@/lib/orders"
 import { cn } from "@/lib/utils"
-import { PRACTICE_CUSTOMER } from "@/lib/order-practice"
 import { uiDemo } from "@/lib/ui-demo-browser"
 
 const SELECT = "h-11 min-w-0 rounded-xl border bg-card px-3 text-sm"
@@ -69,10 +74,19 @@ export function OrdersPage({
   const [error, setError] = useState("")
   const [retry, setRetry] = useState(0)
   const [creating, setCreating] = useState(false)
-  useAskPageContext({ title: newOrder ? "新增訂單" : "銷售訂單", facts: [
-    `搜尋：${query.trim() || "無"}`, `訂單狀態篩選：${status}`, `排序：${sort}`, `清單第 ${page} 頁`,
-    ...(customerId ? [`客戶編號：${customerId}`] : []),
-  ] }, active)
+  useAskPageContext(
+    {
+      title: newOrder ? "新增訂單" : "銷售訂單",
+      facts: [
+        `搜尋：${query.trim() || "無"}`,
+        `訂單狀態篩選：${status}`,
+        `排序：${sort}`,
+        `清單第 ${page} 頁`,
+        ...(customerId ? [`客戶編號：${customerId}`] : []),
+      ],
+    },
+    active
+  )
   useEffect(() => {
     const controller = new AbortController()
     const timer = setTimeout(() => {
@@ -394,9 +408,36 @@ function CreateOrderDialog({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
   const [defaults, setDefaults] = useState<{ as_of: string } | null>(null)
-  const [loadingCustomer, setLoadingCustomer] = useState(!!customerId)
+  const [loadingCustomer, setLoadingCustomer] = useState(
+    practice || !!customerId
+  )
   const [loadError, setLoadError] = useState("")
   const [retry, setRetry] = useState(0)
+  const [practiceCustomers, setPracticeCustomers] = useState<OrderCustomer[]>(
+    []
+  )
+  useEffect(() => {
+    if (!practice) return
+    const controller = new AbortController()
+    getOrderCustomers(controller.signal)
+      .then((items) => {
+        if (controller.signal.aborted) return
+        setPracticeCustomers(items)
+        if (items[0]) {
+          setCustomer(items[0])
+          setPaymentTerm(items[0].payment_term || "")
+        }
+        setLoadError(items.length ? "" : "目前沒有可選的客戶。")
+      })
+      .catch((err) => {
+        if (!controller.signal.aborted)
+          setLoadError(err instanceof Error ? err.message : "客戶資料沒有載入")
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoadingCustomer(false)
+      })
+    return () => controller.abort()
+  }, [practice, retry])
   useEffect(() => {
     if (!customerId || practice) return
     const controller = new AbortController()
@@ -422,7 +463,9 @@ function CreateOrderDialog({
     const selected = customer
     if (!selected || busy || loadingCustomer || loadError) return
     if (practice) {
-      navigate("/orders/demo")
+      navigate("/orders/demo", {
+        state: { practiceCustomer: { ...selected, payment_term: paymentTerm } },
+      })
       return
     }
     if (!shippingDate) {
@@ -456,7 +499,7 @@ function CreateOrderDialog({
           <DialogTitle>新增訂單</DialogTitle>
           <DialogDescription>
             {practice
-              ? "練習模式：使用教學資料，接著示範加入產品與出貨資料。"
+              ? "依現有客戶與商品練習操作，內容只保留在此頁。"
               : "先選擇客戶建立草稿，之後再加入產品與出貨資料。"}
           </DialogDescription>
         </DialogHeader>
@@ -487,14 +530,20 @@ function CreateOrderDialog({
               className={`${SELECT} w-full`}
               value={customer?.id ?? ""}
               onChange={(event) => {
-                setCustomer(event.target.value ? PRACTICE_CUSTOMER : null)
-                setPaymentTerm(PRACTICE_CUSTOMER.payment_term || "RCD1")
+                const selected =
+                  practiceCustomers.find(
+                    (item) => item.id === event.target.value
+                  ) ?? null
+                setCustomer(selected)
+                setPaymentTerm(selected?.payment_term || "")
               }}
             >
               <option value="">請選擇客戶</option>
-              <option value={PRACTICE_CUSTOMER.id}>
-                {PRACTICE_CUSTOMER.name}
-              </option>
+              {practiceCustomers.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
             </select>
           ) : (
             <CustomerSelect

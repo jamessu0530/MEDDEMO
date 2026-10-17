@@ -7,10 +7,11 @@
 from __future__ import annotations
 
 import datetime as dt
+from decimal import Decimal
 from typing import Any, Literal
 
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import Row, String, cast, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -27,7 +28,7 @@ from app.models import (
 from app.services.scope import SHARING_LEVEL, Scope
 from app.timeutil import local_date
 
-KIND_LABELS = {"trip": "出差單", "discount": "優惠申請單", "contract": "合約申請單"}
+KIND_LABELS = {"trip": "出差單", "discount": "優惠申請單", "contract": "合約申請單", "legacy": "原 OA 表單"}
 # 單號開頭，後面是年月加五碼流水號，三種各自編號
 FORM_NO_PREFIX = {"trip": "OA", "discount": "DC", "contract": "CT"}
 # 沒有簽核人的關卡與活動日誌（系統核准）在畫面上顯示的名字
@@ -135,9 +136,24 @@ def _rate_change(label: str, rate: dict[str, float]) -> str | None:
     return f"{label} {_percent(rate['from'] * 100)} → {_percent(rate['to'] * 100)}"
 
 
-def summary(form: OaExpenseForm, customer: Customer) -> str:
+def kind_label(form: OaExpenseForm) -> str:
+    return form.payload["template_title"] if form.kind == "legacy" else KIND_LABELS[form.kind]
+
+
+def customer_label(session: Session, customer_id: str | None) -> Row | None:
+    """OA 只需客戶代碼與名稱，亦相容尚未升級地理與付款欄位的舊主檔。"""
+    if not customer_id:
+        return None
+    return session.execute(select(Customer.id, Customer.name).where(Customer.id == customer_id)).one_or_none()
+
+
+def summary(form: OaExpenseForm, customer: Customer | Row | None) -> str:
     """清單與簽核匣上的一句話：這張單在申請什麼。"""
     payload = form.payload or {}
+    if form.kind == "legacy":
+        amount = payload["fields"].get("amount")
+        prefix = f"NT$ {Decimal(amount):,.0f} · " if amount else ""
+        return prefix + (form.purpose[:100] or "尚未填寫申請說明")
     if form.kind == "discount":
         pct, amount = _percent(payload["discount_pct"]), payload["amount"]
         # 報價裡有促銷的口時，口不打折：分開寫打折的部分與整張報價（歷史單沒有 total_amount）
@@ -156,7 +172,7 @@ def summary(form: OaExpenseForm, customer: Customer) -> str:
 
 def _model(form: OaExpenseForm) -> dict[str, Any] | None:
     """模型對這張單的估計，簽核頁給主管參考。出差單不經過模型。"""
-    if form.kind == "trip":
+    if form.kind in ("trip", "legacy"):
         return None
     # approvals 要用這裡的 next_form_no，整個檔案互相引用會繞成一圈，所以在用到的地方才引用
     from app.services import approvals
@@ -170,7 +186,7 @@ def _model(form: OaExpenseForm) -> dict[str, Any] | None:
 
 def _item(session: Session, form: OaExpenseForm) -> dict[str, Any]:
     applicant = session.get(AppUser, form.applicant_id)
-    customer = session.get(Customer, form.customer_id)
+    customer = customer_label(session, form.customer_id)
     pending = session.scalar(
         select(OaApprovalStep).where(OaApprovalStep.form_id == form.id, OaApprovalStep.status == "pending").order_by(OaApprovalStep.step_no)
     )
@@ -179,11 +195,12 @@ def _item(session: Session, form: OaExpenseForm) -> dict[str, Any]:
         "id": form.id,
         "form_no": form.form_no,
         "kind": form.kind,
-        "kind_label": KIND_LABELS[form.kind],
+        "kind_label": kind_label(form),
+        "template_code": form.payload["template_code"] if form.kind == "legacy" else None,
         "summary": summary(form, customer),
         "status": form.status,
         "applicant_name": applicant.name,
-        "customer_name": customer.name,
+        "customer_name": customer.name if customer else "內部申請",
         # 出差單是拜訪日，另外兩種是送單當下的系統日
         "trip_date": form.trip_date.isoformat() if form.trip_date else None,
         "request_date": form.request_date.isoformat() if form.request_date else None,
@@ -203,16 +220,28 @@ LIST_ORDER = (
 )
 
 
-def list_mine(session: Session, user: AppUser, status: str | None) -> dict[str, Any]:
+def list_mine(session: Session, user: AppUser, status: str | None, *, application: str | None = None, query: str = "", company: str = "", unit: str = "", submitted_date: dt.date | None = None) -> dict[str, Any]:
     owner = Scope.for_user(user).acting_user_id
     if owner is None:
         return {"items": [], "counts": {s: 0 for s in OA_FORM_STATUSES}}
     where = [OaExpenseForm.applicant_id == owner]
+    if application:
+        where.append(OaExpenseForm.kind == application if application in ("trip", "discount", "contract") else OaExpenseForm.payload["template_code"].as_string() == application)
+    if company:
+        where.append(OaExpenseForm.payload["fields"]["company"].as_string() == company)
+    if unit:
+        where.append(OaExpenseForm.unit_name.ilike(f"%{unit}%"))
+    if submitted_date:
+        where.append(func.date(func.timezone("Asia/Taipei", func.coalesce(OaExpenseForm.submitted_at, OaExpenseForm.created_at))) == submitted_date)
+    if query.strip():
+        pattern = f"%{query.strip()}%"
+        labels = [kind for kind, label in KIND_LABELS.items() if query.strip() in label]
+        where.append(or_(OaExpenseForm.form_no.ilike(pattern), OaExpenseForm.purpose.ilike(pattern), cast(OaExpenseForm.payload, String).ilike(pattern), OaExpenseForm.kind.in_(labels), OaExpenseForm.customer_id.in_(select(Customer.id).where(Customer.name.ilike(pattern))), OaExpenseForm.applicant_id.in_(select(AppUser.id).where(AppUser.name.ilike(pattern)))))
     counts = _counts(session, *where)
     if status:
         where.append(OaExpenseForm.status == status)
     forms = session.scalars(select(OaExpenseForm).where(*where).order_by(*LIST_ORDER).limit(50)).all()
-    return {"items": [_item(session, form) for form in forms], "counts": counts}
+    return {"items": [_item(session, form) for form in forms], "counts": counts, "total": counts.get(status, 0) if status else sum(counts.values())}
 
 
 def list_inbox(session: Session, user: AppUser) -> dict[str, Any]:
@@ -248,7 +277,7 @@ def list_auto_approved(session: Session, user: AppUser) -> dict[str, Any]:
 
 def detail(session: Session, form: OaExpenseForm, user: AppUser | None = None) -> dict[str, Any]:
     applicant = session.get(AppUser, form.applicant_id)
-    customer = session.get(Customer, form.customer_id)
+    customer = customer_label(session, form.customer_id)
     steps = session.scalars(select(OaApprovalStep).where(OaApprovalStep.form_id == form.id).order_by(OaApprovalStep.step_no)).all()
     comments = session.scalars(select(OaComment).where(OaComment.form_id == form.id).order_by(OaComment.created_at, OaComment.id)).all()
     attachments = session.scalars(select(OaAttachment).where(OaAttachment.form_id == form.id).order_by(OaAttachment.created_at, OaAttachment.id)).all()
@@ -264,8 +293,8 @@ def detail(session: Session, form: OaExpenseForm, user: AppUser | None = None) -
         "id": form.id,
         "form_no": form.form_no,
         "kind": form.kind,
-        "kind_label": KIND_LABELS[form.kind],
-        "flow_name": f"{KIND_LABELS[form.kind]}_簽核流程",
+        "kind_label": kind_label(form),
+        "flow_name": f"{kind_label(form)}_簽核流程",
         "summary": summary(form, customer),
         "status": form.status,
         "visit_id": form.visit_id,
@@ -275,8 +304,8 @@ def detail(session: Session, form: OaExpenseForm, user: AppUser | None = None) -
         "unit_name": form.unit_name,
         "trip_date": form.trip_date.isoformat() if form.trip_date else None,
         "request_date": form.request_date.isoformat() if form.request_date else None,
-        "customer_id": customer.id,
-        "customer_name": customer.name,
+        "customer_id": customer.id if customer else None,
+        "customer_name": customer.name if customer else "內部申請",
         "purpose": form.purpose,
         "payload": form.payload,
         "model": _model(form),
@@ -311,7 +340,9 @@ def detail(session: Session, form: OaExpenseForm, user: AppUser | None = None) -
             }
             for x in activity
         ],
-        "can_decide": bool(user and _step_to_decide(session, form, user)),
+        "can_decide": bool(user and form.status == "pending" and _step_to_decide(session, form, user)),
+        "can_edit": bool(user and form.kind == "legacy" and form.status in ("draft", "returned") and form.applicant_id == Scope.for_user(user).acting_user_id),
+        "missing": _legacy_missing(form),
     }
 
 
@@ -365,10 +396,18 @@ def decide(
     else:
         form.status = "returned"
         session.add(OaActivity(form_id=form.id, action="returned", actor_id=user.id, detail="已退回"))
-    if form.kind != "trip":
+    if form.kind in ("discount", "contract"):
         # 優惠與合約有結果之後要生效（報價可以送出、合約延長），中途的關卡不做事
         from app.services import approvals
 
         session.flush()
         approvals.apply_outcome(session, form)
     return form
+
+
+def _legacy_missing(form: OaExpenseForm) -> list[str]:
+    if form.kind != "legacy":
+        return []
+    from app.services.oa_legacy import missing_for
+
+    return missing_for(form)

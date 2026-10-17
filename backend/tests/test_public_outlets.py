@@ -99,7 +99,7 @@ def test_public_customer_order_requires_a_real_payment_choice_and_is_shared(tx, 
     assert customer.owner_user_id is None and customer.payment_term is None
     monkeypatch.setattr(order_workspace.writeback, "is_mock_down", lambda target: False)
     payload = {"customer_id": customer.id, "ship_to_id": customer.id, "shipping_date": "2026-10-28",
-        "shipping_address": "測試收貨地址", "recipient": "測試", "items": [{"sku": "HS-FO30", "qty": 1, "unit_price": 450}]}
+        "shipping_address": "測試收貨地址", "recipient": "測試", "items": [{"sku": "F764521", "qty": 1, "unit_price": 990}]}
     with TestClient(app) as client:
         assert client.post("/api/orders", json=payload, headers=auth("U03")).status_code == 422
         created = client.post("/api/orders", json={**payload, "payment_term": "RM06"}, headers=auth("U03"))

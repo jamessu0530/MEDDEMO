@@ -1,4 +1,6 @@
-"""第六週：用量上限。每個來源每小時、全系統每天各有上限，只算真的有做事的請求。"""
+"""外部 API 不設用量額度；非付費操作只保留每小時防洗版限制。"""
+
+import datetime as dt
 
 import pytest
 from fastapi.testclient import TestClient
@@ -11,9 +13,7 @@ from app.tasks import redis
 
 
 @pytest.fixture
-def client(engine, monkeypatch):
-    # 上限調小才測得到；計數先清掉，不受其他測試送過的請求影響
-    monkeypatch.setitem(usage.LIMITS, "ask", usage.Limit("提問", per_client_hour=2, per_day=3))
+def client(engine):
     redis().flushdb()
     yield TestClient(app)
     redis().flushdb()
@@ -21,104 +21,90 @@ def client(engine, monkeypatch):
         conn.execute(text("DELETE FROM ask_record WHERE question LIKE '測試：%'"))
 
 
-def ask(client, auth, user_id, question="測試：這個月魚油賣了幾盒", ip="198.51.100.1"):
-    # 全部從同一個 IP 送：決賽現場大家連同一個 Wi-Fi，有登入就要按帳號分開算
-    headers = {**auth(user_id), "CF-Connecting-IP": ip}
-    return client.post("/api/asks", json={"kind": "data", "question": question}, headers=headers)
+def ask(client, auth, user_id="U01"):
+    return client.post(
+        "/api/asks", json={"kind": "data", "question": "測試：這個月魚油賣了幾盒"},
+        headers={**auth(user_id), "CF-Connecting-IP": "198.51.100.1"},
+    )
 
 
-def test_one_account_is_limited_per_hour_but_others_on_the_same_wifi_can_still_ask(client, auth):
-    assert ask(client, auth, "U01").status_code == 202
-    assert ask(client, auth, "U01").status_code == 202
-    blocked = ask(client, auth, "U01")
+def test_ai_requests_ignore_exhausted_legacy_hourly_and_daily_counters(client, auth, monkeypatch):
+    now = dt.datetime.now(usage.TAIPEI)
+    old = {
+        f"usage:ask:user:U01:{now:%Y%m%d%H}": 500,
+        f"usage:ask:all:{now:%Y%m%d}": 2000,
+        f"usage:attachment:all:{now:%Y%m%d}": 5000,
+    }
+    redis().mset(old)
+
+    def unexpected_count(*items):
+        raise AssertionError("AI 請求不應讀寫用量計數器")
+
+    monkeypatch.setattr(usage, "_take", unexpected_count)
+    for user_id in ("U01", "U01", "U02"):
+        response = ask(client, auth, user_id)
+        assert response.status_code == 202
+        assert "Retry-After" not in response.headers
+    assert {key: int(redis().get(key)) for key in old} == old
+
+
+def test_ai_requests_still_require_login_and_valid_input(client, auth):
+    assert client.post("/api/asks", json={"kind": "data", "question": "測試：x"}).status_code == 401
+    assert client.post("/api/asks", json={"kind": "data", "question": ""}, headers=auth()).status_code == 422
+
+
+@pytest.mark.parametrize("path", [
+    "/api/asks", "/api/asks/route", "/api/voice/session", "/api/transcription/session",
+    "/api/visits/audio", "/api/visits/V00001/transcript", "/api/visits/V00001/reprocess",
+    "/api/channels/search", "/api/itinerary/today/ask", "/api/reports/adjust",
+    "/api/reports/datasets/123/analyze", "/api/manager/customer-priority/advice",
+])
+def test_external_api_endpoints_have_no_usage_limit(path):
+    assert usage.buckets_for("POST", path) == []
+
+
+def test_attachments_do_not_add_a_separate_usage_limit():
+    assert usage.buckets_for("POST", "/api/asks") == []
+    assert usage.buckets_for("POST", "/api/channels/1/messages") == ["channel_post"]
+
+
+@pytest.mark.parametrize("bucket", ["register", "channel_post", "avatar"])
+def test_non_api_protection_has_only_a_client_hourly_counter(bucket):
+    now = dt.datetime(2026, 10, 17, 15, 59, tzinfo=usage.TAIPEI)
+    counter, = usage.counters(bucket, "user:U01", now)
+    assert counter.key == f"usage:{bucket}:user:U01:2026101715"
+    assert counter.resets_at == dt.datetime(2026, 10, 17, 16, tzinfo=usage.TAIPEI)
+
+
+def channel_post(client, auth, user_id="U01", body="測試：訊息"):
+    headers = {**auth(user_id), "CF-Connecting-IP": "198.51.100.1"}
+    national = next(c["id"] for c in client.get("/api/channels", headers=headers).json() if c["kind"] == "national")
+    return client.post(f"/api/channels/{national}/messages", json={"body": body}, headers=headers)
+
+
+def test_channel_hourly_protection_does_not_share_a_daily_or_wifi_limit(client, auth, tx, monkeypatch):
+    monkeypatch.setitem(usage.LIMITS, "channel_post", usage.Limit("頻道發言", per_client_hour=2))
+    now = dt.datetime.now(usage.TAIPEI)
+    redis().set(f"usage:channel_post:all:{now:%Y%m%d}", 10000)
+    assert channel_post(client, auth).status_code == 201
+    assert channel_post(client, auth).status_code == 201
+    blocked = channel_post(client, auth)
     assert blocked.status_code == 429
     assert "這一小時" in blocked.json()["detail"]
     assert 0 < int(blocked.headers["Retry-After"]) <= 3600
-    assert ask(client, auth, "U02").status_code == 202
+    assert channel_post(client, auth, "U02").status_code == 201
 
 
-def test_the_whole_system_stops_at_the_daily_limit(client, auth):
-    for user_id in ("U01", "U02", "U03"):
-        assert ask(client, auth, user_id).status_code == 202
-    blocked = ask(client, auth, "U04")
-    assert blocked.status_code == 429
-    assert "今天全系統" in blocked.json()["detail"]
+def test_rejected_messages_do_not_use_up_hourly_protection(client, auth, tx, monkeypatch):
+    monkeypatch.setitem(usage.LIMITS, "channel_post", usage.Limit("頻道發言", per_client_hour=1))
+    for _ in range(3):
+        assert channel_post(client, auth, body="").status_code == 422
+    assert channel_post(client, auth).status_code == 201
 
 
-def test_rejected_requests_do_not_use_up_the_limit(client, auth):
-    for _ in range(5):
-        empty = client.post("/api/asks", json={"kind": "data", "question": ""}, headers=auth("U01"))
-        assert empty.status_code == 422
-    # 沒登入被擋下的也不算
-    for _ in range(5):
-        assert client.post("/api/asks", json={"kind": "data", "question": "測試：x"}).status_code == 401
-    assert ask(client, auth, "U01").status_code == 202
-
-
-def test_reading_is_never_limited(client, auth):
-    created = ask(client, auth, "U01").json()
-    for _ in range(5):
-        assert client.get(f"/api/asks/{created['id']}", headers=auth("U01")).status_code == 200
-
-
-def test_requests_still_go_through_when_redis_is_down(client, auth, monkeypatch):
-    def down(*counters):
+def test_hourly_protection_allows_requests_when_redis_is_down(client, auth, tx, monkeypatch):
+    def down(*items):
         raise RedisConnectionError("測試：Redis 停了")
 
     monkeypatch.setattr(usage, "_take", down)
-    assert ask(client, auth, "U01").status_code == 202
-
-
-@pytest.mark.parametrize(
-    ("method", "path", "buckets"),
-    [
-        ("POST", "/api/asks", ["ask"]),
-        ("POST", "/api/asks/route", ["ask_route"]),
-        ("POST", "/api/voice/session", ["voice"]),
-        ("POST", "/api/transcription/session", ["transcription"]),
-        ("POST", "/api/visits/audio", ["visit"]),
-        ("POST", "/api/visits/V00001/transcript", ["visit"]),
-        ("POST", "/api/visits/V00001/reprocess", ["visit"]),
-        ("POST", "/api/auth/register", ["register"]),
-        ("POST", "/api/channels/1/messages", ["channel_post"]),
-        ("POST", "/api/channels/search", ["attachment_search"]),
-        ("POST", "/api/itinerary/today/ask", ["itinerary_ask"]),
-        ("POST", "/api/itinerary/today/optimize", []),
-        ("POST", "/api/itinerary/proposals/1/apply", []),
-        ("POST", "/api/auth/login", []),
-        ("GET", "/api/asks/abc", []),
-        ("POST", "/api/asks/abc/escalate", []),
-        ("POST", "/api/visits/V00001/confirm", []),
-        ("POST", "/api/escalations/1/reply", []),
-        ("GET", "/api/attachments/1", []),
-    ],
-)
-def test_every_route_that_calls_gemini_is_counted(method, path, buckets):
-    assert usage.buckets_for(method, path, "application/json") == buckets
-
-
-@pytest.mark.parametrize(
-    ("path", "buckets"),
-    [
-        ("/api/channels/1/messages", ["channel_post", "attachment"]),
-        ("/api/asks", ["ask", "attachment"]),
-    ],
-)
-def test_uploads_also_count_as_attachments(path, buckets):
-    # 中介層讀內容之前只看得到標頭：multipart 才可能帶檔案，同一個請求兩項都算
-    assert usage.buckets_for("POST", path, "multipart/form-data; boundary=x") == buckets
-
-
-def test_channel_posts_are_limited_per_hour_even_though_they_never_call_gemini(client, auth, tx, monkeypatch):
-    # 頻道發言不花 Gemini 的錢，但任何人都能自己開帳號發言，且第一版不能編輯、刪除：這裡擋的是洗版，不是額度
-    monkeypatch.setitem(usage.LIMITS, "channel_post", usage.Limit("頻道發言", per_client_hour=2, per_day=3))
-    national = next(c["id"] for c in client.get("/api/channels", headers=auth("U01")).json() if c["kind"] == "national")
-
-    def post():
-        return client.post(f"/api/channels/{national}/messages", json={"body": "測試：訊息"}, headers=auth("U01"))
-
-    assert post().status_code == 201
-    assert post().status_code == 201
-    blocked = post()
-    assert blocked.status_code == 429
-    assert "這一小時" in blocked.json()["detail"]
+    assert channel_post(client, auth).status_code == 201

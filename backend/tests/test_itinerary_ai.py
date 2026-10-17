@@ -8,7 +8,7 @@ from sqlalchemy import delete, select
 
 from app.config import NotConfigured
 from app.llm import api_schema
-from app.models import Customer, ItineraryProposal, RouteHabit, Visit
+from app.models import Customer, ItineraryProposal, ItineraryStop, RouteHabit, Visit
 from app.services import itinerary as service
 from app.services import itinerary_ai, route_habits
 from app.timeutil import TAIPEI
@@ -170,7 +170,10 @@ def test_the_optimize_button_on_an_already_smooth_route(tx):
 
 
 def test_rules_that_cannot_be_kept_are_named_and_cannot_be_applied(tx):
-    _, ids, names = route(tx)
+    itinerary, ids, names = route(tx)
+    # 衝突來自使用者明確鎖站，不依賴已移除的緊急客戶自動鎖站。
+    tx.scalar(select(ItineraryStop).where(ItineraryStop.itinerary_id == itinerary.id, ItineraryStop.customer_id == ids[0])).locked = True
+    tx.flush()
     proposal = ask(tx, {"op": "add_precedence", "before": ids[2], "after": ids[0]}, {"op": "optimize"})
     result = proposal.result
     assert result["kind"] == "conflict" and len(result["conflict"]) == 2

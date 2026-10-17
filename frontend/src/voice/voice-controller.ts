@@ -231,7 +231,7 @@ export class VoiceController {
     const trimmed = text.trim().slice(0, MAX_QUESTION_LENGTH)
     if (!conn?.session || !trimmed) return
     conn.lastActivity = Date.now()
-    this.conversation.addUtterance("user", "typed", trimmed)
+    this.conversation.addUtterance("user", "typed", trimmed, { page: this.page ? { ...this.page, facts: [...this.page.facts] } : undefined })
     // 刻意不設 conn.userEntry：設了以後模型若送來 inputTranscription，辨識出的字會被接到這句打字的泡泡裡，
     // 變成標成「打字」卻是語音辨識的內容，也少了「語音辨識，僅供參考」那句提醒。
     // 代價是模型回答時會多開一格空的 voice 泡泡，那一格文字是空的，頁面本來就會濾掉
@@ -329,7 +329,7 @@ export class VoiceController {
     if (current !== null) return current
     // 業務講話的逐字稿可能比模型的回答或工具呼叫晚到；先幫業務這一句佔位，順序才不會顛倒
     if (kind === "model") this.openEntry(conn, "user")
-    const id = this.conversation.addUtterance(kind, "voice")
+    const id = this.conversation.addUtterance(kind, "voice", "", { page: this.page ? { ...this.page, facts: [...this.page.facts] } : undefined })
     if (kind === "user") conn.userEntry = id
     else conn.modelEntry = id
     return id

@@ -110,6 +110,13 @@ def test_rdate_exdate_and_recurrence_override_survive_ics():
 
 def test_explicit_mail_invitation_and_anonymous_rsvp(tx, api, auth, env, monkeypatch, local_calendar):
     env(CALENDAR_SMTP_HOST="smtp.example.test", CALENDAR_SMTP_FROM="calendar@example.test", CALENDAR_PUBLIC_BASE_URL="https://calendar.example.test")
+    # 舊版每日計數器即使已滿，也不能再阻擋邀請；五分鐘內重複寄送的保護仍保留。
+    from app.tasks import redis
+    today = dt.datetime.now(dt.UTC).date()
+    owner_id = tx.get(PlannerCalendar, local_calendar).owner_id
+    old_keys = [f"calendar-mail:{owner_id}:{today}", f"calendar-mail:all:{today}"]
+    for key in old_keys:
+        redis().set(key, 10000, ex=60)
     messages = []
 
     class SMTP:
@@ -123,6 +130,7 @@ def test_explicit_mail_invitation_and_anonymous_rsvp(tx, api, auth, env, monkeyp
     event = api.post("/api/planner/events", json={"calendar_id": local_calendar, "title": "<script>邀請測試</script>", "starts_at": "2030-10-20T09:00:00+08:00", "ends_at": "2030-10-20T10:00:00+08:00", "attendees": ["outside@example.test"]}, headers=auth()).json()
     result = api.post(f"/api/planner/events/{event['id']}/send-invitations?expected_sequence={event['sequence']}", headers=auth())
     assert result.status_code == 200 and result.json()["sent"] == ["outside@example.test"]
+    assert all(int(redis().get(key)) == 10000 for key in old_keys)
     assert len(messages) == 1
     message = messages[0]
     assert message["To"] == "outside@example.test" and any(part.get_content_type() == "text/calendar" for part in message.walk())

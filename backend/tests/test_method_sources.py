@@ -300,11 +300,13 @@ def test_deleting_original_removes_source_access_but_keeps_organized_card(tx, cl
 def test_channel_message_author_role_is_current_human_role_only(tx, client, auth):
     channel_id = channel(tx)
     rows = [message(tx, channel_id, author=author, kind=kind) for author, kind in (
-        ("M01", "user"), ("U01", "user"), ("A01", "user"), (None, "ai"), (None, "notice"),
+        ("M01", "user"), ("U01", "user"), ("A01", "user"), (None, "ai"),
     )]
+    notice = message(tx, channel_id, author=None, kind="notice")
     response = client.get(f"/api/channels/{channel_id}/messages", headers=auth("M01"))
     assert response.status_code == 200
     by_id = {item["id"]: item for item in response.json()}
-    assert [by_id[row.id]["author_role"] for row in rows] == ["manager", "sales", "it", None, None]
+    assert [by_id[row.id]["author_role"] for row in rows] == ["manager", "sales", "it", None]
+    assert notice.id not in by_id
     posted = client.post(f"/api/channels/{channel_id}/messages", json={"body": "新發言的 role 也要提供"}, headers=auth("M01"))
     assert posted.status_code == 201 and posted.json()["author_role"] == "manager"

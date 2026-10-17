@@ -1,16 +1,16 @@
 import { pageWidth, trimPath } from "@/lib/desktop-layout"
 
-/** 路線、報表與頻道沿用自己的輸入方式，錄音流程保持專注。 */
-export function hasPageAssistant(pathname: string, search = "") {
+/** 每頁都有共用助理；已有輸入列或使用精簡版面的頁面改用浮動入口。 */
+export function pageAssistantPlacement(pathname: string, search = "") {
   const path = trimPath(pathname)
-  if (pageWidth(path) === "bare") return false
+  if (pageWidth(path) === "bare") return "floating"
   if (path === "/route" || path === "/route/edit" || path === "/reports")
-    return false
-  if (/^\/channels(?:\/|$)/.test(path)) return false
+    return "floating"
+  if (/^\/channels(?:\/|$)/.test(path)) return "floating"
   if (
     path === "/manager" &&
     new URLSearchParams(search).get("view") === "priority"
   )
-    return false
-  return true
+    return "floating"
+  return "dock"
 }

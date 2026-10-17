@@ -77,7 +77,7 @@ export default function VoiceDock({
   const speaking = voice.status === "speaking"
   const label = speaking ? "AI 回答中" : voice.pending > 0 ? "查詢中…" : "聆聽中，直接說"
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex flex-wrap items-center gap-2">
       <span className="relative flex size-12 shrink-0 items-center justify-center" aria-hidden>
         {/* 外圈跟著麥克風音量放大，看得出有收到聲音 */}
         <span
@@ -89,7 +89,7 @@ export default function VoiceDock({
           <Mascot state={voiceMascotState(speaking ? "speaking" : "listening", voice.pending)} size={48} bust />
         </span>
       </span>
-      <p className="flex-1 text-sm font-medium" aria-live="polite">
+      <p className="min-w-24 flex-1 text-sm font-medium" aria-live="polite">
         {label}
       </p>
       <Button

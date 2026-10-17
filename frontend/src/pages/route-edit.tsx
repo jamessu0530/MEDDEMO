@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react"
+import { useAskPageContext } from "@/ask/use-page-context"
 import {
   closestCenter,
   DndContext,
@@ -130,6 +131,11 @@ export function RouteEditPage() {
   // 不然每次 routeDraft.start() 之後都會補跑一次，套用、先存再排、409 重新載入拿到的正式車程會被估算蓋掉）
   const draft = edit?.draft
   const changed = Boolean(edit && edit.history.length > 0)
+  useAskPageContext({ facts: edit ? [
+    `路線草稿順序：${edit.draft.stops.map((stop) => edit.view.stops.find((item) => item.customer_id === stop.customer_id)?.customer_name || stop.customer_id).join("、")}`,
+    `目前展開的客戶編號：${expanded || "無"}`,
+    `有尚未儲存的路線調整：${changed ? "是，不能當作已套用路線" : "否"}`,
+  ] : ["路線草稿尚未載入"] })
   const [returnedDraft] = useState(() => routeDraft.get()?.draft ?? null)
   useEffect(() => {
     if (!draft || (!changed && draft !== returnedDraft)) return
@@ -503,7 +509,7 @@ export function RouteEditPage() {
             </Button>
           </div>
         </div>
-        <AskBar className="mt-3" busy={asking} error={flow.error} onAsk={ask} />
+        <AskBar className="mt-3" busy={asking} error={flow.error} onAsk={ask} earlier={flow.turns} />
       </main>
 
       {flow.state.status === "open" && (

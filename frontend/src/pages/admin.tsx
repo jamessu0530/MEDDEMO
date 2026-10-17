@@ -139,9 +139,9 @@ export function AdminPage() {
         </div>
 
         <div className="rounded-2xl border-2 bg-card p-4 shadow-lip">
-          <h2 className="text-base font-semibold">示範業務的今日行程</h2>
+          <h2 className="text-base font-semibold">共用業務的今日行程</h2>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-            展示帳號共用示範行程。重置後會還原行程與排序習慣。
+            帳號共用業務行程。重置後會還原行程與排序習慣。
           </p>
           {!resetConfirming ? (
             <Button
@@ -150,7 +150,7 @@ export function AdminPage() {
               onClick={() => setResetConfirming(true)}
             >
               <RotateCcw className="size-4" />
-              重置示範業務今天的行程
+              重置共用業務今天的行程
             </Button>
           ) : (
             <div className="mt-3 space-y-2">
@@ -188,7 +188,7 @@ export function AdminPage() {
         </div>
 
         <p className="text-xs leading-relaxed text-muted-foreground">
-          組織異動會立即調整資料權限、風險通報與申請單的簽核對象。
+          組織異動會立即調整資料權限與申請單的簽核對象。
         </p>
 
         {flash && (
@@ -220,7 +220,7 @@ export function AdminPage() {
         )}
         {state.status === "ready" && (
           <>
-            <Button className="h-11 gap-1.5" onClick={() => setCreating(true)}>
+            <Button data-ui-demo-open="dialog" className="h-11 gap-1.5" onClick={() => setCreating(true)}>
               <UserPlus className="size-4" />
               新增帳號
             </Button>

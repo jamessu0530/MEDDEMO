@@ -2,7 +2,17 @@
 -- 同一份 View 給商品頁與 AI 用；型錄的展示價格、成本與未提供的庫存不在這裡公開。
 CREATE OR REPLACE VIEW v_product AS
 SELECT sku, name AS product_name, category, spec, unit, aliases, common
-FROM product;
+FROM product
+WHERE sku NOT IN (
+    'HS-FO30', 'HS-FO90', 'HS-CA60', 'HS-PB30', 'HS-LT30', 'HS-VB60', 'HS-VC100',
+    'HS-VD60', 'HS-GL60', 'HS-CQ30', 'HS-ZN60', 'HS-FE30', 'HS-MV60', 'HS-CL30',
+    'RX-AML5', 'RX-LOS50', 'RX-MET500', 'RX-GLI2', 'RX-ATV10', 'RX-ROS10', 'RX-CLO75',
+    'RX-ASP100', 'RX-OME20', 'RX-ALL100', 'RX-TAM02', 'RX-BIS5',
+    'OT-AC500', 'OT-IB200', 'OT-CF10', 'OT-CS120', 'OT-AL10', 'OT-GA12', 'OT-EY15',
+    'OT-PT10', 'OT-LX20', 'OT-MW500', 'MD-MASK50', 'MD-GLU50', 'MD-BPM', 'MD-THM'
+)
+AND sku !~* '^(demo|dummy|fake|test|e04)([-_ :]|$)'
+AND name !~* '(^|[^a-z0-9])(e04|demo|dummy|fake)([^a-z0-9]|$)|^(示範|教學|測試商品|測試產品|測試用|虛構|不存在|模擬)';
 
 COMMENT ON VIEW v_product IS '完整商品型錄，一個料號一列，包含沒有銷售紀錄的商品。查品名、料號、類別、規格、計量單位、口語別名或品項數量時用這個 View，不要用銷售或促銷 View 推斷是否有這個商品。全公司共用。';
 COMMENT ON COLUMN v_product.sku IS '唯一料號，計算品項數用 count(*)；同名不同料號是不同品項';

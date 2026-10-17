@@ -13,10 +13,9 @@ from sqlalchemy.orm import Session
 from app.api.auth import CurrentUser
 from app.config import settings
 from app.db import get_session
-from app import realtime
-from app.models import AppUser, WRITEBACK_TARGETS, ChannelMessage, Customer, FollowUpReminder, OaExpenseForm, Visit, VisitAudio, ManagerNotice
+from app.models import AppUser, WRITEBACK_TARGETS, Customer, FollowUpReminder, OaExpenseForm, Visit, VisitAudio
 from app.services import privacy, writeback
-from app.services import channel_memory, customer_notes, risk
+from app.services import customer_notes, visit_competitors
 from app.services.scope import SHARING_LEVEL, Scope, owner_path
 from app.services.extraction import (
     empty_fields,
@@ -57,14 +56,6 @@ class ReminderItem(BaseModel):
     note: str
 
 
-class RiskNotice(BaseModel):
-    score: int
-    max: int
-    items: list[str]
-    reason: str
-    manager_name: str
-
-
 class CustomerCandidate(BaseModel):
     id: str
     name: str
@@ -89,8 +80,6 @@ class VisitDetail(BaseModel):
     reminder: ReminderItem | None
     # 這次提到、以前沒提過的競品（原型抽欄位畫面的「首次」標籤）
     first_competitors: list[str] = Field(default_factory=list)
-    # 確認送出時提到競品或客訴，就通報轄區主管；畫面上說明風險分與通報給誰
-    risk_notice: RiskNotice | None = None
     oa_form_id: int | None = None
     # 講了跟上次一樣或跟上次比的加減時，展開那一刻的快照（services/repeat_order.py）；確認頁照它寫每一列變了什麼
     repeat_last: dict[str, Any] | None = None
@@ -156,22 +145,11 @@ def _detail(session: Session, visit: Visit) -> VisitDetail:
             for e in writeback.latest_results(session, visit.id)
         ],
         reminder=ReminderItem(due_date=reminder.due_date, note=reminder.note) if reminder else None,
-        first_competitors=risk.first_competitors(session, visit, fields),
-        risk_notice=_risk_notice(session, visit),
+        first_competitors=visit_competitors.first_competitors(session, visit, fields),
         oa_form_id=session.scalar(select(OaExpenseForm.id).where(OaExpenseForm.visit_id == visit.id)),
         repeat_last=visit.repeat_last,
         customer_candidates=[CustomerCandidate(**c) for c in customer_candidates(session, visit.transcript,
             Scope.for_user(session.get(AppUser, visit.user_id)))] if visit.status == "draft" else [],
-    )
-
-
-def _risk_notice(session: Session, visit: Visit) -> RiskNotice | None:
-    notice = session.scalar(select(ManagerNotice).where(ManagerNotice.visit_id == visit.id))
-    if notice is None:
-        return None
-    return RiskNotice(
-        score=notice.score, max=risk.RISK_MAX, items=notice.items, reason=notice.reason,
-        manager_name=session.get(AppUser, notice.manager_id).name,
     )
 
 
@@ -334,15 +312,7 @@ def confirm(session: SessionDep, visit_id: str, user: CurrentUser):
     # 要帶的、講過的寫進備忘表：下次去這家、日曆都讀它（services/customer_notes.py）
     customer_notes.notes_from_visit(session, visit)
     session.flush()
-    # 風險分要把這次拜訪算進去，所以放在狀態改成已確認之後
-    risk.notify_manager(session, visit)
     session.commit()
-    # 風險通報也貼進了小組頻道：跟一般訊息一樣，兩分鐘後熊熊滾整理進記憶
-    if team := session.scalar(
-        select(ChannelMessage.channel_id).where(ChannelMessage.visit_id == visit.id, ChannelMessage.kind == "notice")
-    ):
-        channel_memory.schedule(team)
-        realtime.message_posted(team)
 
     results = writeback.dispatch(visit.id)
     if all(r.status in ("success", "skipped") for r in results):

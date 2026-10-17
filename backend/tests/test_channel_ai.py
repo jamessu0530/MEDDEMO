@@ -177,7 +177,7 @@ def client():
 
 @pytest.fixture
 def queue():
-    """channels 佇列，前後清空。用量計數也清掉：@熊熊滾 會扣「提問」，不受其他測試送過的請求影響。"""
+    """channels 佇列與頻道發言的每小時計數，前後清空。"""
     redis().flushdb()
     yield channels_queue()
     redis().flushdb()
@@ -203,21 +203,17 @@ def test_only_a_message_that_calls_the_mascot_queues_an_answer(tx, client, auth,
     assert [(job.func_name, job.args) for job in queue.jobs] == [("app.services.channel_ai.run", (called["id"],))]
 
 
-def test_calling_the_mascot_counts_as_an_ask(tx, client, auth, queue, monkeypatch):
-    monkeypatch.setitem(usage.LIMITS, "ask", usage.Limit("提問", per_client_hour=1, per_day=100))
+def test_calling_the_mascot_has_no_separate_ai_usage_limit(tx, client, auth, queue):
+    now = dt.datetime.now(usage.TAIPEI)
+    redis().set(f"usage:ask:user:U01:{now:%Y%m%d%H}", 500)
+    redis().set(f"usage:ask:all:{now:%Y%m%d}", 2000)
     team = channel_id(client, auth, "陳建宏小組")
     assert post(client, auth("U01"), team, "@熊熊滾 第一次").status_code == 201
-    # 沒叫熊熊滾不算提問
     assert post(client, auth("U01"), team, "一般的回報").status_code == 201
-    blocked = post(client, auth("U01"), team, "@熊熊滾 第二次")
-    assert blocked.status_code == 429
-    assert "提問" in blocked.json()["detail"]
-    # 被擋的那則沒留下，也沒排工作
-    assert "@熊熊滾 第二次" not in [m["body"] for m in history(client, auth("U01"), team)]
-    assert len(queue.jobs) == 1
-    # 被擋的那次沒有多扣：上限放寬到 2，下一次就過得了
-    monkeypatch.setitem(usage.LIMITS, "ask", usage.Limit("提問", per_client_hour=2, per_day=100))
+    assert post(client, auth("U01"), team, "@熊熊滾 第二次").status_code == 201
     assert post(client, auth("U01"), team, "@熊熊滾 第三次").status_code == 201
+    assert len(queue.jobs) == 3
+    assert "@熊熊滾 第二次" in [m["body"] for m in history(client, auth("U01"), team)]
 
 
 def test_when_the_queue_is_down_the_mascot_apologises_at_once(tx, client, auth, queue, monkeypatch):

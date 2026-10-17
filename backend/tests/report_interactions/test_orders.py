@@ -140,14 +140,39 @@ def test_order_customers_and_full_catalog_use_edit_scope_and_current_supply_pric
 
 def test_formal_product_lists_exclude_legacy_and_named_demo_products(workspace):
     workspace.add_all([Product(sku=sku, name=name, category="保健品", spec="盒", unit="盒", unit_price=100, unit_cost=40)
-        for sku, name in [("HS-FO30", "魚油 30 入"), ("DEMO-P001", "教學商品"), ("EXAMPLE-P1", "示範產品"), ("F-REAL", "正式型錄商品")]])
+        for sku, name in [("HS-FO30", "魚油 30 入"), ("DEMO-P001", "教學商品"), ("EXAMPLE-P1", "示範產品"), ("E04", "E04"), ("bad-name", "E04測試商品"), ("TEST-P1", "測試產品"), ("F-REAL", "正式型錄商品"), ("Re04A", "有效商品 Re04A")]])
     workspace.flush()
     api, headers = client(workspace)
     order_list = api.get("/api/orders/products?customer_id=C1", headers=headers).json()
-    assert order_list["total"] == 3
-    assert {row["sku"] for row in order_list["items"]} == {"P1", "P2", "F-REAL"}
-    assert {row["sku"] for row in api.get("/api/products", headers=headers).json()} == {"P1", "P2", "F-REAL"}
+    expected = {"P1", "P2", "F-REAL", "Re04A"}
+    assert order_list["total"] == len(expected)
+    assert {row["sku"] for row in order_list["items"]} == expected
+    assert {row["sku"] for row in api.get("/api/products", headers=headers).json()} == expected
+    from app.db import PRODUCT_CATALOG
+    from sqlalchemy import text
+    workspace.connection().exec_driver_sql(PRODUCT_CATALOG.read_text(), execution_options={"no_parameters": True})
+    assert set(workspace.scalars(text("SELECT sku FROM v_product"))) == expected
+    for sku in ("HS-FO30", "E04", "TEST-P1"):
+        rejected = api.post("/api/orders", headers=headers, json=body(items=[{"sku": sku, "qty": 1, "unit_price": 100}]))
+        assert rejected.status_code == 422
     assert workspace.get(Product, "HS-FO30") is not None
+
+
+def test_older_customer_columns_load_without_inventing_payment_terms(workspace):
+    from scripts.upgrade_schema import upgrade_customer_columns
+    from sqlalchemy import text
+
+    before = workspace.scalar(select(func.count()).select_from(Customer))
+    for column in ("area", "lat", "lng", "payment_term"):
+        workspace.execute(text(f"ALTER TABLE customer DROP COLUMN {column} CASCADE"))
+    upgrade_customer_columns(workspace.connection())
+    upgrade_customer_columns(workspace.connection())
+    workspace.expire_all()
+    api, headers = client(workspace)
+    customers = api.get("/api/orders/customers", headers=headers)
+    assert customers.status_code == 200
+    assert customers.json() and all(row["payment_term"] is None for row in customers.json())
+    assert workspace.scalar(select(func.count()).select_from(Customer)) == before
 
 
 @pytest.mark.parametrize("patch", [

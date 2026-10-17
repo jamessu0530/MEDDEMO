@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from app.models import METHOD_TAGS, AppUser, Customer, DocumentChunk, Product, SalesTransaction
 from app.pricing import SUPPLY_PRICE_FACTOR
 from app.services import approvals, festivals, method_cards, payment_terms
+from app.services.product_catalog import visible_catalog_products
 from app.services.customer_profile import TOP_SKU_DAYS, Profile
 from app.services.retrieval import SIMPLE, keyword_tokens
 
@@ -187,7 +188,7 @@ def _campaign(coming: list[festivals.Festival], today: dt.date, amount_last_90d:
 
 
 def _top_skus(session: Session, customer: Customer, today: dt.date, categories: list[str] | None):
-    conditions = [SalesTransaction.customer_id == customer.id, SalesTransaction.date > today - dt.timedelta(days=TOP_SKU_DAYS)]
+    conditions = [visible_catalog_products(), SalesTransaction.customer_id == customer.id, SalesTransaction.date > today - dt.timedelta(days=TOP_SKU_DAYS)]
     if categories:
         conditions.append(Product.category.in_(categories))
     return session.execute(
@@ -246,6 +247,7 @@ def _gaps(session: Session, customer: Customer, today: dt.date, categories: list
         .join(Customer, Customer.id == SalesTransaction.customer_id)
         .where(
             *peers,
+            visible_catalog_products(),
             Product.category.in_(categories),
             SalesTransaction.date > today - dt.timedelta(days=TURNOVER_DAYS),
             Product.sku.not_in(stocked),

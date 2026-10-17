@@ -31,15 +31,25 @@ export function DemoRoleSwitcher({ user }: { user: AuthUser }) {
   }
 
   return (
-    <section aria-label="Demo 身分切換" aria-busy={busy} className="border-b bg-primary/5 px-4 py-2.5">
+    <section
+      aria-label="身分切換"
+      aria-busy={busy}
+      className="border-b bg-primary/5 px-4 py-2.5"
+    >
       <div className="mx-auto flex max-w-4xl flex-wrap items-center gap-x-4 gap-y-2">
-        <div className="min-w-0 basis-full text-xs leading-relaxed sm:basis-auto sm:flex-1">
-          <p className="font-semibold text-primary">Demo 身分切換</p>
+        <div className="min-w-0 basis-full text-xs leading-relaxed sm:flex-1 sm:basis-auto">
+          <p className="font-semibold text-primary">身分切換</p>
           <p className="text-muted-foreground">
-            {user.demo.role ? `示範：${user.name}（登入：${user.demo.account.name}）` : `登入帳號：${user.demo.account.name}`}
+            {user.demo.role
+              ? `目前：${user.name}（登入：${user.demo.account.name}）`
+              : `登入帳號：${user.demo.account.name}`}
           </p>
         </div>
-        <div className="flex items-center gap-1.5" role="group" aria-label="選擇示範身分">
+        <div
+          className="flex items-center gap-1.5"
+          role="group"
+          aria-label="選擇身分"
+        >
           {ROLES.map(({ role, label }) => (
             <button
               key={role}
@@ -49,19 +59,30 @@ export function DemoRoleSwitcher({ user }: { user: AuthUser }) {
               onClick={() => void select(role)}
               className={cn(
                 "min-h-11 rounded-full border px-3 text-sm font-semibold transition-colors disabled:opacity-50",
-                user.demo?.role === role ? "border-primary bg-primary text-primary-foreground" : "bg-background hover:bg-muted"
+                user.demo?.role === role
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "bg-background hover:bg-muted"
               )}
             >
               {label}
             </button>
           ))}
           {user.demo.role && (
-            <button type="button" disabled={busy} onClick={() => void select(null)} className="min-h-11 rounded-full px-2 text-xs font-semibold text-primary hover:bg-muted disabled:opacity-50">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void select(null)}
+              className="min-h-11 rounded-full px-2 text-xs font-semibold text-primary hover:bg-muted disabled:opacity-50"
+            >
               回原帳號
             </button>
           )}
         </div>
-        {error && <p role="alert" className="w-full text-sm text-destructive">{error}</p>}
+        {error && (
+          <p role="alert" className="w-full text-sm text-destructive">
+            {error}
+          </p>
+        )}
       </div>
     </section>
   )

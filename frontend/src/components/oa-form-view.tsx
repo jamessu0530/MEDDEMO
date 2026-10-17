@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react"
 import { CheckCircle2, Circle } from "@/components/icons"
-import { useNavigate } from "react-router"
+import { Link, useNavigate } from "react-router"
 
 import { ApiError } from "@/api/client"
 import {
@@ -8,6 +8,7 @@ import {
   getOaForm,
   type ContractPayload,
   type DiscountPayload,
+  type LegacyPayload,
   type OaFormDetail,
 } from "@/api/oa"
 import { Notice } from "@/components/notice"
@@ -18,11 +19,16 @@ import { OA_STATUS_LABEL, formatRate } from "@/lib/approval"
 import { formatDate, formatDateTime, formatMoney } from "@/lib/format"
 import { pendingOa } from "@/lib/manager-counts"
 import { cn } from "@/lib/utils"
+import { useAskPageContext } from "@/ask/use-page-context"
+import { oaFormContext } from "@/ask/oa-page-help"
 
 const TABS = ["表單", "附件", "意見", "簽核流程", "活動日誌"] as const
 type Tab = (typeof TABS)[number]
 
-type LoadState = { status: "loading" } | { status: "error" } | { status: "ready"; form: OaFormDetail }
+type LoadState =
+  | { status: "loading" }
+  | { status: "error" }
+  | { status: "ready"; form: OaFormDetail }
 
 /** 一張申請單（出差單、優惠、合約）的內容：表單、附件、意見、簽核流程、活動日誌。頁首由用的人給：單獨一頁是 PageHeader，電腦版主管端的右欄是一行標題 */
 export function OaFormView({
@@ -56,19 +62,32 @@ export function OaFormView({
 
   const form = state.status === "ready" ? state.form : null
   const canDecide = Boolean(form?.can_decide)
+  useAskPageContext(form ? oaFormContext(form) : {}, form?.id === id)
 
   return (
     <>
       {header(form)}
-      <div className="flex shrink-0 gap-1 overflow-x-auto border-b px-2">
+      <div
+        data-ui-demo="oa-detail-tabs"
+        className="flex shrink-0 gap-1 overflow-x-auto border-b px-2"
+      >
         {TABS.map((item) => (
           <button
             key={item}
+            data-ui-demo={
+              item === "簽核流程"
+                ? "oa-flow-tab"
+                : item === "活動日誌"
+                  ? "oa-activity-tab"
+                  : undefined
+            }
             type="button"
             onClick={() => setTab(item)}
             className={cn(
               "-mb-px shrink-0 border-b-2 px-3 py-2.5 text-sm",
-              tab === item ? "border-primary font-medium text-primary" : "border-transparent text-muted-foreground"
+              tab === item
+                ? "border-primary font-medium text-primary"
+                : "border-transparent text-muted-foreground"
             )}
           >
             {item}
@@ -76,7 +95,11 @@ export function OaFormView({
         ))}
       </div>
       <main className="flex flex-1 flex-col gap-3 px-4 pt-4 pb-10">
-        {state.status === "loading" && <p className="py-10 text-center text-sm text-muted-foreground">載入中…</p>}
+        {state.status === "loading" && (
+          <p className="py-10 text-center text-sm text-muted-foreground">
+            載入中…
+          </p>
+        )}
         {state.status === "error" && (
           <Notice
             text="找不到這張申請單。"
@@ -90,9 +113,25 @@ export function OaFormView({
             secondary={{ label: "返回", onClick: () => navigate(backTo) }}
           />
         )}
-        {stale && <p className="rounded-xl bg-destructive/10 px-3 py-2 text-sm text-destructive">{stale}</p>}
+        {stale && (
+          <p className="rounded-xl bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {stale}
+          </p>
+        )}
         {form && tab === "表單" && <FormTab form={form} />}
-        {form && tab === "附件" && <EmptyTab empty={form.attachments.length === 0} items={form.attachments} />}
+        {form?.can_edit && tab === "表單" && (
+          <Button asChild>
+            <Link to={`/oa/forms/${form.id}/edit`} data-ui-demo="oa-edit-draft">
+              {form.status === "returned" ? "補件後重新送出" : "繼續填寫草稿"}
+            </Link>
+          </Button>
+        )}
+        {form && tab === "附件" && (
+          <EmptyTab
+            empty={form.attachments.length === 0}
+            items={form.attachments}
+          />
+        )}
         {form && tab === "意見" && (
           <EmptyTab
             empty={form.comments.length === 0}
@@ -131,22 +170,65 @@ export function OaFormView({
 function FormTab({ form }: { form: OaFormDetail }) {
   return (
     <>
-      <div className="rounded-2xl bg-muted px-4 py-3 text-sm">
+      {form.kind === "legacy" && (
+        <div className="rounded-xl border bg-primary/5 p-4 text-sm leading-relaxed">
+          <p className="font-medium">OA 申請資料</p>
+          <p className="mt-1 text-muted-foreground">
+            可查看申請內容、附件、簽核流程與處理紀錄。
+          </p>
+          {(form.payload as LegacyPayload).sap_origin && (
+            <p className="mt-2 text-amber-700 dark:text-amber-400">
+              正式 PR／PO 須由 SAP 起單。
+            </p>
+          )}
+        </div>
+      )}
+      <div
+        data-ui-demo="oa-detail-summary"
+        className="rounded-2xl bg-muted px-4 py-3 text-sm"
+      >
         <p className="font-medium">
           {form.applicant_name}
-          <span className="ml-2 text-muted-foreground">{form.applicant_title}</span>
+          <span className="ml-2 text-muted-foreground">
+            {form.applicant_title}
+          </span>
         </p>
         <p className="mt-1 text-xs text-muted-foreground">
           員工編號 {form.applicant_id} · {form.unit_name}
         </p>
       </div>
-      <p className="text-xs text-muted-foreground">申請日期：{formatDate(form.trip_date ?? form.request_date ?? "")}</p>
+      <p className="text-xs text-muted-foreground">
+        申請日期：{formatDate(form.trip_date ?? form.request_date ?? "")}
+      </p>
       <Field label="文號" value={form.form_no} />
       <Field label="申請種類" value={form.kind_label} />
       <Field label="客戶" value={form.customer_name} />
       <Field label="用途說明" value={form.purpose} />
-      {form.kind === "discount" && form.payload && <DiscountFields payload={form.payload as DiscountPayload} />}
-      {form.kind === "contract" && form.payload && <ContractFields payload={form.payload as ContractPayload} />}
+      {form.kind === "legacy" &&
+        form.payload &&
+        Object.entries((form.payload as LegacyPayload).field_labels).map(
+          ([key, label]) => (
+            <Field
+              key={key}
+              label={label}
+              value={(form.payload as LegacyPayload).fields[key] || "尚未填寫"}
+            />
+          )
+        )}
+      {form.kind === "legacy" && form.missing.length > 0 && (
+        <div className="rounded-xl bg-muted p-4 text-sm">
+          <p className="font-medium">尚缺資料</p>
+          <p className="mt-1 leading-relaxed text-muted-foreground">
+            {form.missing.join("、")}
+          </p>
+        </div>
+      )}
+      {form.kind === "discount" && form.payload && (
+        <DiscountFields payload={form.payload as DiscountPayload} />
+      )}
+      {form.kind === "contract" && form.payload && (
+        <ContractFields payload={form.payload as ContractPayload} />
+      )}
       {form.model && <OaModelNote model={form.model} />}
       <p className="text-xs text-muted-foreground">
         狀態：{OA_STATUS_LABEL[form.status]}
@@ -162,7 +244,10 @@ function DiscountFields({ payload }: { payload: DiscountPayload }) {
     <>
       {payload.quote_no && <Field label="報價單號" value={payload.quote_no} />}
       <Field label="折扣" value={`${payload.discount_pct}%`} />
-      <Field label="報價金額" value={`${formatMoney(payload.amount)}（折扣前 ${formatMoney(payload.list_amount)}）`} />
+      <Field
+        label="報價金額"
+        value={`${formatMoney(payload.amount)}（折扣前 ${formatMoney(payload.list_amount)}）`}
+      />
       <Field label="申請理由" value={payload.reason || "—"} />
     </>
   )
@@ -171,14 +256,19 @@ function DiscountFields({ payload }: { payload: DiscountPayload }) {
 /** 合約申請單的內容：續約多久、兩個費率的調整、到期日、理由。新費率只記在申請單上 */
 function ContractFields({ payload }: { payload: ContractPayload }) {
   const rate = (value: { from: number; to: number }) =>
-    value.from === value.to ? `${formatRate(value.from)}（不變）` : `${formatRate(value.from)} → ${formatRate(value.to)}`
+    value.from === value.to
+      ? `${formatRate(value.from)}（不變）`
+      : `${formatRate(value.from)} → ${formatRate(value.to)}`
   const day = (iso: string | null) => iso?.replaceAll("-", "/") ?? "—"
   return (
     <>
       <Field label="續約" value={`${payload.term_months} 個月`} />
       <Field label="上架費率" value={rate(payload.listing_fee_rate)} />
       <Field label="通路獎勵比率" value={rate(payload.channel_reward_rate)} />
-      <Field label="合約到期日" value={`${day(payload.old_end_date)} → ${day(payload.new_end_date)}`} />
+      <Field
+        label="合約到期日"
+        value={`${day(payload.old_end_date)} → ${day(payload.new_end_date)}`}
+      />
       <Field label="申請理由" value={payload.reason || "—"} />
     </>
   )
@@ -188,7 +278,9 @@ function Field({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex flex-col gap-1">
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="rounded-xl border-2 bg-card px-3 py-2.5 text-sm shadow-lip">{value}</p>
+      <p className="rounded-xl border-2 bg-card px-3 py-2.5 text-sm break-words whitespace-pre-wrap shadow-lip">
+        {value}
+      </p>
     </div>
   )
 }
@@ -199,14 +291,27 @@ function EmptyTab({
   emptyText = "沒有附件",
 }: {
   empty: boolean
-  items: { id: number; filename: string; uploaded_by: string; created_at: string }[]
+  items: {
+    id: number
+    filename: string
+    uploaded_by: string
+    created_at: string
+  }[]
   emptyText?: string
 }) {
-  if (empty) return <p className="py-10 text-center text-sm text-muted-foreground">{emptyText}</p>
+  if (empty)
+    return (
+      <p className="py-10 text-center text-sm text-muted-foreground">
+        {emptyText}
+      </p>
+    )
   return (
     <ul className="flex flex-col gap-2">
       {items.map((item) => (
-        <li key={item.id} className="rounded-xl border-2 bg-card px-4 py-3 shadow-lip">
+        <li
+          key={item.id}
+          className="rounded-xl border-2 bg-card px-4 py-3 shadow-lip"
+        >
           <p className="text-sm">{item.filename}</p>
           <p className="mt-1 text-xs text-muted-foreground">
             {item.uploaded_by} · {formatDateTime(item.created_at)}
@@ -228,9 +333,16 @@ function StepsTab({ form }: { form: OaFormDetail }) {
             ) : (
               <Circle className="size-5 text-muted-foreground" />
             )}
-            {index < form.steps.length - 1 && <span className="w-px flex-1 bg-border" />}
+            {index < form.steps.length - 1 && (
+              <span className="w-px flex-1 bg-border" />
+            )}
           </div>
-          <div className={cn("mb-3 flex-1 rounded-xl border-2 bg-card px-3 py-3 shadow-lip", step.status === "pending" && "border-primary/40")}>
+          <div
+            className={cn(
+              "mb-3 flex-1 rounded-xl border-2 bg-card px-3 py-3 shadow-lip",
+              step.status === "pending" && "border-primary/40"
+            )}
+          >
             <p className="text-sm font-medium">{step.role_label}</p>
             <p className="text-sm">
               {step.name}
@@ -239,20 +351,29 @@ function StepsTab({ form }: { form: OaFormDetail }) {
           </div>
         </div>
       ))}
-      <p className="text-xs text-muted-foreground">簽核流程：{form.flow_name}</p>
+      <p className="text-xs text-muted-foreground">
+        簽核流程：{form.flow_name}
+      </p>
     </div>
   )
 }
 
 function ActivityTab({ form }: { form: OaFormDetail }) {
-  if (form.activity.length === 0) return <p className="py-10 text-center text-sm text-muted-foreground">還沒有紀錄。</p>
+  if (form.activity.length === 0)
+    return (
+      <p className="py-10 text-center text-sm text-muted-foreground">
+        還沒有紀錄。
+      </p>
+    )
   return (
     <ul className="flex flex-col gap-3">
       {form.activity.map((item) => (
         <li key={item.id} className="flex gap-3">
           <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-primary" />
           <div>
-            <p className="text-xs text-muted-foreground">{formatDateTime(item.created_at)}</p>
+            <p className="text-xs text-muted-foreground">
+              {formatDateTime(item.created_at)}
+            </p>
             <p className="text-sm font-medium">{item.detail}</p>
             <p className="text-xs text-muted-foreground">
               {/* 系統核准的那一筆沒有單位，不留一個多出來的「·」 */}
@@ -283,8 +404,12 @@ function DecideBar({
     setError(null)
     try {
       // 帶上畫面上正在等簽的那一關：連點兩次、或別人剛簽過，後端不會往下多簽一關
-      const stepNo = form.steps.find((step) => step.status === "pending")?.step_no
-      onDecided(await decideOaForm(form.id, action, comment.trim() || undefined, stepNo))
+      const stepNo = form.steps.find(
+        (step) => step.status === "pending"
+      )?.step_no
+      onDecided(
+        await decideOaForm(form.id, action, comment.trim() || undefined, stepNo)
+      )
     } catch (err) {
       // 409：這張單在你按下去之前已經被簽過了，畫面換成最新的
       if (err instanceof ApiError && err.status === 409) onStale(err.message)
@@ -305,13 +430,27 @@ function DecideBar({
       />
       {error && <p className="text-xs text-destructive">{error}</p>}
       <div className="grid grid-cols-3 gap-2">
-        <Button variant="outline" className="h-11" disabled={busy !== null} onClick={() => void act("return")}>
+        <Button
+          variant="outline"
+          className="h-11"
+          disabled={busy !== null}
+          onClick={() => void act("return")}
+        >
           退回
         </Button>
-        <Button variant="outline" className="h-11" disabled={busy !== null} onClick={() => void act("reject")}>
+        <Button
+          variant="outline"
+          className="h-11"
+          disabled={busy !== null}
+          onClick={() => void act("reject")}
+        >
           駁回
         </Button>
-        <Button className="h-11" disabled={busy !== null} onClick={() => void act("approve")}>
+        <Button
+          className="h-11"
+          disabled={busy !== null}
+          onClick={() => void act("approve")}
+        >
           核准
         </Button>
       </div>

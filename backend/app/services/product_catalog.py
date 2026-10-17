@@ -13,11 +13,14 @@ DEMO_PRODUCT_SKUS = (
     "OT-PT10", "OT-LX20", "OT-MW500", "MD-MASK50", "MD-GLU50", "MD-BPM", "MD-THM",
 )
 
+# 只排除完整測試標記，避免把照片雜湊或合法料號中間的 e04 誤判成商品。
+TEST_SKU_PATTERN = r"^(demo|dummy|fake|test|e04)([-_ :]|$)"
+TEST_NAME_PATTERN = r"(^|[^a-z0-9])(e04|demo|dummy|fake)([^a-z0-9]|$)|^(示範|教學|測試商品|測試產品|測試用|虛構|不存在|模擬)"
+
 
 def visible_catalog_products():
     return and_(
         Product.sku.not_in(DEMO_PRODUCT_SKUS),
-        ~Product.sku.startswith("DEMO-", autoescape=True),
-        ~Product.name.startswith("示範", autoescape=True),
-        ~Product.name.startswith("教學", autoescape=True),
+        Product.sku.op("!~*")(TEST_SKU_PATTERN),
+        Product.name.op("!~*")(TEST_NAME_PATTERN),
     )

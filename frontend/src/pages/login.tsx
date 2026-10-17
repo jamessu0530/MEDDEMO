@@ -240,7 +240,7 @@ export function LoginPage() {
             </p>
           )}
           <p className="text-xs leading-relaxed text-muted-foreground">
-            首次登入會建立帳號，使用示範客戶與路線。
+            首次登入會建立帳號，載入可查看的客戶與路線。
           </p>
         </section>
       )}

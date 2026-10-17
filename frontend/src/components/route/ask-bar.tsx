@@ -1,7 +1,16 @@
-import { useEffect, useRef, useState, type FormEvent } from "react"
+import { useEffect, useId, useRef, useState, type FormEvent } from "react"
 import { Mic, SendHorizontal, Square } from "@/components/icons"
 
 import { Mascot } from "@/components/mascot"
+import type { Turn } from "@/api/asks"
+import { pageSnapshot } from "@/ask/conversation-context"
+import { useCurrentPageContext } from "@/ask/use-page-context"
+import { useQuestionSuggestions } from "@/ask/use-question-guidance"
+import {
+  shouldAcceptSuggestion,
+  suggestedCompletion,
+} from "@/ask/question-guidance"
+import { SuggestionHint } from "@/components/ask/question-suggestions"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
@@ -17,17 +26,57 @@ type AskBarProps = {
   placeholder?: string
   inputLabel?: string
   maxLength?: number
+  suggestions?: string[]
+  earlier?: Turn[]
 }
+
+const ROUTE_SUGGESTIONS = [
+  "幫我保留約訪時間，把今天的行程排順一點",
+  "幫我重新安排今天還沒完成的拜訪順序",
+  "幫我把同一區域的客戶排在一起",
+]
 
 /**
  * 跟熊熊滾說要怎麼排的輸入列（首頁與調整清單的底部）。右邊麥克風用錄拜訪的即時轉文字（voice/live-transcription.ts），
  * 講完再按一次，文字留在輸入框裡，業務看過再按送出。只有業務看得到。
  */
-export function AskBar({ busy, error, onAsk, className, placeholder = "跟熊熊滾說要怎麼排…", inputLabel = "跟熊熊滾說要怎麼排", maxLength = 300 }: AskBarProps) {
+export function AskBar({
+  busy,
+  error,
+  onAsk,
+  className,
+  placeholder,
+  inputLabel = "跟熊熊滾說要怎麼排",
+  maxLength = 300,
+  suggestions = ROUTE_SUGGESTIONS,
+  earlier = [],
+}: AskBarProps) {
+  const page = useCurrentPageContext()
   const [text, setText] = useState("")
+  const [lastQuestion, setLastQuestion] = useState("")
   const [listening, setListening] = useState(false)
   const [micError, setMicError] = useState<string | null>(null)
   const stopRef = useRef<(() => void) | null>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const hintId = useId()
+  const nextSuggestions = suggestions.filter(
+    (suggestion) =>
+      suggestion !== lastQuestion && suggestion.length <= maxLength
+  )
+  const generated = useQuestionSuggestions(
+    { page: pageSnapshot(page), earlier, candidates: nextSuggestions },
+    !busy && !listening
+  )
+  const offered = (generated ?? nextSuggestions).filter(
+    (text) => text.length <= maxLength
+  )
+  const completion =
+    !busy && !listening ? suggestedCompletion(text, offered) : null
+
+  function fillQuestion(suggestion: string) {
+    setText(suggestion)
+    inputRef.current?.focus({ preventScroll: true })
+  }
 
   // 離開頁面時一定要關掉麥克風
   useEffect(() => () => stopRef.current?.(), [])
@@ -46,8 +95,13 @@ export function AskBar({ busy, error, onAsk, className, placeholder = "跟熊熊
       stream = await navigator.mediaDevices.getUserMedia({ audio: true })
     } catch (reason) {
       void context.close()
-      const denied = reason instanceof DOMException && reason.name === "NotAllowedError"
-      setMicError(denied ? "沒有麥克風權限，請到瀏覽器設定允許，或改用打字。" : "麥克風開不起來，請改用打字。")
+      const denied =
+        reason instanceof DOMException && reason.name === "NotAllowedError"
+      setMicError(
+        denied
+          ? "沒有麥克風權限，請到瀏覽器設定允許，或改用打字。"
+          : "麥克風開不起來，請改用打字。"
+      )
       return
     }
     let handle: { stop: () => void } | null = null
@@ -63,8 +117,14 @@ export function AskBar({ busy, error, onAsk, className, placeholder = "跟熊熊
     stopRef.current = stop
     setListening(true)
     const before = text.trim() ? `${text.trim()} ` : ""
-    const { startLiveTranscription } = await import("@/voice/live-transcription")
-    handle = await startLiveTranscription(context, stream, null, (confirmed, interim) => setText(before + confirmed + interim))
+    const { startLiveTranscription } =
+      await import("@/voice/live-transcription")
+    handle = await startLiveTranscription(
+      context,
+      stream,
+      null,
+      (confirmed, interim) => setText(before + confirmed + interim)
+    )
     if (stopped) {
       handle?.stop() // 連上之前就按了停
       return
@@ -80,26 +140,40 @@ export function AskBar({ busy, error, onAsk, className, placeholder = "跟熊熊
     const question = text.trim()
     if (!question || busy) return
     stopRef.current?.()
-    if (await onAsk(question)) setText("")
+    if (await onAsk(question)) {
+      setLastQuestion(question)
+      setText("")
+    }
   }
 
   const shown = error ?? micError
   return (
     <form onSubmit={submit} className={cn("flex flex-col gap-1", className)}>
       {busy ? (
-        <div className="flex h-12 items-center gap-2 rounded-2xl border-2 bg-card px-3 shadow-lip" role="status">
+        <div
+          className="flex h-12 items-center gap-2 rounded-2xl border-2 bg-card px-3 shadow-lip"
+          role="status"
+        >
           <Mascot state="think" size={40} bust />
           <span className="text-sm text-muted-foreground">熊熊滾想一下…</span>
         </div>
       ) : (
         <div className="flex gap-2">
           <Input
+            ref={inputRef}
             value={text}
             maxLength={maxLength}
             onChange={(event) => setText(event.target.value)}
-            placeholder={placeholder}
+            placeholder={placeholder ?? offered[0] ?? "跟熊熊滾說要怎麼排…"}
             aria-label={inputLabel}
-            className="h-12 bg-card"
+            aria-describedby={completion ? hintId : undefined}
+            onKeyDown={(event) => {
+              if (shouldAcceptSuggestion(event, completion)) {
+                event.preventDefault()
+                fillQuestion(completion!)
+              }
+            }}
+            className="h-12 bg-card placeholder:text-muted-foreground/60"
           />
           <Button
             type="button"
@@ -108,16 +182,37 @@ export function AskBar({ busy, error, onAsk, className, placeholder = "跟熊熊
             className={cn("size-12 shrink-0", listening && "text-destructive")}
             aria-label={listening ? "講完了" : "用說的"}
             aria-pressed={listening}
-            onClick={() => (listening ? stopRef.current?.() : void startListening())}
+            onClick={() =>
+              listening ? stopRef.current?.() : void startListening()
+            }
           >
-            {listening ? <Square className="size-4 fill-current" /> : <Mic className="size-5" />}
+            {listening ? (
+              <Square className="size-4 fill-current" />
+            ) : (
+              <Mic className="size-5" />
+            )}
           </Button>
-          <Button type="submit" size="icon" className="size-12 shrink-0" disabled={!text.trim() || listening} aria-label="送出">
+          <Button
+            type="submit"
+            size="icon"
+            className="size-12 shrink-0"
+            disabled={!text.trim() || listening}
+            aria-label="送出"
+          >
             <SendHorizontal className="size-5" />
           </Button>
         </div>
       )}
-      {listening && <p className="px-1 text-xs text-primary">聽你說…講完再按一次麥克風</p>}
+      {completion && (
+        <SuggestionHint
+          id={hintId}
+          suggestion={completion}
+          onAccept={() => fillQuestion(completion)}
+        />
+      )}
+      {listening && (
+        <p className="px-1 text-xs text-primary">聽你說…講完再按一次麥克風</p>
+      )}
       {shown && <p className="px-1 text-xs text-destructive">{shown}</p>}
     </form>
   )

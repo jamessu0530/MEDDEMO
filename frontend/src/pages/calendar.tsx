@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { useAskPageContext } from "@/ask/use-page-context"
 import {
   DndContext,
   closestCenter,
@@ -274,7 +275,18 @@ function CalendarWorkspacePage({
         !e.attendees.some((a) => a.is_me && a.status === "declined")
     )
   const shownEvents = visibleEvents(events)
+  useAskPageContext({ facts: [
+    `日曆檢視：${VIEWS.find(([value]) => value === view)?.[1] ?? view}`,
+    `選取日期：${anchor}`,
+    `顯示期間：${days[0]} 至 ${days.at(-1)}`,
+    `搜尋：${query.trim() || "無"}`,
+    `顯示中的日曆：${calendars.filter((calendar) => calendar.visible).map((calendar) => calendar.name).join("、") || "尚未載入"}`,
+    `顯示拜訪備忘：${showLegacy ? "是" : "否"}`,
+    ...(loading ? ["日曆資料載入中"] : [`目前範圍可見行程：${shownEvents.length} 筆`]),
+    ...(requestedEvent ? [`選取行程編號：${requestedEvent}`] : []),
+  ] })
   const dayEvents = shownEvents.filter((e) => onDay(e, anchor))
+  const today = workspace?.today ?? dateKey(new Date())
   const canCreate = calendars.some((c) => c.can_edit)
   function create(date: string, minutes = 9 * 60) {
     setAnchor(date)
@@ -407,7 +419,7 @@ function CalendarWorkspacePage({
   )
 
   return (
-    <div className="planner-page flex min-h-svh flex-col">
+    <div aria-busy={!workspace && !error} className="planner-page flex min-h-svh flex-col">
       <PageHeader
         title="日曆"
         subtitle="安排每一天"
@@ -426,6 +438,7 @@ function CalendarWorkspacePage({
               size="sm"
               disabled={!canCreate}
               onClick={() => create(anchor)}
+              data-ui-demo-open="dialog"
             >
               <Plus />
               新增
@@ -479,7 +492,7 @@ function CalendarWorkspacePage({
               管理與共享
             </Button>
             <p className="text-xs text-muted-foreground">
-              拖曳行程旁的把手可改期。日／週檢視可拖曳底部調整結束時間。
+              拖曳行程右側可改期。日／週檢視可拖曳底部調整結束時間。
             </p>
           </aside>
           <div className="min-w-0 flex-1 space-y-4">
@@ -502,7 +515,14 @@ function CalendarWorkspacePage({
                   <ChevronRight />
                 </Button>
               </div>
-              <h2 className="min-w-0 flex-1 text-lg font-semibold sm:flex-none">
+              <h2
+                className={cn(
+                  "min-w-0 flex-1 text-lg font-semibold sm:flex-none",
+                  view === "day" &&
+                    anchor === today &&
+                    "text-red-600 dark:text-red-400"
+                )}
+              >
                 {view === "day"
                   ? dayTitle(anchor)
                   : monthTitle(anchor.slice(0, 7))}
@@ -576,7 +596,7 @@ function CalendarWorkspacePage({
               </Button>
             </div>
             <details className="rounded-xl border bg-card p-3 xl:hidden">
-              <summary className="cursor-pointer text-sm">
+              <summary data-ui-demo-open="disclosure" className="cursor-pointer text-sm">
                 顯示的日曆（{calendars.filter((c) => c.visible).length}）
               </summary>
               <div className="pt-3">{filters}</div>
@@ -681,6 +701,7 @@ function CalendarWorkspacePage({
                       </p>
                       <CalendarListView
                         days={[]}
+                        today={today}
                         events={visibleEvents(search.events)}
                         selected={anchor}
                         onOpen={open}
@@ -700,7 +721,7 @@ function CalendarWorkspacePage({
                   <CalendarMonthView
                     days={days}
                     events={shownEvents}
-                    today={workspace?.today ?? ""}
+                    today={today}
                     selected={anchor}
                     onSelect={setAnchor}
                     onOpen={open}
@@ -711,7 +732,7 @@ function CalendarWorkspacePage({
                   <CalendarTimeView
                     days={days}
                     events={shownEvents}
-                    today={workspace?.today ?? ""}
+                    today={today}
                     selected={anchor}
                     onSelect={setAnchor}
                     onOpen={open}
@@ -720,6 +741,7 @@ function CalendarWorkspacePage({
                 ) : (
                   <CalendarListView
                     days={days.filter((d) => d.startsWith(anchor.slice(0, 7)))}
+                    today={today}
                     events={shownEvents}
                     selected={anchor}
                     onOpen={open}
@@ -729,7 +751,12 @@ function CalendarWorkspacePage({
                 {!query.trim() && view === "month" && (
                   <section className="mt-4 space-y-3 rounded-2xl border bg-card p-4">
                     <div className="flex items-center justify-between gap-2">
-                      <h3 className="text-sm font-semibold">
+                      <h3
+                        className={cn(
+                          "text-sm font-semibold",
+                          anchor === today && "text-red-600 dark:text-red-400"
+                        )}
+                      >
                         {dayTitle(anchor)}
                       </h3>
                       <Button

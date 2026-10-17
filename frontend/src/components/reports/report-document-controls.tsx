@@ -87,7 +87,7 @@ export function ReportDocumentControls({
       if (!abort.signal.aborted)
         setError(err instanceof Error ? err.message : "報表暫時無法開啟。")
     } finally {
-      if (!abort.signal.aborted) setBusy(false)
+      setBusy(false)
     }
   }
   async function create() {
@@ -130,7 +130,7 @@ export function ReportDocumentControls({
       if (!abort.signal.aborted)
         setError(err instanceof Error ? err.message : "新報表未能儲存。")
     } finally {
-      if (!abort.signal.aborted) setBusy(false)
+      setBusy(false)
     }
   }
   async function addBookmark() {
@@ -155,7 +155,7 @@ export function ReportDocumentControls({
       if (!abort.signal.aborted)
         setError(err instanceof Error ? err.message : "書籤未能儲存。")
     } finally {
-      if (!abort.signal.aborted) setBusy(false)
+      setBusy(false)
     }
   }
   return (

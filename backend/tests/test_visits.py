@@ -23,7 +23,7 @@ TRANSCRIPT = (
 FIELDS = {
     "competitor": [{"name": "御松田", "detail": "條件比我們好"}],
     "complaint": "補貨延遲三天",
-    "intent": [{"product_text": "魚油", "sku": "HS-FO30", "qty": 20, "unit": "盒", "promo_code": None}],
+    "intent": [{"product_text": "魚油", "sku": "F764521", "qty": 20, "unit": "盒", "promo_code": None}],
     "commitment": {"by": "us", "text": "回報檔期", "due": "2026-10-24"},
     "follow_up_date": "2026-10-24",
     "notes": None,
@@ -39,7 +39,7 @@ SOURCES = {
 
 class FakeTranscriber:
     def transcribe(self, audio, mime_type, hotwords):
-        assert "御松田" in hotwords and "魚油" in hotwords  # 熱詞有帶給語音辨識
+        assert "御松田" in hotwords and "固循魚油" in hotwords  # 熱詞有帶給語音辨識
         return Transcript(TRANSCRIPT)
 
 
@@ -49,7 +49,7 @@ class FakeExtractor:
         self.packs = ()
 
     def extract(self, transcript, visit_date, products, packs=(), **context):
-        assert any(p.sku == "HS-FO30" for p in products)  # 品項表有帶給模型
+        assert any(p.sku == "F764521" for p in products)  # 品項表有帶給模型
         self.packs = packs
         return Extraction(self.fields, self.sources)
 
@@ -143,7 +143,7 @@ def test_taiwanese_recording_keeps_its_language_and_original_quotes(client, prov
 
     class Taiwanese:
         def transcribe(self, audio, mime_type, hotwords):
-            assert "魚油" in hotwords
+            assert "固循魚油" in hotwords
             return Transcript(spoken)
 
     class Extractor:
@@ -228,7 +228,7 @@ def test_auto_recording_keeps_mode_through_resend_retry_and_chinese_draft(client
 @pytest.mark.parametrize(("language", "spoken"), SAMPLES)
 def test_foreign_recording_keeps_language_through_resend_retry_and_chinese_extraction(client, providers, monkeypatch, language, spoken):
     chosen = []
-    fields = {key: [{"product_text": spoken, "sku": "HS-FO30", "qty": 20, "unit": "盒", "promo_code": None}] if key == "intent" else None for key in FIELDS}
+    fields = {key: [{"product_text": spoken, "sku": "F764521", "qty": 20, "unit": "盒", "promo_code": None}] if key == "intent" else None for key in FIELDS}
 
     class ForeignTranscriber:
         def transcribe(self, audio, mime_type, hotwords):
@@ -306,7 +306,7 @@ def test_fields_can_be_edited_one_by_one_but_must_stay_valid(client, providers):
 
 def test_an_intent_line_must_say_whether_it_is_a_pack(client, providers):
     visit_id = make_draft(client, providers)
-    without = [{"product_text": "魚油", "sku": "HS-FO30", "qty": 20, "unit": "盒"}]
+    without = [{"product_text": "魚油", "sku": "F764521", "qty": 20, "unit": "盒"}]
     assert client.put(f"/api/visits/{visit_id}/fields", json={"fields": {**FIELDS, "intent": without}}).status_code == 422
 
 
@@ -319,9 +319,9 @@ def test_confirm_writes_all_three_systems_and_creates_a_reminder(client, provide
     with engine.connect() as conn:
         params = {"v": visit_id}
         assert conn.execute(text("SELECT complaint FROM crm_visit_record WHERE visit_id = :v"), params).scalar_one() == "補貨延遲三天"
-        # 康泰忠孝店是連鎖：魚油 30 入建議售價 450 元，打 9 折是 405 元
+        # 康泰忠孝店是連鎖：固循魚油供貨價 990 元，打 9 折是 891 元
         sap = conn.execute(text("SELECT sku, qty, unit_price FROM sap_quotation_draft WHERE visit_id = :v"), params).one()
-        assert sap == ("HS-FO30", 20, 405)
+        assert sap == ("F764521", 20, 891)
         assert conn.execute(text("SELECT count(*) FROM oa_expense_form WHERE visit_id = :v"), params).scalar_one() == 1
 
 
@@ -395,34 +395,29 @@ def test_a_draft_can_be_discarded_but_a_confirmed_visit_cannot(client, providers
     assert client.post(f"/api/visits/{confirmed_id}/confirm").status_code == 409
 
 
-def test_a_competitor_or_complaint_notifies_the_reps_manager(client, providers, auth):
+def test_confirming_competitors_and_complaints_keeps_records_without_risk_alerts(client, providers, engine):
     visit_id = make_draft(client, providers)
     visit = client.post(f"/api/visits/{visit_id}/confirm").json()
-    notice = visit["risk_notice"]
-    assert notice["manager_name"] == "陳建宏"  # 林昱辰的直屬主管
-    assert notice["reason"] == "提到競品御松田；客訴：補貨延遲三天"
-    assert notice["max"] == 5 and notice["score"] == len(notice["items"])
-    # 忠孝店是刻意設計的「進貨間隔拉長」案例，這次又提到競品與客訴
-    assert {"進貨間隔拉長", "近 90 天提到競品", "近 90 天有客訴"} <= set(notice["items"])
+    assert visit["status"] == "synced"
+    assert visit["fields"]["competitor"] == FIELDS["competitor"]
+    assert visit["fields"]["complaint"] == FIELDS["complaint"]
+    assert "risk_notice" not in visit
+    with engine.connect() as conn:
+        for table in ("manager_notice", "channel_message"):
+            assert conn.scalar(text(f"SELECT count(*) FROM {table} WHERE visit_id = :id"), {"id": visit_id}) == 0
 
-    notices = client.get("/api/manager/notices", headers=auth("M01")).json()
-    mine = next(n for n in notices if n["visit_id"] == visit_id)
-    assert mine["rep_name"] == "林昱辰" and mine["customer_name"] == "康泰連鎖藥局 · 忠孝店" and mine["seen_at"] is None
-    # 別的主管看不到；業務打不開主管端
-    assert all(n["visit_id"] != visit_id for n in client.get("/api/manager/notices", headers=auth("M02")).json())
-    assert client.get("/api/manager/notices").status_code == 403
 
-    unseen = client.get("/api/manager/notices/unseen", headers=auth("M01")).json()["count"]
-    assert client.post(f"/api/manager/notices/{mine['id']}/seen", headers=auth("M01")).json()["seen_at"] is not None
-    assert client.get("/api/manager/notices/unseen", headers=auth("M01")).json()["count"] == unseen - 1
-    assert client.post(f"/api/manager/notices/{mine['id']}/seen", headers=auth("M02")).status_code == 404
+@pytest.mark.parametrize("path", ["/api/manager/notices", "/api/manager/notices/unseen", "/api/manager/notices/1/seen"])
+def test_risk_notice_endpoints_are_removed(client, auth, path):
+    response = client.post(path, headers=auth("M01")) if path.endswith("/seen") else client.get(path, headers=auth("M01"))
+    assert response.status_code == 404
 
 
 def test_a_routine_visit_does_not_notify_anyone(client, providers):
     fields = {**FIELDS, "competitor": None, "complaint": None}
     sources = {k: v for k, v in SOURCES.items() if k not in ("competitor", "complaint")}
     visit_id = make_draft(client, providers, FakeExtractor(fields, sources))
-    assert client.post(f"/api/visits/{visit_id}/confirm").json()["risk_notice"] is None
+    assert "risk_notice" not in client.post(f"/api/visits/{visit_id}/confirm").json()
 
 
 def test_a_competitor_never_mentioned_before_is_marked_first(client, providers):
@@ -460,7 +455,7 @@ def test_a_pack_in_the_voice_note_is_quoted_as_that_pack(client, providers, engi
             ),
             {"v": visit_id},
         ).all()
-    assert [tuple(r) for r in rows] == [(code, 2, 44, 2, 11000, 250), (None, None, 20, 0, 8100, 405)]
+    assert [tuple(r) for r in rows] == [(code, 2, 44, 2, 11000, 250), (None, None, 20, 0, 17820, 891)]
 
 
 def test_a_pack_the_ai_made_up_is_cleared_for_the_rep_to_pick(client, providers):
@@ -472,6 +467,6 @@ def test_a_pack_the_ai_made_up_is_cleared_for_the_rep_to_pick(client, providers)
 
 def test_the_rep_cannot_save_a_pack_for_another_product(client, providers, engine):
     visit_id = make_draft(client, providers)
-    wrong = [{"product_text": "魚油", "sku": "HS-FO30", "qty": 1, "unit": "口", "promo_code": premium_small(engine)}]
+    wrong = [{"product_text": "魚油", "sku": "F764521", "qty": 1, "unit": "口", "promo_code": premium_small(engine)}]
     response = client.put(f"/api/visits/{visit_id}/fields", json={"fields": {**FIELDS, "intent": wrong}})
     assert response.status_code == 422 and "不是這個品項" in str(response.json())

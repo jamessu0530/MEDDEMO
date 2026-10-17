@@ -82,8 +82,8 @@ def test_progress_is_the_view_without_the_travel(tx):
     itinerary, before = route(tx)
     found = service.progress(tx, itinerary)
     assert found.itinerary_id == itinerary.id
-    # 示範路線的第一站是需立即處理：還沒點之前照樣回那張卡
-    assert found.urgent is not None and found.urgent["customer_id"] == before.stops[0].customer_id
+    # 首頁移除緊急卡後，精簡進度也不再回傳該卡。
+    assert found.urgent is None
     assert progress_of(found) == progress_of(before)
     for index in (2, 0):
         service.arrive(tx, "U01", before.stops[index].customer_id)

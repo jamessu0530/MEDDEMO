@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest"
-import { hasPageAssistant } from "./page-assistant"
+import { pageAssistantPlacement } from "./page-assistant"
 
 describe("各頁的 AI 輸入方式", () => {
-  it("路線、報表與頻道不重疊顯示另一個輸入列", () => {
+  it("已有專用輸入列的頁面仍可用浮動入口開啟共用助理", () => {
     for (const path of [
       "/route",
       "/route/",
@@ -10,9 +10,13 @@ describe("各頁的 AI 輸入方式", () => {
       "/reports",
       "/channels",
       "/channels/2",
+      "/channels/search",
+      "/channels/2/threads",
     ])
-      expect(hasPageAssistant(path)).toBe(false)
-    expect(hasPageAssistant("/manager", "?view=priority")).toBe(false)
+      expect(pageAssistantPlacement(path)).toBe("floating")
+    expect(pageAssistantPlacement("/manager", "?view=priority")).toBe(
+      "floating"
+    )
   })
   it("一般頁面就地提問，主管其他分頁也可用", () => {
     for (const path of [
@@ -23,12 +27,24 @@ describe("各頁的 AI 輸入方式", () => {
       "/calendar",
       "/me",
       "/settings",
+      "/oa/new/expense",
+      "/oa/forms/123/edit",
+      "/oa/apps",
+      "/oa/forms",
+      "/oa/forms/123",
     ])
-      expect(hasPageAssistant(path)).toBe(true)
-    expect(hasPageAssistant("/manager", "?view=oa")).toBe(true)
+      expect(pageAssistantPlacement(path)).toBe("dock")
+    expect(pageAssistantPlacement("/manager", "?view=oa")).toBe("dock")
   })
-  it("登入和錄音流程不插入 AI 操作", () => {
-    expect(hasPageAssistant("/login")).toBe(false)
-    expect(hasPageAssistant("/customers/C01/record")).toBe(false)
+  it("公開頁和錄音頁也保留助理入口", () => {
+    for (const path of [
+      "/login",
+      "/register",
+      "/privacy",
+      "/auth/google/callback",
+      "/auth/github/callback",
+      "/customers/C01/record",
+    ])
+      expect(pageAssistantPlacement(path)).toBe("floating")
   })
 })

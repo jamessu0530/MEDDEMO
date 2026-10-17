@@ -40,7 +40,7 @@ export default function RouteMap({ config, routes, removed = [], className, onFa
   return (
     <APIProvider apiKey={config.browser_key} language="zh-TW" region="TW" onError={onFail}>
       <LoadWatch onFail={onFail} />
-      <div className={cn("overflow-hidden rounded-2xl border-2 shadow-lip", className)}>
+      <div className={cn("overflow-hidden rounded-2xl border-2 shadow-lip lg:rounded-[1.5rem] lg:border-0 lg:shadow-none", className)}>
         {/* 地圖跟著 App 的深淺色：線的顏色是主題色，深色主題的線很淡，畫在淺色地圖上會看不見。
             換配色時重建地圖（colorScheme 只在建立時讀） */}
         <Map

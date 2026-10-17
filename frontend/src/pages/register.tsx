@@ -61,7 +61,7 @@ export function RegisterPage() {
         <p className="text-xs text-muted-foreground">中化裕民 · 業務 AI 助理</p>
         <h1 className="mt-1 text-2xl font-semibold">建立帳號</h1>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-          建好就直接登入。新帳號先看示範業務的客戶與今日路線。
+          建好就直接登入，查看客戶資料與今日路線。
         </p>
       </header>
 

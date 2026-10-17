@@ -51,6 +51,15 @@ describe("主管地圖尺寸", () => {
     expect(limits.maxHeight + 182 + 4 * 16).toBeLessThanOrEqual(720)
   })
 
+  it("Widget 與底部助理輸入列也計入可用高度，右下角把手不被遮擋", () => {
+    const fontSize = 20
+    const chrome = 11 * fontSize
+    const limits = managerMapLimits(1000, fontSize, 800, 150, chrome)
+    const size = constrainManagerMapSize({ widthPercent: 60, height: 900 }, limits)
+    expect(size.height).toBe(430)
+    expect(size.height! + 150 + chrome).toBe(800)
+  })
+
   it("儲存內容毀損或欄位型別不對時安全回到預設", () => {
     const key = "meddemo:manager-map-size:M01"
     for (const value of ["{", "null", "[]", '{"widthPercent":"60","height":-1}', '{"widthPercent":101,"height":1e999}']) {

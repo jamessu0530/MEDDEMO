@@ -125,7 +125,7 @@ function ProductExercise({ answer, onChange }: Props) {
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm leading-relaxed">
-        切到「促銷」，選示範品項 A，算出客戶買一口總共會收到幾盒。
+        切到「促銷」，選金舒胃平，算出客戶買一口總共會收到幾盒。
       </p>
       <div className="rounded-2xl border-2 bg-card p-4 shadow-lip">
         <div
@@ -155,8 +155,8 @@ function ProductExercise({ answer, onChange }: Props) {
         </div>
         {answer.view === "products" ? (
           <div className="rounded-xl bg-muted/50 p-4 text-sm">
-            <p className="font-semibold">示範品項 A</p>
-            <p className="mt-1 text-muted-foreground">料號 DEMO-A · 盒</p>
+            <p className="font-semibold">金舒胃平</p>
+            <p className="mt-1 text-muted-foreground">料號 C130082 · 盒</p>
             <p className="mt-3 text-xs text-muted-foreground">
               一口的條件在「促銷」分頁。
             </p>
@@ -164,12 +164,12 @@ function ProductExercise({ answer, onChange }: Props) {
         ) : (
           <div className="space-y-3">
             <Choice
-              selected={answer.sku === "DEMO-A"}
-              onClick={() => onChange({ ...answer, sku: "DEMO-A" })}
+              selected={answer.sku === "C130082"}
+              onClick={() => onChange({ ...answer, sku: "C130082" })}
             >
               <span>
                 <span className="block font-semibold">
-                  示範品項 A · 買 10 送 2
+                  金舒胃平 · 買 10 送 2
                 </span>
                 <span className="mt-1 block text-xs text-muted-foreground">
                   一口：付費 10 盒，搭贈 2 盒
@@ -177,15 +177,15 @@ function ProductExercise({ answer, onChange }: Props) {
               </span>
             </Choice>
             <Choice
-              selected={answer.sku === "DEMO-B"}
-              onClick={() => onChange({ ...answer, sku: "DEMO-B" })}
+              selected={answer.sku === "C450070"}
+              onClick={() => onChange({ ...answer, sku: "C450070" })}
             >
               <span>
                 <span className="block font-semibold">
-                  示範品項 B · 買 6 送 1
+                  骨營膠囊600T · 買 11 送 1
                 </span>
                 <span className="mt-1 block text-xs text-muted-foreground">
-                  一口：付費 6 盒，搭贈 1 盒
+                  一口：付費 11 組，搭贈 1 組
                 </span>
               </span>
             </Choice>
@@ -193,7 +193,7 @@ function ProductExercise({ answer, onChange }: Props) {
               className="block pt-3 text-sm font-semibold"
               htmlFor="practice-quantity"
             >
-              品項 A 買一口，總共收到幾盒？
+              金舒胃平 買一口，總共收到幾盒？
             </label>
             <Input
               id="practice-quantity"
@@ -380,7 +380,7 @@ function AskExercise({ answer, onChange }: Props) {
         {answer.asked && (
           <>
             <p className="text-sm leading-relaxed">
-              示範品項 A 一口付費 10 盒、搭贈 2 盒，總共收到 12 盒。
+              金舒胃平 一口付費 10 盒、搭贈 2 盒，總共收到 12 盒。
             </p>
             <Button
               type="button"
@@ -393,7 +393,7 @@ function AskExercise({ answer, onChange }: Props) {
             </Button>
             {answer.source_opened && (
               <div className="rounded-xl border-2 border-primary/20 bg-primary/5 p-3 text-sm">
-                <p className="font-semibold">練習促銷方案 · 品項 A</p>
+                <p className="font-semibold">練習促銷方案 · 金舒胃平</p>
                 <p className="mt-1">
                   買 10 盒，搭贈 2 盒。這份文件只用於課程。
                 </p>

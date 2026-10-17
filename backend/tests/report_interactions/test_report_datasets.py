@@ -235,11 +235,11 @@ def test_ai_receives_real_rows_full_statistics_and_validates_unknown_columns():
     with pytest.raises(LLMOutputError): service.analyze(dataset, "看檔案", model)
 
 
-def test_ai_unavailable_is_clear_and_rate_limit_route_is_registered(dataset_session):
+def test_ai_unavailable_is_clear_and_analyze_has_no_usage_limit(dataset_session):
     api, headers, source = upload(dataset_session)
     response = api.post(f"/api/reports/datasets/{source['id']}/analyze", headers=headers, json={})
     assert response.status_code == 503 and "AI 尚未設定" in response.json()["detail"]
-    assert any(method == "POST" and pattern.fullmatch(f"/api/reports/datasets/{source['id']}/analyze") and bucket == "reports_adjust" for method, pattern, bucket, _ in usage.ROUTES)
+    assert usage.buckets_for("POST", f"/api/reports/datasets/{source['id']}/analyze") == []
 
 
 def test_inspect_does_not_persist_and_empty_excel_cover_can_select_another_sheet(dataset_session):

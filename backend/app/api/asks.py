@@ -19,7 +19,7 @@ from app.api.auth import CurrentUser
 from app.api.learning import LearningAiUser
 from app.db import get_session
 from app.models import AppUser, AskRecord, Attachment, Customer, Escalation, QueryTrace
-from app.services import ask_followup, ask_router, attachments, assistant_context
+from app.services import ask_followup, ask_router, attachments, assistant_context, question_suggestions
 from app.services.scope import SHARING_LEVEL, Scope
 from app.tasks import visit_queue
 
@@ -38,7 +38,7 @@ class AskInput(BaseModel):
 
 
 class Turn(BaseModel):
-    """這段對話前面答完的一輪。前端給的，只拿來改寫業務自己這一句，查詢照樣用他自己的權限"""
+    """前端提供的最近問答，供整理提問及建議；實際查詢仍依登入者權限執行。"""
 
     question: str = Field(max_length=500)
     answer: str = Field(max_length=4000)
@@ -68,6 +68,16 @@ class RouteOut(BaseModel):
     clarification: str | None = None
     context_used: bool = False
     continues_previous: bool = False
+
+
+class SuggestionsInput(BaseModel):
+    page: assistant_context.PageContext
+    earlier: list[Turn] = Field(default_factory=list, max_length=6)
+    candidates: list[Annotated[str, Field(min_length=1, max_length=500)]] = Field(default_factory=list, max_length=8)
+
+
+class SuggestionsOut(BaseModel):
+    suggestions: list[str]
 
 
 @dataclass(frozen=True)
@@ -233,6 +243,12 @@ def route_ask(body: RouteInput, user: LearningAiUser):
     return RouteOut(
         kind=routed.kind, choices=routed.choices, confidence=routed.confidence, question=asked, rewritten=asked != question
     )
+
+
+@router.post("/suggestions", response_model=SuggestionsOut)
+async def suggest_questions(body: SuggestionsInput, user: LearningAiUser):
+    earlier = [turn.model_dump(exclude_none=True, exclude_defaults=True) for turn in body.earlier]
+    return SuggestionsOut(suggestions=await question_suggestions.suggest(body.page, earlier, body.candidates))
 
 
 @router.post("", status_code=202, response_model=AskDetail)

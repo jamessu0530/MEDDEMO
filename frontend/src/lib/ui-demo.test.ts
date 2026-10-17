@@ -1,52 +1,112 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { createUiDemo, isUserTakeover, ORDER_DEMO_STEPS, wantsOrderDemo, type DemoStep } from "@/lib/ui-demo"
+import {
+  createUiDemo,
+  canStartUiDemo,
+  isUserTakeover,
+  isUiDemoKind,
+  matchesDemoPage,
+  OA_APPS_DEMO_STEPS,
+  OA_DEMO_STEPS,
+  OA_DETAIL_DEMO_STEPS,
+  OA_EDITOR_DEMO_STEPS,
+  ORDER_DEMO_STEPS,
+  REPORT_DEMO_STEPS,
+  requestedUiDemo,
+  wantsOrderDemo,
+  wantsOaDemo,
+  wantsReportDemo,
+  type DemoStep,
+} from "@/lib/ui-demo"
 
 beforeEach(() => vi.useFakeTimers())
 afterEach(() => vi.useRealTimers())
 
 describe("訂單操作求助", () => {
-  it.each(["我不會新增訂單，可以教我嗎？", "訂單怎麼建立？", "可以示範下單嗎？", "我不知道怎麼訂貨", "教我如何建立訂單"])("提出邀請：%s", (question) => {
+  it.each([
+    "我不會新增訂單，可以教我嗎？",
+    "訂單怎麼建立？",
+    "可以示範下單嗎？",
+    "我不知道怎麼訂貨",
+    "教我如何建立訂單",
+  ])("提出邀請：%s", (question) => {
     expect(wantsOrderDemo(question)).toBe(true)
   })
-  it.each(["北區有幾張訂單？", "最近三個月訂單為什麼減少？", "我不知道訂單金額是多少", "訂單優惠最多幾趴？", "不用示範訂單，告訴我規定", "教我怎麼調整路線"])("保留既有查詢：%s", (question) => {
+  it.each([
+    "北區有幾張訂單？",
+    "最近三個月訂單為什麼減少？",
+    "我不知道訂單金額是多少",
+    "訂單優惠最多幾趴？",
+    "不用示範訂單，告訴我規定",
+    "教我怎麼調整路線",
+  ])("保留既有查詢：%s", (question) => {
     expect(wantsOrderDemo(question)).toBe(false)
   })
 })
 
 describe("使用者接手", () => {
-  it.each(["pointerdown", "touchstart", "wheel", "keydown", "click"])("%s 立即中斷，程式產生的事件不中斷", (type) => {
-    expect(isUserTakeover({ type, isTrusted: true })).toBe(true)
-    expect(isUserTakeover({ type, isTrusted: false })).toBe(false)
-  })
+  it.each(["pointerdown", "touchstart", "wheel", "keydown", "click"])(
+    "%s 立即中斷，程式產生的事件不中斷",
+    (type) => {
+      expect(isUserTakeover({ type, isTrusted: true })).toBe(true)
+      expect(isUserTakeover({ type, isTrusted: false })).toBe(false)
+    }
+  )
   it("捲動到目標所產生的 scroll 不中斷", () => {
     expect(isUserTakeover({ type: "scroll", isTrusted: true })).toBe(false)
   })
 })
 
-function setup(steps?: readonly DemoStep[]) {
-  let pathname = "/orders"
+function setup(
+  steps?: readonly DemoStep[],
+  initialPath = "/orders",
+  missing: readonly string[] = []
+) {
+  let pathname = initialPath
   let interrupt = () => {}
   let connected = true
   let available = true
-  const acted = vi.fn<(target: string, action: DemoStep["action"], value?: string) => void>((target) => {
+  const acted = vi.fn<
+    (target: string, action: DemoStep["action"], value?: string) => void
+  >((target) => {
     if (target === "orders-nav") pathname = "/orders"
     if (target === "practice-create") pathname = "/orders/demo"
+    if (target === "oa-create-application") pathname = "/oa/apps"
+    if (target === "oa-create-template") pathname = "/oa/new/expense"
   })
   const unlisten = vi.fn()
-  const demo = createUiDemo({
-    pathname: () => pathname,
-    listen: (stop) => { interrupt = stop; return unlisten },
-    target: (target) => available ? ({
-      rect: () => ({ x: 10, y: 20, width: 50, height: 40 }),
-      scroll: vi.fn(), connected: () => connected,
-      act: (action, value) => acted(target, action, value),
-    }) : null,
-  }, steps)
+  const demo = createUiDemo(
+    {
+      pathname: () => pathname,
+      listen: (stop) => {
+        interrupt = stop
+        return unlisten
+      },
+      target: (target) =>
+        available && !missing.includes(target)
+          ? {
+              rect: () => ({ x: 10, y: 20, width: 50, height: 40 }),
+              scroll: vi.fn(),
+              connected: () => connected,
+              act: (action, value) => acted(target, action, value),
+            }
+          : null,
+    },
+    steps
+  )
   return {
-    demo, acted, unlisten, interrupt: () => interrupt(),
-    disconnect: () => { connected = false },
-    unavailable: () => { available = false },
-    go: (next: string) => { pathname = next },
+    demo,
+    acted,
+    unlisten,
+    interrupt: () => interrupt(),
+    disconnect: () => {
+      connected = false
+    },
+    unavailable: () => {
+      available = false
+    },
+    go: (next: string) => {
+      pathname = next
+    },
   }
 }
 
@@ -58,8 +118,14 @@ describe("示範執行與取消", () => {
     demo.start()
     await vi.advanceTimersByTimeAsync(30_000)
     expect(demo.getSnapshot().status).toBe("completed")
-    expect(acted.mock.calls.map(([target]) => target)).toEqual(ORDER_DEMO_STEPS.map((step) => step.target))
-    expect(acted).toHaveBeenLastCalledWith("practice-submit", "point", undefined)
+    expect(acted.mock.calls.map(([target]) => target)).toEqual(
+      ORDER_DEMO_STEPS.map((step) => step.target)
+    )
+    expect(acted).toHaveBeenLastCalledWith(
+      "practice-submit",
+      "point",
+      undefined
+    )
     expect(unlisten).toHaveBeenCalledTimes(1)
   })
 
@@ -69,7 +135,11 @@ describe("示範執行與取消", () => {
     await vi.advanceTimersByTimeAsync(700)
     expect(demo.getSnapshot().rect).not.toBeNull()
     interrupt()
-    expect(demo.getSnapshot()).toMatchObject({ status: "stopped", rect: null, clicking: false })
+    expect(demo.getSnapshot()).toMatchObject({
+      status: "stopped",
+      rect: null,
+      clicking: false,
+    })
     await vi.advanceTimersByTimeAsync(60_000)
     expect(acted).not.toHaveBeenCalled()
     expect(unlisten).toHaveBeenCalledTimes(1)
@@ -128,5 +198,228 @@ describe("示範執行與取消", () => {
     expect(acted).not.toHaveBeenCalled()
     expect(unlisten).toHaveBeenCalledTimes(1)
     expect(vi.getTimerCount()).toBe(0)
+  })
+})
+
+describe("新版我的申請單操作求助", () => {
+  it.each([
+    "教我用我的申請單",
+    "申請單怎麼填？",
+    "OA表單怎麼建立？",
+    "我的應用操作給我看",
+    "我不會送出申請單",
+    "幫我操作表單中心",
+    "我的申請單怎麼搜尋？",
+    "申請表如何補件？",
+  ])("辨識明確的介面求助：%s", (question) => {
+    expect(wantsOaDemo(question)).toBe(true)
+    expect(requestedUiDemo(question)).toBe("oa-tour")
+  })
+  it.each([
+    "我的申請單有幾張審核中？",
+    "我的申請單為什麼被退回？",
+    "OA申請的補助如何計算？",
+    "不要幫我操作申請單",
+    "不用示範我的申請單",
+    "教我新增訂單",
+  ])("保留查詢與拒絕：%s", (question) => {
+    expect(wantsOaDemo(question)).toBe(false)
+  })
+  it("在 OA 頁面辨識這頁與預填操作，仍可詢問其他頁面的教學", () => {
+    expect(
+      requestedUiDemo("這頁怎麼用？", "/oa/forms?application=expense")
+    ).toBe("oa-tour")
+    expect(requestedUiDemo("教我預填", "/oa/new/expense")).toBe("oa-tour")
+    expect(requestedUiDemo("這頁怎麼用？", "/customers")).toBe("page-tour")
+    expect(requestedUiDemo("教我新增訂單", "/oa/forms")).toBe("create-order")
+    expect(requestedUiDemo("教我用報表", "/oa/forms")).toBe("report-tour")
+  })
+  it("固定路由樣式只接受同層路徑，區分編輯與詳情", () => {
+    expect(matchesDemoPage("/oa/forms/:formId", "/oa/forms/42/")).toBe(true)
+    expect(matchesDemoPage("/oa/forms/:formId", "/oa/forms/42/edit")).toBe(
+      false
+    )
+    expect(matchesDemoPage("/oa/forms/:formId/edit", "/oa/forms//edit")).toBe(
+      false
+    )
+    expect(canStartUiDemo("oa-tour", "/oa/forms/42/edit")).toBe(true)
+    expect(canStartUiDemo("oa-tour", "/manager")).toBe(false)
+    expect(canStartUiDemo("create-order", "/orders/demo")).toBe(false)
+    expect(isUiDemoKind("oa-tour")).toBe(true)
+    expect(isUiDemoKind("constructor")).toBe(false)
+    expect(isUiDemoKind({})).toBe(false)
+  })
+  it("從申請單清單導覽到新表單，所有資料操作都只指向位置", async () => {
+    const { demo, acted } = setup(undefined, "/oa/forms")
+    demo.start("oa-tour")
+    expect(demo.getSnapshot().total).toBe(OA_DEMO_STEPS.length)
+    await vi.advanceTimersByTimeAsync(90_000)
+    expect(demo.getSnapshot().status).toBe("completed")
+    expect(acted.mock.calls.map(([target]) => target)).toEqual(
+      OA_DEMO_STEPS.map((step) => step.target)
+    )
+    expect(
+      acted.mock.calls
+        .filter(([, action]) => action !== "point")
+        .map(([target, action]) => [target, action])
+    ).toEqual([
+      ["oa-open-filters", "click"],
+      ["oa-create-application", "click"],
+      ["oa-create-template", "click"],
+    ])
+    expect(acted).toHaveBeenLastCalledWith("oa-submit-area", "point", undefined)
+  })
+  it.each([
+    ["/oa/apps", OA_APPS_DEMO_STEPS],
+    ["/oa/new/expense", OA_EDITOR_DEMO_STEPS],
+    ["/oa/forms/42/edit", OA_EDITOR_DEMO_STEPS],
+    ["/oa/forms/42", OA_DETAIL_DEMO_STEPS],
+  ] as const)("從 %s 就地開始，不重跑前一頁", async (path, expectedSteps) => {
+    const { demo, acted } = setup(undefined, path)
+    demo.start("oa-tour")
+    expect(demo.getSnapshot().total).toBe(expectedSteps.length)
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(demo.getSnapshot().status).toBe("completed")
+    expect(acted.mock.calls.map(([target]) => target)).toEqual(
+      expectedSteps.map((step) => step.target)
+    )
+    if (path !== "/oa/apps")
+      expect(acted.mock.calls.every(([, action]) => action === "point")).toBe(
+        true
+      )
+  })
+  it("空清單或桌機可略過手機開關與申請卡片", async () => {
+    const { demo, acted } = setup(undefined, "/oa/forms", [
+      "oa-open-filters",
+      "oa-form-card",
+    ])
+    demo.start("oa-tour")
+    await vi.advanceTimersByTimeAsync(90_000)
+    expect(demo.getSnapshot().status).toBe("completed")
+    expect(
+      acted.mock.calls.some(
+        ([target]) => target === "oa-open-filters" || target === "oa-form-card"
+      )
+    ).toBe(false)
+  })
+  it("找不到可建立的表單就停止，不往下操作", async () => {
+    const { demo, acted } = setup(undefined, "/oa/apps", ["oa-create-template"])
+    demo.start("oa-tour")
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(demo.getSnapshot().status).toBe("failed")
+    expect(
+      acted.mock.calls.some(([target]) => target === "oa-save-draft")
+    ).toBe(false)
+  })
+  it("接手後取消後續導覽與表單操作", async () => {
+    const { demo, acted, interrupt } = setup(undefined, "/oa/new/expense")
+    demo.start("oa-tour")
+    await vi.advanceTimersByTimeAsync(2000)
+    interrupt()
+    const count = acted.mock.calls.length
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(demo.getSnapshot().status).toBe("stopped")
+    expect(acted).toHaveBeenCalledTimes(count)
+  })
+})
+
+describe("新版報表操作求助", () => {
+  it.each([
+    "教我用新版報表",
+    "報表怎麼匯出？",
+    "報表篩選怎麼用？",
+    "幫我操作報表",
+    "報表操作給我看",
+  ])("辨識操作求助：%s", (question) => {
+    expect(wantsReportDemo(question)).toBe(true)
+    expect(requestedUiDemo(question)).toBe("report-tour")
+  })
+  it.each([
+    "報表的銷售有多少？",
+    "報表為什麼業績減少？",
+    "我不懂報表毛利率為什麼這麼低",
+    "不用示範報表，告訴我數字",
+    "不要幫我操作報表",
+  ])("資料查詢與拒絕不觸發示範：%s", (question) => {
+    expect(wantsReportDemo(question)).toBe(false)
+  })
+  it("只有報表情境能補足這頁的指代", () => {
+    expect(requestedUiDemo("這頁怎麼篩選？", "/reports?view=overview")).toBe(
+      "report-tour"
+    )
+    expect(requestedUiDemo("這頁怎麼篩選？", "/customers")).toBe("page-tour")
+    expect(requestedUiDemo("教我新增訂單", "/reports")).toBe("create-order")
+  })
+  it("從報表開始並使用自己的進度與完成說明，最後不點擊下載", async () => {
+    const { demo, acted } = setup(undefined, "/reports")
+    demo.start("report-tour")
+    expect(demo.getSnapshot()).toMatchObject({
+      kind: "report-tour",
+      total: REPORT_DEMO_STEPS.length,
+      runId: 1,
+    })
+    await vi.advanceTimersByTimeAsync(70_000)
+    expect(demo.getSnapshot().status).toBe("completed")
+    expect(demo.getSnapshot().text).toContain("匯出格式")
+    expect(acted).toHaveBeenLastCalledWith(
+      "report-export-download",
+      "point",
+      undefined
+    )
+    expect(acted.mock.calls.every(([, action]) => action !== "fill")).toBe(true)
+  })
+  it("唯讀或空白報表會略過不存在的圖表與編輯步驟", async () => {
+    const missing = [
+      "report-finish-editing",
+      "report-start-editing",
+      "report-visual-focus",
+      "report-focused-content",
+      "report-focus-close",
+      "report-visual-edit",
+      "report-inspector",
+      "report-inspector-close",
+      "report-export-download",
+    ]
+    const { demo, acted } = setup(undefined, "/reports", missing)
+    demo.start("report-tour")
+    await vi.advanceTimersByTimeAsync(70_000)
+    expect(demo.getSnapshot().status).toBe("completed")
+    expect(acted.mock.calls.some(([target]) => missing.includes(target))).toBe(
+      false
+    )
+    expect(acted).toHaveBeenLastCalledWith(
+      "report-export-format",
+      "point",
+      undefined
+    )
+  })
+  it("必要的新版控制項不見時停止，不猜點其他位置", async () => {
+    const { demo, acted } = setup(undefined, "/reports", ["report-filters"])
+    demo.start("report-tour")
+    await vi.advanceTimersByTimeAsync(70_000)
+    expect(demo.getSnapshot().status).toBe("failed")
+    expect(
+      acted.mock.calls.some(([target]) => target === "report-export")
+    ).toBe(false)
+  })
+  it("使用者接手後不再開啟面板；重新開始使用新的執行編號", async () => {
+    const { demo, acted, interrupt } = setup(undefined, "/reports")
+    demo.start("report-tour")
+    await vi.advanceTimersByTimeAsync(2000)
+    interrupt()
+    const calls = acted.mock.calls.length
+    await vi.advanceTimersByTimeAsync(70_000)
+    expect(acted).toHaveBeenCalledTimes(calls)
+    expect(demo.getSnapshot().status).toBe("stopped")
+    demo.start("report-tour")
+    expect(demo.getSnapshot().runId).toBe(2)
+    demo.dismiss()
+  })
+  it("不會從其他頁面直接執行報表示範", async () => {
+    const { demo, acted } = setup()
+    demo.start("report-tour")
+    await vi.advanceTimersByTimeAsync(70_000)
+    expect(demo.getSnapshot().status).toBe("idle")
+    expect(acted).not.toHaveBeenCalled()
   })
 })

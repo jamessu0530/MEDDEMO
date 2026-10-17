@@ -66,11 +66,11 @@ def test_placing_an_order_writes_the_sale_and_the_invoice(tx, api):
     assert set(tx.scalars(select(SapQuotationDraft.status).where(SapQuotationDraft.quote_no == quote_no))) == {"ordered"}
     profile = api.get("/api/customers/C001/profile").json()
     assert quote_no not in [q["quote_no"] for q in profile["open_quotes"]]
-    # 同一天的進貨與報價以報價為主：口還在
+    # 同一天的進貨與報價以報價為主；舊示範品項留在交易紀錄，不再提供回購。
     last = api.get("/api/customers/C001/last-order").json()
     assert last["quote"]["quote_no"] == quote_no
     assert [(l["sku"], l["pack"]["name"] if l["pack"] else None) for l in last["lines"]] == [
-        ("HS-FO30", None), ("F749579", "Premium眼藥水(小口)"),
+        ("F749579", "Premium眼藥水(小口)"),
     ]
     # 再按一次不會寫兩次
     refused = api.post(f"/api/customers/C001/quotes/{quote_no}/order")

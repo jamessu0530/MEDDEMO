@@ -370,7 +370,7 @@ export function ReportMap(props: Props) {
         </p>
       )}
       <p className="text-xs text-muted-foreground">
-        位置來自客戶座標；示範資料為行政區附近的模擬位置。顯示 {points.length}／
+        位置來自客戶座標，供區域分布參考。顯示 {points.length}／
         {props.data.points.length} 筆分組。
       </p>
       <details className="text-xs">

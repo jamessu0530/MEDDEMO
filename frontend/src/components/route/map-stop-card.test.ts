@@ -20,7 +20,7 @@ describe("MapStopCard", () => {
     const html = render(pin(3, "next"), detail())
     expect(html).toContain("下一站 · 第 3 站 · 11:00 到")
     expect(html).toContain("康泰連鎖藥局 民生店")
-    expect(html).toMatch(/text-destructive[^>]*>承諾逾期/)
+    expect(html).toMatch(/text-muted-foreground[^>]*>承諾逾期/)
     expect(html).toContain("開車約 12 分")
     expect(html).toContain("Google Maps")
     expect(html).toContain('href="https://www.google.com/maps/dir/?api=1&amp;destination=25.0478,121.5319&amp;travelmode=driving"')

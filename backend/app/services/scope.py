@@ -41,7 +41,7 @@ SHARING_LEVEL = {
     "report_share": TEAM,      # 只共享固定報表設定；接收者查詢仍套用各資料來源的權限
     # 方法卡（services/method_cards.py）：主管寫的做法全公司都看得到，不分區
     "method_card": ROOT,
-    # 主管端的提問、風險通報、簽核：當事人在不在自己底下。主管與 IT 的路徑比 SELF 淺、截不動，
+    # 主管端的提問、簽核：當事人在不在自己底下。主管與 IT 的路徑比 SELF 淺、截不動，
     # 所以就是整棵子樹（主管是自己加屬下，IT 是全公司）
     "manager_inbox": SELF,
 }

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { useAskPageContext } from "@/ask/use-page-context"
 import { useNavigate, useParams } from "react-router"
 
 import { ApiError } from "@/api/client"
@@ -61,6 +62,11 @@ export function VisitPage() {
   }
 
   const current = loadError ? null : visit
+  useAskPageContext({ facts: current ? [
+    `拜訪紀錄編號：${current.id}`, `客戶編號：${current.customer_id}`, `客戶：${current.customer_name}`,
+    `拜訪日期：${current.visited_at}`, `紀錄狀態：${TITLE[current.status]}`,
+    ...(current.status === "draft" ? ["這是尚未確認的拜訪草稿，不能當作正式紀錄。"] : []),
+  ] : ["拜訪紀錄尚未載入"] })
 
   return (
     <div className="flex min-h-svh flex-col">

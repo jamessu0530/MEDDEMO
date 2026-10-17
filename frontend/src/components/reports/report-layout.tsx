@@ -155,6 +155,7 @@ function ReportLayoutBoard({
   const cards = config.cards.filter(
     (card) => (card.page_id ?? "overview") === pageId
   )
+  const automaticMobileLayout = cards.every((card) => !card.mobile_layout)
   const page = reportPages(config).find((page) => page.id === pageId)!
   const free = !mobile && page.desktop_layout === "free"
   const baseRects = desktopReportRects(cards)
@@ -649,6 +650,13 @@ function ReportLayoutBoard({
           >
             {ordered.map((card) => {
               const phone = defaultMobileLayout(card, cards.indexOf(card))
+              // Reading can emphasize default sales/customer cards without saving a layout change.
+              const readingFullWidth =
+                mobile &&
+                !editing &&
+                automaticMobileLayout &&
+                card.visual === "kpi" &&
+                (card.metric === "sales" || card.metric === "customers")
               const rect = rects[card.id]
               const fixedHeight = free
                 ? rect.h * REPORT_ROW - 8
@@ -679,7 +687,7 @@ function ReportLayoutBoard({
                     free
                       ? "group relative"
                       : mobile &&
-                          (phone.width === "half"
+                          (phone.width === "half" && !readingFullWidth
                             ? "col-span-1"
                             : "col-span-2"),
                     !free && !mobile && "contents"

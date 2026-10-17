@@ -66,7 +66,7 @@ export function ReportShareDialog({
       if (!abort.signal.aborted)
         setError(err instanceof Error ? err.message : "共享未完成。")
     } finally {
-      if (!abort.signal.aborted) setBusy(false)
+      setBusy(false)
     }
   }
   return (

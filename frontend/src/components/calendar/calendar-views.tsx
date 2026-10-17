@@ -106,10 +106,10 @@ function MonthCell({
           type="button"
           aria-label={dayTitle(date)}
           aria-pressed={date === selected}
+          aria-current={date === today ? "date" : undefined}
           className={cn(
             "flex size-7 items-center justify-center rounded-full text-sm tabular-nums",
-            date === today &&
-              "bg-primary font-semibold text-primary-foreground",
+            date === today && "bg-red-600 font-semibold text-white",
             selected === date && date !== today && "ring-2 ring-primary/50"
           )}
           onClick={() => onSelect(date)}
@@ -318,6 +318,9 @@ export function CalendarTimeView({
             <button
               type="button"
               key={date}
+              aria-label={dayTitle(date)}
+              aria-current={date === today ? "date" : undefined}
+              aria-pressed={date === selected}
               className={cn(
                 "border-l p-2 text-center text-sm",
                 date === selected && "bg-muted"
@@ -330,7 +333,7 @@ export function CalendarTimeView({
               <span
                 className={cn(
                   "mx-auto mt-1 flex size-7 items-center justify-center rounded-full",
-                  date === today && "bg-primary text-primary-foreground"
+                  date === today && "bg-red-600 font-semibold text-white"
                 )}
               >
                 {Number(date.slice(-2))}
@@ -442,10 +445,14 @@ export function CalendarListView({
   days,
   events,
   selected,
+  today,
   onOpen,
   onCreate,
   search = false,
-}: Pick<ViewProps, "days" | "events" | "selected" | "onOpen" | "onCreate"> & {
+}: Pick<
+  ViewProps,
+  "days" | "events" | "selected" | "today" | "onOpen" | "onCreate"
+> & {
   search?: boolean
 }) {
   const groups = search
@@ -469,7 +476,15 @@ export function CalendarListView({
       ) : (
         groups.map((date) => (
           <section key={date}>
-            <h3 className="mb-2 text-sm font-semibold">{dayTitle(date)}</h3>
+            <h3
+              aria-current={date === today ? "date" : undefined}
+              className={cn(
+                "mb-2 text-sm font-semibold",
+                date === today && "text-red-600 dark:text-red-400"
+              )}
+            >
+              {dayTitle(date)}
+            </h3>
             <div className="space-y-2">
               {events
                 .filter((event) =>

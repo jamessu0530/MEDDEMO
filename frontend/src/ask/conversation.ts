@@ -6,6 +6,7 @@
  */
 
 import { tidyTranscript } from "@/ask/transcript"
+import type { UiDemoKind } from "@/lib/ui-demo"
 import type { Attachment } from "@/api/attachments"
 import type { Ask, AskKind } from "@/api/asks"
 import type { AskPageContext } from "@/ask/page-context"
@@ -19,8 +20,10 @@ export type Utterance = {
   kind: "user" | "model"
   source: UtteranceSource
   text: string
-  demo?: "create-order"
+  demo?: UiDemoKind
+  demoPath?: string
   attachment?: Attachment
+  page?: AskPageContext
 }
 
 /** 一次查詢：打字問答與語音的工具呼叫長得一樣，所以共用同一種 entry。
@@ -50,8 +53,17 @@ export type Entry = Utterance | ToolRun
 export type Conversation = {
   getSnapshot: () => Entry[]
   subscribe: (listener: () => void) => () => void
-  addUtterance: (kind: "user" | "model", source: UtteranceSource, text?: string, options?: Pick<Utterance, "demo">) => number
-  addToolRun: (askKind: AskKind | null, question: string, state?: Partial<Pick<ToolRun, "routing" | "original" | "page" | "hasFile">>) => number
+  addUtterance: (
+    kind: "user" | "model",
+    source: UtteranceSource,
+    text?: string,
+    options?: Pick<Utterance, "demo" | "demoPath" | "page">
+  ) => number
+  addToolRun: (
+    askKind: AskKind | null,
+    question: string,
+    state?: Partial<Pick<ToolRun, "routing" | "original" | "page" | "hasFile">>
+  ) => number
   appendText: (id: number, chunk: string) => void
   replace: (id: number, patch: Partial<Omit<ToolRun, "id" | "kind">>) => void
   attach: (id: number, attachment: Attachment) => void
@@ -91,8 +103,18 @@ export function createConversation(): Conversation {
     addToolRun: (askKind, question, state = {}) => {
       const id = ++lastId
       const run: ToolRun = {
-        id, kind: "tool", askKind, question, original: null, ask: null, error: null, cancelled: false,
-        routing: false, choices: null, auto: false, ...state,
+        id,
+        kind: "tool",
+        askKind,
+        question,
+        original: null,
+        ask: null,
+        error: null,
+        cancelled: false,
+        routing: false,
+        choices: null,
+        auto: false,
+        ...state,
       }
       commit([...entries, run])
       return id
@@ -101,20 +123,34 @@ export function createConversation(): Conversation {
     appendText: (id, chunk) => {
       const target = entries.find((entry) => entry.id === id)
       if (!target || target.kind === "tool") return
-      commit(entries.map((e) => (e.id === id && e.kind !== "tool" ? { ...e, text: tidyTranscript(e.text + chunk) } : e)))
+      commit(
+        entries.map((e) =>
+          e.id === id && e.kind !== "tool"
+            ? { ...e, text: tidyTranscript(e.text + chunk) }
+            : e
+        )
+      )
     },
 
     attach: (id, attachment) => {
       const target = entries.find((entry) => entry.id === id)
       if (!target || target.kind !== "user") return
-      commit(entries.map((e) => (e.id === id && e.kind === "user" ? { ...e, attachment } : e)))
+      commit(
+        entries.map((e) =>
+          e.id === id && e.kind === "user" ? { ...e, attachment } : e
+        )
+      )
     },
 
     replace: (id, patch) => {
       // 會話結束後遲到的輪詢結果會打在已經不存在的 id 上，靜靜忽略就好
       const target = entries.find((entry) => entry.id === id)
       if (!target || target.kind !== "tool") return
-      commit(entries.map((e) => (e.id === id && e.kind === "tool" ? { ...e, ...patch } : e)))
+      commit(
+        entries.map((e) =>
+          e.id === id && e.kind === "tool" ? { ...e, ...patch } : e
+        )
+      )
     },
   }
 }

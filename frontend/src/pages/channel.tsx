@@ -587,6 +587,7 @@ export function ChannelConversation({
         <div ref={bottom} />
       </main>
       <footer
+        data-assistant-obstacle
         className={cn(
           "border-t bg-card px-4 pt-2 pb-[max(env(safe-area-inset-bottom),0.75rem)]",
           !showChat && "hidden"
@@ -791,20 +792,20 @@ function MessageBubble({
     highlighted && "ring-2 ring-primary ring-offset-4 ring-offset-background"
   )
   if (message.kind !== "user") {
-    // 熊熊滾與風險通報用同一種樣式；熊熊滾的左邊多一個頭像，標出回覆誰（提問那一則在畫面上才標得出來）
+    // 熊熊滾與系統訊息用同一種樣式；熊熊滾的左邊多一個頭像，標出回覆誰（提問那一則在畫面上才標得出來）
     const replied =
       replyTo && (replyTo.mine ? " · 回覆你" : ` · 回覆 ${replyTo.author_name}`)
     const bubble = (
       <div className="rounded-xl bg-muted px-3 py-2 text-sm">
         <p className="text-xs text-muted-foreground">
-          {message.kind === "ai" ? "熊熊滾" : "風險通報"}
+          {message.kind === "ai" ? "熊熊滾" : "系統訊息"}
           {replied} · {formatDateTime(message.created_at)}
         </p>
         <p className="whitespace-pre-wrap">{message.body}</p>
       </div>
     )
     if (message.kind === "notice" && message.visit_id) {
-      // 風險通報顯示成卡片，點了進拜訪結果頁
+      // 系統訊息顯示成卡片，點了進拜訪結果頁
       return (
         <Link
           id={`message-${message.id}`}

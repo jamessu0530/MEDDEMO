@@ -3,7 +3,12 @@ import {
   StageChart,
   ReportMap,
 } from "@/components/reports/report-advanced"
-import type { KeyboardEvent, ReactNode } from "react"
+import {
+  useLayoutEffect,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react"
 import { BarChart3, ChevronDown } from "@/components/icons"
 import { ReportMatrix } from "@/components/reports/report-matrix"
 import { ReportFormattedValue } from "@/components/reports/report-formatted-value"
@@ -51,6 +56,8 @@ import {
 } from "@/components/reports/report-chart-math"
 
 type ChartProps = {
+  summary?: boolean
+  plotOnly?: boolean
   card: ReportCard
   data: CardData
   onSelectPoint?: (
@@ -158,23 +165,29 @@ function Total({
   total,
   data,
   large = false,
+  summary = false,
 }: {
   card: ReportCard
   total: number | null
   data: CardData
   large?: boolean
+  summary?: boolean
 }) {
-  const formatted = reportDisplayValue(card, total, card.metric, "compact")
+  const display = reportDisplayValue(card, total, card.metric, "compact")
+  const formatted =
+    summary && display.endsWith(" 萬") ? `${display}元` : display
   const exact = exactValue(total, card.metric)
   return (
-    <div className={large ? "py-2" : "mb-3"}>
-      <p className="mb-1 text-xs text-muted-foreground">
-        {NON_ADDITIVE_METRICS.includes(card.metric)
-          ? "所選範圍"
-          : "所選範圍合計"}
-      </p>
+    <div className={summary ? "report-summary-total" : large ? "py-2" : "mb-3"}>
+      {!summary && (
+        <p className="mb-1 text-xs text-muted-foreground">
+          {NON_ADDITIVE_METRICS.includes(card.metric)
+            ? "所選範圍"
+            : "所選範圍合計"}
+        </p>
+      )}
       <p
-        className={`${large ? "text-[clamp(1.125rem,5.5vw,1.625rem)] sm:text-3xl" : "text-xl"} leading-tight font-semibold tracking-tight break-words tabular-nums ${total != null && total < 0 ? "text-destructive" : "text-foreground"}`}
+        className={`${summary ? "report-summary-value" : large ? "text-[clamp(1.125rem,5.5vw,1.625rem)] sm:text-3xl" : "text-xl"} leading-tight font-semibold tracking-tight break-words tabular-nums ${total != null && total < 0 ? "text-destructive" : "text-foreground"}`}
         title={reportTooltip(
           card,
           { label: "所選範圍", value: total, row_count: data.row_count },
@@ -189,17 +202,23 @@ function Total({
             !large
           ) ??
           (total != null && total >= 0
-            ? { color: card.format?.metric_colors?.[card.metric] ?? card.color }
+            ? {
+                color:
+                  card.format?.metric_colors?.[card.metric] ??
+                  (summary ? undefined : card.color),
+              }
             : undefined)
         }
       >
         {formatted}
       </p>
-      {formatted !== exact && !card.format?.numbers?.[card.metric] && (
-        <p className="mt-1 text-xs break-words text-muted-foreground tabular-nums">
-          {exact}
-        </p>
-      )}
+      {!summary &&
+        formatted !== exact &&
+        !card.format?.numbers?.[card.metric] && (
+          <p className="mt-1 text-xs break-words text-muted-foreground tabular-nums">
+            {exact}
+          </p>
+        )}
       {large && typeof card.target === "number" && (
         <p className="mt-3 text-xs text-muted-foreground">
           目標 {reportDisplayValue(card, card.target, card.metric)}
@@ -949,9 +968,10 @@ function chartFrame(
   card: ReportCard,
   expanded?: boolean,
   secondary = false,
-  data?: NumericCardData
+  data?: NumericCardData,
+  measuredWidth?: number
 ) {
-  const width = expanded ? 480 : 360
+  const width = measuredWidth ?? (expanded ? 480 : 360)
   const height = expanded
     ? 300
     : card.height === "compact"
@@ -1195,12 +1215,37 @@ function BarAxisLabels({
   )
 }
 
+/** Keep chart labels at readable sizes instead of scaling a phone plot across desktop. */
+function useReadingPlotWidth(container: HTMLDivElement | null) {
+  const [width, setWidth] = useState<number>()
+  useLayoutEffect(() => {
+    if (!container) return
+    const measure = () => {
+      const next = Math.round(container.clientWidth)
+      if (next > 0) setWidth(next)
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(container)
+    return () => observer.disconnect()
+  }, [container])
+  return width
+}
+
 function ColumnChart(props: PlotProps) {
   const { card, data, series, colors, expanded } = props
+  const [plotElement, setPlotElement] = useState<HTMLDivElement | null>(null)
+  const plotWidth = useReadingPlotWidth(plotElement)
   const stacked =
     card.visual === "stacked_column" || card.visual === "percent_column"
   const percentage = card.visual === "percent_column"
-  const frame = chartFrame(card, expanded, false, data)
+  const frame = chartFrame(
+    card,
+    expanded,
+    false,
+    data,
+    props.summary ? plotWidth : undefined
+  )
   const rows = stackRows(data.points, series, percentage)
   const values = stacked
     ? rows.flatMap((row) =>
@@ -1223,7 +1268,7 @@ function ColumnChart(props: PlotProps) {
       point.value === Math.max(...data.points.map((item) => item.value))
   )
   return (
-    <div className="space-y-3">
+    <div ref={setPlotElement} className="space-y-3">
       <svg
         viewBox={`0 0 ${frame.width} ${frame.height}`}
         className="block h-auto w-full"
@@ -1520,7 +1565,15 @@ function SeriesPath({
 
 function TrendChart(props: PlotProps) {
   const { card, data, series, colors, expanded } = props
-  const frame = chartFrame(card, expanded, false, data)
+  const [plotElement, setPlotElement] = useState<HTMLDivElement | null>(null)
+  const plotWidth = useReadingPlotWidth(plotElement)
+  const frame = chartFrame(
+    props.plotOnly ? { ...card, height: "compact" } : card,
+    expanded,
+    false,
+    data,
+    props.summary || props.plotOnly ? plotWidth : undefined
+  )
   const domain = chartDomain(
     series.flatMap((item) => item.points.map((point) => point.value)),
     card.target
@@ -1538,7 +1591,7 @@ function TrendChart(props: PlotProps) {
     ((value - minimum) / (maximum - minimum)) * (frame.bottom - frame.top)
   const labelStep = Math.max(1, Math.ceil(data.points.length / 6))
   return (
-    <div className="space-y-3">
+    <div ref={setPlotElement} className="space-y-3">
       <svg
         viewBox={`0 0 ${frame.width} ${frame.height}`}
         className="block h-auto w-full"
@@ -2346,7 +2399,13 @@ export function ReportChart(props: ChartProps) {
   if (card.visual === "kpi")
     return (
       <div className="space-y-2">
-        <Total card={card} total={data.total} data={data} large />
+        <Total
+          card={card}
+          total={data.total}
+          data={data}
+          large
+          summary={props.summary}
+        />
         <ReportComparisonSummary
           card={card}
           comparison={data.comparison}
@@ -2485,12 +2544,21 @@ export function ReportChart(props: ChartProps) {
   else chart = <ScatterChart {...plot} />
   return (
     <div className="min-w-0 space-y-3">
-      <Total card={card} total={data.total} data={data} />
-      <ReportComparisonSummary
-        card={card}
-        comparison={data.comparison}
-        metric={card.metric}
-      />
+      {!props.plotOnly && (
+        <Total
+          card={card}
+          total={data.total}
+          data={data}
+          summary={props.summary}
+        />
+      )}
+      {!props.plotOnly && (
+        <ReportComparisonSummary
+          card={card}
+          comparison={data.comparison}
+          metric={card.metric}
+        />
+      )}
       {(data.points.some((point) => point.value == null) ||
         data.series?.some((series) =>
           series.points.some((point) => point.value == null)
@@ -2509,7 +2577,9 @@ export function ReportChart(props: ChartProps) {
             虛線目標：{reportDisplayValue(card, card.target, card.metric)}
           </p>
         )}
-      {data.points.length > 0 &&
+      {!props.summary &&
+        !props.plotOnly &&
+        data.points.length > 0 &&
         card.visual !== "table" &&
         card.visual !== "matrix" && <DataDetails {...props} />}
     </div>

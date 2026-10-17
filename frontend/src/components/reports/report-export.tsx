@@ -96,7 +96,7 @@ export function ReportExportDialog({
       if (!abort.signal.aborted)
         setError(err instanceof Error ? err.message : "匯出未完成，請重試。")
     } finally {
-      if (!abort.signal.aborted) setBusy(false)
+      setBusy(false)
     }
   }
   return (
@@ -125,6 +125,7 @@ export function ReportExportDialog({
             <select
               className={INPUT}
               aria-label="匯出檔案格式"
+              data-ui-demo="report-export-format"
               value={format}
               disabled={busy}
               onChange={(event) => {
@@ -243,7 +244,11 @@ export function ReportExportDialog({
           <Button variant="outline" onClick={close}>
             {busy ? "取消匯出" : "關閉"}
           </Button>
-          <Button onClick={() => void download()} disabled={busy || empty}>
+          <Button
+            data-ui-demo="report-export-download"
+            onClick={() => void download()}
+            disabled={busy || empty}
+          >
             {busy ? (
               <LoaderCircle className="size-4 animate-spin" />
             ) : (

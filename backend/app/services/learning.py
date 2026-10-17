@@ -85,8 +85,8 @@ def validate_answer(lesson_id: str, answer: dict[str, Any]) -> None:
         if answer.get("opened") is not True or answer.get("priority") != "promise":
             raise LearningError("先打開客戶檔案：今天已到期的承諾，要優先處理。")
     elif lesson_id == "product-v1":
-        if answer.get("view") != "promotions" or answer.get("sku") != "DEMO-A" or answer.get("quantity") != "12":
-            raise LearningError("到促銷頁選示範品項 A：一口付費 10 盒、搭贈 2 盒，總共收到 12 盒。")
+        if answer.get("view") != "promotions" or answer.get("sku") != "C130082" or answer.get("quantity") != "12":
+            raise LearningError("到促銷頁選金舒胃平：一口付費 10 盒、搭贈 2 盒，總共收到 12 盒。")
     elif lesson_id == "route-v1":
         if answer.get("order") != ["clinic", "pharmacy"]:
             raise LearningError("晨光診所約 09:00、安心藥局約 11:00，先把晨光診所移到第一站。")

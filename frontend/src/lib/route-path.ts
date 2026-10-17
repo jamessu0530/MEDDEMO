@@ -21,15 +21,14 @@ export function labelSide(offset: number): "left" | "right" {
   return offset > 0 ? "left" : "right"
 }
 
-/** 商機用綠色，例行與經營策略用中性色，風險訊號用警示色。 */
-export function signalTone(signal: RouteSignal): "good" | "alert" | "plain" {
+/** 商機用綠色，其他拜訪理由統一用中性色。 */
+export function signalTone(signal: RouteSignal): "good" | "plain" {
   if (signal === "opportunity") return "good"
-  if (signal === "routine" || signal === "priority" || signal === "manager_priority") return "plain"
-  return "alert"
+  return "plain"
 }
 
-/** 理由類別的字色：商機綠、警示紅、例行灰 */
-export const TONE_CLASS = { good: "text-success", alert: "text-destructive", plain: "text-muted-foreground" } as const
+/** 理由類別的字色：商機綠，其餘中性色。 */
+export const TONE_CLASS = { good: "text-success", plain: "text-muted-foreground" } as const
 
 /**
  * 哪一列上面多留「出發」泡泡的空間（mt-14）。平常是下一站；熊在騎的時候照開始騎時那一列（held），

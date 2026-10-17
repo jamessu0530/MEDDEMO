@@ -37,7 +37,7 @@ def test_today_has_the_fields_the_home_page_needs(client, auth):
         "travel_estimated", "travel_mode", "city", "arrived_at",
     }
     assert {"rules", "violations", "precedences", "skipped_habits", "travel_mode", "start_city", "office_start"} <= set(data)
-    assert data["urgent"]["customer_id"] == first["customer_id"]
+    assert data["urgent"] is None
     assert data["finish_time"] > first["planned_time"]
 
 
@@ -179,11 +179,11 @@ def test_stale_version_and_unknown_customer(client, auth):
 
 def test_it_resets_the_demo_reps_itinerary(client, auth, tx):
     before = today(client, auth)
-    urgent_id, before_id = before["urgent"]["customer_id"], before["id"]
+    customer_id, before_id = before["stops"][0]["customer_id"], before["id"]
     # 誤判同時留下 route_snooze 與 route_signal_weight 兩張表的紀錄，reset 兩個都要清掉
     feedback = client.post(
         "/api/itinerary/today/feedback",
-        json={"customer_id": urgent_id, "action": "misjudge", "version": 1},
+        json={"customer_id": customer_id, "action": "misjudge", "version": 1},
         headers=auth(),
     )
     assert feedback.status_code == 200, feedback.text
@@ -203,7 +203,7 @@ def test_it_resets_the_demo_reps_itinerary(client, auth, tx):
     assert tx.scalar(select(RouteSignalWeight).where(RouteSignalWeight.user_id == "U01")) is None
 
     rebuilt = today(client, auth)
-    assert rebuilt["version"] == 1 and rebuilt["urgent"] is not None
+    assert rebuilt["version"] == 1 and rebuilt["urgent"] is None
     assert rebuilt["id"] != before_id
     habits = client.get("/api/route-habits", headers=auth()).json()["habits"]
     assert [(h["text"], h["active"]) for h in habits] == [

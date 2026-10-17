@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from app.config import NotConfigured, Settings, settings
 from app.gemini import gemini_client
 from app.models import Customer, Product
+from app.services.product_catalog import visible_catalog_products
 from app.services.asr_cleanup import HomophoneFixer, to_taiwan
 from app.services.speech_languages import LANGUAGE_NAMES, SpeechLanguage
 from app.services.speech_names import customer_terms, recent_product_skus
@@ -86,7 +87,7 @@ def hotword_terms() -> list[str]:
 def load_hotwords(session: Session) -> list[str]:
     """熱詞 = 常用品項的名稱與口語別名（資料庫）＋通路術語與競品（熱詞表檔案），去掉重複。"""
     words: list[str] = []
-    for name, aliases in session.execute(select(Product.name, Product.aliases).where(Product.common)):
+    for name, aliases in session.execute(select(Product.name, Product.aliases).where(Product.common, visible_catalog_products())):
         words += [name, *aliases]
     return list(dict.fromkeys(words + hotword_terms()))
 
@@ -96,7 +97,7 @@ def visit_hotwords(session: Session, customer_id: str) -> list[str]:
     customer = session.get(Customer, customer_id)
     names = [*customer_terms(customer.name), *customer.name.split(" · ")] if customer else []
     products = session.execute(select(Product.name, Product.aliases)
-        .where(Product.sku.in_(recent_product_skus(customer_id))).order_by(Product.sku))
+        .where(Product.sku.in_(recent_product_skus(customer_id)), visible_catalog_products()).order_by(Product.sku))
     terms = [term for name, aliases in products for term in (name, *aliases)]
     return list(dict.fromkeys(names + terms + load_hotwords(session)))
 

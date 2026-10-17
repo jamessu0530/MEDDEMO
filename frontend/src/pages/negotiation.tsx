@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { useAskPageContext } from "@/ask/use-page-context"
 import { useNavigate, useParams } from "react-router"
 
 import { ApiError } from "@/api/client"
@@ -59,6 +60,10 @@ export function NegotiationPage() {
   }, [customerId, attempt])
 
   const card = state.status === "ready" ? state.card : null
+  useAskPageContext({ facts: [
+    `客戶編號：${customerId}`,
+    ...(card ? [`客戶：${card.customer.name}`, `談判方向：${ORIENTATION_LABEL[card.orientation]}`, ...(card.festival ? [`檔期：${card.festival.name}；日期：${card.festival.date}`] : [])] : ["談判資料尚未載入"]),
+  ] })
 
   // 方法卡按完回饋，換掉那一張；談判卡其餘的內容不必重新載入
   function methodChanged(next: MethodCard) {

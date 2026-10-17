@@ -4,9 +4,10 @@ import { Link, useLocation } from "react-router"
 import { CompanyLogo } from "@/components/company-logo"
 import { MyStatusButton } from "@/components/my-status"
 import { SidebarNav } from "@/components/sidebar-nav"
+import { SidebarEdge } from "@/components/sidebar-edge"
 import { homePath, type AuthUser } from "@/lib/auth"
 import { useChannelUnread } from "@/lib/channel-unread"
-import { usePendingOa, useUnseenNotices } from "@/lib/manager-counts"
+import { usePendingOa } from "@/lib/manager-counts"
 import { useUnseenReplies } from "@/lib/manager-replies"
 import { useUploadQueue } from "@/lib/offline-queue"
 import { chooseSkin } from "@/lib/preferences"
@@ -37,20 +38,20 @@ function SalesSidebar(props: SidebarProps) {
 
 function ManagerSidebar(props: SidebarProps) {
   const channels = useChannelUnread()
-  const notices = useUnseenNotices()
   const oa = usePendingOa()
-  return <Sidebar {...props} counts={{ channels, notices, oa }} />
+  return <Sidebar {...props} counts={{ channels, oa }} />
 }
 
 function Sidebar({ user, counts, collapsed, onToggle }: SidebarProps & { counts: Counts }) {
   // 外框在 <Routes> 裡面：換頁時墨還沒蓋滿，這裡拿到的還是舊的那一頁，選中的那一列跟著畫面一起換
   const { pathname, search } = useLocation()
   return (
+    <>
     <aside
       id="app-sidebar"
       aria-label="側邊欄"
       className={cn(
-        "fixed inset-y-0 left-0 z-30 hidden w-[var(--app-sidebar-width)] flex-col gap-1 overflow-y-auto border-r bg-card pt-3 pb-4 lg:flex",
+        "fixed inset-y-0 left-0 z-30 hidden w-[var(--app-sidebar-width)] flex-col gap-1 overflow-x-hidden overflow-y-auto border-r bg-card pt-3 pb-4 lg:flex",
         collapsed ? "px-2" : "px-3"
       )}
     >
@@ -90,7 +91,7 @@ function Sidebar({ user, counts, collapsed, onToggle }: SidebarProps & { counts:
               <span className="truncate text-sm font-semibold">{user.name}</span>
               <span className="truncate text-xs text-muted-foreground">
                 {user.region}
-                {user.acting_as && ` · 示範：${user.acting_as.name}的客戶`}
+                {user.acting_as && ` · 共用：${user.acting_as.name}的客戶`}
               </span>
             </>
           )}
@@ -109,6 +110,8 @@ function Sidebar({ user, counts, collapsed, onToggle }: SidebarProps & { counts:
         <span className={collapsed ? "sr-only" : undefined}>帳號設定</span>
       </Link>
     </aside>
+    <SidebarEdge collapsed={collapsed} onToggle={onToggle} />
+    </>
   )
 }
 

@@ -1,12 +1,22 @@
 import { useState } from "react"
-import { useNavigate } from "react-router"
+import { useLocation, useNavigate } from "react-router"
 import { closeAssistant } from "@/ask/assistant-window"
 import { MousePointer2 } from "@/components/icons"
 import { Mascot } from "@/components/mascot"
 import { Button } from "@/components/ui/button"
+import { canStartUiDemo, UI_DEMOS, type UiDemoKind } from "@/lib/ui-demo"
+import { pageDemoTarget } from "@/lib/page-demo-browser"
 
-export function UiDemoOffer() {
+export function UiDemoOffer({
+  kind = "create-order",
+  path,
+}: {
+  kind?: UiDemoKind
+  path?: string
+}) {
+  const preset = UI_DEMOS[kind]
   const navigate = useNavigate()
+  const location = useLocation()
   const [declined, setDeclined] = useState(false)
   if (declined)
     return (
@@ -21,16 +31,36 @@ export function UiDemoOffer() {
         <Mascot state="hi" size={48} className="shrink-0" />
         <div>
           <h2 className="text-sm font-semibold">要不要我操作給你看？</h2>
-          <p className="mt-1 text-sm leading-relaxed">
-            我會用紫色箭頭示範新增訂單。你隨時碰一下畫面、捲動或按鍵，我就停下來，換你操作。
-          </p>
-          <p className="mt-2 text-xs text-muted-foreground">
-            使用練習資料，最後的發送步驟會留給你確認。
-          </p>
+          <p className="mt-1 text-sm leading-relaxed">{preset.description}</p>
+          <p className="mt-2 text-xs text-muted-foreground">{preset.note}</p>
         </div>
       </div>
       <div className="flex flex-wrap gap-2">
-        <Button onClick={() => { closeAssistant(); navigate("/orders", { state: { startOrderDemo: true } }) }}>
+        <Button
+          onClick={() => {
+            closeAssistant()
+            const destination =
+              path && canStartUiDemo(kind, path)
+                ? path
+                : canStartUiDemo(kind, location.pathname)
+                  ? location.pathname + location.search
+                  : preset.path
+            const stay = destination === location.pathname + location.search
+            const activeKind =
+              kind === "create-order" &&
+              stay &&
+              pageDemoTarget("page-tour-dialog")
+                ? "page-tour"
+                : kind
+            navigate(destination, {
+              replace: stay,
+              state: {
+                ...(stay ? location.state : {}),
+                startUiDemo: activeKind,
+              },
+            })
+          }}
+        >
           <MousePointer2 className="size-4" />
           好，操作給我看
         </Button>

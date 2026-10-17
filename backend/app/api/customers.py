@@ -18,6 +18,7 @@ from app.models import AppUser, Customer, PublicOutlet, Product, SalesTransactio
 from app.pricing import supply_price
 from app.services import approvals, customer_profile, last_order, negotiation, orders, promo_packs, writeback
 from app.services.scope import SHARING_LEVEL, Scope
+from app.services.product_catalog import visible_catalog_products
 
 router = APIRouter(prefix="/api/customers", tags=["customers"])
 SessionDep = Annotated[Session, Depends(get_session)]
@@ -477,7 +478,7 @@ class Quote(BaseModel):
 
 @router.get("/{customer_id}/quote-items", response_model=list[QuoteItemOption])
 def quote_items(session: SessionDep, customer_id: str, user: CurrentUser):
-    """開報價時可以選的品項：這家客戶近半年進過的，照進貨金額排序。數量預設是平常一次進多少。"""
+    """開報價的有效型錄品項：近期進貨優先，沒有時提供常用品項。"""
     customer, _ = _load(session, customer_id, user, SHARING_LEVEL["quote"])
     today = customer_profile.app_today(session)
     rows = session.execute(
@@ -489,10 +490,15 @@ def quote_items(session: SessionDep, customer_id: str, user: CurrentUser):
         .where(
             SalesTransaction.customer_id == customer.id,
             SalesTransaction.date > today - timedelta(days=QUOTE_ITEM_DAYS),
+            visible_catalog_products(),
         )
         .group_by(Product.sku)
         .order_by(func.sum(SalesTransaction.amount).desc())
     ).all()
+    if not rows:
+        return [QuoteItemOption(sku=p.sku, name=p.name, spec=p.spec, unit=p.unit,
+                unit_price=supply_price(p.unit_price, customer.type), usual_qty=1)
+            for p in session.scalars(select(Product).where(visible_catalog_products(), Product.common).order_by(Product.sku))]
     return [
         QuoteItemOption(
             sku=r.sku, name=r.name, spec=r.spec, unit=r.unit,

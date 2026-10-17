@@ -1,4 +1,3 @@
-import { PRACTICE_PRODUCTS } from "@/lib/order-practice"
 import { useEffect, useId, useRef, useState } from "react"
 import {
   Check,
@@ -52,19 +51,12 @@ export function OrderProducts({
   useEffect(() => {
     const controller = new AbortController()
     const timer = setTimeout(() => {
-      const matches = practice
-        ? PRACTICE_PRODUCTS.filter((item) =>
-            `${item.name} ${item.sku}`.includes(query.trim())
-          )
-        : []
-      const request = practice
-        ? Promise.resolve({
-            items: matches,
-            total: matches.length,
-            page: 1,
-            page_size: 25,
-          })
-        : getOrderProducts(customerId, query.trim(), page, controller.signal)
+      const request = getOrderProducts(
+        customerId,
+        query.trim(),
+        page,
+        controller.signal
+      )
       request
         .then((value) => {
           if (!controller.signal.aborted) setResult(value)
@@ -81,7 +73,7 @@ export function OrderProducts({
       clearTimeout(timer)
       controller.abort()
     }
-  }, [customerId, query, page, retry, practice])
+  }, [customerId, query, page, retry])
   const chosen = Object.values(selected),
     existingSkus = new Set(existing.map((item) => item.sku))
   const capacity = Math.max(0, 100 - existing.length)
@@ -317,7 +309,11 @@ export function OrderProducts({
                             onChange={() => toggle(product)}
                             className="size-5 shrink-0 accent-primary"
                           />
-                          <ProductPhoto product={product} size="default" showSource={false} />
+                          <ProductPhoto
+                            product={product}
+                            size="default"
+                            showSource={false}
+                          />
                           <span className="min-w-0 flex-1">
                             <span className="block text-sm leading-relaxed font-medium break-words">
                               {product.name}
@@ -342,7 +338,6 @@ export function OrderProducts({
                             </span>
                           </span>
                         </label>
-
                       </li>
                     )
                   })}

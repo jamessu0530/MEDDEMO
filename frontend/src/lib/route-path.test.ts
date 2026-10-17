@@ -19,11 +19,11 @@ describe("labelSide", () => {
 })
 
 describe("signalTone", () => {
-  it("商機是好消息、例行是平常、其他都是警示", () => {
+  it("商機保留綠色，其他拜訪理由不再顯示警示色", () => {
     expect(signalTone("opportunity")).toBe("good")
     expect(signalTone("routine")).toBe("plain")
-    expect(signalTone("ar")).toBe("alert")
-    expect(signalTone("commitment")).toBe("alert")
+    expect(signalTone("ar")).toBe("plain")
+    expect(signalTone("commitment")).toBe("plain")
   })
 })
 

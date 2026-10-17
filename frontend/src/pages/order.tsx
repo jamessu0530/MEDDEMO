@@ -11,7 +11,13 @@ import {
   Send,
   Trash2,
 } from "@/components/icons"
-import { Link, useBlocker, useParams } from "react-router"
+import {
+  Link,
+  Navigate,
+  useBlocker,
+  useLocation,
+  useParams,
+} from "react-router"
 import {
   createOrder,
   getOrder,
@@ -20,6 +26,7 @@ import {
   type OrderDetail,
   type OrderInput,
   type OrderProduct,
+  type OrderCustomer,
 } from "@/api/orders"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
@@ -47,11 +54,7 @@ import {
 } from "@/lib/orders"
 import { OrderBadge } from "@/pages/orders"
 import { cn } from "@/lib/utils"
-import {
-  makePracticeOrder,
-  PRACTICE_CUSTOMER,
-  savePracticeOrder,
-} from "@/lib/order-practice"
+import { makePracticeOrder, savePracticeOrder } from "@/lib/order-practice"
 
 type Tab = "items" | "related" | "activity"
 const FIELD =
@@ -105,7 +108,16 @@ export function OrderPage() {
 }
 
 export function PracticeOrderPage() {
-  const [initial] = useState(makePracticeOrder)
+  const location = useLocation()
+  const customer = (
+    location.state as { practiceCustomer?: OrderCustomer } | null
+  )?.practiceCustomer
+  if (!customer) return <Navigate to="/orders" replace />
+  return <PracticeOrderEditor key={customer.id} customer={customer} />
+}
+
+function PracticeOrderEditor({ customer }: { customer: OrderCustomer }) {
+  const [initial] = useState(() => makePracticeOrder(customer))
   return <OrderEditor initial={initial} practice />
 }
 
@@ -136,12 +148,17 @@ function OrderEditor({
   const busy = phase !== null
   const readonly = order.readonly
   const dirty = JSON.stringify(draft) !== JSON.stringify(orderInput(order))
-  useAskPageContext({ title: `${order.order_no} · 訂單明細`, facts: [
-    `訂單編號：${order.order_no}`, `客戶：${order.customer_name}（${order.customer_id}）`,
-    `狀態：${order.status === "draft" ? "草稿" : "已生效"}`, `正式交易資料是否已寫入：${order.status === "effective" ? "是" : "否"}`,
-    ...(dirty ? ["此頁有尚未儲存的修改，不能當作正式交易"] : []),
-    ...(practice ? ["這是教學練習單，不是真實交易"] : []),
-  ] })
+  useAskPageContext({
+    title: `${order.order_no} · 訂單明細`,
+    facts: [
+      `訂單編號：${order.order_no}`,
+      `客戶：${order.customer_name}（${order.customer_id}）`,
+      `狀態：${order.status === "draft" ? "草稿" : "已生效"}`,
+      `正式交易資料是否已寫入：${order.status === "effective" ? "是" : "否"}`,
+      ...(dirty ? ["此頁有尚未儲存的修改，不能當作正式交易"] : []),
+      ...(practice ? ["這是教學練習單，不是真實交易"] : []),
+    ],
+  })
   const blocker = useBlocker(
     ({ currentLocation, nextLocation }) =>
       !practice && dirty && currentLocation.pathname !== nextLocation.pathname
@@ -169,7 +186,7 @@ function OrderEditor({
     setNotice("")
     try {
       const saved = practice
-        ? savePracticeOrder(order, draft)
+        ? savePracticeOrder(order, draft, products)
         : await saveOrder(order.id, draft, order.revision)
       setOrder(saved)
       setDraft(orderInput(saved))
@@ -231,7 +248,7 @@ function OrderEditor({
       setOrder(saved)
       setDraft(orderInput(saved))
       setConfirm(null)
-      setNotice("訂單已送至展示 SAP 並生效，交易與應收帳款已建立。")
+      setNotice("訂單已送至 SAP 並生效，交易與應收帳款已建立。")
       setEditingItems(false)
     } catch (err) {
       setError(
@@ -318,7 +335,7 @@ function OrderEditor({
       <PageHeader
         title="訂單明細"
         backTo="/orders"
-        subtitle={practice ? "熊熊滾操作示範" : "SAP 展示環境"}
+        subtitle={practice ? "熊熊滾操作示範" : "訂單明細"}
       />
       {practice && (
         <div
@@ -519,6 +536,7 @@ function OrderEditor({
                           }
                           disabled={busy || draft.items.length >= 100}
                           onClick={() => setPicker(true)}
+                          data-ui-demo-open="dialog"
                         >
                           <Plus className="size-4" />
                           新增產品
@@ -547,6 +565,7 @@ function OrderEditor({
                         <Button
                           variant="outline"
                           onClick={() => setPicker(true)}
+                          data-ui-demo-open="dialog"
                         >
                           選擇產品
                         </Button>
@@ -830,7 +849,7 @@ function OrderEditor({
                     <div className="border-l-2 border-primary/20 pl-4">
                       <p>
                         {order.status === "effective"
-                          ? "已同步展示 SAP，訂單生效"
+                          ? "已同步SAP，訂單生效"
                           : "最近儲存草稿"}
                       </p>
                       <p className="mt-1 text-xs text-muted-foreground">
@@ -866,8 +885,8 @@ function OrderEditor({
                   disabled={readonly || busy}
                   options={[
                     {
-                      value: PRACTICE_CUSTOMER.id,
-                      label: PRACTICE_CUSTOMER.name,
+                      value: order.customer_id,
+                      label: order.customer_name,
                     },
                   ]}
                   onValueChange={(ship_to_id) => update({ ship_to_id })}
@@ -1005,7 +1024,7 @@ function OrderEditor({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>確認發送訂單到展示 SAP？</DialogTitle>
+            <DialogTitle>確認發送訂單到SAP？</DialogTitle>
             <DialogDescription>
               {order.customer_name}，{orderMoney(total)} 元，指定出貨日期{" "}
               {draft.shipping_date}

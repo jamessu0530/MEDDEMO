@@ -17,7 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from starlette.datastructures import UploadFile
 
-from app import realtime, usage
+from app import realtime
 from app.api.attachments import AttachmentItem, attachment_item
 from app.api.auth import CurrentUser, ItUser
 from app.db import get_session
@@ -73,7 +73,7 @@ class MessageItem(BaseModel):
     mentions_ai: bool
     # 熊熊滾的回答指向提問那一則
     reply_to_id: int | None
-    # 風險通報附的拜訪，點了進拜訪結果頁
+    # 系統訊息附的拜訪，點了進拜訪結果頁
     visit_id: str | None = None
 
 
@@ -246,7 +246,6 @@ def list_messages(
 
 @router.post("/api/channels/{channel_id}/messages", response_model=MessageItem, status_code=status.HTTP_201_CREATED)
 def post_message(
-    request: Request,
     session: SessionDep,
     user: CurrentUser,
     channel_id: int,
@@ -267,11 +266,6 @@ def post_message(
         message = channels.post(session, user, info, text)
     except channels.Archived:
         raise HTTPException(409, "這個頻道已封存，不能再發言") from None
-    # @熊熊滾 跑的是跟問答頁一樣的查詢，算一次「提問」。middleware 只看網址分不出有沒有 @，在這裡另外扣；
-    # 超過上限就整則不留（附件還沒寫），輸入框裡的字還在，提問的人看得到為什麼沒送出
-    if message.mentions_ai and (blocked := usage.take("ask", request)) is not None:
-        session.rollback()
-        return blocked
     files = [attachments.add(session, user, p, context=text, message_id=message.id) for p in prepared]
     session.commit()
     # commit 之後才通知：手機收到馬上來拿，要拿得到這一則

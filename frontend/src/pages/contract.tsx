@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { useAskPageContext } from "@/ask/use-page-context"
 import { useNavigate, useParams } from "react-router"
 
 import { ApiError } from "@/api/client"
@@ -78,6 +79,13 @@ export function ContractPage() {
       : null
   // 送不出去的原因，寫在按鈕上
   const blocked = !route ? `費率要在 0～${RATE_MAX_PERCENT}% 之間` : route.changed && !reason.trim() ? "費率有調整，請寫申請理由" : null
+  useAskPageContext({ facts: [
+    `客戶編號：${customerId}`,
+    ...(state.status === "ready" ? [`客戶：${state.customer.name}`] : ["合約資料尚未載入"]),
+    `續約草稿月數：${term}`,
+    `上架費草稿：${listingText || "未填寫"}%；通路獎勵草稿：${rewardText || "未填寫"}%`,
+    `申請尚未送出${blocked ? `；尚待確認：${blocked}` : ""}`,
+  ] })
 
   async function submit() {
     if (listing === null || reward === null) return
