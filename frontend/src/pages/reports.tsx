@@ -48,6 +48,7 @@ import { PageHeader } from "@/components/page-header"
 import { ReportChart } from "@/components/reports/report-chart"
 import { useReportWidgetSize } from "@/components/reports/use-report-widget-size"
 import { ReportWidgetSizeMenu } from "@/components/reports/report-widget"
+import { ReportNumberCacheContext } from "@/lib/report-number-animation"
 import { ReportDocumentControls } from "@/components/reports/report-document-controls"
 import { ReportExportDialog } from "@/components/reports/report-export"
 import { ReportRefreshControls } from "@/components/reports/report-refresh"
@@ -2445,6 +2446,7 @@ function CanvasVisual({
     surfaceListeners,
   } = useReportCardDrag(card.id, !layout.draggable)
   const { widgetRef, widgetSize } = useReportWidgetSize(layout.fixedHeight)
+  const [numberCache] = useState(() => new Map<string, number>())
   const setVisualRef = useCallback(
     (element: HTMLElement | null) => {
       setNodeRef(element)
@@ -2588,33 +2590,35 @@ function CanvasVisual({
           }
         >
           {data ? (
-            <ReportRenderFrame loading={loading}>
-              <ReportChart
-                widgetSize={widgetSize}
-                summary={!editing}
-                card={card}
-                data={data}
-                onHoverData={editing ? undefined : onHover}
-                onHoverEnd={onHoverEnd}
-                onSelectData={
-                  editing ? undefined : (point) => onPoint(card.id, point)
-                }
-                selections={selections}
-                matrixView={matrixView}
-                onMatrixViewChange={onMatrixViewChange}
-                pointActionLabel={
-                  explore.action === "drill"
-                    ? "下鑽"
-                    : explore.action === "page"
-                      ? "跨頁分析"
-                      : explore.action === "tooltip"
-                        ? "查看提示頁"
-                        : explore.action === "details"
-                          ? "查看逐筆明細"
-                          : "篩選"
-                }
-              />
-            </ReportRenderFrame>
+            <ReportNumberCacheContext.Provider value={numberCache}>
+              <ReportRenderFrame loading={loading}>
+                <ReportChart
+                  widgetSize={widgetSize}
+                  summary={!editing}
+                  card={card}
+                  data={data}
+                  onHoverData={editing ? undefined : onHover}
+                  onHoverEnd={onHoverEnd}
+                  onSelectData={
+                    editing ? undefined : (point) => onPoint(card.id, point)
+                  }
+                  selections={selections}
+                  matrixView={matrixView}
+                  onMatrixViewChange={onMatrixViewChange}
+                  pointActionLabel={
+                    explore.action === "drill"
+                      ? "下鑽"
+                      : explore.action === "page"
+                        ? "跨頁分析"
+                        : explore.action === "tooltip"
+                          ? "查看提示頁"
+                          : explore.action === "details"
+                            ? "查看逐筆明細"
+                            : "篩選"
+                  }
+                />
+              </ReportRenderFrame>
+            </ReportNumberCacheContext.Provider>
           ) : (
             <div
               className={cn(

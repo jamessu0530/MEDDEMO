@@ -4,7 +4,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api.learning import learning_ai_user
+from app.api.auth import current_user
 from app.main import app
 from app.services import question_suggestions
 from app.services.assistant_context import PageContext
@@ -79,7 +79,7 @@ def test_api_accepts_page_and_history_without_creating_an_ask(monkeypatch):
         seen.append((page, earlier, candidates))
         return ["仁和最近一個月的保健品進貨如何？"]
     monkeypatch.setattr(question_suggestions, "suggest", suggest)
-    monkeypatch.setitem(app.dependency_overrides, learning_ai_user, lambda: object())
+    monkeypatch.setitem(app.dependency_overrides, current_user, lambda: object())
     response = TestClient(app).post("/api/asks/suggestions", json={"page": PAGE.model_dump(), "earlier": EARLIER, "candidates": ["這家多久沒進貨？"]})
     assert response.status_code == 200
     assert response.json() == {"suggestions": ["仁和最近一個月的保健品進貨如何？"]}
@@ -91,7 +91,7 @@ def test_api_requires_login():
 
 
 def test_api_bounds_history_and_page_data(monkeypatch):
-    monkeypatch.setitem(app.dependency_overrides, learning_ai_user, lambda: object())
+    monkeypatch.setitem(app.dependency_overrides, current_user, lambda: object())
     client = TestClient(app)
     assert client.post("/api/asks/suggestions", json={"page": PAGE.model_dump(), "earlier": EARLIER * 4}).status_code == 422
     assert client.post("/api/asks/suggestions", json={"page": {**PAGE.model_dump(), "facts": ["字" * 501]}}).status_code == 422

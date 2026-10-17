@@ -13,6 +13,7 @@ import { BarChart3, ChevronDown } from "@/components/icons"
 import { ReportMatrix } from "@/components/reports/report-matrix"
 import { ReportFormattedValue } from "@/components/reports/report-formatted-value"
 import type { ReportWidgetSize } from "@/lib/report-widget"
+import { useReportAnimatedNumber } from "@/lib/report-number-animation"
 import {
   reportCellStyle,
   reportDisplayValue,
@@ -177,10 +178,17 @@ function Total({
   summary?: boolean
   showTarget?: boolean
 }) {
-  const display = reportDisplayValue(card, total, card.metric, "compact")
+  const animated = useReportAnimatedNumber(
+    total,
+    `${card.id}/${card.metric}/total`
+  )
+  const display = reportDisplayValue(card, animated, card.metric, "compact")
   const formatted =
     summary && display.endsWith(" 萬") ? `${display}元` : display
   const exact = exactValue(total, card.metric)
+  const finalDisplay = reportDisplayValue(card, total, card.metric, "compact")
+  const finalFormatted =
+    summary && finalDisplay.endsWith(" 萬") ? `${finalDisplay}元` : finalDisplay
   return (
     <div className={summary ? "report-summary-total" : large ? "py-2" : "mb-3"}>
       {!summary && (
@@ -191,6 +199,11 @@ function Total({
         </p>
       )}
       <p
+        aria-label={exact}
+        data-report-number={card.id}
+        data-number-value={animated ?? undefined}
+        data-number-target={total ?? undefined}
+        data-number-animating={animated !== total || undefined}
         className={`${summary ? "report-summary-value" : large ? "text-[clamp(1.125rem,5.5vw,1.625rem)] sm:text-3xl" : "text-xl"} leading-tight font-semibold tracking-tight break-words tabular-nums ${total != null && total < 0 ? "text-destructive" : "text-foreground"}`}
         title={reportTooltip(
           card,
@@ -214,13 +227,13 @@ function Total({
             : undefined)
         }
       >
-        {formatted}
+        <span aria-hidden="true">{formatted}</span>
       </p>
       {!summary &&
-        formatted !== exact &&
+        finalFormatted !== exact &&
         !card.format?.numbers?.[card.metric] && (
           <p className="mt-1 text-xs break-words text-muted-foreground tabular-nums">
-            {exact}
+            {exactValue(animated, card.metric)}
           </p>
         )}
       {showTarget && large && typeof card.target === "number" && (
