@@ -7,7 +7,6 @@ import { AttachmentGallery } from "@/components/attachments/attachment-gallery"
 import { Mascot } from "@/components/mascot"
 import { MarkdownContent } from "@/components/markdown-content"
 
-
 const TOOL_LABEL = {
   data: "公司資料",
   knowledge: "文件與公開資料",
@@ -27,26 +26,34 @@ export function EntryView({ entry, ...actions }: EntryViewProps) {
   if (entry.kind === "user") {
     // 語音那句是 Gemini 另外做的語音轉文字，常有同音錯字；打字的是業務原文，不必標
     return (
-      <>
-        <div className="ml-auto flex w-fit max-w-[88%] flex-col items-end gap-1.5">
-          <p className="text-sm leading-relaxed [overflow-wrap:anywhere] whitespace-pre-wrap">
-            {entry.text}
-          </p>
-          {entry.attachment && (
-            <AttachmentGallery
-              attachments={[entry.attachment]}
-              className="w-56 max-w-full items-end"
-            />
-          )}
-        </div>
-      </>
+      <div className="ml-auto flex w-fit min-w-0 max-w-[88%] flex-col items-end gap-2 rounded-2xl rounded-tr-md bg-primary px-3 py-2.5 text-primary-foreground">
+        <p className="text-sm leading-relaxed [overflow-wrap:anywhere] whitespace-pre-wrap">
+          {entry.text}
+        </p>
+        {entry.attachment && (
+          <AttachmentGallery
+            attachments={[entry.attachment]}
+            className="w-56 max-w-full items-end text-foreground"
+          />
+        )}
+      </div>
     )
   }
   return (
-    <div className="mr-3 flex flex-col items-start gap-1.5">
-      <p className="pl-1 text-xs font-medium text-muted-foreground">熊熊滾</p>
+    <AssistantBubble>
       <MarkdownContent className="w-full">{entry.text}</MarkdownContent>
-    </div>
+    </AssistantBubble>
+  )
+}
+
+function AssistantBubble({ children }: { children: ReactNode }) {
+  return (
+    <section className="mr-auto flex w-fit min-w-0 max-w-[94%] flex-col items-start gap-1.5">
+      <p className="pl-1 text-xs font-medium text-muted-foreground">熊熊滾</p>
+      <div className="w-full min-w-0 space-y-2 rounded-2xl rounded-tl-md border bg-muted/60 px-3 py-2.5 text-foreground [overflow-wrap:anywhere]">
+        {children}
+      </div>
+    </section>
   )
 }
 
@@ -58,8 +65,7 @@ function ToolCard({
 }: Omit<EntryViewProps, "entry"> & { run: ToolRun }) {
   const done = run.error !== null || (run.ask !== null && isFinished(run.ask))
   return (
-    <section className="min-w-0 space-y-1.5 [overflow-wrap:anywhere]">
-      <p className="text-xs text-muted-foreground">熊熊滾</p>
+    <AssistantBubble>
       {run.routing ? (
         <p className="flex items-center gap-2 text-sm text-muted-foreground">
           <Mascot
@@ -113,7 +119,7 @@ function ToolCard({
           )}
         </div>
       )}
-    </section>
+    </AssistantBubble>
   )
 }
 
