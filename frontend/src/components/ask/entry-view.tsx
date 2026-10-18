@@ -5,6 +5,7 @@ import type { Entry, ToolRun } from "@/ask/conversation"
 import { AskAnswer, TracePanel } from "@/components/ask/ask-result"
 import { AttachmentGallery } from "@/components/attachments/attachment-gallery"
 import { Mascot } from "@/components/mascot"
+import { MarkdownContent } from "@/components/markdown-content"
 
 
 const TOOL_LABEL = {
@@ -44,9 +45,7 @@ export function EntryView({ entry, ...actions }: EntryViewProps) {
   return (
     <div className="mr-3 flex flex-col items-start gap-1.5">
       <p className="pl-1 text-xs font-medium text-muted-foreground">熊熊滾</p>
-      <p className="text-sm leading-relaxed [overflow-wrap:anywhere] whitespace-pre-wrap">
-        {entry.text}
-      </p>
+      <MarkdownContent className="w-full">{entry.text}</MarkdownContent>
     </div>
   )
 }
