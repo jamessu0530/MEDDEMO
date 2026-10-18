@@ -54,7 +54,8 @@ const isFinished = (task: AssistantTask) => task.status === "completed" || task.
 
 /** Only internal application paths are ever restored or followed. */
 export function isTaskPath(path: string) {
-  return path.startsWith("/") && !path.startsWith("//") && !/[\\\s\u0000-\u001f]/.test(path)
+  return path.startsWith("/") && !path.startsWith("//") && !/[\\\s]/.test(path) &&
+    Array.from(path).every((character) => character.charCodeAt(0) > 0x1f)
 }
 
 function validBatch(value: unknown): value is RouteOrderBatch {

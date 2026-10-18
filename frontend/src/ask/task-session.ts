@@ -141,7 +141,8 @@ export function createTaskSession(userId: string, signal: AbortSignal, persisten
     const task = queue.getSnapshot().tasks.find((item) => item.id === taskId)
     if (!task) return
     intent(taskId)
-    cancel ? queue.cancel(taskId) : queue.pause(taskId)
+    if (cancel) queue.cancel(taskId)
+    else queue.pause(taskId)
     if (task.capability === "order.route_repeat" && task.batch) {
       try { routeProgress(taskId, await controlRouteOrders(taskId, cancel ? "cancel" : "pause", undefined, signal)) }
       catch (error) { message(targets.get(taskId), error instanceof Error ? error.message : "進度同步失敗；本機已停止後續處理。") }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { createTaskQueue, type TaskCommand } from "@/ask/task-queue"
+import { createTaskQueue, isTaskPath, type TaskCommand } from "@/ask/task-queue"
 
 const command = (key: string, after: string[] = []): TaskCommand => ({
   action: "create", key, after, target_id: "", capability: "report.create", title: key, instruction: `建立${key}`,
@@ -10,6 +10,15 @@ function setup() {
 }
 
 describe("可接續的助理工作清單", () => {
+  it("工作頁面只接受站內路徑，拒絕外部網址、反斜線、空白與控制字元", () => {
+    for (const path of ["/orders/draft-1", "/reports?task_report=saved", "/products?search=魚油"])
+      expect(isTaskPath(path)).toBe(true)
+    for (const path of ["https://example.com", "//example.com", "/\\example.com", "/orders draft", "/orders\u00a0draft"])
+      expect(isTaskPath(path)).toBe(false)
+    for (let code = 0; code < 32; code++)
+      expect(isTaskPath(`/orders/${String.fromCharCode(code)}draft`)).toBe(false)
+  })
+
   it("一次拆解十二項工作，依序等待依賴完成", () => {
     const queue = setup()
     const ids = queue.apply({ handled: true, message: "已安排", commands: Array.from({ length: 12 }, (_, n) => command(`step-${n}`, n ? [`step-${n - 1}`] : [])) })
