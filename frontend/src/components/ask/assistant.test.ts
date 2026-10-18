@@ -36,8 +36,12 @@ vi.mock("@/ask/use-assistant-layout", () => ({
 vi.mock("@/ask/use-page-context", () => ({
   useCurrentPageContext: () => state.page,
 }))
-vi.mock("@/ask/ask-session", () => ({
+vi.mock("@/ask/ask-session", async () => {
+  const { createTaskSession } = await import("@/ask/task-session")
+  const tasks = createTaskSession("test", new AbortController().signal, false)
+  return {
   askSessionFor: () => ({
+    tasks,
     conversation: {},
     threads: {
       subscribe: () => () => {},
@@ -46,7 +50,8 @@ vi.mock("@/ask/ask-session", () => ({
     subscribe: () => () => {},
     isBusy: () => false,
   }),
-}))
+  }
+})
 vi.mock("@/ask/use-conversation", () => ({
   useConversation: () => state.entries,
 }))

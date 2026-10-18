@@ -11,6 +11,14 @@ const api = vi.hoisted(() => ({
   askPriorityAdvice: vi.fn(),
   getAccountMemory: vi.fn(),
   saveAccountMemory: vi.fn(),
+  planTasks: vi.fn(),
+}))
+vi.mock("@/api/assistant-tasks", () => ({
+  planAssistantTasks: api.planTasks,
+  executeAssistantTask: vi.fn(),
+  controlRouteOrders: vi.fn(),
+  TASK_CAPABILITIES: ["report.create", "order.create", "data.query", "knowledge.query", "memory.query", "page.open"],
+  TASK_PAGES: ["/reports", "/orders", "/calendar"],
 }))
 vi.mock("@/api/reports", () => ({ adjustReport: api.adjustReport }))
 vi.mock("@/api/assistant-memory", () => ({
@@ -59,6 +67,7 @@ const tools = (session: ReturnType<typeof askSessionFor>) =>
     .filter((entry): entry is ToolRun => entry.kind === "tool")
 beforeEach(() => {
   vi.useFakeTimers()
+  api.planTasks.mockReset().mockResolvedValue({ handled: false, message: "", commands: [] })
   api.createAsk.mockReset().mockResolvedValue(answer())
   api.getAccountMemory.mockReset().mockResolvedValue({ entries: [], nodes: [] })
   api.saveAccountMemory.mockReset().mockResolvedValue(undefined)
@@ -445,6 +454,7 @@ describe("全站自動問答", () => {
     context.title = "另一位客戶"
     context.facts[0] = "客戶：另一家"
     expect(session.isBusy()).toBe(true)
+    await vi.waitFor(() => expect(api.routeAsk).toHaveBeenCalledOnce())
     expect(api.routeAsk).toHaveBeenCalledWith(
       "他多久沒進貨？",
       false,

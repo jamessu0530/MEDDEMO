@@ -29,6 +29,7 @@ import { useAssistantTransition, type AssistantTransitionAction } from "@/ask/us
 import { AssistantModeTransition } from "@/components/ask/assistant-mode-transition"
 import { EntryView } from "@/components/ask/entry-view"
 import { AccountMemoryStatus } from "@/components/ask/memory-status"
+import { AssistantTasks } from "@/components/ask/assistant-tasks"
 import type { VoiceSession } from "@/components/ask/voice-dock"
 import { AttachButton, DraftFiles } from "@/components/attachments/draft-files"
 import { Mascot } from "@/components/mascot"
@@ -437,6 +438,7 @@ function AssistantContent({
         )}
       >
         <div className="flex flex-col gap-4 px-3 py-3 [overflow-wrap:anywhere]">
+          <AssistantTasks session={asking.tasks} conversation={conversation} />
           {entries.map((entry) => (
             <div
               key={entry.id}
@@ -538,7 +540,7 @@ function AssistantContent({
             id="page-assistant-input"
             ref={inputRef}
             value={question}
-            maxLength={500}
+            maxLength={files.length ? 500 : 8000}
             onChange={(event) => {
               setQuestion(event.target.value)
               session?.noteActivity()

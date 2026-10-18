@@ -129,7 +129,7 @@ def detail(session: Session, user: AppUser, order_id: str):
         "created_at": order.created_at, "updated_at": order.updated_at, "readonly": order.status != "draft", "source": "workspace"}
 
 
-def create(session: Session, user: AppUser, body: OrderInput):
+def create(session: Session, user: AppUser, body: OrderInput, *, commit: bool = True):
     customer(session, user, body.customer_id)
     customer(session, user, body.ship_to_id)
     _products(session, body.items, for_write=True)
@@ -140,11 +140,11 @@ def create(session: Session, user: AppUser, body: OrderInput):
         **payload, items=[item.model_dump(mode="json") for item in body.items], status="draft", revision=1,
         amount=sum((item.unit_price * item.qty for item in body.items), Decimal(0)))
     session.add(order)
-    session.commit()
+    session.commit() if commit else session.flush()
     return detail(session, user, key)
 
 
-def save(session: Session, user: AppUser, order_id: str, body: SaveInput):
+def save(session: Session, user: AppUser, order_id: str, body: SaveInput, *, commit: bool = True):
     order = _load(session, user, order_id, lock=True)
     if order.status != "draft":
         raise OrderError("生效訂單不能修改，請建立新訂單", 409)
@@ -159,7 +159,7 @@ def save(session: Session, user: AppUser, order_id: str, body: SaveInput):
     order.amount = sum((item.unit_price * item.qty for item in body.items), Decimal(0))
     order.revision += 1
     order.updated_at = dt.datetime.now(dt.timezone.utc)
-    session.commit()
+    session.commit() if commit else session.flush()
     return detail(session, user, order_id)
 
 
@@ -283,6 +283,35 @@ def catalog(session: Session, user: AppUser, customer_id: str, q="", page=1):
     products = session.scalars(query.order_by(Product.common.desc(), Product.sku).offset((page - 1) * 25).limit(25))
     return {"items": [{"sku": product.sku, "name": product.name, "category": product.category, "spec": product.spec, "unit": product.unit,
         "unit_price": supply_price(product.unit_price, target.type)} for product in products], "total": total, "page": page, "page_size": 25}
+
+
+def last_purchase(session: Session, user: AppUser, customer_id: str, *, source_order_no: str | None = None):
+    """最近一張已成交交易；同料號合併，重新加入時使用目前客戶供貨價。"""
+    target = customer(session, user, customer_id)
+    first_day = func.min(SalesTransaction.date)
+    head = session.execute(select(SalesTransaction.order_no, first_day.label("date"))
+        .where(SalesTransaction.customer_id == target.id,
+               SalesTransaction.order_no == source_order_no if source_order_no else literal(True))
+        .group_by(SalesTransaction.order_no)
+        .order_by(first_day.desc(), SalesTransaction.order_no.desc()).limit(1)).one_or_none()
+    if head is None:
+        return None
+    rows = session.execute(select(SalesTransaction.sku, func.sum(SalesTransaction.qty).label("qty"),
+        func.sum(SalesTransaction.amount).label("amount"))
+        .where(SalesTransaction.customer_id == target.id, SalesTransaction.order_no == head.order_no)
+        .group_by(SalesTransaction.sku)
+        .order_by(func.sum(SalesTransaction.amount).desc(), SalesTransaction.sku)).all()
+    products = {product.sku: product for product in session.scalars(select(Product)
+        .where(Product.sku.in_([row.sku for row in rows]), visible_catalog_products()))}
+    items = []
+    for row in rows:
+        product = products.get(row.sku)
+        if product is None:
+            continue
+        items.append({"sku": product.sku, "name": product.name, "category": product.category,
+            "spec": product.spec, "unit": product.unit, "unit_price": supply_price(product.unit_price, target.type),
+            "last_qty": int(row.qty), "last_unit_price": float((row.amount / row.qty).quantize(CENT, ROUND_HALF_UP))})
+    return {"order_no": head.order_no, "date": head.date, "items": items, "unavailable_count": len(rows) - len(items)}
 
 
 def _customer_out(row: Customer, owner_name, address, phone):

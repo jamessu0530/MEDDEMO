@@ -1,5 +1,6 @@
 import { useAskPageContext } from "@/ask/use-page-context"
 import { useReportAssistant } from "@/ask/use-report-assistant"
+import { useLocation } from "react-router"
 import { ReportPageTooltip } from "@/components/reports/report-page-tooltip"
 import {
   useEffect,
@@ -33,6 +34,7 @@ import {
   getReportData,
   getReportFilterOptions,
   getReports,
+  openReportDocument,
   saveReportConfig,
   saveReportDocument,
   type ReportWorkspace,
@@ -263,9 +265,29 @@ export function ReportCanvas({
   primaryNavigation?: boolean
 }) {
   const [activeWorkspace, setActiveWorkspace] = useState(workspace)
+  const [taskOpenVersion, setTaskOpenVersion] = useState(0)
+  const location = useLocation()
+  const reportId = new URLSearchParams(location.search).get("task_report")
+  const [openError, setOpenError] = useState("")
+  useEffect(() => {
+    if (!reportId) return
+    const controller = new AbortController()
+    openReportDocument(reportId, controller.signal).then((snapshot) => {
+      if (!controller.signal.aborted) {
+        setActiveWorkspace((current) => ({ ...current, ...snapshot }))
+        setTaskOpenVersion((version) => version + 1)
+        setOpenError("")
+      }
+    }).catch((error: unknown) => {
+      if (!controller.signal.aborted) setOpenError(error instanceof Error ? error.message : "這份任務報表暫時無法開啟。")
+    })
+    return () => controller.abort()
+  }, [reportId, location.key])
   return (
+    <>
+    {openError && <Notice text={openError} />}
     <ReportDocument
-      key={activeWorkspace.active_report_id ?? "report-default"}
+      key={`${activeWorkspace.active_report_id ?? "report-default"}/${taskOpenVersion}`}
       workspace={activeWorkspace}
       backTo={backTo}
       primaryNavigation={primaryNavigation}
@@ -273,6 +295,7 @@ export function ReportCanvas({
         setActiveWorkspace((current) => ({ ...current, ...snapshot }))
       }
     />
+    </>
   )
 }
 

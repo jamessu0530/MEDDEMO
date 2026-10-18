@@ -1,4 +1,7 @@
 import type { TodayRoute } from "@/api/route"
+import { useState } from "react"
+import { askSessionFor } from "@/ask/ask-session"
+import { useCurrentPageContext } from "@/ask/use-page-context"
 import { AskBar } from "@/components/route/ask-bar"
 import { ProposalSheet } from "@/components/route/proposal-sheet"
 import { HOME_LEFT_FIXED } from "@/lib/desktop-layout"
@@ -12,6 +15,29 @@ import { cn } from "@/lib/utils"
 export function HomeAsk({ userId, onApplied }: { userId: string; onApplied: (route: TodayRoute) => void }) {
   const flow = useProposal({ userId, onApplied })
   const { state } = flow
+  const asking = askSessionFor(userId)
+  const page = useCurrentPageContext()
+  const [taskBusy, setTaskBusy] = useState(false)
+  const [taskError, setTaskError] = useState<string | null>(null)
+  const [reply, setReply] = useState("")
+  const ask = async (question: string) => {
+    setTaskBusy(true)
+    setTaskError(null)
+    setReply("")
+    const conversation = asking.conversation
+    conversation.addUtterance("user", "typed", question, { page })
+    try {
+      if (await asking.tasks.handle(question, { conversation, source: "typed", page })) {
+        const last = conversation.getSnapshot().filter((entry) => entry.kind === "model").at(-1)
+        if (last?.kind === "model") setReply(last.text)
+        return true
+      }
+      return await flow.ask(question)
+    } catch (error) {
+      setTaskError(error instanceof Error ? error.message : "這次未能安排工作，請再試一次。")
+      return false
+    } finally { setTaskBusy(false) }
+  }
   return (
     <>
       <div
@@ -24,11 +50,15 @@ export function HomeAsk({ userId, onApplied }: { userId: string; onApplied: (rou
           "lg:bottom-4"
         )}
       >
+        {reply && <p role="status" className="pointer-events-auto mb-2 rounded-xl border bg-background/95 p-2 text-xs">{reply}</p>}
         <AskBar
           className="pointer-events-auto rounded-2xl bg-background/95 backdrop-blur"
-          busy={state.status === "asking"}
-          error={flow.error}
-          onAsk={flow.ask}
+          busy={state.status === "asking" || taskBusy}
+          error={taskError || flow.error}
+          onAsk={ask}
+          placeholder="排路線、照上次開單，或繼續剛剛的工作…"
+          inputLabel="交辦路線與開單工作"
+          maxLength={8000}
           earlier={flow.turns}
         />
       </div>

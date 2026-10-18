@@ -20,6 +20,7 @@ from app.api import learning
 from app.api import mascot
 from app.api import orders as orders_api
 from app.api import assistant_memory
+from app.api import assistant_tasks
 from app.config import settings
 from app.db import get_session
 from app.observability import install_metrics
@@ -35,6 +36,7 @@ install_metrics(app)
 app.include_router(auth.router)
 app.include_router(asks.router)
 app.include_router(assistant_memory.router)
+app.include_router(assistant_tasks.router)
 app.include_router(customers.router)
 app.include_router(products.router)
 app.include_router(promotions.router)

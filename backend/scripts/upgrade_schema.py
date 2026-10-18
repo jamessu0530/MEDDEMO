@@ -12,7 +12,7 @@ from sqlalchemy.engine import Connection  # noqa: E402
 from app.db import make_engine, schema_version, SEMANTIC_LAYER, PRODUCT_CATALOG  # noqa: E402
 from app.models import AppSetting, LearningCompletion, SapEmployee, MascotCollectible, MascotEncounter, MascotWardrobe, SalesOrder, ReportDataset, ProductBrowseProfile, ProductPhoto, PublicOutlet, OutletStorefront, PLANNER_TABLES  # noqa: E402
 from app.services.product_photos import ensure_photo_table  # noqa: E402
-from app.models import AssistantMemoryEntry, AssistantMemoryNode  # noqa: E402
+from app.models import AssistantMemoryEntry, AssistantMemoryNode, AssistantTaskExecution  # noqa: E402
 
 # 保留前一輪的升級起點，同時支援目前已部署版本新增訂單工作區。
 # 未知版本不得自動重灌：新增升級路徑，或由維運明確選擇 workflow 的 reseed。
@@ -30,7 +30,8 @@ PRE_PRODUCT_PHOTOS_VERSION = "3789bb963999"
 PRE_DEMO_PHOTOS_VERSION = "d81d24554fa4"
 PRE_ACCOUNT_MEMORY_VERSION = "5f7bf8fd171e"
 PRE_GHOST_VERSION = "c6e724970b10"
-TO_VERSION = "dfd34c52f1f0"
+PRE_TASKS_VERSION = "dfd34c52f1f0"
+TO_VERSION = "4804e87a1e5e"
 
 
 def upgrade_customer_columns(connection: Connection) -> None:
@@ -87,9 +88,9 @@ def upgrade(connection: Connection, target: str | None = None) -> str:
     current = connection.scalar(select(AppSetting.value).where(AppSetting.key == "schema_version").with_for_update())
     if current == expected:
         return "資料表已是目前版本，無須更新。"
-    if current not in {FROM_VERSION, PREVIOUS_VERSION, ORDERS_VERSION, REPORTS_VERSION, PRODUCT_BROWSING_VERSION, PUBLIC_OUTLETS_VERSION, PRE_CALENDAR_VERSION, PRE_OA_VERSION, PRE_CATALOG_CLEANUP_VERSION, PRE_STOREFRONT_VERSION, PRE_PRODUCT_PHOTOS_VERSION, PRE_DEMO_PHOTOS_VERSION, PRE_ACCOUNT_MEMORY_VERSION, PRE_GHOST_VERSION} or expected != TO_VERSION:
+    if current not in {FROM_VERSION, PREVIOUS_VERSION, ORDERS_VERSION, REPORTS_VERSION, PRODUCT_BROWSING_VERSION, PUBLIC_OUTLETS_VERSION, PRE_CALENDAR_VERSION, PRE_OA_VERSION, PRE_CATALOG_CLEANUP_VERSION, PRE_STOREFRONT_VERSION, PRE_PRODUCT_PHOTOS_VERSION, PRE_DEMO_PHOTOS_VERSION, PRE_ACCOUNT_MEMORY_VERSION, PRE_GHOST_VERSION, PRE_TASKS_VERSION} or expected != TO_VERSION:
         raise RuntimeError(f"沒有保留資料的升級路徑：{current or '未記錄版本'} → {expected}；停止部署，不重灌。")
-    for model in (LearningCompletion, MascotWardrobe, MascotCollectible, MascotEncounter, SalesOrder, ReportDataset, ProductBrowseProfile, ProductPhoto, PublicOutlet, OutletStorefront, AssistantMemoryEntry, AssistantMemoryNode):
+    for model in (LearningCompletion, MascotWardrobe, MascotCollectible, MascotEncounter, SalesOrder, ReportDataset, ProductBrowseProfile, ProductPhoto, PublicOutlet, OutletStorefront, AssistantMemoryEntry, AssistantMemoryNode, AssistantTaskExecution):
         model.__table__.create(connection, checkfirst=True)
     ensure_photo_table(connection)
     if inspect(connection).has_table("ask_record"):
@@ -125,7 +126,7 @@ def upgrade(connection: Connection, target: str | None = None) -> str:
         END IF;
     END $$;""")
     connection.execute(update(AppSetting).where(AppSetting.key == "schema_version").values(value=expected))
-    return f"已升級 OA 模擬表單、一般日曆、公開通路、商品偏好、匯入資料、訂單、課程與收藏表：{current} → {expected}；既有資料保留。"
+    return f"已升級 OA 模擬表單、一般日曆、公開通路、商品偏好、匯入資料、訂單、助理任務、課程與收藏表：{current} → {expected}；既有資料保留。"
 
 
 if __name__ == "__main__":

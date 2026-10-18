@@ -13,6 +13,7 @@ import { requestedPageDemoPath } from "@/lib/page-demo"
 import { oaPageHelp } from "@/ask/oa-page-help"
 import { reportAssistant } from "@/ask/report-assistant"
 import { customerPriorityAssistant } from "@/ask/customer-priority-assistant"
+import { createTaskSession, type TaskSession } from "@/ask/task-session"
 
 export type AskSession = {
   conversation: Conversation
@@ -20,6 +21,7 @@ export type AskSession = {
   mapEdits: MapEditsStore
   memory: ReturnType<typeof syncAccountMemory> | null
   polls: AbortSignal
+  tasks: TaskSession
   ask: (question: string, file?: File, page?: AskPageContext) => Promise<void>
   askAsTyped: (entryId: number) => Promise<void>
   isBusy: () => boolean
@@ -50,6 +52,8 @@ function create(userId: string): NonNullable<typeof current> {
   const token = readToken()
   const memory = token && userId ? syncAccountMemory(userId, token, threads.history, mapEdits) : null
   const controller = new AbortController()
+  const tasks = createTaskSession(userId, controller.signal)
+  const ghostTasks = new Map<string, TaskSession>()
   const listeners = new Set<() => void>()
   let busy = false
   // 追問時沿用原題的附檔；頁面情境則保留在原題，讓後端區分新問題和追問。
@@ -59,6 +63,7 @@ function create(userId: string): NonNullable<typeof current> {
     { original: string; file?: File; page?: AskPageContext }
   >()
   const setBusy = (next: boolean) => {
+    if (busy === next) return
     busy = next
     listeners.forEach((listener) => listener())
   }
@@ -89,6 +94,16 @@ function create(userId: string): NonNullable<typeof current> {
     mapEdits,
     memory,
     polls: controller.signal,
+    get tasks() {
+      const thread = threads.getSnapshot()
+      if (!thread.ghost) return tasks
+      let session = ghostTasks.get(thread.id)
+      if (!session) {
+        session = createTaskSession(userId, controller.signal, false)
+        ghostTasks.set(thread.id, session)
+      }
+      return session
+    },
     isBusy: () => busy,
     subscribe: (listener) => {
       listeners.add(listener)
@@ -107,11 +122,27 @@ function create(userId: string): NonNullable<typeof current> {
       const utteranceId = conversation.addUtterance("user", "typed", question, {
         page: snapshot,
       })
+      if (!file) {
+        setBusy(true)
+        let handled = false
+        try {
+          handled = await session.tasks.handle(question, { conversation, source: "typed", page: snapshot })
+          if (handled) return
+        } catch (error) {
+          handled = true
+          const entryId = conversation.addToolRun(null, question, { page: snapshot })
+          showError(conversation, entryId, error)
+          return
+        } finally {
+          if (handled) setBusy(false)
+        }
+      }
       const pageHelp = !file ? oaPageHelp(question, snapshot) : null
       if (pageHelp) {
         conversation.addUtterance("model", "typed", pageHelp, {
           page: snapshot,
         })
+        setBusy(false)
         return
       }
       const demo = !file ? requestedUiDemo(question, snapshot?.path) : null
@@ -125,6 +156,7 @@ function create(userId: string): NonNullable<typeof current> {
                 snapshot?.path)
               : undefined,
         })
+        setBusy(false)
         return
       }
       const editorAssistant = !file
@@ -150,6 +182,12 @@ function create(userId: string): NonNullable<typeof current> {
         return
       }
       const previousFile = pendingFile
+      if (question.length > 500) {
+        const entryId = conversation.addToolRun(null, question, { page: snapshot })
+        showError(conversation, entryId, new Error("單項查詢最多 500 字；多項交辦可分別說明每項要做的工作。"))
+        setBusy(false)
+        return
+      }
       pendingFile = undefined
       const entryId = conversation.addToolRun(null, question, {
         routing: true,

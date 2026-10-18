@@ -203,16 +203,16 @@ def snapshot(session: Session, user: AppUser, library: Library | None = None, re
         bookmarks=active.bookmarks, readonly=active.shared_from is not None, shared_from=active.shared_from)
 
 
-def store(session: Session, user: AppUser, library: Library, report_id: str | None = None) -> LibrarySnapshot:
+def store(session: Session, user: AppUser, library: Library, report_id: str | None = None, *, commit: bool = True) -> LibrarySnapshot:
     row = session.get(UserReportConfig, user.id)
     assert row is not None
     row.config = {KEY: library.model_dump(mode="json")}
     row.updated_at = func.now()
-    session.commit()
+    session.commit() if commit else session.flush()
     return snapshot(session, user, library, report_id)
 
 
-def create(session: Session, user: AppUser, config: reports.ReportConfig, source_id: str | None = None) -> LibrarySnapshot:
+def create(session: Session, user: AppUser, config: reports.ReportConfig, source_id: str | None = None, *, commit: bool = True) -> LibrarySnapshot:
     reports.validate_owner(session, user, config)
     library = load(session, user, lock=True)
     if len(library.documents) >= 20:
@@ -227,7 +227,7 @@ def create(session: Session, user: AppUser, config: reports.ReportConfig, source
     new = SavedReport(id=f"report-{uuid.uuid4().hex}", config=config, updated_at=now(), bookmarks=copied)
     library.documents.append(new)
     library.active_id = new.id
-    return store(session, user, library)
+    return store(session, user, library, commit=commit)
 
 
 def open_report(session: Session, user: AppUser, report_id: str) -> LibrarySnapshot:
@@ -237,7 +237,7 @@ def open_report(session: Session, user: AppUser, report_id: str) -> LibrarySnaps
     return store(session, user, library)
 
 
-def save(session: Session, user: AppUser, report_id: str, config: reports.ReportConfig, revision: int) -> LibrarySnapshot:
+def save(session: Session, user: AppUser, report_id: str, config: reports.ReportConfig, revision: int, *, commit: bool = True) -> LibrarySnapshot:
     reports.validate_owner(session, user, config)
     library = load(session, user, lock=True)
     found = document(library, report_id)
@@ -247,7 +247,7 @@ def save(session: Session, user: AppUser, report_id: str, config: reports.Report
     found.config = config
     found.revision += 1
     found.updated_at = now()
-    return store(session, user, library, report_id)
+    return store(session, user, library, report_id, commit=commit)
 
 
 def validate_bookmark(session: Session, user: AppUser, state: BookmarkState, config: reports.ReportConfig | None = None):

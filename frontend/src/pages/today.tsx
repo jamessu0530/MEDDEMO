@@ -21,6 +21,7 @@ import { RoutePath } from "@/components/route-path"
 import { SalesToolbar } from "@/components/sales-toolbar"
 import { EditRouteLink, SkippedHabitsNote } from "@/components/route/home-extras"
 import { HomeAsk } from "@/components/route/home-ask"
+import { RouteOrderTasks } from "@/components/route/route-order-tasks"
 import { HomeMapPanel } from "@/components/route/home-map-panel"
 import { LocationConsent } from "@/components/route/location-share"
 import { ViewSwitch } from "@/components/route/view-switch"
@@ -243,6 +244,7 @@ export function TodayPage() {
           </div>
         )}
         {hint && <p className="mb-3 rounded-xl bg-primary/10 px-3 py-2 text-xs text-primary">{hint}</p>}
+        <RouteOrderTasks userId={user.id} canStart={state.status === "ready" && !state.cached && state.route.stops.length > 0} />
         {route && <SkippedHabitsNote route={route} />}
         {busy && route && (
           <p className="mb-3 flex items-center gap-1.5 text-xs text-muted-foreground">

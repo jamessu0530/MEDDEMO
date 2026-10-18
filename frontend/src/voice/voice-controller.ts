@@ -19,6 +19,9 @@ import type { Conversation } from "@/ask/conversation"
 import { recentConversationTurns } from "@/ask/conversation-context"
 import type { AskPageContext } from "@/ask/page-context"
 import { runAsk } from "@/ask/run-ask"
+import { askSessionFor } from "@/ask/ask-session"
+import { readUser } from "@/lib/auth"
+import type { TaskSession } from "@/ask/task-session"
 import { TABLE_PREVIEW_ROWS } from "@/components/ask/ask-result"
 import { CueLoop, INPUT_MIME_TYPE, PcmPlayer, openMicrophone, startCapture, toBase64 } from "@/voice/audio"
 
@@ -48,7 +51,7 @@ type Connection = {
   stream: MediaStream | null
   stopCapture: (() => void) | null
   idleTimer: number | undefined
-  toolKinds: Record<string, AskKind>
+  toolKinds: Record<string, AskKind | "tasks">
   userEntry: number | null
   modelEntry: number | null
   toolEntries: Map<string, number>
@@ -106,6 +109,7 @@ export class VoiceController {
   // 查詢輪詢的中止訊號，登出時才中止（ask/ask-session.ts）。掛斷或離開頁面都不中止：
   // 查詢還沒完成的，卡片照樣更新到查完
   private readonly polls: AbortSignal
+  private readonly tasks: TaskSession
   private page: AskPageContext | undefined
 
   setPageContext = (page: AskPageContext) => {
@@ -124,6 +128,7 @@ export class VoiceController {
   constructor(conversation: Conversation, polls: AbortSignal) {
     this.conversation = conversation
     this.polls = polls
+    this.tasks = askSessionFor(readUser()?.id ?? "").tasks
   }
 
   subscribe = (listener: () => void) => {
@@ -348,10 +353,10 @@ export class VoiceController {
   private async runTool(conn: Connection, call: FunctionCall) {
     const askKind = (call.name && conn.toolKinds[call.name]) || null
     const rawQuestion = call.args?.question
-    const question = typeof rawQuestion === "string" ? rawQuestion.trim().slice(0, MAX_QUESTION_LENGTH) : ""
+    const question = typeof rawQuestion === "string" ? rawQuestion.trim() : ""
     const page = this.page ? { ...this.page, facts: [...this.page.facts] } : undefined
     this.openEntry(conn, "user")
-    const entryId = this.conversation.addToolRun(askKind, question, { page })
+    const entryId = this.conversation.addToolRun(askKind === "tasks" ? null : askKind, question, { page })
     if (call.id) conn.toolEntries.set(call.id, entryId)
     conn.pending += 1
     this.update({ pending: conn.pending })
@@ -365,7 +370,17 @@ export class VoiceController {
     try {
       if (!askKind) throw new Error(`沒有這個查詢工具：${call.name}`)
       if (!question) throw new Error("模型沒有給要查的問題")
-      if (page) {
+      if (question.length > 8000) throw new Error("這次交辦內容太長，請分幾次補充工作。")
+      if (await this.tasks.handle(question, { conversation: this.conversation, source: "voice", page })) {
+        this.conversation.completeWithMessage(entryId, "voice", "")
+        response = { output: { status: "已更新工作安排", answer: "已安排工作，執行結果或待補資料會顯示在工作清單。", instruction: "尚未完成的工作只能說已安排，不得宣稱已完成。" } }
+      } else if (askKind === "tasks") {
+        const clarification = "請說明要執行哪些工作，或指定要繼續的任務。"
+        this.conversation.replace(entryId, { clarification })
+        response = { clarification }
+      } else if (question.length > MAX_QUESTION_LENGTH) {
+        throw new Error("單項查詢最多 500 字，請精簡查詢內容。")
+      } else if (page) {
         const earlier = recentConversationTurns(this.conversation.getSnapshot(), 3, 300)
         const routed = await routeAsk(question, false, earlier, page)
         if (signal.aborted) return

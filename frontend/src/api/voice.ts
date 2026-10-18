@@ -8,7 +8,7 @@ export type VoiceSession = {
   api_version: string
   expires_at: string
   config: Record<string, unknown>
-  tool_kinds: Record<string, AskKind>
+  tool_kinds: Record<string, AskKind | "tasks">
 }
 
 export function startVoiceSession() {

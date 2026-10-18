@@ -63,8 +63,10 @@ const FIELD =
 
 export function OrderPage() {
   const { orderId = "" } = useParams()
+  const location = useLocation()
   const [loaded, setLoaded] = useState<{
     id: string
+    navigationKey: string
     order: OrderDetail
   } | null>(null)
   const [error, setError] = useState("")
@@ -74,7 +76,7 @@ export function OrderPage() {
     getOrder(orderId, controller.signal)
       .then((order) => {
         if (!controller.signal.aborted) {
-          setLoaded({ id: orderId, order })
+          setLoaded({ id: orderId, navigationKey: location.key, order })
           setError("")
         }
       })
@@ -83,8 +85,8 @@ export function OrderPage() {
           setError(err instanceof Error ? err.message : "訂單沒有載入")
       })
     return () => controller.abort()
-  }, [orderId, retry])
-  if (!loaded || loaded.id !== orderId)
+  }, [orderId, retry, location.key])
+  if (!loaded || loaded.id !== orderId || loaded.navigationKey !== location.key)
     return (
       <div>
         <PageHeader title="訂單明細" backTo="/orders" />
@@ -105,7 +107,7 @@ export function OrderPage() {
         </main>
       </div>
     )
-  return <OrderEditor key={`${orderId}/${retry}`} initial={loaded.order} />
+  return <OrderEditor key={`${orderId}/${retry}/${loaded.navigationKey}`} initial={loaded.order} />
 }
 
 export function PracticeOrderPage() {

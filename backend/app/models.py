@@ -795,6 +795,18 @@ class AssistantMemoryEntry(Base):
     created_at: Mapped[dt.datetime] = mapped_column(server_default=func.clock_timestamp())
 
 
+class AssistantTaskExecution(Base):
+    """任務操作的重送保護；只保存資源識別碼與結果，不保存對話原文。"""
+
+    __tablename__ = "assistant_task_execution"
+    user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), primary_key=True)
+    task_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    capability: Mapped[str] = mapped_column(String(80))
+    scope_user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"))
+    request_hash: Mapped[str] = mapped_column(String(64))
+    result: Mapped[dict[str, Any]] = mapped_column(JSONB)
+
+
 class AssistantMemoryNode(Base):
     """每個節點獨立保存名稱、筆記與隱藏狀態，其他裝置不會覆蓋無關節點。"""
 
