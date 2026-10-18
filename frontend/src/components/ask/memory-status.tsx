@@ -14,16 +14,14 @@ export function AccountMemoryStatus({
     memory?.getSnapshot ?? idle,
     memory?.getSnapshot ?? idle
   )
-  if (!memory) return null
+  if (!memory || status === "saved") return null
   return (
     <p role="status" className="px-3 py-1 text-xs text-muted-foreground">
       {status === "loading"
         ? "正在讀取帳號記憶…"
         : status === "saving"
           ? "正在保存記憶…"
-          : status === "saved"
-            ? "記憶已保存至帳號"
-            : "帳號記憶尚未同步，請檢查連線。"}
+          : "帳號記憶尚未同步，請檢查連線。"}
       {status === "error" && (
         <button
           type="button"

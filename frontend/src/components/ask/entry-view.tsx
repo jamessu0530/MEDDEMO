@@ -73,9 +73,6 @@ function ToolCard({
       ) : run.clarification ? (
         <p className="text-sm leading-relaxed" role="status">
           {run.clarification}
-          <span className="mt-2 block text-xs text-muted-foreground">
-            在下方直接補充就可以。
-          </span>
         </p>
       ) : run.error ? (
         <p className="text-sm text-destructive">{run.error}</p>
