@@ -43,7 +43,7 @@ def test_legacy_sharing_controls_are_retired_for_every_role(engine, auth, method
     for user in ("U01", "M01", "A01"):
         response = request(path, headers=auth(user))
         assert response.status_code == 410
-        assert response.json()["detail"] == "持續位置分享已停用，主管僅能查看客戶提問。"
+        assert response.json()["detail"] == "持續位置分享已停用，主管僅能查看提問地圖。"
     assert request(path).status_code == 401
 
 

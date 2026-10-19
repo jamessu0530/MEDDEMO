@@ -1,4 +1,4 @@
-"""主管端：團隊的客戶提問與客戶策略。"""
+"""主管端：團隊的提問地圖與客戶策略。"""
 
 import datetime as dt
 from typing import Annotated
@@ -33,6 +33,14 @@ class InquiryCustomer(BaseModel):
     name: str
 
 
+class InquiryLocation(BaseModel):
+    lat: float
+    lng: float
+    accuracy_m: float | None
+    captured_at: str
+    place_name: str | None = None
+
+
 class CustomerInquiry(BaseModel):
     id: str
     rep: TeamRep
@@ -41,6 +49,7 @@ class CustomerInquiry(BaseModel):
     kind: str
     status: str
     created_at: str
+    location: InquiryLocation | None
 
 
 class TeamInquiries(BaseModel):
@@ -48,6 +57,12 @@ class TeamInquiries(BaseModel):
     reps: list[TeamRep]
     items: list[CustomerInquiry]
     total: int
+    map_items: list[CustomerInquiry]
+    mapped_total: int
+    unlocated_count: int
+
+
+MAP_LIMIT = 1000
 
 
 @router.get("/inquiries", response_model=TeamInquiries)
@@ -60,7 +75,7 @@ def team_inquiries(
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ):
-    """只列團隊與客戶有關的提問，不回傳答案、私人記憶、位置或行程。"""
+    """只回傳團隊提問的固定地點；不讀取即時位置或行程。"""
     response.headers["Cache-Control"] = "no-store"
     people = reps(session, manager)
     by_id = {person.id: person for person in people}
@@ -69,7 +84,7 @@ def team_inquiries(
     conditions = [
         AskRecord.user_id.in_([rep] if rep else list(by_id)),
         AskRecord.ghost.is_(False),
-        func.jsonb_array_length(AskRecord.customer_ids) > 0,
+        or_(func.jsonb_array_length(AskRecord.customer_ids) > 0, AskRecord.inquiry_location.is_not(None)),
         AskRecord.created_at >= dt.datetime.now(dt.UTC).replace(tzinfo=None) - dt.timedelta(days=days),
     ]
     if needs_help:
@@ -84,23 +99,36 @@ def team_inquiries(
             AskRecord.question.ilike(pattern),
             AskRecord.user_id.in_([person.id for person in people if q.strip() in person.name]),
             customer_match,
+            AskRecord.inquiry_location["place_name"].astext.ilike(pattern),
         ))
     total = session.scalar(select(func.count()).select_from(AskRecord).where(*conditions)) or 0
     records = list(session.scalars(select(AskRecord).where(*conditions)
         .order_by(AskRecord.created_at.desc(), AskRecord.id.desc()).offset(offset).limit(limit)))
-    customer_ids = {customer_id for record in records for customer_id in record.customer_ids}
+    located = [*conditions, AskRecord.inquiry_location.is_not(None)]
+    mapped_total = session.scalar(select(func.count()).select_from(AskRecord).where(*located)) or 0
+    map_records = list(session.scalars(select(AskRecord).where(*located)
+        .order_by(AskRecord.created_at.desc(), AskRecord.id.desc()).limit(MAP_LIMIT)))
+    customer_ids = {key for record in [*records, *map_records] for key in (record.customer_ids or [])}
     customers = {customer.id: customer for customer in session.scalars(select(Customer).where(Customer.id.in_(customer_ids)))}
+
     def person_out(person: AppUser) -> TeamRep:
         return TeamRep(id=person.id, name=person.name, region=person.region)
+
+    def inquiry_out(record: AskRecord) -> CustomerInquiry:
+        return CustomerInquiry(
+            id=record.id, rep=person_out(by_id[record.user_id]),
+            customers=[InquiryCustomer(id=key, name=customers[key].name) for key in (record.customer_ids or []) if key in customers],
+            question=record.question, kind=record.kind, status=record.status,
+            created_at=record.created_at.replace(tzinfo=record.created_at.tzinfo or dt.UTC).isoformat(),
+            location=InquiryLocation(**record.inquiry_location) if record.inquiry_location else None,
+        )
+
     return TeamInquiries(
         scope="全公司" if manager.role == "it" else role_data_user(manager).region,
         reps=[person_out(person) for person in people], total=total,
-        items=[CustomerInquiry(
-            id=record.id, rep=person_out(by_id[record.user_id]),
-            customers=[InquiryCustomer(id=key, name=customers[key].name) for key in record.customer_ids if key in customers],
-            question=record.question, kind=record.kind, status=record.status,
-            created_at=record.created_at.replace(tzinfo=record.created_at.tzinfo or dt.UTC).isoformat(),
-        ) for record in records],
+        items=[inquiry_out(record) for record in records],
+        map_items=[inquiry_out(record) for record in map_records], mapped_total=mapped_total,
+        unlocated_count=total-mapped_total,
     )
 
 
@@ -108,4 +136,4 @@ def team_inquiries(
 @router.get("/itineraries/{user_id}")
 @router.get("/locations")
 def retired_tracking(manager: ManagerUser, user_id: str | None = None):
-    raise HTTPException(410, "團隊動向追蹤已停用，請改看客戶提問。")
+    raise HTTPException(410, "團隊動向追蹤已停用，請改看提問地圖。")

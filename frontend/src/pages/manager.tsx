@@ -29,18 +29,18 @@ import { tagLabel } from "@/lib/methods"
 import { useIsDesktop } from "@/lib/use-media-query"
 import { cn } from "@/lib/utils"
 
-// 主管端的分頁：客戶提問（預設）、客戶策略、主推品項、簽核、方法卡。
+// 主管端的分頁：提問地圖（預設）、客戶策略、主推品項、簽核、方法卡。
 // 記在網址上，從客戶檔案回來還停在同一頁
 const VIEWS = ["inquiries", "priority", "featured", "oa", "methods"] as const
 type View = (typeof VIEWS)[number]
 const VIEW_TITLE: Record<View, string> = {
-  inquiries: "客戶提問",
+  inquiries: "提問地圖",
   priority: "客戶策略",
   featured: "主推品項",
   oa: "OA 簽核",
   methods: "方法卡",
 }
-const VIEW_TAB: Record<View, string> = { inquiries: "客戶提問", priority: "客戶策略", featured: "主推品項", oa: "簽核", methods: "方法卡" }
+const VIEW_TAB: Record<View, string> = { inquiries: "提問地圖", priority: "客戶策略", featured: "主推品項", oa: "簽核", methods: "方法卡" }
 // 標頭的圖示按鈕用固定的 44px，不跟著放大字體變大，標題才不會被擠掉（components/channels-link.tsx 同）
 const HEADER_BUTTON = "flex size-[44px] shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
 
@@ -60,7 +60,7 @@ function useItemParam(): [number | null, (id: number | null) => void] {
   return [itemParam(params.get("item")), select]
 }
 
-/** 主管端：了解團隊的客戶提問、簽申請單、寫方法卡。主管看自己底下的人，IT 看全公司 */
+/** 主管端：了解團隊的提問地圖、簽申請單、寫方法卡。主管看自己底下的人，IT 看全公司 */
 export function ManagerPage() {
   const user = useAuth()?.user
   const [params, setParams] = useSearchParams()
@@ -206,7 +206,7 @@ function OaInboxPanel() {
               setAttempt((n) => n + 1)
             },
           }}
-          secondary={{ label: "回客戶提問", onClick: () => navigate("/manager") }}
+          secondary={{ label: "回提問地圖", onClick: () => navigate("/manager") }}
         />
       )}
       {state.status === "ready" && state.items.length === 0 && (
@@ -385,7 +385,7 @@ function MethodsPanel() {
               setAttempt((n) => n + 1)
             },
           }}
-          secondary={{ label: "回客戶提問", onClick: () => navigate("/manager") }}
+          secondary={{ label: "回提問地圖", onClick: () => navigate("/manager") }}
         />
       )}
       {state.status === "ready" && state.cards.length === 0 && (

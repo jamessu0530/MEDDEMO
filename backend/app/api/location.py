@@ -10,4 +10,4 @@ router = APIRouter(prefix="/api/location", tags=["location"])
 @router.post("/pause")
 @router.post("/resume")
 def retired_location_sharing(user: CurrentUser):
-    raise HTTPException(410, "持續位置分享已停用，主管僅能查看客戶提問。")
+    raise HTTPException(410, "持續位置分享已停用，主管僅能查看提問地圖。")

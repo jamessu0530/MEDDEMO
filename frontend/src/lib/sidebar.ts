@@ -39,7 +39,7 @@ const SALES: SidebarGroups = {
 
 // 主管端的五個分頁（pages/manager.tsx 的 VIEWS），主管與 IT 共用
 const MANAGER: SidebarItem[] = [
-  { to: "/manager", label: "客戶提問", icon: MessagesSquare },
+  { to: "/manager", label: "提問地圖", icon: MessagesSquare },
   { to: "/manager?view=priority", label: "客戶策略", icon: ChartNoAxesCombined },
   { to: "/manager?view=featured", label: "主推品項", icon: Pill },
   { to: "/manager?view=oa", label: "簽核", icon: ClipboardCheck, badge: "oa" },

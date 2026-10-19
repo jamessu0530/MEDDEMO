@@ -13,6 +13,7 @@ const inquiry: CustomerInquiry = {
   kind: "knowledge",
   status: "no_evidence",
   created_at: "2026-10-18T08:30:00Z",
+  location: null,
 }
 
 function render(item = inquiry) {
@@ -53,4 +54,12 @@ describe("客戶提問卡片", () => {
     expect(html).not.toContain("已解決")
     expect(html).toContain('href="/customers/C02"')
   })
+  it("有定位時顯示提問當時的地點與地圖入口，不顯示即時動向", () => {
+    const html = render({ ...inquiry, location: { lat: 25.034, lng: 121.5645, accuracy_m: 12,
+      captured_at: inquiry.created_at, place_name: "康泰忠孝店附近" } })
+    expect(html).toContain("康泰忠孝店附近")
+    expect(html).not.toContain("目前位置")
+    expect(html).not.toContain("拜訪進度")
+  })
+
 })

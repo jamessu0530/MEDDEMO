@@ -1,3 +1,4 @@
+import type { InquiryLocation } from "@/api/customer-inquiries"
 import type { Attachment } from "@/api/attachments"
 import type { AskPageContext } from "@/ask/page-context"
 import { jsonBody, request, upload } from "@/api/client"
@@ -136,16 +137,17 @@ export function routeAsk(
 }
 
 /** 提問。附了檔案（拍產品盒、仿單、競品海報）就用 multipart 上傳 */
-export function createAsk(kind: AskKind, question: string, file?: File, ghost = false, context?: { page: AskPageContext; contextUsed?: boolean }) {
+export function createAsk(kind: AskKind, question: string, file?: File, ghost = false, context?: { page?: AskPageContext; contextUsed?: boolean; location?: InquiryLocation }) {
   if (!file)
     return request<Ask>("/api/asks", jsonBody("POST", { kind, question, ...(ghost ? { ghost: true } : {}),
-      ...(context && !ghost ? { page: context.page, context_used: context.contextUsed ?? false } : {}) }))
+      ...(context && !ghost ? { page: context.page, context_used: context.contextUsed ?? false, inquiry_location: context.location } : {}) }))
   const form = new FormData()
   form.append("kind", kind)
   form.append("question", question)
   if (ghost) form.append("ghost", "true")
   if (context && !ghost) {
-    form.append("page", JSON.stringify(context.page))
+    if (context.page) form.append("page", JSON.stringify(context.page))
+    if (context.location) form.append("inquiry_location", JSON.stringify(context.location))
     form.append("context_used", String(context.contextUsed ?? false))
   }
   form.append("file", file, file.name)

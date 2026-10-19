@@ -37,7 +37,8 @@ PRE_CUSTOMER_INQUIRIES_VERSION = "64a83d29677f"
 PRE_WORKPLACE_VERSION = "d73bdff86947"
 PRE_TASKS_VERSION = "e1fbd025761b"
 PRE_DEPLOYED_TASKS_VERSION = "4804e87a1e5e"
-TO_VERSION = "dc5261b3e8e6"
+PRE_INQUIRY_MAP_VERSION = "dc5261b3e8e6"
+TO_VERSION = "30dc533d81d0"
 
 
 def upgrade_customer_columns(connection: Connection) -> None:
@@ -56,7 +57,7 @@ def upgrade_customer_columns(connection: Connection) -> None:
 def upgrade_customer_inquiries(connection: Connection) -> None:
     """只新增可空的客戶關聯，舊問題不回溯公開。"""
     if inspect(connection).has_table("ask_record"):
-        connection.exec_driver_sql("ALTER TABLE ask_record ADD COLUMN IF NOT EXISTS customer_ids JSONB")
+        connection.exec_driver_sql("ALTER TABLE ask_record ADD COLUMN IF NOT EXISTS customer_ids JSONB, ADD COLUMN IF NOT EXISTS inquiry_location JSONB")
 
 
 def upgrade_oa_forms(connection: Connection) -> None:
@@ -100,7 +101,7 @@ def upgrade(connection: Connection, target: str | None = None) -> str:
     current = connection.scalar(select(AppSetting.value).where(AppSetting.key == "schema_version").with_for_update())
     if current == expected:
         return "資料表已是目前版本，無須更新。"
-    if current not in {FROM_VERSION, PREVIOUS_VERSION, ORDERS_VERSION, REPORTS_VERSION, PRODUCT_BROWSING_VERSION, PUBLIC_OUTLETS_VERSION, PRE_CALENDAR_VERSION, PRE_OA_VERSION, PRE_CATALOG_CLEANUP_VERSION, PRE_STOREFRONT_VERSION, PRE_PRODUCT_PHOTOS_VERSION, PRE_DEMO_PHOTOS_VERSION, PRE_ACCOUNT_MEMORY_VERSION, PRE_GHOST_VERSION, PRE_BUSINESS_REPORTS_VERSION, PRE_CUSTOMER_INQUIRIES_VERSION, PRE_WORKPLACE_VERSION, PRE_TASKS_VERSION, PRE_DEPLOYED_TASKS_VERSION} or expected != TO_VERSION:
+    if current not in {FROM_VERSION, PREVIOUS_VERSION, ORDERS_VERSION, REPORTS_VERSION, PRODUCT_BROWSING_VERSION, PUBLIC_OUTLETS_VERSION, PRE_CALENDAR_VERSION, PRE_OA_VERSION, PRE_CATALOG_CLEANUP_VERSION, PRE_STOREFRONT_VERSION, PRE_PRODUCT_PHOTOS_VERSION, PRE_DEMO_PHOTOS_VERSION, PRE_ACCOUNT_MEMORY_VERSION, PRE_GHOST_VERSION, PRE_BUSINESS_REPORTS_VERSION, PRE_CUSTOMER_INQUIRIES_VERSION, PRE_WORKPLACE_VERSION, PRE_TASKS_VERSION, PRE_DEPLOYED_TASKS_VERSION, PRE_INQUIRY_MAP_VERSION} or expected != TO_VERSION:
         raise RuntimeError(f"沒有保留資料的升級路徑：{current or '未記錄版本'} → {expected}；停止部署，不重灌。")
     for model in (LearningCompletion, MascotWardrobe, MascotCollectible, MascotEncounter, SalesOrder, ReportDataset, ProductBrowseProfile, ProductPhoto, PublicOutlet, OutletStorefront, AssistantMemoryEntry, AssistantMemoryNode, AssistantTaskExecution):
         model.__table__.create(connection, checkfirst=True)

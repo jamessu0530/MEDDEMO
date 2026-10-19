@@ -95,7 +95,7 @@ export function pageContextFor(pathname: string, search = ""): AssistantPage {
       oa: "簽核",
       methods: "方法卡",
     }
-    title = views[params.get("view") ?? ""] ?? "客戶提問"
+    title = views[params.get("view") ?? ""] ?? "提問地圖"
   } else {
     const titles: Record<string, string> = {
       route: "今日路線",

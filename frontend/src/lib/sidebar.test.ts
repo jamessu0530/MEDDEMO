@@ -23,11 +23,11 @@ describe("sidebarItems", () => {
   })
 
   it("主管：主管端的五個分頁，加上頻道", () => {
-    expect(labels("manager")).toEqual({ main: ["客戶提問", "客戶策略", "主推品項", "簽核", "方法卡"], more: ["我的報表", "訂單", "頻道", "商品與促銷"] })
+    expect(labels("manager")).toEqual({ main: ["提問地圖", "客戶策略", "主推品項", "簽核", "方法卡"], more: ["我的報表", "訂單", "頻道", "商品與促銷"] })
   })
 
   it("IT：組織管理在最前面，接著是主管端", () => {
-    expect(labels("it")).toEqual({ main: ["組織管理", "客戶提問", "客戶策略", "主推品項", "簽核", "方法卡"], more: ["我的報表", "訂單", "頻道", "商品與促銷"] })
+    expect(labels("it")).toEqual({ main: ["組織管理", "提問地圖", "客戶策略", "主推品項", "簽核", "方法卡"], more: ["我的報表", "訂單", "頻道", "商品與促銷"] })
   })
 
   it("數字掛在對的項目上", () => {
@@ -38,7 +38,7 @@ describe("sidebarItems", () => {
   })
 
   it("主管端的項目連到各自的分頁", () => {
-    expect(item("manager", "客戶提問").to).toBe("/manager")
+    expect(item("manager", "提問地圖").to).toBe("/manager")
     expect(item("manager", "簽核").to).toBe("/manager?view=oa")
     expect(item("manager", "主推品項").to).toBe("/manager?view=featured")
   })
@@ -70,15 +70,15 @@ describe("isActiveItem", () => {
     expect(isActiveItem(item("sales", "銷售"), "/products-old", "")).toBe(false)
   })
 
-  it("主管端照 view 判斷，沒帶或不認得的 view 是客戶提問", () => {
-    expect(isActiveItem(item("manager", "客戶提問"), "/manager", "")).toBe(true)
-    expect(isActiveItem(item("manager", "客戶提問"), "/manager", "?view=routes&rep=U01")).toBe(true)
-    expect(isActiveItem(item("manager", "客戶提問"), "/manager", "?view=xyz")).toBe(true)
-    expect(isActiveItem(item("manager", "客戶提問"), "/manager", "?view=asks")).toBe(true)
+  it("主管端照 view 判斷，沒帶或不認得的 view 是提問地圖", () => {
+    expect(isActiveItem(item("manager", "提問地圖"), "/manager", "")).toBe(true)
+    expect(isActiveItem(item("manager", "提問地圖"), "/manager", "?view=routes&rep=U01")).toBe(true)
+    expect(isActiveItem(item("manager", "提問地圖"), "/manager", "?view=xyz")).toBe(true)
+    expect(isActiveItem(item("manager", "提問地圖"), "/manager", "?view=asks")).toBe(true)
     expect(isActiveItem(item("manager", "客戶策略"), "/manager", "?view=priority")).toBe(true)
-    expect(isActiveItem(item("manager", "客戶提問"), "/manager", "?view=priority")).toBe(false)
+    expect(isActiveItem(item("manager", "提問地圖"), "/manager", "?view=priority")).toBe(false)
     expect(isActiveItem(item("manager", "主推品項"), "/manager", "?view=featured")).toBe(true)
-    expect(isActiveItem(item("manager", "客戶提問"), "/manager", "?view=featured")).toBe(false)
+    expect(isActiveItem(item("manager", "提問地圖"), "/manager", "?view=featured")).toBe(false)
     expect(isActiveItem(item("manager", "簽核"), "/manager", "?view=oa&item=4")).toBe(true)
     expect(isActiveItem(item("manager", "簽核"), "/manager", "?view=notices")).toBe(false)
     expect(isActiveItem(item("manager", "簽核"), "/oa/forms/4", "")).toBe(false)

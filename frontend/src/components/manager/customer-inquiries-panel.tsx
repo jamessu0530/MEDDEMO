@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { Link, useSearchParams } from "react-router"
-import { MessageCircleQuestion, RefreshCw, Search } from "@/components/icons"
+import { MapPin, MessageCircleQuestion, RefreshCw, Search } from "@/components/icons"
 
 import {
   getCustomerInquiries,
@@ -12,6 +12,11 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Notice } from "@/components/notice"
+import { InquiryMapSlot } from "@/components/manager/inquiry-map-slot"
+import { ResizableMapLayout } from "@/components/manager/resizable-map-layout"
+import { useIsDesktop } from "@/lib/use-media-query"
+import { inquiryPlaceLabel } from "@/lib/inquiry-map"
+import { cn } from "@/lib/utils"
 import { formatTaipeiDateTime } from "@/lib/format"
 
 const PAGE_SIZE = 50
@@ -80,7 +85,7 @@ export function CustomerInquiriesPanel() {
                   message:
                     error instanceof ApiError
                       ? error.message
-                      : "客戶提問暫時無法載入。",
+                      : "提問地圖暫時無法載入。",
                 }
           )
         })
@@ -112,14 +117,13 @@ export function CustomerInquiriesPanel() {
   }
   const state = load.key === key ? load : { status: "loading" as const }
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
+    <div className="mx-auto flex w-full max-w-full flex-col gap-4">
       <section className="flex items-start gap-3 rounded-2xl border-2 bg-card p-4 shadow-lip">
         <MessageCircleQuestion className="mt-0.5 size-6 shrink-0 text-primary" />
         <div className="min-w-0">
-          <h2 className="font-semibold">了解客戶問題，協助業務找到答案</h2>
+          <h2 className="font-semibold">提問地圖</h2>
           <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-            看看團隊正在詢問哪些客戶、遇到什麼問題。AI
-            尚未解決的提問，可以優先關心。
+            點選地點，查看業務當時提出的問題與時間。
           </p>
         </div>
       </section>
@@ -161,7 +165,7 @@ export function CustomerInquiriesPanel() {
           variant="outline"
           size="icon"
           className="size-11"
-          aria-label="重新整理客戶提問"
+          aria-label="重新整理提問地圖"
           onClick={() => setAttempt((value) => value + 1)}
         >
           <RefreshCw className="size-4" />
@@ -181,7 +185,7 @@ export function CustomerInquiriesPanel() {
           role="status"
           className="py-10 text-center text-sm text-muted-foreground"
         >
-          載入客戶提問中…
+          載入提問地圖中…
         </p>
       )}
       {state.status === "error" && (
@@ -202,38 +206,31 @@ export function CustomerInquiriesPanel() {
         <>
           <p className="text-sm text-muted-foreground">
             {state.data.scope} · 最近 {days} 天 · 共 {state.data.total}{" "}
-            則客戶提問
+            則提問
           </p>
           {refreshError && (
             <p role="status" className="text-sm text-destructive">
               更新暫時失敗，目前顯示上次載入的提問。請重新整理。
             </p>
           )}
+          {state.data.items.length === 0 && <InquiryMapSlot items={[]} selectedId={null} onSelect={() => {}} className="h-64" />}
           {state.data.items.length === 0 ? (
             <div className="rounded-2xl border border-dashed px-5 py-12 text-center">
               <p className="font-medium">
                 {search || rep || help
-                  ? "沒有符合條件的客戶提問"
-                  : "最近還沒有客戶提問"}
+                  ? "沒有符合條件的提問"
+                  : "最近還沒有提問"}
               </p>
               <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                業務向 AI 詢問特定客戶時，相關問題會顯示在這裡。
+                業務提問時取得的地點，會保留在提問地圖。
               </p>
             </div>
           ) : (
-            <div className="grid min-w-0 gap-3 lg:grid-cols-2">
-              {state.data.items.map((inquiry) => (
-                <CustomerInquiryCard
-                  key={inquiry.id}
-                  inquiry={inquiry}
-                  backTo={`/manager?${params}`}
-                />
-              ))}
-            </div>
+            <InquiryResults key={key} data={state.data} backTo={`/manager?${params}`} />
           )}
           {(offset > 0 || offset + PAGE_SIZE < state.data.total) && (
             <nav
-              aria-label="客戶提問分頁"
+              aria-label="提問分頁"
               className="flex items-center justify-between gap-2"
             >
               <Button
@@ -267,12 +264,23 @@ export function CustomerInquiriesPanel() {
 export function CustomerInquiryCard({
   inquiry,
   backTo,
+  onLocate,
+  selected = false,
 }: {
   inquiry: CustomerInquiry
   backTo: string
+  onLocate?: () => void
+  selected?: boolean
 }) {
   return (
-    <article className="flex min-w-0 flex-col gap-3 rounded-2xl border-2 bg-card p-4 shadow-lip">
+    <article className={cn("flex min-w-0 flex-col gap-3 rounded-2xl border-2 bg-card p-4 shadow-lip", selected && "border-primary")}>
+      {inquiry.location ? (
+        <button type="button" disabled={!onLocate} onClick={onLocate} className="flex min-h-9 items-center gap-1.5 text-left text-sm font-medium text-primary disabled:text-foreground">
+          <MapPin className="size-4 shrink-0" />
+          <span className="min-w-0 break-words">{inquiryPlaceLabel(inquiry.location)}</span>
+          {onLocate && <span className="ml-auto shrink-0 text-xs">在地圖查看</span>}
+        </button>
+      ) : <p className="text-xs text-muted-foreground">未取得提問定位</p>}
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           {inquiry.customers.map((customer) => (
@@ -303,4 +311,28 @@ export function CustomerInquiryCard({
       </p>
     </article>
   )
+}
+
+
+function InquiryResults({ data, backTo }: { data: TeamInquiries; backTo: string }) {
+  const desktop = useIsDesktop()
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const selected = [...data.map_items, ...data.items].find((item) => item.id === selectedId)
+  const mapItems = selected?.location && !data.map_items.some((item) => item.id === selected.id)
+    ? [selected, ...data.map_items] : data.map_items
+  const items = selected && !data.items.some((item) => item.id === selected.id) ? [selected, ...data.items] : data.items
+  const map = <div className="flex min-w-0 flex-col gap-2">
+    <InquiryMapSlot items={mapItems} selectedId={selectedId} onSelect={setSelectedId}
+      className={desktop ? "h-[var(--manager-map-height,32rem)]" : "h-80"} />
+    <p className="text-xs leading-relaxed text-muted-foreground">
+      {data.mapped_total} 則有提問地點 · {data.unlocated_count} 則未取得定位
+      {data.map_items.length < data.mapped_total && ` · 地圖先顯示最近 ${data.map_items.length} 則，可縮小篩選範圍`}
+    </p>
+  </div>
+  const list = <div className="flex min-w-0 flex-col gap-3" aria-label="提問清單">
+    {items.map((inquiry) => <CustomerInquiryCard key={inquiry.id} inquiry={inquiry} backTo={backTo}
+      selected={selectedId === inquiry.id} onLocate={inquiry.location ? () => setSelectedId(inquiry.id) : undefined} />)}
+  </div>
+  return desktop ? <ResizableMapLayout contentLabel="提問" map={map}>{list}</ResizableMapLayout>
+    : <div className="flex min-w-0 flex-col gap-4">{map}{list}</div>
 }

@@ -6,6 +6,7 @@
 import { createAsk, getAsk, isFinished, type Ask, type AskKind } from "@/api/asks"
 import { ApiError } from "@/api/client"
 import type { Conversation } from "@/ask/conversation"
+import { captureInquiryLocation } from "@/lib/inquiry-location"
 
 // 還沒答完的提問每半秒問一次進度，查到第幾輪會即時出現在畫面上。
 // 用 500ms 而不是打字問答原本的 1000ms：語音那條路的輪詢間隔會直接加在業務的等待時間上
@@ -38,10 +39,13 @@ export async function runAsk(
 ): Promise<Ask> {
   const entry = conversation.getSnapshot().find((entry) => entry.id === entryId)
   const ghost = entry?.ghost
+  const location = ghost ? undefined : await captureInquiryLocation(signal)
+  if (signal.aborted) throw signal.reason
+  const context = entry?.kind === "tool" && entry.page ? { page: entry.page, contextUsed: entry.contextUsed } : undefined
   const ask = ghost
     ? await createAsk(kind, question, options.file, true)
-    : entry?.kind === "tool" && entry.page
-      ? await createAsk(kind, question, options.file, false, { page: entry.page, contextUsed: entry.contextUsed })
+    : context || location
+      ? await createAsk(kind, question, options.file, false, { ...context, ...(location ? { location } : {}) })
       : await createAsk(kind, question, options.file)
   if (options.utteranceId !== undefined && ask.attachment) conversation.attach(options.utteranceId, ask.attachment)
   conversation.replace(entryId, { ask })

@@ -3,7 +3,7 @@ from sqlalchemy import func, inspect, select
 
 from app.db import schema_version
 from app.models import AppSetting, LearningCompletion, SalesTransaction, UserReportConfig
-from scripts.upgrade_schema import PRE_ACCOUNT_MEMORY_VERSION, PRE_GHOST_VERSION, PRE_BUSINESS_REPORTS_VERSION, PRE_CUSTOMER_INQUIRIES_VERSION, PRE_WORKPLACE_VERSION, PRE_TASKS_VERSION, PRE_DEPLOYED_TASKS_VERSION
+from scripts.upgrade_schema import PRE_ACCOUNT_MEMORY_VERSION, PRE_GHOST_VERSION, PRE_BUSINESS_REPORTS_VERSION, PRE_CUSTOMER_INQUIRIES_VERSION, PRE_WORKPLACE_VERSION, PRE_TASKS_VERSION, PRE_DEPLOYED_TASKS_VERSION, PRE_INQUIRY_MAP_VERSION
 from scripts.upgrade_schema import FROM_VERSION, PREVIOUS_VERSION, ORDERS_VERSION, REPORTS_VERSION, PRODUCT_BROWSING_VERSION, PUBLIC_OUTLETS_VERSION, PRE_CALENDAR_VERSION, PRE_OA_VERSION, PRE_CATALOG_CLEANUP_VERSION, PRE_STOREFRONT_VERSION, PRE_PRODUCT_PHOTOS_VERSION, PRE_DEMO_PHOTOS_VERSION, TO_VERSION, upgrade
 
 
@@ -25,7 +25,7 @@ def test_additive_upgrade_preserves_transactions_reports_and_existing_progress(i
     assert s.get(LearningCompletion, ("S1", "customer-v1")) is not None
 
 
-@pytest.mark.parametrize("version", [PREVIOUS_VERSION, ORDERS_VERSION, REPORTS_VERSION, PRODUCT_BROWSING_VERSION, PUBLIC_OUTLETS_VERSION, PRE_CALENDAR_VERSION, PRE_OA_VERSION, PRE_CATALOG_CLEANUP_VERSION, PRE_STOREFRONT_VERSION, PRE_PRODUCT_PHOTOS_VERSION, PRE_DEMO_PHOTOS_VERSION, PRE_ACCOUNT_MEMORY_VERSION, PRE_GHOST_VERSION, PRE_BUSINESS_REPORTS_VERSION, PRE_CUSTOMER_INQUIRIES_VERSION, PRE_WORKPLACE_VERSION, PRE_TASKS_VERSION, PRE_DEPLOYED_TASKS_VERSION])
+@pytest.mark.parametrize("version", [PREVIOUS_VERSION, ORDERS_VERSION, REPORTS_VERSION, PRODUCT_BROWSING_VERSION, PUBLIC_OUTLETS_VERSION, PRE_CALENDAR_VERSION, PRE_OA_VERSION, PRE_CATALOG_CLEANUP_VERSION, PRE_STOREFRONT_VERSION, PRE_PRODUCT_PHOTOS_VERSION, PRE_DEMO_PHOTOS_VERSION, PRE_ACCOUNT_MEMORY_VERSION, PRE_GHOST_VERSION, PRE_BUSINESS_REPORTS_VERSION, PRE_CUSTOMER_INQUIRIES_VERSION, PRE_WORKPLACE_VERSION, PRE_TASKS_VERSION, PRE_DEPLOYED_TASKS_VERSION, PRE_INQUIRY_MAP_VERSION])
 def test_current_deployed_schema_can_upgrade_without_reseeding(interaction_session, version):
     s = interaction_session
     s.add(AppSetting(key="schema_version", value=version)); s.flush()
@@ -110,3 +110,18 @@ def test_customer_inquiry_upgrade_preserves_queries_without_sharing_old_history(
     s.expire_all()
     saved = s.get(AskRecord, "private-old-query")
     assert saved.question == "既有客戶問題" and saved.customer_ids is None
+
+
+def test_inquiry_map_upgrade_preserves_questions_without_inventing_locations(interaction_session):
+    from sqlalchemy import text
+    from app.models import AskRecord
+    s = interaction_session
+    AskRecord.__table__.create(s.connection(), checkfirst=True)
+    s.add(AskRecord(id="without-gps", user_id="S1", kind="data", question="舊提問", customer_ids=["C1"], status="answered"))
+    s.flush()
+    s.execute(text("ALTER TABLE ask_record DROP COLUMN inquiry_location"))
+    s.add(AppSetting(key="schema_version", value=PRE_INQUIRY_MAP_VERSION)); s.flush()
+    upgrade(s.connection())
+    s.expire_all()
+    row = s.get(AskRecord, "without-gps")
+    assert row.question == "舊提問" and row.customer_ids == ["C1"] and row.inquiry_location is None

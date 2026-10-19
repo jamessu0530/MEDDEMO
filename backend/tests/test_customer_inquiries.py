@@ -49,7 +49,7 @@ def test_only_customer_questions_in_the_managers_team_are_shared(tx, client, aut
     assert item["id"] == "team-inquiry"
     assert item["customers"] == [{"id": customer.id, "name": customer.name}]
     assert item["rep"]["id"] == "U01" and item["created_at"].endswith("+00:00")
-    assert set(item) == {"id", "rep", "customers", "question", "kind", "status", "created_at"}
+    assert set(item) == {"id", "rep", "customers", "question", "kind", "status", "created_at", "location"}
     assert "私人的完整答案" not in response.text and "不公開的查詢" not in response.text
     assert tx.scalar(select(func.count()).select_from(Itinerary)) == before
     assert client.get("/api/asks/team-inquiry", headers=auth("M01")).status_code == 404
@@ -122,3 +122,123 @@ def test_typed_voice_and_attachment_queries_keep_customer_context(client, tx, au
     assert ghost.status_code == 202, ghost.text
     tx.expire_all()
     assert tx.get(AskRecord, ghost.json()["id"]).customer_ids == []
+
+
+def fresh_fix(**changes):
+    return dict(lat=25.034, lng=121.5645, accuracy_m=15,
+                captured_at=dt.datetime.now(dt.UTC).isoformat()) | changes
+
+
+@pytest.mark.parametrize("multipart", [False, True])
+def test_a_question_keeps_one_fixed_location_and_appears_on_the_map(client, tx, auth, multipart):
+    import json
+    fix = fresh_fix()
+    payload = dict(kind="data", question="公司有哪些藥品？", inquiry_location=fix)
+    if multipart:
+        response = client.post("/api/asks", headers=auth("U01"),
+                               data={**payload, "inquiry_location": json.dumps(fix)},
+                               files={"ignored": (None, "multipart")})
+    else:
+        response = client.post("/api/asks", headers=auth("U01"), json=payload)
+    assert response.status_code == 202, response.text
+    key = response.json()["id"]
+    tx.expire_all()
+    saved = dict(tx.get(AskRecord, key).inquiry_location)
+    assert (saved["lat"], saved["lng"]) == (fix["lat"], fix["lng"])
+    response = client.post("/api/presence/ping", headers=auth("U01"),
+                           json={"active": True, "location": {"lat": 23, "lng": 120}})
+    assert response.status_code == 200
+    tx.expire_all()
+    assert tx.get(AskRecord, key).inquiry_location == saved
+    data = client.get("/api/manager/inquiries", headers=auth("M01")).json()
+    assert data["mapped_total"] == 1 and data["unlocated_count"] == 0
+    assert data["map_items"][0]["id"] == key
+    assert data["map_items"][0]["location"] == saved
+    assert not {"route", "live", "current_location", "polyline"} & data.keys()
+    assert client.get("/api/manager/inquiries", headers=auth("M02")).json()["map_items"] == []
+
+
+def test_map_points_follow_filters_and_are_not_limited_to_the_list_page(tx, client, auth, customers):
+    fix = fresh_fix() | {"place_name": "提問時的店家附近"}
+    record(tx, "located-a", customers[0], inquiry_location=fix)
+    record(tx, "located-b", customers[1], inquiry_location=fix, status="failed")
+    record(tx, "unlocated", customers[0])
+    record(tx, "outside-map", customers[0], inquiry_location=fix, user_id="U03")
+    record(tx, "ghost-map", customers[0], inquiry_location=fix, ghost=True)
+    data = client.get("/api/manager/inquiries?limit=1&offset=1", headers=auth("M01")).json()
+    assert len(data["items"]) == 1 and {item["id"] for item in data["map_items"]} == {"located-a", "located-b"}
+    assert data["total"] == 3 and data["mapped_total"] == 2 and data["unlocated_count"] == 1
+    help = client.get("/api/manager/inquiries?needs_help=true", headers=auth("M01")).json()
+    assert [item["id"] for item in help["map_items"]] == ["located-b"]
+    assert client.get("/api/manager/inquiries?rep=U02", headers=auth("M01")).json()["map_items"] == []
+    assert client.get("/api/manager/inquiries?q=提問時的店家", headers=auth("M01")).json()["mapped_total"] == 2
+
+
+def test_question_customer_is_not_mistaken_for_physical_location(tx, client, auth, customers):
+    here, other = customers
+    fix = fresh_fix(lat=here.lat, lng=here.lng)
+    response = client.post("/api/asks", headers=auth("U01"),
+                           json=dict(kind="data", question=f"{other.id} 的進貨如何？", inquiry_location=fix))
+    assert response.status_code == 202, response.text
+    tx.expire_all()
+    row = tx.get(AskRecord, response.json()["id"])
+    assert row.customer_ids == [other.id]
+    assert row.inquiry_location["place_name"] == f"{here.name}附近"
+    assert (row.inquiry_location["lat"], row.inquiry_location["lng"]) == (here.lat, here.lng)
+
+
+@pytest.mark.parametrize("changes", [
+    {"captured_at": (dt.datetime.now(dt.UTC) - dt.timedelta(minutes=10)).isoformat()},
+    {"captured_at": (dt.datetime.now(dt.UTC) + dt.timedelta(minutes=5)).isoformat()},
+])
+def test_old_or_future_fixes_are_not_saved_but_the_question_still_works(client, tx, auth, changes):
+    response = client.post("/api/asks", headers=auth("U01"),
+                           json=dict(kind="data", question="有哪些商品？", inquiry_location=fresh_fix(**changes)))
+    assert response.status_code == 202
+    tx.expire_all()
+    assert tx.get(AskRecord, response.json()["id"]).inquiry_location is None
+
+
+def test_ghost_questions_never_keep_or_share_locations(client, tx, auth, customers):
+    response = client.post("/api/asks", headers=auth("U01"),
+                           json=dict(kind="knowledge", question=customers[0].name, ghost=True, inquiry_location=fresh_fix()))
+    assert response.status_code == 202
+    tx.expire_all()
+    row = tx.get(AskRecord, response.json()["id"])
+    assert row.inquiry_location is None and row.customer_ids == []
+    assert client.get("/api/manager/inquiries", headers=auth("M01")).json()["map_items"] == []
+
+
+@pytest.mark.parametrize("changes", [{"lat": 91}, {"lng": -181}, {"accuracy_m": -1}, {"lat": "NaN"}, {"captured_at": "2026-10-20T08:00:00"}])
+def test_invalid_fixes_are_rejected(client, auth, changes):
+    assert client.post("/api/asks", headers=auth("U01"),
+                       json=dict(kind="data", question="有哪些商品？", inquiry_location=fresh_fix(**changes))).status_code == 422
+
+
+@pytest.mark.parametrize("role", ["M01", "A01"])
+def test_non_sales_accounts_cannot_record_question_locations(client, tx, auth, role):
+    response = client.post("/api/asks", headers=auth(role),
+                           json=dict(kind="knowledge", question="退貨規定？", inquiry_location=fresh_fix()))
+    assert response.status_code == 202, response.text
+    tx.expire_all()
+    assert tx.get(AskRecord, response.json()["id"]).inquiry_location is None
+
+
+def test_coarse_question_fix_does_not_claim_a_nearby_store(client, tx, auth, customers):
+    customer = customers[0]
+    fix = fresh_fix(lat=customer.lat, lng=customer.lng, accuracy_m=1500)
+    response = client.post("/api/asks", headers=auth("U01"),
+                           json=dict(kind="data", question="有哪些商品？", inquiry_location=fix))
+    assert response.status_code == 202
+    tx.expire_all()
+    location = tx.get(AskRecord, response.json()["id"]).inquiry_location
+    assert location["place_name"] is None and location["accuracy_m"] == 1500
+
+
+def test_map_limit_reports_full_count_without_affecting_the_question_list(tx, client, auth, customers, monkeypatch):
+    monkeypatch.setattr("app.api.manager.MAP_LIMIT", 1)
+    for key in ("pin-1", "pin-2"):
+        record(tx, key, customers[0], inquiry_location=fresh_fix())
+    data = client.get("/api/manager/inquiries", headers=auth("M01")).json()
+    assert len(data["map_items"]) == 1 and data["mapped_total"] == 2
+    assert len(data["items"]) == 2 and data["unlocated_count"] == 0

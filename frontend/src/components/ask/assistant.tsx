@@ -478,7 +478,7 @@ function AssistantContent({
         )}
       >
         {open && user?.role === "sales" && !asking.threads.getSnapshot().ghost && (
-          <p className="px-2 pt-1 text-xs leading-relaxed text-muted-foreground">與客戶相關的提問會提供給團隊主管，方便協助處理。</p>
+          <p className="px-2 pt-1 text-xs leading-relaxed text-muted-foreground">提問時定位一次，供主管查看提問地圖。</p>
         )}
         {active && voiceOn && (
           <VoiceBoundary onFail={failVoice}>

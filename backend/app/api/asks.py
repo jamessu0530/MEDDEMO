@@ -19,7 +19,7 @@ from app.api.auth import CurrentUser
 from app.db import get_session
 from app.models import AppUser, AskRecord, Attachment, Customer, QueryTrace
 from app.services import ask_followup, ask_router, attachments, assistant_context, question_suggestions
-from app.services.customer_inquiries import associated_customer_ids
+from app.services.customer_inquiries import InquiryLocationInput, associated_customer_ids, inquiry_location_snapshot
 from app.services.scope import SHARING_LEVEL, Scope
 from app.services.product_appearance import is_appearance_question
 from app.tasks import visit_queue
@@ -39,6 +39,7 @@ class AskInput(BaseModel):
     question: str = Field(min_length=1, max_length=500)
     page: assistant_context.PageContext | None = None
     context_used: bool = False
+    inquiry_location: InquiryLocationInput | None = None
 
 
 class Turn(BaseModel):
@@ -107,7 +108,7 @@ async def ask_form(request: Request) -> AskForm:
             return AskForm(AskInput.model_validate(await request.json()), None)
         except ValueError as exc:
             raise _invalid(exc) from None
-    form = await request.form(max_files=attachments.MAX_PER_ASK + 1, max_fields=7)
+    form = await request.form(max_files=attachments.MAX_PER_ASK + 1, max_fields=8)
     uploads = [item for item in form.getlist("file") if isinstance(item, UploadFile)]
     if len(uploads) > attachments.MAX_PER_ASK:
         raise HTTPException(422, "一次提問只能附 1 個檔案")
@@ -116,6 +117,7 @@ async def ask_form(request: Request) -> AskForm:
             "kind": form.get("kind"), "question": form.get("question"), "ghost": form.get("ghost", False),
             "page": json.loads(form["page"]) if form.get("page") else None,
             "context_used": form.get("context_used", False),
+            "inquiry_location": json.loads(form["inquiry_location"]) if form.get("inquiry_location") else None,
         })
     except ValueError as exc:
         raise _invalid(exc) from None
@@ -276,6 +278,7 @@ def create_ask(session: SessionDep, form: Annotated[AskForm, Depends(ask_form)],
     record = AskRecord(
         id=uuid.uuid4().hex, user_id=user.id, kind=body.kind, question=body.question.strip(), ghost=body.ghost, status="queued",
         customer_ids=[] if body.ghost else associated_customer_ids(session, user, body.question, body.page, body.context_used),
+        inquiry_location=None if body.ghost else inquiry_location_snapshot(session, user, body.inquiry_location),
     )
     session.add(record)
     session.flush()

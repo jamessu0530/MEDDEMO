@@ -5,7 +5,7 @@ import { constrainManagerMapSize, managerMapLimits, readManagerMapSize, readMana
 import { useIsWide } from "@/lib/use-media-query"
 import { cn } from "@/lib/utils"
 
-type Props = { map: ReactNode; children: ReactNode }
+type Props = { map: ReactNode; children: ReactNode; contentLabel?: string }
 type Axis = "width" | "height" | "both"
 type Target = "map" | "routes"
 type Drag = {
@@ -29,7 +29,7 @@ export function ResizableMapLayout(props: Props) {
   return <MapLayout key={accountId} accountId={accountId} {...props} />
 }
 
-function MapLayout({ accountId, map, children }: Props & { accountId: string }) {
+function MapLayout({ accountId, map, children, contentLabel = "行程" }: Props & { accountId: string }) {
   const id = useId()
   const wide = useIsWide()
   const grid = useRef<HTMLDivElement>(null)
@@ -160,7 +160,7 @@ function MapLayout({ accountId, map, children }: Props & { accountId: string }) 
   const handleClass = "group absolute z-10 flex touch-none items-center justify-center rounded-full text-muted-foreground outline-offset-2 focus-visible:outline-2 focus-visible:outline-ring"
 
   return (
-    <section aria-label="可調整大小的地圖與行程">
+    <section aria-label={`可調整大小的地圖與${contentLabel}`}>
       <div
         ref={grid}
         className={cn("grid items-start gap-5", resizing && "select-none")}
@@ -236,9 +236,9 @@ function MapLayout({ accountId, map, children }: Props & { accountId: string }) 
               {children}
             </div>
             <ResizeHandle
-              aria-label="調整行程清單大小"
+              aria-label={`調整${contentLabel}清單大小`}
               aria-controls={`${id}-routes`}
-              title="拖曳調整行程清單寬高；方向鍵微調，Shift 加快，Esc 取消拖曳；連按兩下還原"
+              title={`拖曳調整${contentLabel}清單寬高；方向鍵微調，Shift 加快，Esc 取消拖曳；連按兩下還原`}
               onDoubleClick={() => commit("routes", { widthPercent: null, height: null })}
               onPointerDown={(event) => startResize("both", event, "routes")}
               onPointerMove={moveResize}

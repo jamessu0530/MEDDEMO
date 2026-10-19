@@ -89,7 +89,7 @@ describe("頁面情境", () => {
     expect(pageContextFor("/orders", "?view=promotions").title).toBe("促銷方案")
     expect(pageContextFor("/customers/C01").facts).toEqual(["客戶編號：C01"])
     expect(pageContextFor("/manager", "?view=oa").title).toBe("簽核")
-    expect(pageContextFor("/manager", "?view=asks").title).toBe("客戶提問")
+    expect(pageContextFor("/manager", "?view=asks").title).toBe("提問地圖")
   })
   it("OA 目錄、填寫與明細有各自的頁面情境及建議問題", () => {
     expect(pageContextFor("/oa/apps").title).toBe("OA 表單中心")

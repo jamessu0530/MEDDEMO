@@ -805,12 +805,14 @@ class AskRecord(Base):
     __table_args__ = (one_of("kind", ASK_KINDS, "kind"), one_of("status", ASK_STATUSES, "status"))
 
     id: Mapped[str] = mapped_column(primary_key=True)
-    # 數字查詢與完整答案依本人權限讀取；主管只看團隊中已關聯客戶的提問。
+    # 數字查詢與完整答案依本人權限讀取；主管只看團隊中有提問定位或已關聯客戶的問題。
     user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), index=True)
     kind: Mapped[str]
     question: Mapped[str] = mapped_column(Text)
     # 只分享與客戶有關的提問；建立時依問題與實際使用的頁面情境辨識，不用 AI 回答推測。
     customer_ids: Mapped[list[str] | None] = mapped_column(JSONB(none_as_null=True))
+    # 只保存建立這則提問時的一次定位，不連結即時位置，也不隨後續心跳更新。
+    inquiry_location: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True))
     # Ghost 查詢仍走背景工作，但不得恢復為個人記憶或對話歷史。
     ghost: Mapped[bool] = mapped_column(server_default="false")
     status: Mapped[str] = mapped_column(server_default="queued")
