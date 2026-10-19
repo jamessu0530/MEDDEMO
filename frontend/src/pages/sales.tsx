@@ -3,18 +3,23 @@ import { useNavigate, useSearchParams } from "react-router"
 import { BottomNav } from "@/components/bottom-nav"
 import { SalesNav, type SalesView } from "@/components/sales-nav"
 import { SalesHeader } from "@/components/sales-header"
+import { useAuth } from "@/lib/auth"
 import { OrdersPage } from "@/pages/orders"
 import { ProductsPanel } from "@/pages/products"
 import { PromotionsPanel } from "@/pages/promotions"
+import { SalesOpportunitiesPanel } from "@/pages/sales-opportunities"
 
-/** 三個銷售分頁共用入口；切換時保留各自的搜尋、篩選與分頁。 */
+/** 銷售分頁共用入口；切換時保留各自的搜尋、篩選與分頁。 */
 export function SalesPage({ newOrder = false }: { newOrder?: boolean }) {
+  const user = useAuth()?.user
   const [params, setParams] = useSearchParams()
   const navigate = useNavigate()
   const requestedView = params.get("view")
   const view: SalesView =
     !newOrder &&
-    (requestedView === "products" || requestedView === "promotions")
+    (requestedView === "products" ||
+      requestedView === "promotions" ||
+      requestedView === "opportunities")
       ? requestedView
       : "orders"
 
@@ -30,7 +35,9 @@ export function SalesPage({ newOrder = false }: { newOrder?: boolean }) {
   }
 
   const navigation = <SalesNav view={view} onChange={changeView} />
-  const heading = <SalesHeader hideTitle onCreate={() => navigate("/orders/new")} />
+  const heading = (
+    <SalesHeader hideTitle onCreate={() => navigate("/orders/new")} />
+  )
 
   return (
     <div data-sales-page>
@@ -44,6 +51,14 @@ export function SalesPage({ newOrder = false }: { newOrder?: boolean }) {
           active={view === "orders"}
         />
       </section>
+      <section hidden={view !== "opportunities"} aria-label="潛在銷售">
+        <SalesOpportunitiesPanel
+          key={`${user?.id}:${user?.acting_as?.id ?? ""}`}
+          heading={heading}
+          navigation={navigation}
+          active={view === "opportunities"}
+        />
+      </section>
       <section hidden={view !== "products"} aria-label="銷售商品">
         <div className="lg:mx-auto lg:max-w-2xl">
           <ProductsPanel
@@ -55,7 +70,11 @@ export function SalesPage({ newOrder = false }: { newOrder?: boolean }) {
       </section>
       <section hidden={view !== "promotions"} aria-label="銷售促銷">
         <div className="lg:mx-auto lg:max-w-2xl">
-          <PromotionsPanel heading={heading} navigation={navigation} active={view === "promotions"} />
+          <PromotionsPanel
+            heading={heading}
+            navigation={navigation}
+            active={view === "promotions"}
+          />
         </div>
       </section>
       <BottomNav />

@@ -13,6 +13,7 @@ from app.db import make_engine  # noqa: E402
 from app.models import Customer, PublicOutlet  # noqa: E402
 from app.services.public_outlets import import_snapshot  # noqa: E402
 from app.services.outlet_search import rebuild, search_ids  # noqa: E402
+from app.services import product_search  # noqa: E402
 from app.services.storefront_photos import import_catalog  # noqa: E402
 
 
@@ -30,6 +31,7 @@ def main():
             session.commit()
             if not args.import_only:
                 result["indexed_customers"] = rebuild(session)
+                result["indexed_products"] = product_search.rebuild(session)
                 sample = session.scalar(select(Customer.id).join(PublicOutlet, PublicOutlet.customer_id == Customer.id)
                     .where(Customer.name == "合康藥局", PublicOutlet.phone == "0224555173"))
                 if sample and (sample not in (search_ids("合康藥句") or []) or sample not in (search_ids("0224555173") or [])):

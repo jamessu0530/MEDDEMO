@@ -36,6 +36,11 @@ def order_customer_defaults(session: SessionDep, user: CurrentUser, customer_id:
     return action(lambda: service.customer_defaults(session, user, customer_id))
 
 
+@router.get("/customers/{customer_id}/last-purchase")
+def order_last_purchase(session: SessionDep, user: CurrentUser, customer_id: str):
+    return action(lambda: service.last_purchase(session, user, customer_id))
+
+
 @router.get("/products")
 def order_products(session: SessionDep, user: CurrentUser, customer_id: str, q: str = Query(default="", max_length=100), page: int = Query(default=1, ge=1)):
     return action(lambda: service.catalog(session, user, customer_id, q.strip(), page))

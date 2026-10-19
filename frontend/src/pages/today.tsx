@@ -23,7 +23,6 @@ import { EditRouteLink, SkippedHabitsNote } from "@/components/route/home-extras
 import { HomeAsk } from "@/components/route/home-ask"
 import { RouteOrderTasks } from "@/components/route/route-order-tasks"
 import { HomeMapPanel } from "@/components/route/home-map-panel"
-import { LocationConsent } from "@/components/route/location-share"
 import { ViewSwitch } from "@/components/route/view-switch"
 import { UnlockToast } from "@/components/route/unlock-toast"
 import { Button, buttonVariants } from "@/components/ui/button"
@@ -349,8 +348,6 @@ export function TodayPage() {
       )}
       {unlocked.length > 0 && <UnlockToast medals={unlocked} onDone={() => setUnlocked([])} />}
       <BottomNav />
-      {/* 位置分享只有第一次的說明，按「知道了」就結束；暫停、繼續在帳號設定（components/route/location-share.tsx） */}
-      <LocationConsent />
     </div>
   )
 }

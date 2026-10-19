@@ -12,9 +12,10 @@ import {
   placeOrder,
   type Contract,
   type CustomerProfile,
-  type ProfileStats,
 } from "@/api/customers"
 import { LastOrderSection } from "@/components/last-order-section"
+import { CustomerPurchases } from "@/components/customer-purchases"
+import { CustomerPurchaseComparison } from "@/components/customer-purchase-comparison"
 import { NextNotes } from "@/components/next-notes"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
@@ -31,6 +32,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { useAuth } from "@/lib/auth"
+import {
+  buildPurchaseComparison,
+  purchaseChangeNote,
+} from "@/lib/customer-purchase-comparison"
 import { formatDate, formatMoney } from "@/lib/format"
 import { customerNotFoundText } from "@/lib/scope"
 import { useIsDesktop } from "@/lib/use-media-query"
@@ -213,6 +218,10 @@ export function CustomerPage() {
 
   const { profile } = state
   const { customer, stats } = profile
+  const purchaseComparison = buildPurchaseComparison(
+    profile.monthly_purchases,
+    profile.today
+  )
   const toRecord = () => navigate(`/customers/${customer.id}/record`)
   const toOrder = () =>
     navigate(`/orders/new?${new URLSearchParams({ customer_id: customer.id })}`)
@@ -293,14 +302,20 @@ export function CustomerPage() {
   const lastOrderSection = (
     <LastOrderSection key={attempt} customerId={customer.id} />
   )
+  const purchaseHistory = (
+    <CustomerPurchases
+      key={`${customer.id}-${attempt}`}
+      customerId={customer.id}
+    />
+  )
   const numbers = (
     <>
       <section className="grid grid-cols-3 gap-2">
         <StatCard
-          label="近 3 月進貨"
-          value={wan(stats.amount_last_90d)}
+          label="近 1 個月進貨"
+          value={wan(purchaseComparison.currentAmount)}
           unit="萬"
-          note={amountNote(stats)}
+          note={purchaseChangeNote(purchaseComparison)}
         />
         <StatCard
           label="進貨間隔"
@@ -326,6 +341,11 @@ export function CustomerPage() {
         />
       </section>
 
+      <CustomerPurchaseComparison
+        key={customer.id}
+        comparison={purchaseComparison}
+        today={profile.today}
+      />
       <IntervalChart
         intervals={profile.intervals}
         alert={stats.interval_alert}
@@ -369,6 +389,7 @@ export function CustomerPage() {
           <div className="flex min-w-0 flex-1 flex-col gap-4">
             {alerts}
             {brief}
+            {purchaseHistory}
             {numbers}
             {pendingItems}
             {competitorList}
@@ -408,6 +429,7 @@ export function CustomerPage() {
         <main className="flex flex-1 flex-col gap-4 px-4 pt-4 pb-28">
           {alerts}
           {brief}
+          {purchaseHistory}
           {nextNotes}
           {lastOrderSection}
           {numbers}
@@ -480,14 +502,6 @@ export function CustomerPage() {
       )}
     </div>
   )
-}
-
-function amountNote(stats: ProfileStats) {
-  if (!stats.amount_prev_90d) return undefined
-  const change = Math.round(
-    (stats.amount_last_90d / stats.amount_prev_90d - 1) * 100
-  )
-  return `比前 3 月 ${change > 0 ? "+" : ""}${change}%`
 }
 
 function arTone(overdueDays: number | null): Tone {

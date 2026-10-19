@@ -33,6 +33,18 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers())
 
 describe("runAsk", () => {
+  it("打字和語音共用的查詢會帶入客戶情境，Ghost 不會帶入", async () => {
+    api.createAsk.mockResolvedValue(ask("answered"))
+    const page = { path: "/customers/C01", title: "客戶檔案", facts: ["客戶編號：C01"] }
+    const conversation = createConversation()
+    const entry = conversation.addToolRun("knowledge", "這間怎麼退貨？", { page })
+    conversation.replace(entry, { contextUsed: true })
+    await runAsk(conversation, entry, "knowledge", "這間怎麼退貨？", new AbortController().signal)
+    expect(api.createAsk).toHaveBeenLastCalledWith("knowledge", "這間怎麼退貨？", undefined, false, { page, contextUsed: true })
+    const ghost = conversation.addToolRun("knowledge", "暫時的問題", { page, ghost: true })
+    await runAsk(conversation, ghost, "knowledge", "暫時的問題", new AbortController().signal)
+    expect(api.createAsk).toHaveBeenLastCalledWith("knowledge", "暫時的問題", undefined, true)
+  })
   it("網路一時不通、後端暫時出錯就等下一輪", async () => {
     api.getAsk
       .mockRejectedValueOnce(new TypeError("Failed to fetch"))

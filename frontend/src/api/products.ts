@@ -17,6 +17,13 @@ export function listProducts(signal?: AbortSignal) {
   return request<Product[]>("/api/products", { signal })
 }
 
+export function searchProducts(query: string, signal?: AbortSignal) {
+  return request<{ skus: string[] }>(
+    `/api/products/search?${new URLSearchParams({ q: query })}`,
+    { signal }
+  )
+}
+
 export type ProductPhotoMatch = {
   source_id: string
   photo: { file: string; title: string; pageUrl: string }

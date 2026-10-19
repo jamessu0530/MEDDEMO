@@ -76,11 +76,11 @@ def search_ids(query: str) -> list[str] | None:
         return None
 
 
-def index_is_healthy(expected_count: int) -> bool:
+def index_is_healthy(expected_count: int, *, alias: str | None = None) -> bool:
     """部署略過重建前，確認 alias 存在、分片可用且筆數與資料庫一致。"""
     try:
         with _client() as client:
-            alias = _index()
+            alias = alias or _index()
             health = client.get(f"/_cluster/health/{alias}", params={"timeout": "1s"})
             health.raise_for_status()
             status = health.json()

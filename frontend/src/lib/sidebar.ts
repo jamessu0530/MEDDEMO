@@ -39,7 +39,7 @@ const SALES: SidebarGroups = {
 
 // 主管端的五個分頁（pages/manager.tsx 的 VIEWS），主管與 IT 共用
 const MANAGER: SidebarItem[] = [
-  { to: "/manager", label: "團隊行程", icon: Route },
+  { to: "/manager", label: "客戶提問", icon: MessagesSquare },
   { to: "/manager?view=priority", label: "客戶策略", icon: ChartNoAxesCombined },
   { to: "/manager?view=featured", label: "主推品項", icon: Pill },
   { to: "/manager?view=oa", label: "簽核", icon: ClipboardCheck, badge: "oa" },
@@ -55,9 +55,10 @@ export function sidebarItems(role: Role): SidebarGroups {
   return { main: role === "it" ? [ADMIN, ...MANAGER] : MANAGER, more: [{ to: "/reports", label: "我的報表", icon: ChartNoAxesCombined }, { to: "/orders", label: "訂單", icon: ClipboardList }, CHANNELS, CATALOG] }
 }
 
-/** 側邊欄最上面的名字連到哪裡：跟首頁頁首的名字同一個地方。業務是個人頁，主管與 IT 沒有個人頁，是帳號設定 */
+/** 所有角色點姓名都進個人主頁；帳號設定仍從頁首齒輪進入。 */
+const PROFILE_PATH: Record<Role, string> = { sales: "/me", manager: "/me", it: "/me" }
 export function profilePath(role: Role) {
-  return role === "sales" ? "/me" : "/settings"
+  return PROFILE_PATH[role]
 }
 
 function managerView(query: string) {

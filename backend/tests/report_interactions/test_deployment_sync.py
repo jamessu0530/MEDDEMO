@@ -9,7 +9,7 @@ from sqlalchemy import delete
 
 from app.models import Customer, OutletStorefront, ProductPhoto, PublicOutlet
 from app.services import deployment_sync as deploy
-from app.services import outlet_search
+from app.services import outlet_search, product_search
 
 
 @pytest.fixture
@@ -67,6 +67,12 @@ def sync_data(interaction_session, monkeypatch, tmp_path):
     monkeypatch.setattr(outlet_search, "rebuild", rebuild)
     monkeypatch.setattr(outlet_search, "search_ids", lambda query: ["C1"])
     monkeypatch.setattr(outlet_search, "index_is_healthy", lambda count: True)
+    def rebuild_products(session):
+        calls["product_search"] += 1
+        return 2
+
+    monkeypatch.setattr(product_search, "rebuild", rebuild_products)
+    monkeypatch.setattr(product_search, "index_is_healthy", lambda count: True)
     session.commit()
     return session, calls, source
 
@@ -75,23 +81,23 @@ def test_unchanged_deployment_skips_all_writes(sync_data):
     session, calls, _ = sync_data
     deploy.sync(session)
     result = deploy.sync(session)
-    assert calls == {"outlets": 1, "photos": 1, "search": 1}
+    assert calls == {"outlets": 1, "photos": 1, "search": 1, "product_search": 1}
     assert all(row["status"] == "unchanged" for row in result.values())
     assert session.get(ProductPhoto, "P1").content == b"photo"
 
 
-@pytest.mark.parametrize("missing", ["outlets", "photos", "search"])
+@pytest.mark.parametrize("missing", ["outlets", "photos", "search", "product_search"])
 def test_missing_data_or_index_is_repaired_despite_matching_version(sync_data, monkeypatch, missing):
     session, calls, _ = sync_data
     deploy.sync(session)
-    if missing == "search":
-        monkeypatch.setattr(outlet_search, "index_is_healthy", lambda count: False)
+    if missing in ("search", "product_search"):
+        monkeypatch.setattr(outlet_search if missing == "search" else product_search, "index_is_healthy", lambda count: False)
     else:
         session.execute(delete(PublicOutlet if missing == "outlets" else ProductPhoto))
         session.commit()
     deploy.sync(session)
     assert calls[missing] == 2
-    assert calls["search"] == (1 if missing == "photos" else 2)
+    assert calls["search"] == (1 if missing in ("photos", "product_search") else 2)
 
 
 def test_source_change_and_force_refresh_are_not_skipped(sync_data):
@@ -101,10 +107,10 @@ def test_source_change_and_force_refresh_are_not_skipped(sync_data):
     updated["summary"]["source_sha256"] = "new-snapshot-with-retained-existing-records"
     source.write_text(json.dumps(updated))
     deploy.sync(session)
-    assert calls == {"outlets": 2, "photos": 1, "search": 2}
+    assert calls == {"outlets": 2, "photos": 1, "search": 2, "product_search": 1}
     assert deploy.sync(session)["outlets"]["status"] == "unchanged"
     deploy.sync(session, force=True)
-    assert calls == {"outlets": 3, "photos": 2, "search": 3}
+    assert calls == {"outlets": 3, "photos": 2, "search": 3, "product_search": 2}
 
 
 def test_changed_photo_bytes_update_only_photos(sync_data, monkeypatch):
@@ -114,7 +120,7 @@ def test_changed_photo_bytes_update_only_photos(sync_data, monkeypatch):
         "sha256": hashlib.sha256(b"new-photo").hexdigest()}
     monkeypatch.setattr(deploy.product_photos, "read_reviewed_photos", lambda: [record])
     deploy.sync(session)
-    assert calls == {"outlets": 1, "photos": 2, "search": 1}
+    assert calls == {"outlets": 1, "photos": 2, "search": 1, "product_search": 1}
     assert session.get(ProductPhoto, "P1").content == b"new-photo"
 
 
@@ -150,7 +156,24 @@ def test_failed_search_verification_does_not_record_success_and_is_retried(sync_
     assert deploy.stored_version(session, "outlets") is not None
     monkeypatch.setattr(outlet_search, "search_ids", lambda query: ["C1"])
     deploy.sync(session)
-    assert calls == {"outlets": 1, "photos": 1, "search": 2}
+    assert calls == {"outlets": 1, "photos": 1, "search": 2, "product_search": 1}
+
+
+def test_failed_product_index_is_not_recorded_and_can_retry(sync_data, monkeypatch):
+    session, calls, _ = sync_data
+    rebuild = product_search.rebuild
+    with monkeypatch.context() as broken:
+        def fail(session):
+            raise RuntimeError("product indexing failed")
+        broken.setattr(product_search, "rebuild", fail)
+        with pytest.raises(RuntimeError, match="product indexing failed"):
+            deploy.sync(session)
+    session.rollback()
+    assert deploy.stored_version(session, "product_search") is None
+    assert deploy.stored_version(session, "search") is not None
+    deploy.sync(session)
+    assert product_search.rebuild is rebuild
+    assert calls["product_search"] == 1 and calls["search"] == 1
 
 
 @pytest.mark.parametrize("status,count,timed_out,expected", [

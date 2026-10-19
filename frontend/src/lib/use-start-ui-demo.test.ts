@@ -4,6 +4,7 @@ const state = vi.hoisted(() => ({
   navigate: vi.fn(),
   close: vi.fn(),
   dialog: false,
+  role: "sales",
   location: {
     pathname: "/calendar",
     search: "?view=week",
@@ -18,6 +19,7 @@ vi.mock("@/ask/assistant-window", () => ({ closeAssistant: state.close }))
 vi.mock("@/lib/page-demo-browser", () => ({
   pageDemoTarget: () => (state.dialog ? {} : null),
 }))
+vi.mock("@/lib/auth", () => ({ readUser: () => ({ role: state.role }) }))
 
 import { useStartUiDemo } from "./use-start-ui-demo"
 
@@ -25,6 +27,7 @@ beforeEach(() => {
   state.navigate.mockReset()
   state.close.mockReset()
   state.dialog = false
+  state.role = "sales"
   state.location = {
     pathname: "/calendar",
     search: "?view=week",
@@ -33,6 +36,26 @@ beforeEach(() => {
 })
 
 describe("文字要求啟動示範", () => {
+  it.each([
+    ["/products", "/orders?view=products"],
+    ["/products?view=promotions", "/orders?view=promotions"],
+    ["/promotions", "/orders?view=promotions"],
+  ])("業務從其他頁要求 %s，直接在最終銷售分頁啟動", (path, destination) => {
+    useStartUiDemo()("page-tour", path)
+    expect(state.navigate).toHaveBeenCalledWith(destination, {
+      replace: false,
+      state: { startUiDemo: "page-tour" },
+    })
+  })
+
+  it("主管的型錄維持原本入口", () => {
+    state.role = "manager"
+    useStartUiDemo()("page-tour", "/products")
+    expect(state.navigate).toHaveBeenCalledWith("/products", {
+      replace: false,
+      state: { startUiDemo: "page-tour" },
+    })
+  })
   it("直接關閉對話並啟動目前頁面的示範，保留查詢參數與頁面狀態", () => {
     useStartUiDemo()("page-tour", "/calendar?view=week")
     expect(state.close).toHaveBeenCalledOnce()

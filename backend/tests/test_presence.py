@@ -572,12 +572,8 @@ def test_an_org_change_stops_notifications_from_channels_no_longer_visible(clien
     assert moved_back.status_code == 200
 
 
-async def test_an_org_change_rechecks_which_reps_a_manager_can_see(monkeypatch):
-    # 看不看得到某位業務記在連線上（位置事件很密）；IT 改了組織（channels 事件）就作廢，不必等記的時間過期
-    allowed = {"U03": False}
-    checks = []
-    monkeypatch.setattr(presence_api, "_can_see_rep", lambda viewer, rep: checks.append(rep) or allowed[rep])
-
+@pytest.mark.parametrize("viewer", ["M01", "A01", "U01"])
+async def test_tracking_events_are_not_forwarded_even_after_org_changes(viewer):
     class Socket:
         def __init__(self):
             self.sent = []
@@ -586,22 +582,39 @@ async def test_an_org_change_rechecks_which_reps_a_manager_can_see(monkeypatch):
             self.sent.append(payload)
 
     class PubSub:
-        def __init__(self, *events):
-            self.events = events
-
         async def listen(self):
-            for event in self.events:
+            for event in [
+                {"type": "location", "user_id": "U03"},
+                {"type": "itinerary", "user_id": "U03"},
+                {"type": "channels"},
+                {"type": "location", "user_id": "U03"},
+                {"type": "avatars"},
+            ]:
                 yield {"type": "message", "data": json.dumps(event)}
 
-    moved = {"type": "location", "user_id": "U03"}
-    socket = presence_api._Connection(Socket(), "M01", "token", True)
-    await socket.listen(PubSub(moved, moved))
-    # 看不到：不送，而且第二則不再查
-    assert socket.ws.sent == [] and checks == ["U03"]
-    # IT 把 U03 調到陳建宏底下，存檔後發 channels 事件
-    allowed["U03"] = True
-    await socket.listen(PubSub({"type": "channels"}, moved, moved))
-    assert socket.ws.sent == [{"type": "channels"}, moved, moved] and checks == ["U03", "U03"]
+    connection = presence_api._Connection(Socket(), viewer, "token", True)
+    await connection.listen(PubSub())
+    assert connection.ws.sent == [{"type": "channels"}, {"type": "avatars"}]
+
+
+async def test_legacy_websocket_coordinates_are_ignored(monkeypatch):
+    calls = []
+    monkeypatch.setattr(presence_api, "_heartbeat", lambda *args: calls.append(args) or "U01")
+
+    class Socket:
+        received = False
+
+        async def receive_text(self):
+            if self.received:
+                raise WebSocketDisconnect(1000)
+            self.received = True
+            return json.dumps({"type": "ping", "active": False,
+                               "location": {"lat": 25.034, "lng": 121.5645}, "location_denied": True})
+
+    connection = presence_api._Connection(Socket(), "U01", "token", True)
+    with pytest.raises(WebSocketDisconnect):
+        await connection.read()
+    assert calls == [("token", False)]
 
 
 def test_the_pool_has_room_for_every_threadpool_worker():

@@ -7,7 +7,9 @@ import {
   X,
 } from "@/components/icons"
 import {
+  getOrderLastPurchase,
   getOrderProducts,
+  type OrderLastPurchase,
   type OrderProduct,
   type OrderProductList,
   type OrderItemInput,
@@ -22,7 +24,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { orderMoney } from "@/lib/orders"
+import { formatDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
+
+type ProductTab = "catalog" | "last" | "selected"
 
 export function OrderProducts({
   practice = false,
@@ -42,12 +47,19 @@ export function OrderProducts({
   const [query, setQuery] = useState(""),
     [page, setPage] = useState(1)
   const [result, setResult] = useState<OrderProductList | null>(null)
+  const [purchase, setPurchase] = useState<OrderLastPurchase | null>(null)
+  const [purchaseBusy, setPurchaseBusy] = useState(true),
+    [purchaseError, setPurchaseError] = useState(""),
+    [purchaseRetry, setPurchaseRetry] = useState(0)
   const [selected, setSelected] = useState<Record<string, OrderProduct>>({})
   const [busy, setBusy] = useState(true),
     [error, setError] = useState(""),
     [retry, setRetry] = useState(0)
-  const [selectedOnly, setSelectedOnly] = useState(false)
+  const [tab, setTab] = useState<ProductTab>("catalog")
+  const selectedOnly = tab === "selected",
+    lastOnly = tab === "last"
   useEffect(() => {
+    if (tab !== "catalog") return
     const controller = new AbortController()
     const timer = setTimeout(() => {
       const request = getOrderProducts(
@@ -72,23 +84,62 @@ export function OrderProducts({
       clearTimeout(timer)
       controller.abort()
     }
-  }, [customerId, query, page, retry])
+  }, [customerId, query, page, retry, tab])
+  useEffect(() => {
+    if (tab !== "last") return
+    const controller = new AbortController()
+    getOrderLastPurchase(customerId, controller.signal)
+      .then((value) => {
+        if (!controller.signal.aborted) setPurchase(value)
+      })
+      .catch((err) => {
+        if (!controller.signal.aborted)
+          setPurchaseError(
+            err instanceof Error ? err.message : "上次購買紀錄沒有載入"
+          )
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setPurchaseBusy(false)
+      })
+    return () => controller.abort()
+  }, [customerId, purchaseRetry, tab])
+  const source = lastOnly ? (purchase?.items ?? []) : (result?.items ?? []),
+    sourceBusy = lastOnly ? purchaseBusy : busy,
+    sourceError = lastOnly ? purchaseError : error
   const chosen = Object.values(selected),
     existingSkus = new Set(existing.map((item) => item.sku))
   const capacity = Math.max(0, 100 - existing.length)
-  const pageItems = (result?.items ?? []).filter(
-    (item) => !existingSkus.has(item.sku)
-  )
+  const pageItems = source.filter((item) => !existingSkus.has(item.sku))
   const pageSelected = pageItems.filter((item) => selected[item.sku]).length
   const allPage = pageItems.length > 0 && pageSelected === pageItems.length
   const pageAddCount = Math.min(
     capacity - chosen.length,
     pageItems.length - pageSelected
   )
+  const pageSelectionLabel = allPage
+    ? lastOnly
+      ? "取消上次購買選取"
+      : "取消本頁選取"
+    : chosen.length >= capacity
+      ? "已達 100 項產品上限"
+      : pageAddCount < pageItems.length - pageSelected
+        ? `選取前 ${pageAddCount} 項${lastOnly ? "上次購買" : "本頁"}產品`
+        : `選取${lastOnly ? "上次購買" : "本頁"}產品`
   useEffect(() => {
     if (pageCheckbox.current)
       pageCheckbox.current.indeterminate = pageSelected > 0 && !allPage
-  }, [pageSelected, allPage, selectedOnly])
+  }, [pageSelected, allPage, tab])
+  function changeTab(value: ProductTab) {
+    if (value === tab) return
+    if (value === "catalog") {
+      setBusy(true)
+      setError("")
+    } else if (value === "last") {
+      setPurchaseBusy(true)
+      setPurchaseError("")
+    }
+    setTab(value)
+  }
   function toggle(product: OrderProduct) {
     setSelected((current) => {
       const next = { ...current }
@@ -118,22 +169,26 @@ export function OrderProducts({
       if (allPage) pageItems.forEach((item) => delete next[item.sku])
       else
         for (const item of pageItems) {
+          if (next[item.sku]) continue
           if (Object.keys(next).length >= capacity) break
           next[item.sku] = item
         }
       return next
     })
   }
-  const visible = selectedOnly ? chosen : (result?.items ?? [])
+  const visible = selectedOnly ? chosen : source
   return (
     <>
       <Dialog open onOpenChange={(open) => !open && onClose()}>
-        <DialogContent aria-describedby={undefined} className="flex h-[min(48rem,90dvh)] max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl">
+        <DialogContent
+          aria-describedby={undefined}
+          className="flex h-[min(48rem,90dvh)] max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl"
+        >
           <DialogHeader className="shrink-0 border-b px-5 py-4 pr-12">
             <DialogTitle>新增產品</DialogTitle>
           </DialogHeader>
           <div className="shrink-0 space-y-3 border-b p-4">
-            {!selectedOnly && (
+            {tab === "catalog" && (
               <SearchField
                 aria-label="搜尋訂單產品"
                 placeholder="搜尋產品名稱、料號或產品系列"
@@ -143,22 +198,33 @@ export function OrderProducts({
               />
             )}
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="inline-flex gap-1 rounded-xl bg-muted p-1 text-sm">
+              <div className="inline-flex max-w-full flex-wrap gap-1 rounded-xl bg-muted p-1 text-sm">
                 <button
                   type="button"
-                  aria-pressed={!selectedOnly}
-                  onClick={() => setSelectedOnly(false)}
+                  aria-pressed={tab === "catalog"}
+                  onClick={() => changeTab("catalog")}
                   className={cn(
                     "min-h-10 rounded-lg px-3",
-                    !selectedOnly && "bg-card font-semibold shadow-sm"
+                    tab === "catalog" && "bg-card font-semibold shadow-sm"
                   )}
                 >
                   商品型錄
                 </button>
                 <button
                   type="button"
+                  aria-pressed={lastOnly}
+                  onClick={() => changeTab("last")}
+                  className={cn(
+                    "min-h-10 rounded-lg px-3",
+                    lastOnly && "bg-card font-semibold shadow-sm"
+                  )}
+                >
+                  上次購買
+                </button>
+                <button
+                  type="button"
                   aria-pressed={selectedOnly}
-                  onClick={() => setSelectedOnly(true)}
+                  onClick={() => changeTab("selected")}
                   className={cn(
                     "min-h-10 rounded-lg px-3",
                     selectedOnly && "bg-card font-semibold shadow-sm"
@@ -168,6 +234,22 @@ export function OrderProducts({
                 </button>
               </div>
             </div>
+            {lastOnly && !purchaseBusy && !purchaseError && purchase && (
+              <div className="space-y-1 rounded-xl border bg-muted/30 px-3 py-2.5 text-xs">
+                <p className="font-medium">
+                  {formatDate(purchase.date)} 購買 · {purchase.order_no}
+                </p>
+                <p className="text-muted-foreground">
+                  選取後帶入上次數量，單價依目前供貨價計算，可在訂單中調整。
+                </p>
+                {purchase.unavailable_count > 0 && (
+                  <p className="text-muted-foreground">
+                    另有 {purchase.unavailable_count}{" "}
+                    項商品目前未列入型錄，無法加入。
+                  </p>
+                )}
+              </div>
+            )}
             {!selectedOnly && chosen.length > 0 && (
               <div
                 className="flex items-center gap-2 overflow-x-auto pb-1"
@@ -188,7 +270,7 @@ export function OrderProducts({
                 {chosen.length > 3 && (
                   <button
                     type="button"
-                    onClick={() => setSelectedOnly(true)}
+                    onClick={() => changeTab("selected")}
                     className="min-h-9 shrink-0 text-xs text-primary"
                   >
                     查看全部 {chosen.length} 項
@@ -216,58 +298,66 @@ export function OrderProducts({
                   <input
                     ref={pageCheckbox}
                     type="checkbox"
-                    aria-label="選取本頁產品"
+                    aria-label={lastOnly ? "選取上次購買產品" : "選取本頁產品"}
                     checked={allPage}
                     disabled={
-                      busy ||
-                      !!error ||
+                      sourceBusy ||
+                      !!sourceError ||
                       !pageItems.length ||
                       (!allPage && pageAddCount === 0)
                     }
                     onChange={togglePage}
                     className="size-4 accent-primary"
                   />
-                  <span>
-                    {allPage
-                      ? "取消本頁選取"
-                      : `選取本頁${pageAddCount < pageItems.length - pageSelected ? `前 ${pageAddCount}` : ""}產品`}
-                  </span>
+                  <span>{pageSelectionLabel}</span>
                 </label>
               )}
               <span className="hidden sm:inline">照片與規格</span>
             </div>
             <div
               className="min-h-0 flex-1 overflow-y-auto px-4"
-              aria-busy={!selectedOnly && busy}
+              aria-busy={!selectedOnly && sourceBusy}
             >
-              {!selectedOnly && error ? (
+              {!selectedOnly && sourceError ? (
                 <div
                   role="alert"
                   className="space-y-4 py-10 text-center text-sm"
                 >
-                  <p>{error}</p>
+                  <p>{sourceError}</p>
                   <Button
                     variant="outline"
                     onClick={() => {
-                      setBusy(true)
-                      setError("")
-                      setRetry((n) => n + 1)
+                      if (lastOnly) {
+                        setPurchaseBusy(true)
+                        setPurchaseError("")
+                        setPurchaseRetry((n) => n + 1)
+                      } else {
+                        setBusy(true)
+                        setError("")
+                        setRetry((n) => n + 1)
+                      }
                     }}
                   >
                     重新載入
                   </Button>
                 </div>
-              ) : !selectedOnly && busy ? (
+              ) : !selectedOnly && sourceBusy ? (
                 <p
                   role="status"
                   className="py-16 text-center text-sm text-muted-foreground"
                 >
-                  正在搜尋產品…
+                  {lastOnly ? "正在載入上次購買紀錄…" : "正在搜尋產品…"}
                 </p>
               ) : visible.length ? (
                 <ul
                   className="divide-y"
-                  aria-label={selectedOnly ? "已選產品" : "產品搜尋結果"}
+                  aria-label={
+                    selectedOnly
+                      ? "已選產品"
+                      : lastOnly
+                        ? "上次購買產品"
+                        : "產品搜尋結果"
+                  }
                 >
                   {visible.map((product) => {
                     const added = existingSkus.has(product.sku),
@@ -319,11 +409,26 @@ export function OrderProducts({
                                 .filter(Boolean)
                                 .join(" · ")}
                             </span>
+                            {product.last_qty !== undefined && (
+                              <span className="mt-2 block text-xs font-medium text-primary">
+                                上次買{" "}
+                                {product.last_qty.toLocaleString("zh-TW")}{" "}
+                                {product.unit || "單位"}
+                                {product.last_unit_price !== undefined &&
+                                  ` · 成交單價 ${orderMoney(product.last_unit_price)} 元`}
+                              </span>
+                            )}
                             <span className="mt-1 block text-sm font-medium text-primary tabular-nums sm:hidden">
+                              {product.last_qty !== undefined && "目前供貨價 "}
                               {orderMoney(product.unit_price)}
                             </span>
                           </span>
                           <span className="hidden shrink-0 text-right text-sm font-medium tabular-nums sm:block">
+                            {product.last_qty !== undefined && (
+                              <span className="mb-1 block text-xs font-normal text-muted-foreground">
+                                目前供貨價
+                              </span>
+                            )}
                             {orderMoney(product.unit_price)}
                             <span className="mt-1 block text-xs font-normal text-muted-foreground">
                               ／{product.unit || "單位"}
@@ -341,21 +446,29 @@ export function OrderProducts({
                     className="size-10 text-muted-foreground"
                   />
                   <p className="text-sm font-medium">
-                    {selectedOnly ? "尚未選取產品" : "找不到符合條件的產品"}
+                    {selectedOnly
+                      ? "尚未選取產品"
+                      : lastOnly
+                        ? purchase
+                          ? "上次購買的商品目前皆無法加入"
+                          : "這位客戶尚無購買紀錄"
+                        : "找不到符合條件的產品"}
                   </p>
                   <Button
                     variant="outline"
                     onClick={() =>
-                      selectedOnly ? setSelectedOnly(false) : changeQuery("")
+                      selectedOnly || lastOnly
+                        ? changeTab("catalog")
+                        : changeQuery("")
                     }
                   >
-                    {selectedOnly ? "瀏覽商品型錄" : "清除搜尋"}
+                    {selectedOnly || lastOnly ? "瀏覽商品型錄" : "清除搜尋"}
                   </Button>
                 </div>
               )}
             </div>
           </div>
-          {!selectedOnly && (
+          {tab === "catalog" && (
             <div className="flex shrink-0 items-center justify-between border-t px-4 py-2 text-xs">
               <span>
                 {busy

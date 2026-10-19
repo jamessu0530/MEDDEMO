@@ -14,6 +14,8 @@ import { Input } from "@/components/ui/input"
 import { NativeSelect } from "@/components/ui/native-select"
 import { formatDateTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
+import { useProductSearch } from "@/lib/use-product-search"
+import { catalogProducts } from "@/lib/product-search"
 
 const PAGE_SIZE = 40
 
@@ -42,15 +44,14 @@ export function FeaturedProductsPanel() {
   const manager = settings?.managers.find((m) => m.id === settings.manager_id)
   const selectedSet = new Set(selected)
   const categories = [...new Set(products.map((p) => p.category))].sort()
-  const terms = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean)
-  const matches = products.filter((p) => {
-    const text =
-      `${p.sku} ${p.name} ${p.spec} ${p.aliases.join(" ")}`.toLocaleLowerCase()
-    return (
-      (!category || p.category === category) &&
-      terms.every((term) => text.includes(term))
-    )
-  })
+  const search = useProductSearch(query, !loading)
+  const bySku = new Map(products.map((product) => [product.sku, product]))
+  const matches = search.skus !== null
+    ? search.skus.flatMap((sku) => {
+        const product = bySku.get(sku)
+        return product && (!category || product.category === category) ? [product] : []
+      })
+    : catalogProducts(products, query, category || null)
   const names = new Map(products.map((p) => [p.sku, p.name]))
   useAskPageContext({
     facts: [
@@ -274,6 +275,7 @@ export function FeaturedProductsPanel() {
               <div className="grid gap-3 sm:grid-cols-[1fr_12rem]">
                 <Input
                   type="search"
+                  maxLength={200}
                   aria-label="搜尋主推品項"
                   placeholder="搜尋品名、料號或規格"
                   value={query}
@@ -299,7 +301,7 @@ export function FeaturedProductsPanel() {
                 </NativeSelect>
               </div>
               <p className="text-xs text-muted-foreground">
-                找到 {matches.length} 個品項 · 最多指定 {settings.max_products}{" "}
+                {search.pending ? "搜尋中…" : `找到 ${matches.length} 個品項`} · 最多指定 {settings.max_products}{" "}
                 個；可跨節慶建議品類選擇。
               </p>
               {matches.length === 0 && (

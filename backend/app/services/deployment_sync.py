@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models import AppSetting, Customer, OutletStorefront, Product, ProductPhoto, PublicOutlet
-from app.services import outlet_search, product_photos, public_outlets, storefront_photos
+from app.services import outlet_search, product_photos, product_search, public_outlets, storefront_photos
+from app.services.product_catalog import visible_catalog_products
 
 ROOT = Path(__file__).resolve().parents[3]
 BACKEND = ROOT / "backend"
@@ -118,5 +119,18 @@ def sync(session: Session, *, force=False) -> dict:
         result["search"] = {"status": "rebuilt", "indexed_customers": count}
     else:
         result["search"] = {"status": "unchanged", "indexed_customers": count}
+    session.commit()
+    product_version = fingerprint([
+        *common, SERVICES / "product_search.py", SERVICES / "product_catalog.py", SERVICES / "outlet_search.py",
+    ], schema + json.dumps([config.elasticsearch_url, config.elasticsearch_product_index]))
+    session.execute(text("SELECT pg_advisory_xact_lock(hashtext('meddemo-product-search-rebuild'))"))
+    count = session.scalar(select(func.count()).select_from(Product).where(visible_catalog_products()))
+    if (force or stored_version(session, "product_search") != product_version
+            or not product_search.index_is_healthy(count)):
+        count = product_search.rebuild(session)
+        remember_version(session, "product_search", product_version)
+        result["product_search"] = {"status": "rebuilt", "indexed_products": count}
+    else:
+        result["product_search"] = {"status": "unchanged", "indexed_products": count}
     session.commit()
     return result

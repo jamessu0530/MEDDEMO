@@ -19,6 +19,7 @@ from app.api.auth import CurrentUser
 from app.db import get_session
 from app.models import AppUser, AskRecord, Attachment, Customer, QueryTrace
 from app.services import ask_followup, ask_router, attachments, assistant_context, question_suggestions
+from app.services.customer_inquiries import associated_customer_ids
 from app.services.scope import SHARING_LEVEL, Scope
 from app.services.product_appearance import is_appearance_question
 from app.tasks import visit_queue
@@ -36,6 +37,8 @@ class AskInput(BaseModel):
     ghost: bool = False
     # 業務口語提問不會超過 500 字；再長多半是誤貼了一大段文字
     question: str = Field(min_length=1, max_length=500)
+    page: assistant_context.PageContext | None = None
+    context_used: bool = False
 
 
 class Turn(BaseModel):
@@ -104,12 +107,16 @@ async def ask_form(request: Request) -> AskForm:
             return AskForm(AskInput.model_validate(await request.json()), None)
         except ValueError as exc:
             raise _invalid(exc) from None
-    form = await request.form(max_files=attachments.MAX_PER_ASK + 1, max_fields=5)
+    form = await request.form(max_files=attachments.MAX_PER_ASK + 1, max_fields=7)
     uploads = [item for item in form.getlist("file") if isinstance(item, UploadFile)]
     if len(uploads) > attachments.MAX_PER_ASK:
         raise HTTPException(422, "一次提問只能附 1 個檔案")
     try:
-        body = AskInput.model_validate({"kind": form.get("kind"), "question": form.get("question"), "ghost": form.get("ghost", False)})
+        body = AskInput.model_validate({
+            "kind": form.get("kind"), "question": form.get("question"), "ghost": form.get("ghost", False),
+            "page": json.loads(form["page"]) if form.get("page") else None,
+            "context_used": form.get("context_used", False),
+        })
     except ValueError as exc:
         raise _invalid(exc) from None
     file = (uploads[0].filename, await uploads[0].read(attachments.MAX_FILE_BYTES + 1)) if uploads else None
@@ -267,7 +274,8 @@ def create_ask(session: SessionDep, form: Annotated[AskForm, Depends(ask_form)],
     except attachments.Rejected as exc:
         raise HTTPException(exc.status, str(exc)) from None
     record = AskRecord(
-        id=uuid.uuid4().hex, user_id=user.id, kind=body.kind, question=body.question.strip(), ghost=body.ghost, status="queued"
+        id=uuid.uuid4().hex, user_id=user.id, kind=body.kind, question=body.question.strip(), ghost=body.ghost, status="queued",
+        customer_ids=[] if body.ghost else associated_customer_ids(session, user, body.question, body.page, body.context_used),
     )
     session.add(record)
     session.flush()

@@ -114,7 +114,7 @@ describe("全站自動問答", () => {
     await pending
     api.routeAsk.mockResolvedValueOnce(routed("新的問題", { continues_previous: true }))
     await session.ask("新的問題", undefined, page())
-    expect(api.createAsk).toHaveBeenLastCalledWith("data", "新的問題", undefined)
+    expect(api.createAsk).toHaveBeenLastCalledWith("data", "新的問題", undefined, false, { page: page(), contextUsed: false })
   })
   it("重新登入後接續輪詢舊查詢，不再次建立提問", async () => {
     const restored = { id: 777, kind: "tool", question: "之前的問題", askKind: "data", ask: answer("running"), original: null, error: null, routing: false, cancelled: false, choices: null, auto: true }
@@ -296,13 +296,13 @@ describe("全站自動問答", () => {
       1,
       "data",
       "今天有幾個行程？",
-      undefined
+      undefined, false, { page: context, contextUsed: false }
     )
     expect(api.createAsk).toHaveBeenNthCalledWith(
       2,
       "knowledge",
       "公司的共享日曆規定是什麼？",
-      undefined
+      undefined, false, { page: context, contextUsed: false }
     )
   })
   it("OA 缺件直接依目前畫面回答，跨頁公司問題仍交給共用查詢", async () => {
@@ -466,7 +466,7 @@ describe("全站自動問答", () => {
     expect(api.createAsk).toHaveBeenCalledWith(
       "data",
       "康泰多久沒進貨？",
-      undefined
+      undefined, false, { page: snapshot, contextUsed: true }
     )
     expect(tools(session)[0]).toMatchObject({
       page: snapshot,
@@ -484,7 +484,7 @@ describe("全站自動問答", () => {
     expect(api.createAsk).toHaveBeenCalledWith(
       "knowledge",
       "公司的退貨規定是什麼？",
-      undefined
+      undefined, false, { page: page(), contextUsed: false }
     )
     expect(tools(session)[0].contextUsed).toBe(false)
   })
@@ -540,7 +540,7 @@ describe("全站自動問答", () => {
       ],
       elsewhere
     )
-    expect(api.createAsk).toHaveBeenCalledWith("data", "康泰進貨狀況", photo)
+    expect(api.createAsk).toHaveBeenCalledWith("data", "康泰進貨狀況", photo, false, { page: elsewhere, contextUsed: false })
   })
   it("追問時改問獨立問題，不把前題附檔帶進新查詢", async () => {
     const session = askSessionFor("U01"),
@@ -559,7 +559,7 @@ describe("全站自動問答", () => {
     expect(api.createAsk).toHaveBeenLastCalledWith(
       "knowledge",
       "公司的退貨規定？",
-      undefined
+      undefined, false, { page: page(), contextUsed: false }
     )
   })
   it("整理失敗顯示錯誤並可重問，不默認數字或要求選模式", async () => {
@@ -597,7 +597,7 @@ describe("全站自動問答", () => {
     expect(api.createAsk).toHaveBeenLastCalledWith(
       "data",
       "他如何？",
-      undefined
+      undefined, false, { page: page(), contextUsed: undefined }
     )
     expect(tools(session)[1]).toMatchObject({
       page: page(),

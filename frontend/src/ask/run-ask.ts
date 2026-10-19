@@ -36,10 +36,13 @@ export async function runAsk(
   signal: AbortSignal,
   options: { file?: File; utteranceId?: number } = {}
 ): Promise<Ask> {
-  const ghost = conversation.getSnapshot().find((entry) => entry.id === entryId)?.ghost
+  const entry = conversation.getSnapshot().find((entry) => entry.id === entryId)
+  const ghost = entry?.ghost
   const ask = ghost
     ? await createAsk(kind, question, options.file, true)
-    : await createAsk(kind, question, options.file)
+    : entry?.kind === "tool" && entry.page
+      ? await createAsk(kind, question, options.file, false, { page: entry.page, contextUsed: entry.contextUsed })
+      : await createAsk(kind, question, options.file)
   if (options.utteranceId !== undefined && ask.attachment) conversation.attach(options.utteranceId, ask.attachment)
   conversation.replace(entryId, { ask })
   return pollAsk(conversation, entryId, ask, signal)

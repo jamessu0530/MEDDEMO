@@ -3,7 +3,7 @@ from sqlalchemy import func, inspect, select
 
 from app.db import schema_version
 from app.models import AppSetting, LearningCompletion, SalesTransaction, UserReportConfig
-from scripts.upgrade_schema import PRE_ACCOUNT_MEMORY_VERSION, PRE_GHOST_VERSION
+from scripts.upgrade_schema import PRE_ACCOUNT_MEMORY_VERSION, PRE_GHOST_VERSION, PRE_BUSINESS_REPORTS_VERSION, PRE_CUSTOMER_INQUIRIES_VERSION, PRE_WORKPLACE_VERSION, PRE_TASKS_VERSION, PRE_DEPLOYED_TASKS_VERSION
 from scripts.upgrade_schema import FROM_VERSION, PREVIOUS_VERSION, ORDERS_VERSION, REPORTS_VERSION, PRODUCT_BROWSING_VERSION, PUBLIC_OUTLETS_VERSION, PRE_CALENDAR_VERSION, PRE_OA_VERSION, PRE_CATALOG_CLEANUP_VERSION, PRE_STOREFRONT_VERSION, PRE_PRODUCT_PHOTOS_VERSION, PRE_DEMO_PHOTOS_VERSION, TO_VERSION, upgrade
 
 
@@ -19,13 +19,13 @@ def test_additive_upgrade_preserves_transactions_reports_and_existing_progress(i
     s.expire_all()
     assert s.get(UserReportConfig, "S1").config == saved
     assert s.get(AppSetting, "schema_version").value == TO_VERSION == schema_version()
-    assert {"sales_order", "learning_completion", "mascot_wardrobe", "mascot_collectible", "mascot_encounter"} <= set(inspect(s.connection()).get_table_names())
+    assert {"sales_order", "learning_completion", "mascot_wardrobe", "mascot_collectible", "mascot_encounter", "attendance_event", "work_goal"} <= set(inspect(s.connection()).get_table_names())
     s.add(LearningCompletion(user_id="S1", lesson_id="customer-v1")); s.flush()
     assert "無須更新" in upgrade(s.connection())
     assert s.get(LearningCompletion, ("S1", "customer-v1")) is not None
 
 
-@pytest.mark.parametrize("version", [PREVIOUS_VERSION, ORDERS_VERSION, REPORTS_VERSION, PRODUCT_BROWSING_VERSION, PUBLIC_OUTLETS_VERSION, PRE_CALENDAR_VERSION, PRE_OA_VERSION, PRE_CATALOG_CLEANUP_VERSION, PRE_STOREFRONT_VERSION, PRE_PRODUCT_PHOTOS_VERSION, PRE_DEMO_PHOTOS_VERSION, PRE_ACCOUNT_MEMORY_VERSION, PRE_GHOST_VERSION])
+@pytest.mark.parametrize("version", [PREVIOUS_VERSION, ORDERS_VERSION, REPORTS_VERSION, PRODUCT_BROWSING_VERSION, PUBLIC_OUTLETS_VERSION, PRE_CALENDAR_VERSION, PRE_OA_VERSION, PRE_CATALOG_CLEANUP_VERSION, PRE_STOREFRONT_VERSION, PRE_PRODUCT_PHOTOS_VERSION, PRE_DEMO_PHOTOS_VERSION, PRE_ACCOUNT_MEMORY_VERSION, PRE_GHOST_VERSION, PRE_BUSINESS_REPORTS_VERSION, PRE_CUSTOMER_INQUIRIES_VERSION, PRE_WORKPLACE_VERSION, PRE_TASKS_VERSION, PRE_DEPLOYED_TASKS_VERSION])
 def test_current_deployed_schema_can_upgrade_without_reseeding(interaction_session, version):
     s = interaction_session
     s.add(AppSetting(key="schema_version", value=version)); s.flush()
@@ -33,6 +33,7 @@ def test_current_deployed_schema_can_upgrade_without_reseeding(interaction_sessi
     assert "sales_order" in inspect(s.connection()).get_table_names()
     assert "report_dataset" in inspect(s.connection()).get_table_names()
     assert "product_browse_profile" in inspect(s.connection()).get_table_names()
+    assert "product_query_event" in inspect(s.connection()).get_table_names()
     assert "public_outlet" in inspect(s.connection()).get_table_names()
     assert "outlet_storefront" in inspect(s.connection()).get_table_names()
     assert "product_photo" in inspect(s.connection()).get_table_names()
@@ -93,3 +94,19 @@ def test_ghost_upgrade_preserves_existing_queries_as_normal_conversations(intera
     record = s.get(AskRecord, "keep-query")
     assert record.question == "保留的問題"
     assert record.ghost is False
+
+
+def test_customer_inquiry_upgrade_preserves_queries_without_sharing_old_history(interaction_session):
+    from sqlalchemy import text
+    from app.models import AskRecord
+    s = interaction_session
+    AskRecord.__table__.create(s.connection(), checkfirst=True)
+    s.add(AskRecord(id="private-old-query", user_id="S1", kind="knowledge", question="既有客戶問題", status="answered"))
+    s.flush()
+    s.execute(text("ALTER TABLE ask_record DROP COLUMN customer_ids"))
+    s.add(AppSetting(key="schema_version", value=PRE_CUSTOMER_INQUIRIES_VERSION))
+    s.flush()
+    upgrade(s.connection())
+    s.expire_all()
+    saved = s.get(AskRecord, "private-old-query")
+    assert saved.question == "既有客戶問題" and saved.customer_ids is None

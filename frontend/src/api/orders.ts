@@ -20,6 +20,14 @@ export type OrderProduct = {
   spec: string
   unit: string
   unit_price: number
+  last_qty?: number
+  last_unit_price?: number
+}
+export type OrderLastPurchase = {
+  order_no: string
+  date: string
+  items: OrderProduct[]
+  unavailable_count: number
 }
 export type OrderItemInput = { sku: string; qty: number; unit_price: number }
 export type OrderInput = {
@@ -119,6 +127,12 @@ export function getOrderProducts(
 ) {
   return request<OrderProductList>(
     `/api/orders/products?${new URLSearchParams({ customer_id: customerId, q, page: String(page) })}`,
+    { signal }
+  )
+}
+export function getOrderLastPurchase(customerId: string, signal?: AbortSignal) {
+  return request<OrderLastPurchase | null>(
+    `/api/orders/customers/${encodeURIComponent(customerId)}/last-purchase`,
     { signal }
   )
 }

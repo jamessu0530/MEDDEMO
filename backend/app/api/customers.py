@@ -16,7 +16,8 @@ from app.api.methods import MethodCardOut
 from app.db import get_session
 from app.models import AppUser, Customer, PublicOutlet, OutletStorefront, Product, SalesTransaction, SapQuotationDraft, Visit
 from app.pricing import supply_price
-from app.services import approvals, customer_profile, last_order, negotiation, orders, promo_packs, writeback
+from app.services import approvals, customer_profile, customer_purchase_history, last_order, negotiation, orders, promo_packs, writeback
+from app.services.customer_purchase_history import PurchasedProduct
 from app.services.scope import SHARING_LEVEL, Scope
 from app.services.product_catalog import visible_catalog_products
 from app.services.featured_products import FeaturedBlock
@@ -54,8 +55,12 @@ class CustomerItem(BaseModel):
     last_visit_date: date | None
 
 
+class CustomerPickerItem(CustomerItem):
+    purchased_products: list[PurchasedProduct]
+
+
 class CustomerPickerPage(BaseModel):
-    customers: list[CustomerItem]
+    customers: list[CustomerPickerItem]
     next_offset: int | None
 
 
@@ -78,6 +83,16 @@ class ProfileStats(BaseModel):
 class MonthlyInterval(BaseModel):
     month: str
     gap_days: float | None
+
+
+class DailyPurchase(BaseModel):
+    date: date
+    amount: float
+
+
+class MonthlyPurchases(BaseModel):
+    month: str
+    daily: list[DailyPurchase]
 
 
 class OpenQuote(BaseModel):
@@ -121,6 +136,7 @@ class CustomerProfile(BaseModel):
     highlights: list[str]
     stats: ProfileStats
     intervals: list[MonthlyInterval]
+    monthly_purchases: list[MonthlyPurchases]
     open_quotes: list[OpenQuote]
     commitments: list[Commitment]
     complaints: list[Complaint]
@@ -268,16 +284,24 @@ def _load(session: Session, customer_id: str, user: AppUser, level: int) -> tupl
 
 @router.get("", response_model=list[CustomerItem])
 def list_customers(session: SessionDep, user: CurrentUser, q: str = Query(default="", max_length=100)):
-    """業務開始口述前先選客戶；q 以客戶名稱做部分比對。客戶清單全國共享（services/scope.py）。"""
+    """共用客戶清單；可依店家資料或歷史叫貨品項搜尋。"""
     scope = Scope.for_user(user)
     stmt = _customer_query(scope).where(scope.customers_at(SHARING_LEVEL["customer_basic"]))
-    if q:
-        from app.services.outlet_search import customer_matches
-        ids = customer_matches(session, q)
+    if q.strip():
+        ids = _matching_customers(session, scope, q.strip())
         stmt = stmt.where(Customer.id.in_(ids))
         if ids:
             stmt = stmt.order_by(None).order_by(case({key: i for i, key in enumerate(ids)}, value=Customer.id), Customer.id)
     return [CustomerItem(**row._mapping) for row in session.execute(stmt)]
+
+
+def _matching_customers(session: Session, scope: Scope, query: str) -> list[str]:
+    from app.services.outlet_search import customer_matches
+
+    return list(dict.fromkeys([
+        *customer_matches(session, query),
+        *customer_purchase_history.matching_customers(session, scope, query),
+    ]))
 
 
 @router.get("/picker", response_model=CustomerPickerPage)
@@ -288,12 +312,11 @@ def customer_picker_page(
     offset: int = Query(default=0, ge=0, le=100_000),
     limit: int = Query(default=100, ge=1, le=100),
 ):
-    """只為這一批客戶載入照片與拜訪摘要，不先聚合整份清單。"""
+    """只為這一批客戶載入照片、拜訪摘要與歷史叫貨關鍵字。"""
     scope = Scope.for_user(user)
     visible = scope.customers_at(SHARING_LEVEL["customer_basic"])
     if q.strip():
-        from app.services.outlet_search import customer_matches
-        matches = customer_matches(session, q.strip())
+        matches = _matching_customers(session, scope, q.strip())
         allowed = set(session.scalars(select(Customer.id).where(visible, Customer.id.in_(matches))))
         ids = [key for key in matches if key in allowed][offset:offset + limit + 1]
     else:
@@ -307,7 +330,8 @@ def customer_picker_page(
     has_more = len(ids) > limit
     ids = ids[:limit]
     rows = session.execute(_customer_query(scope).where(Customer.id.in_(ids))) if ids else []
-    items = {row.id: CustomerItem(**row._mapping) for row in rows}
+    purchases = customer_purchase_history.for_customers(session, scope, ids)
+    items = {row.id: CustomerPickerItem(**row._mapping, purchased_products=purchases[row.id]) for row in rows}
     return CustomerPickerPage(
         customers=[items[key] for key in ids],
         next_offset=offset + len(ids) if has_more else None,
@@ -317,6 +341,13 @@ def customer_picker_page(
 @router.get("/{customer_id}", response_model=CustomerItem)
 def get_customer(session: SessionDep, customer_id: str, user: CurrentUser):
     return _load(session, customer_id, user, SHARING_LEVEL["customer_basic"])[1]
+
+
+@router.get("/{customer_id}/purchased-products", response_model=list[PurchasedProduct])
+def get_purchased_products(session: SessionDep, customer_id: str, user: CurrentUser):
+    """所有曾叫貨的品項、最近叫貨日與次數；沒有交易的商家回空清單。"""
+    customer, _ = _load(session, customer_id, user, SHARING_LEVEL["sales_figures"])
+    return customer_purchase_history.for_customers(session, Scope.for_user(user), [customer.id])[customer.id]
 
 
 @router.get("/{customer_id}/profile", response_model=CustomerProfile)

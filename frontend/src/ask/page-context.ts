@@ -41,7 +41,9 @@ export function pageContextFor(pathname: string, search = ""): AssistantPage {
         ? "商品型錄"
         : view === "promotions"
           ? "促銷方案"
-          : "銷售訂單"
+          : view === "opportunities"
+            ? "潛在銷售"
+            : "銷售訂單"
     if (parts[1] === "new") title = "新增訂單"
     else if (parts[1]) {
       title = parts[1] === "demo" ? "訂單操作練習" : "訂單明細"
@@ -93,7 +95,7 @@ export function pageContextFor(pathname: string, search = ""): AssistantPage {
       oa: "簽核",
       methods: "方法卡",
     }
-    title = views[params.get("view") ?? ""] ?? "團隊行程"
+    title = views[params.get("view") ?? ""] ?? "客戶提問"
   } else {
     const titles: Record<string, string> = {
       route: "今日路線",

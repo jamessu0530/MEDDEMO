@@ -7,6 +7,13 @@ from urllib.parse import parse_qs, urlsplit
 
 # 這是介面功能，不是公司的業務規定，也不代表目前帳號具有編輯權限。
 GUIDES = {
+    "/manager": {
+        "title": "客戶提問",
+        "topics": {
+            "overview": "主管端的客戶提問可查看團隊業務向 AI 詢問了哪間客戶、問題內容、提問時間與 AI 處理狀態。可切換最近 7 天或 30 天、依業務篩選，或搜尋客戶、業務與問題。勾選「只看 AI 尚未解決的提問」可找出查無依據、尚未釐清或查詢失敗的問題；點客戶名稱可開啟客戶檔案。Ghost 模式與沒有關聯客戶的提問不會列入。",
+            "search": "在客戶提問上方的搜尋欄輸入客戶名稱、業務姓名或問題關鍵字；也可使用業務和期間選單縮小範圍。勾選「只看 AI 尚未解決的提問」，可優先查看可能需要協助的客戶問題。",
+        },
+    },
     "/calendar": {
         "title": "日曆",
         "topics": {
@@ -101,6 +108,8 @@ def guide_path(path: str) -> str | None:
         return None
     parsed = urlsplit(path)
     route = parsed.path.rstrip("/")
+    if route == "/manager" and parse_qs(parsed.query).get("view", [""])[0] not in ("", "inquiries", "asks", "routes"):
+        return None
     if route in ("/orders", "/products"):
         view = parse_qs(parsed.query).get("view", [""])[0]
         if view in ("products", "promotions"):

@@ -170,6 +170,41 @@ class AppUser(Base):
     travel_mode: Mapped[str] = mapped_column(server_default="drive")
 
 
+class AttendanceEvent(Base):
+    """公司進出打卡；不讀取 GPS 或線上狀態，外部事件編號用於去重。"""
+
+    __tablename__ = "attendance_event"
+    __table_args__ = (
+        one_of("direction", ("in", "out"), "direction"),
+        UniqueConstraint("source", "external_id"),
+        Index("ix_attendance_event_user_time", "user_id", "occurred_at"),
+    )
+
+    id: Mapped[str] = mapped_column(primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id"))
+    direction: Mapped[str]
+    occurred_at: Mapped[dt.datetime]
+    source: Mapped[str]
+    external_id: Mapped[str]
+    recorded_by: Mapped[str] = mapped_column(ForeignKey("app_user.id"))
+    recorded_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+
+
+class WorkGoal(Base):
+    """真正登入者的個人目標，與示範業務的共用資料分開。"""
+
+    __tablename__ = "work_goal"
+    __table_args__ = (CheckConstraint("progress >= 0 AND progress <= 100", name="progress"),)
+
+    id: Mapped[str] = mapped_column(primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id"), index=True)
+    title: Mapped[str]
+    note: Mapped[str] = mapped_column(server_default="")
+    due_date: Mapped[dt.date | None]
+    progress: Mapped[int] = mapped_column(server_default="0")
+    created_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+
+
 class OrgChangeLog(Base):
     """組織與帳號的異動紀錄（組織管理頁最下面）。detail 是寫給人看的一句話，當下就寫好，
     之後名字、組織再怎麼變都不回頭改。"""
@@ -770,10 +805,12 @@ class AskRecord(Base):
     __table_args__ = (one_of("kind", ASK_KINDS, "kind"), one_of("status", ASK_STATUSES, "status"))
 
     id: Mapped[str] = mapped_column(primary_key=True)
-    # 誰問的：數字查詢照這個人的範圍過濾，提問與轉給主管也只有他自己看得到
+    # 數字查詢與完整答案依本人權限讀取；主管只看團隊中已關聯客戶的提問。
     user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), index=True)
     kind: Mapped[str]
     question: Mapped[str] = mapped_column(Text)
+    # 只分享與客戶有關的提問；建立時依問題與實際使用的頁面情境辨識，不用 AI 回答推測。
+    customer_ids: Mapped[list[str] | None] = mapped_column(JSONB(none_as_null=True))
     # Ghost 查詢仍走背景工作，但不得恢復為個人記憶或對話歷史。
     ghost: Mapped[bool] = mapped_column(server_default="false")
     status: Mapped[str] = mapped_column(server_default="queued")
@@ -1132,6 +1169,17 @@ class UserPreference(Base):
     skin: Mapped[str]
     text_size: Mapped[str]
     updated_at: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+
+
+class ProductQueryEvent(Base):
+    """匿名的藥品明細開啟紀錄；事件 ID 永久去重，日期供報表依台北日界線統計。"""
+
+    __tablename__ = "product_query_event"
+    __table_args__ = (Index("ix_product_query_event_sku_recorded_at", "sku", "recorded_at"),)
+
+    id: Mapped[str] = mapped_column(primary_key=True)
+    sku: Mapped[str] = mapped_column(ForeignKey("product.sku", ondelete="CASCADE"))
+    recorded_at: Mapped[dt.datetime] = mapped_column(server_default=func.now(), index=True)
 
 
 class ProductBrowseProfile(Base):

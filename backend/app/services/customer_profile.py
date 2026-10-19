@@ -4,6 +4,7 @@
 """
 
 import datetime as dt
+from calendar import monthrange
 from dataclasses import dataclass
 from statistics import mean
 from typing import Any
@@ -80,6 +81,18 @@ class MonthlyInterval:
 
 
 @dataclass
+class DailyPurchase:
+    date: dt.date
+    amount: float
+
+
+@dataclass
+class MonthlyPurchases:
+    month: str
+    daily: list[DailyPurchase]
+
+
+@dataclass
 class OpenQuote:
     quote_no: str
     visit_id: str | None
@@ -120,6 +133,7 @@ class Profile:
     highlights: list[str]
     stats: Stats
     intervals: list[MonthlyInterval]
+    monthly_purchases: list[MonthlyPurchases]
     open_quotes: list[OpenQuote]
     commitments: list[Commitment]
     complaints: list[Complaint]
@@ -174,6 +188,31 @@ def _monthly_intervals(session: Session, customer_id: str, today: dt.date) -> li
     for start in _month_starts(today, PROFILE_MONTHS):
         values = [gap for day, gap in gaps if (day.year, day.month) == (start.year, start.month)]
         result.append(MonthlyInterval(f"{start:%Y-%m}", round(mean(values), 1) if values else None))
+    return result
+
+
+def _monthly_purchases(session: Session, customer_id: str, today: dt.date) -> list[MonthlyPurchases]:
+    """上月整月與本月至今的每日進貨；同日所有訂單品項加總，沒有進貨的日期補零。"""
+    starts = _month_starts(today, 2)
+    amounts = dict(
+        session.execute(
+            select(SalesTransaction.date, func.sum(SalesTransaction.amount))
+            .where(
+                SalesTransaction.customer_id == customer_id,
+                SalesTransaction.date >= starts[0],
+                SalesTransaction.date <= today,
+            )
+            .group_by(SalesTransaction.date)
+        ).all()
+    )
+    result = []
+    for start in starts:
+        last_day = today.day if start == starts[-1] else monthrange(start.year, start.month)[1]
+        daily = [
+            DailyPurchase(day := start.replace(day=number), float(amounts.get(day, 0)))
+            for number in range(1, last_day + 1)
+        ]
+        result.append(MonthlyPurchases(f"{start:%Y-%m}", daily))
     return result
 
 
@@ -297,6 +336,7 @@ def build_profile(session: Session, customer: Customer) -> Profile:
         highlights=highlights[:MAX_HIGHLIGHTS],
         stats=stats,
         intervals=_monthly_intervals(session, customer.id, today),
+        monthly_purchases=_monthly_purchases(session, customer.id, today),
         open_quotes=_open_quotes(session, customer.id),
         commitments=commitments,
         complaints=complaints,

@@ -4,7 +4,7 @@ import logging
 import datetime as dt
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import StreamingResponse
 from urllib.parse import quote
 from google.genai import errors
@@ -20,6 +20,7 @@ from app.services import reports as service
 from app.services import report_details
 from app.services import report_library
 from app.services import report_exports
+from app.services import report_business
 from app.services.reports import Adjustment, ReportConfig, ReportData, ReportFilterOptions, ReportOwner, ReportQuery
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
@@ -41,6 +42,19 @@ class AdjustInput(BaseModel):
 
     question: str = Field(min_length=1, max_length=600)
     config: ReportConfig
+
+
+@router.get("/business-products", response_model=list[report_business.BusinessProduct])
+def business_products(session: SessionDep, user: CurrentAccount, q: str = Query(default="", max_length=100)):
+    return report_business.products(session, q)
+
+
+@router.post("/business", response_model=report_business.BusinessData)
+def business_report(session: SessionDep, user: CurrentAccount, body: report_business.BusinessQuery):
+    try:
+        return report_business.data(session, user, body)
+    except report_business.ProductNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from None
 
 
 @router.get("", response_model=ReportSettings)

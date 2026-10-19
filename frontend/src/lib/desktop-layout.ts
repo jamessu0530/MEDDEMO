@@ -29,6 +29,7 @@ export function trimPath(pathname: string) {
 
 export function pageWidth(pathname: string): PageWidth {
   const path = trimPath(pathname)
+  if (path === "/me") return "wide"
   if (BARE.some((pattern) => pattern.test(path))) return "bare"
   if (WIDE.some((pattern) => pattern.test(path))) return "wide"
   return "column"

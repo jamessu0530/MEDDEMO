@@ -60,8 +60,7 @@ def test_a_session_gets_a_single_use_token_with_the_whole_setup_locked(client, e
     setup = body["bidiGenerateContentSetup"]
     assert setup["model"] == f"models/{voice.DEFAULT_VOICE_MODEL}"
     instruction = setup["systemInstruction"]["parts"][0]["text"]
-    assert "只能來自工具回傳的結果" in instruction
-    assert "manage_tasks" in instruction
+    assert "只能來自工具回傳" in instruction and "manage_tasks" in instruction
     # 客戶名稱與熱詞放進系統指示，模型才會把「康太中孝店」理解成「康泰連鎖藥局 · 忠孝店」
     assert "康泰連鎖藥局 · 忠孝店" in instruction and "御松田" in instruction and "近效期" in instruction
     declarations = setup["tools"][0]["functionDeclarations"]

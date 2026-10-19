@@ -173,7 +173,7 @@ export function CustomerPriorityPanel() {
       )
       const result = await previewPriority(settings.manager_id, draft)
       setPreview({ fingerprint, data: result })
-      setNotice("今天的建議已更新，業務首頁與團隊行程會顯示新路線。")
+      setNotice("今天的建議已更新，業務的今日路線會顯示新的安排。")
     } catch (e) {
       setError(errorText(e))
       if (e instanceof ApiError && e.status === 409) setPreview(null)

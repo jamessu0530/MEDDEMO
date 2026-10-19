@@ -94,6 +94,38 @@ describe("分頁客戶載入", () => {
     expect(mocks.request).not.toHaveBeenCalled()
   })
 
+  it("離線也能搜尋已載入商家的叫貨品名、別名與料號", async () => {
+    const { listPickerCustomers } = await import("./customers")
+    mocks.request.mockResolvedValueOnce({
+      customers: [
+        {
+          ...customer("店家"),
+          purchased_products: [
+            {
+              sku: "FISH01",
+              name: "深海魚油",
+              category: "保健",
+              spec: "60粒",
+              unit: "盒",
+              aliases: ["Omega 3"],
+              order_count: 2,
+              total_qty: 12,
+              last_order_date: "2031-04-17",
+            },
+          ],
+        },
+      ],
+      next_offset: null,
+    })
+    await listPickerCustomers()
+    mocks.request.mockRejectedValue(new Error("offline"))
+    for (const keyword of ["魚油", "ＯＭＥＧＡ　３", "fish01"]) {
+      const result = await listPickerCustomers(undefined, keyword)
+      expect(result.cached).toBe(true)
+      expect(result.customers.map((c) => c.id)).toEqual(["店家"])
+    }
+  })
+
   it("保留行事曆已儲存的完整離線客戶，不因分頁縮減", async () => {
     const existing = Array.from({ length: 700 }, (_, i) => customer(`C${i}`))
     localStorage.setItem("meddemo:customers:U01", JSON.stringify(existing))

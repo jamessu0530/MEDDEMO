@@ -136,13 +136,18 @@ export function routeAsk(
 }
 
 /** 提問。附了檔案（拍產品盒、仿單、競品海報）就用 multipart 上傳 */
-export function createAsk(kind: AskKind, question: string, file?: File, ghost = false) {
+export function createAsk(kind: AskKind, question: string, file?: File, ghost = false, context?: { page: AskPageContext; contextUsed?: boolean }) {
   if (!file)
-    return request<Ask>("/api/asks", jsonBody("POST", { kind, question, ...(ghost ? { ghost: true } : {}) }))
+    return request<Ask>("/api/asks", jsonBody("POST", { kind, question, ...(ghost ? { ghost: true } : {}),
+      ...(context && !ghost ? { page: context.page, context_used: context.contextUsed ?? false } : {}) }))
   const form = new FormData()
   form.append("kind", kind)
   form.append("question", question)
   if (ghost) form.append("ghost", "true")
+  if (context && !ghost) {
+    form.append("page", JSON.stringify(context.page))
+    form.append("context_used", String(context.contextUsed ?? false))
+  }
   form.append("file", file, file.name)
   return upload<Ask>("/api/asks", form)
 }

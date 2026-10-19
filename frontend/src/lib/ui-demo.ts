@@ -320,7 +320,7 @@ export const OA_DETAIL_DEMO_STEPS: readonly DemoStep[] = [
     target: "oa-activity-tab",
     page: "/oa/forms/:formId",
     action: "point",
-    text: "「活動日誌」能查看處理紀錄。要繼續操作時，碰一下畫面就能接手。",
+    text: "「活動日誌」能查看處理紀錄。要繼續操作時，點兩下畫面或按 Esc就能接手。",
   },
 ]
 
@@ -340,7 +340,7 @@ export const UI_DEMOS: Record<UiDemoKind, DemoPreset> = {
     steps: [],
     description:
       "我會依目前頁面的實際介面，帶你看搜尋、填寫、選項和功能入口，並示範展開可用的面板。",
-    note: "保留已填內容；儲存、送出、刪除與帳號操作由你確認。碰一下畫面即可接手。",
+    note: "保留已填內容；儲存、送出、刪除與帳號操作由你確認。點兩下畫面或按 Esc即可接手。",
     completed: "示範完成！你可以從目前畫面繼續操作，需要時再請我帶你看。",
   },
   "create-order": {
@@ -348,7 +348,7 @@ export const UI_DEMOS: Record<UiDemoKind, DemoPreset> = {
     paths: ["/orders", "/orders/demo"],
     steps: ORDER_DEMO_STEPS,
     description:
-      "我會用紫色箭頭示範新增訂單。你隨時碰一下畫面、捲動或按鍵，我就停下來，換你操作。",
+      "我會用紫色箭頭示範新增訂單。你隨時點兩下畫面或按 Esc，我就停下來，換你操作。",
     note: "使用練習資料，最後的發送步驟會留給你確認。",
     completed: "示範完成！你可以在練習單繼續試，或回訂單頁正式操作。",
   },
@@ -357,7 +357,7 @@ export const UI_DEMOS: Record<UiDemoKind, DemoPreset> = {
     paths: ["/reports"],
     steps: REPORT_DEMO_STEPS,
     description:
-      "我會用紫色箭頭帶你操作新版報表：篩選、查看數值、編輯與匯出。碰一下畫面就能接手。",
+      "我會用紫色箭頭帶你操作新版報表：篩選、查看數值、編輯與匯出。點兩下畫面或按 Esc就能接手。",
     note: "會開啟面板，不更動報表條件，也不會替你儲存或下載。",
     completed: "示範完成！你可以繼續選擇匯出格式，或關閉視窗回到報表。",
   },
@@ -372,7 +372,7 @@ export const UI_DEMOS: Record<UiDemoKind, DemoPreset> = {
     ],
     description:
       "我會用紫色箭頭帶你看新版我的申請單、選表單、預填與缺漏檢查。若正在填寫，會從目前這張表單開始。",
-    note: "保留已填內容；儲存草稿、送出與簽核都由你操作。碰一下畫面即可接手。",
+    note: "保留已填內容；儲存草稿、送出與簽核都由你操作。點兩下畫面或按 Esc即可接手。",
     completed:
       "示範完成！你可以從目前的畫面繼續操作；儲存、送出或簽核都由你確認。",
   },
@@ -478,6 +478,21 @@ export function uiDemoKindForPage(pathname: string, search = ""): UiDemoKind {
   return "page-tour"
 }
 
+/** 業務的型錄入口會轉到銷售分頁；直接前往最終頁面，讓啟動指引的狀態留在同一次導航。 */
+export function uiDemoPathForRole(path: string, role?: string) {
+  const [pathname, search = ""] = path.split("?")
+  if (role !== "sales" || !["/products", "/promotions"].includes(pathname))
+    return path
+  const params = new URLSearchParams(search)
+  params.set(
+    "view",
+    pathname === "/promotions" || params.get("view") === "promotions"
+      ? "promotions"
+      : "products"
+  )
+  return `/orders?${params}`
+}
+
 /** 只辨識明確的介面求助；業績、訂單數字與公司規定仍走既有查詢。 */
 export function wantsOrderDemo(question: string) {
   const text = question.replace(/\s/g, "")
@@ -527,7 +542,8 @@ type DemoInput = Pick<Event, "type" | "isTrusted"> & {
 
 export const isUserTakeover = (event: DemoInput) =>
   event.isTrusted &&
-  (event.type === "dblclick" || (event.type === "keydown" && event.key === "Escape"))
+  (event.type === "dblclick" ||
+    (event.type === "keydown" && event.key === "Escape"))
 
 /** Count completed taps, so touch compatibility clicks cannot count twice. */
 export function createUiDemoTakeover() {
@@ -536,26 +552,46 @@ export function createUiDemoTakeover() {
   return (event: DemoInput) => {
     if (!event.isTrusted) return false
     if (isUserTakeover(event)) return true
-    const x = event.clientX ?? 0, y = event.clientY ?? 0, at = event.timeStamp ?? 0
+    const x = event.clientX ?? 0,
+      y = event.clientY ?? 0,
+      at = event.timeStamp ?? 0
     if (event.type === "pointercancel" || event.isPrimary === false) {
       down = null
       tap = null
     } else if (event.type === "pointerdown") {
       if ((event.button ?? 0) === 0)
         down = { id: event.pointerId ?? 0, x, y, at }
-      else { down = null; tap = null }
-    } else if (event.type === "pointermove" && down && Math.hypot(x - down.x, y - down.y) > 12) {
+      else {
+        down = null
+        tap = null
+      }
+    } else if (
+      event.type === "pointermove" &&
+      down &&
+      Math.hypot(x - down.x, y - down.y) > 12
+    ) {
       down = null
       tap = null
     } else if (event.type === "pointerup") {
       const start = down
       down = null
-      if (!start || start.id !== (event.pointerId ?? 0) || at - start.at > 400 || Math.hypot(x - start.x, y - start.y) > 12) {
+      if (
+        !start ||
+        start.id !== (event.pointerId ?? 0) ||
+        at - start.at > 400 ||
+        Math.hypot(x - start.x, y - start.y) > 12
+      ) {
         tap = null
         return false
       }
       const type = event.pointerType ?? "mouse"
-      if (tap && tap.type === type && at - tap.at >= 0 && at - tap.at <= 420 && Math.hypot(x - tap.x, y - tap.y) <= 28) {
+      if (
+        tap &&
+        tap.type === type &&
+        at - tap.at >= 0 &&
+        at - tap.at <= 420 &&
+        Math.hypot(x - tap.x, y - tap.y) <= 28
+      ) {
         tap = null
         return true
       }

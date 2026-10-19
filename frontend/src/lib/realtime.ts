@@ -2,13 +2,12 @@ import { useSyncExternalStore } from "react"
 
 import { pingPresence, type HeartbeatLocation, type PresenceStatus } from "@/api/presence"
 import { readToken } from "@/lib/auth"
-import { locationShare } from "@/lib/location-share"
 import { presence, type PresenceStore } from "@/lib/presence"
 
 /*
  * 一條 WebSocket（/api/ws）同時收兩件事：有人的狀態變了、看得到的頻道有新訊息
  * （docs/superpowers/specs/2026-10-01-presence-design.md）。
- * 業務的心跳順便帶位置（lib/location-share.ts）；主管與 IT 另外會收到看得到的業務位置變了、行程變了的通知。
+ * 心跳只更新在線狀態，不讀取或上傳定位。
  * 新訊息只是通知，內容照舊用 API 拿（pages/channel.tsx）；斷線漏掉的通知，重連時發一個 resync 讓畫面自己補。
  * 連不上的期間改用 HTTP 心跳，別人才不會以為你離線了。
  */
@@ -296,7 +295,7 @@ const browserEnv: RealtimeEnv = {
   visible: () => document.visibilityState === "visible",
   online: () => navigator.onLine,
   ping: pingPresence,
-  heartbeat: () => locationShare.heartbeat(),
+  heartbeat: () => ({}),
   listen(kind, callback) {
     if (kind === "visibility") {
       document.addEventListener("visibilitychange", callback)

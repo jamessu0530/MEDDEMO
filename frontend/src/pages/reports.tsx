@@ -99,6 +99,7 @@ import {
 } from "@/components/reports/report-layout"
 import { setMobileReportLayout } from "@/lib/report-layout"
 import { ReportDetailsDialog } from "@/components/reports/report-details"
+import { ReportBusinessDialog } from "@/components/reports/report-business"
 import { ReportExploreControls } from "@/components/reports/report-explore-controls"
 import {
   ReportDateRangeEditor,
@@ -351,6 +352,7 @@ function ReportDocument({
   const editing = !readonly && inspecting
   const setEditing = setInspecting
   const [toolsOpen, setToolsOpen] = useState(false)
+  const [businessOpen, setBusinessOpen] = useState(false)
   const [lastLoadedAt, setLastLoadedAt] = useState<string | null>(null)
   const [lastAsOf, setLastAsOf] = useState(workspace.as_of)
   const [selectedId, setSelectedId] = useState<string | null>(
@@ -1362,6 +1364,9 @@ function ReportDocument({
           </div>
         }
       />
+      {businessOpen && (
+        <ReportBusinessDialog onClose={() => setBusinessOpen(false)} />
+      )}
       <div className="report-navigation-bar">
         <nav
           className="report-page-tabs flex min-w-0 flex-1 items-center overflow-x-auto"
@@ -1454,6 +1459,14 @@ function ReportDocument({
         </div>
       </div>
       <div className="report-toolbar">
+        <Button
+          variant="outline"
+          className="min-h-11"
+          onClick={() => setBusinessOpen(true)}
+        >
+          <FileChartColumn className="size-4" />
+          藥局與藥品分析
+        </Button>
         {readonly && (
           <p className="report-readonly-note" role="status">
             唯讀共享 · 來自 {library.shared_from?.name}

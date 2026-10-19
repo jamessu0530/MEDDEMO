@@ -1,7 +1,7 @@
-import { BadgePercent, ClipboardList, Pill } from "@/components/icons"
+import { BadgePercent, ClipboardList, Pill, Target } from "@/components/icons"
 import { cn } from "@/lib/utils"
 
-export type SalesView = "orders" | "products" | "promotions"
+export type SalesView = "orders" | "products" | "promotions" | "opportunities"
 
 export function SalesNav({
   view,
@@ -18,6 +18,7 @@ export function SalesNav({
       {(
         [
           { value: "orders", label: "訂單", icon: ClipboardList },
+          { value: "opportunities", label: "潛在銷售", icon: Target },
           { value: "products", label: "商品", icon: Pill },
           { value: "promotions", label: "促銷", icon: BadgePercent },
         ] as const
@@ -28,7 +29,7 @@ export function SalesNav({
           aria-pressed={view === value}
           onClick={() => onChange(value)}
           className={cn(
-            "flex h-10 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg text-sm font-semibold",
+            "flex min-h-11 min-w-0 flex-1 flex-wrap items-center justify-center gap-x-1.5 rounded-lg px-1 py-1 text-sm font-semibold",
             view === value
               ? "bg-card text-foreground shadow-sm"
               : "text-muted-foreground"

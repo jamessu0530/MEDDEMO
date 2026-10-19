@@ -6,10 +6,18 @@ export type PageDemoControl = {
   kind: "field" | "search" | "choice" | "navigation" | "action" | "heading"
   opens?: "dialog" | "disclosure"
   disabled?: boolean
+  primary?: boolean
 }
 
 const COMMIT_ACTION =
   /儲存|送出|送簽|發送|刪除|移除|核准|駁回|退回|解除|重設|重置|登出|登入|註冊|套用|購買|付款|上傳|下載|接受|拒絕|撤回|撤銷|復原|錄音|建立草稿/
+
+/** 等待主要內容，錯誤與尚未載入的說明仍可開始導覽。 */
+export function pageDemoLoadingText(text: string) {
+  return /^(?:正在)?(?:載入|讀取|準備|整理|規劃)(?!失敗|不了|完成).{0,80}(?:中|…|\.{3})[。！!]?$/u.test(
+    text.replace(/\s+/g, " ").trim()
+  )
+}
 
 /** 所有控制項預設只指向；只有原始碼標記的開啟面板與原生 details 可代點。 */
 export function pageDemoCanClick(control: PageDemoControl) {
@@ -36,7 +44,7 @@ function instruction(control: PageDemoControl) {
     case "navigation":
       return `按${name}可前往對應內容。需要切頁時，由你點選入口繼續。`
     default:
-      return `${name}是這個頁面的操作入口。你隨時碰一下畫面就能接手使用。`
+      return `${name}是這個頁面的操作入口。你隨時點兩下畫面或按 Esc 就能接手使用。`
   }
 }
 
@@ -52,6 +60,9 @@ export function buildPageDemoSteps(
       ) === index
   )
   const opener = unique.find(pageDemoCanClick)
+  const preferred = unique.toSorted(
+    (a, b) => Number(!!b.primary) - Number(!!a.primary)
+  )
   const points: PageDemoControl[] = []
   const counts = new Map<PageDemoControl["kind"], number>()
   const order = [
@@ -63,7 +74,7 @@ export function buildPageDemoSteps(
     "navigation",
   ] as const
   for (const kind of order) {
-    for (const control of unique) {
+    for (const control of preferred) {
       if (
         control === opener ||
         control.kind !== kind ||
@@ -139,6 +150,7 @@ const PAGE_DESTINATIONS: readonly {
   words: RegExp
   path: string
   family: RegExp
+  catalogView?: "products" | "promotions"
 }[] = [
   {
     words: /對話紀錄|對話記錄|歷史對話/,
@@ -153,8 +165,14 @@ const PAGE_DESTINATIONS: readonly {
     words: /促銷/,
     path: "/products?view=promotions",
     family: /^\/(products|promotions)$/,
+    catalogView: "promotions",
   },
-  { words: /商品|產品|型錄/, path: "/products", family: /^\/products$/ },
+  {
+    words: /商品|產品|型錄/,
+    path: "/products",
+    family: /^\/products$/,
+    catalogView: "products",
+  },
   { words: /排序習慣/, path: "/route/habits", family: /^\/route\/habits$/ },
   {
     words: /調整行程|行程排序/,
@@ -179,9 +197,21 @@ export function requestedPageDemoPath(question: string, currentPath = "") {
   const named = PAGE_DESTINATIONS.find((destination) =>
     destination.words.test(question)
   )
-  if (named)
-    return named.family.test(currentPath.split("?")[0])
-      ? currentPath
-      : named.path
+  if (named) {
+    const [pathname, search] = currentPath.split("?")
+    if (named.catalogView) {
+      const view =
+        pathname === "/promotions" ||
+        new URLSearchParams(search).get("view") === "promotions"
+          ? "promotions"
+          : "products"
+      return ["/orders", "/products", "/promotions"].includes(pathname) &&
+        view === named.catalogView &&
+        (pathname !== "/orders" || new URLSearchParams(search).has("view"))
+        ? currentPath
+        : named.path
+    }
+    return named.family.test(pathname) ? currentPath : named.path
+  }
   return currentPath && canTourPage(currentPath) ? currentPath : null
 }

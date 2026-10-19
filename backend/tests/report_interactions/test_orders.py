@@ -3,7 +3,7 @@ from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 
 from app.main import app
 from app.models import AppUser, Customer, Product, Promotion, PromotionItem, PublicOutlet, Receivable, SalesOrder, SalesTransaction, SapQuotationDraft
@@ -138,6 +138,53 @@ def test_order_customers_and_full_catalog_use_edit_scope_and_current_supply_pric
     assert api.get("/api/orders/products?customer_id=C2&q=%25", headers=headers).json()["total"] == 0
 
 
+def test_last_purchase_uses_one_completed_order_groups_skus_and_current_customer_price(workspace):
+    # 同日以單號決定最新一張，其他客戶即使單號相同也不可混進來。
+    workspace.add_all([SalesTransaction(order_no=number, customer_id=customer_id, date=day,
+        sku=sku, qty=qty, amount=amount, cost=0, listing_fee=0, channel_reward=0)
+        for number, customer_id, day, sku, qty, amount in [
+            ("Z-LAST", "C2", dt.date(2031, 4, 17), "P1", 3, 100),
+            ("Z-LAST", "C2", dt.date(2031, 4, 17), "P1", 2, 17),
+            ("Z-LAST", "C2", dt.date(2031, 4, 17), "P2", 4, 80),
+            ("A-SAME-DAY", "C2", dt.date(2031, 4, 17), "P2", 99, 9900),
+            ("Z-LAST", "C1", dt.date(2031, 4, 17), "P1", 99, 9900),
+        ]])
+    workspace.flush()
+    api, headers, _ = create(workspace, customer_id="C2", items=[{"sku": "P2", "qty": 88, "unit_price": 95}])
+    response = api.get("/api/orders/customers/C2/last-purchase", headers=headers)
+    assert response.status_code == 200
+    purchase = response.json()
+    assert purchase["order_no"] == "Z-LAST" and purchase["date"] == "2031-04-17"
+    assert purchase["unavailable_count"] == 0
+    assert [(row["sku"], row["last_qty"], row["last_unit_price"], row["unit_price"]) for row in purchase["items"]] == [
+        ("P1", 5, 23.4, 95), ("P2", 4, 20, 95)]
+    # 可直接帶回工作區，儲存的是原數量與目前供貨價。
+    added = api.post("/api/orders", headers=headers, json=body(customer_id="C2", items=[
+        {"sku": row["sku"], "qty": row["last_qty"], "unit_price": row["unit_price"]} for row in purchase["items"]]))
+    assert added.status_code == 201 and added.json()["amount"] == 855
+
+
+def test_last_purchase_reports_unavailable_items_without_substituting_an_older_order(workspace):
+    workspace.add(Product(sku="HS-FO30", name="舊商品", category="保健品", spec="盒", unit="盒", unit_price=100, unit_cost=40))
+    workspace.flush()
+    workspace.add(SalesTransaction(order_no="Z-UNAVAILABLE", customer_id="C1", date=dt.date(2031, 4, 17),
+        sku="HS-FO30", qty=3, amount=300, cost=120, listing_fee=0, channel_reward=0))
+    workspace.flush()
+    api, headers = client(workspace)
+    response = api.get("/api/orders/customers/C1/last-purchase", headers=headers)
+    assert response.status_code == 200
+    assert response.json() == {"order_no": "Z-UNAVAILABLE", "date": "2031-04-17", "items": [], "unavailable_count": 1}
+
+
+def test_last_purchase_empty_customer_missing_and_authentication(workspace):
+    workspace.execute(delete(SalesTransaction).where(SalesTransaction.customer_id == "C4"))
+    api, headers = client(workspace)
+    response = api.get("/api/orders/customers/C4/last-purchase", headers=headers)
+    assert response.status_code == 200 and response.json() is None
+    assert api.get("/api/orders/customers/missing/last-purchase", headers=headers).status_code == 404
+    assert api.get("/api/orders/customers/C1/last-purchase").status_code == 401
+
+
 def test_formal_product_lists_exclude_legacy_and_named_demo_products(workspace):
     workspace.add_all([Product(sku=sku, name=name, category="保健品", spec="盒", unit="盒", unit_price=100, unit_cost=40)
         for sku, name in [("HS-FO30", "魚油 30 入"), ("DEMO-P001", "教學商品"), ("EXAMPLE-P1", "示範產品"), ("E04", "E04"), ("bad-name", "E04測試商品"), ("TEST-P1", "測試產品"), ("F-REAL", "正式型錄商品"), ("Re04A", "有效商品 Re04A")]])
@@ -224,6 +271,9 @@ def test_sap_outage_is_retryable_and_submit_is_atomic_idempotent_and_locks_editi
     invoices = workspace.scalars(select(Receivable).where(Receivable.invoice_no == number)).all()
     assert len(transactions) == len(invoices) == 1 and transactions[0].amount == 291
     assert invoices[0].amount == Decimal("285")
+    purchase = api.get("/api/orders/customers/C1/last-purchase", headers=headers).json()
+    assert purchase["order_no"] == number and purchase["items"][0]["last_qty"] == 3
+    assert purchase["items"][0]["last_unit_price"] == 97 and purchase["items"][0]["unit_price"] == 100
     workspace.expire_all()
     assert workspace.get(Customer, "C1").payment_term == "RM06"
     listed = api.get(f"/api/orders?q={number}", headers=headers).json()

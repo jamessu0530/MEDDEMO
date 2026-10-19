@@ -41,7 +41,15 @@ const STATUS_VARIANT = {
 } as const
 
 /** 促銷方案：每一期的整張訂單活動（PM 提醒）與各品項的搭贈。不必問 AI，業務在店裡被問到時直接翻 */
-export function PromotionsPanel({ heading, navigation, active = true }: { heading?: ReactNode; navigation: ReactNode; active?: boolean }) {
+export function PromotionsPanel({
+  heading,
+  navigation,
+  active = true,
+}: {
+  heading?: ReactNode
+  navigation: ReactNode
+  active?: boolean
+}) {
   const [state, setState] = useState<LoadState>({ status: "loading" })
   const [attempt, setAttempt] = useState(0)
   const [selected, setSelected] = useState<string | null>(null)
@@ -61,11 +69,27 @@ export function PromotionsPanel({ heading, navigation, active = true }: { headin
 
   const promotions = state.status === "ready" ? state.promotions : []
   const current = pickPromotion(promotions, selected)
-  useAskPageContext({ title: current ? `${current.name} · 促銷方案` : "促銷方案", facts: [
-    ...(current ? [`促銷期別：${current.name}`, `期間：${current.start_date} 至 ${current.end_date}`] : ["促銷資料尚未載入"]),
-    `商品分類：${filters.category || "全部"}`, `品牌：${filters.brand || "全部"}`, `搜尋：${filters.query.trim() || "無"}`,
-    `搭贈篩選：${filters.dealType}`, `最低折扣：${filters.minDiscount}`, `只看類別最優惠：${filters.bestOnly ? "是" : "否"}`, `排序：${filters.sort}`,
-  ] }, active)
+  useAskPageContext(
+    {
+      title: current ? `${current.name} · 促銷方案` : "促銷方案",
+      facts: [
+        ...(current
+          ? [
+              `促銷期別：${current.name}`,
+              `期間：${current.start_date} 至 ${current.end_date}`,
+            ]
+          : ["促銷資料尚未載入"]),
+        `商品分類：${filters.category || "全部"}`,
+        `品牌：${filters.brand || "全部"}`,
+        `搜尋：${filters.query.trim() || "無"}`,
+        `搭贈篩選：${filters.dealType}`,
+        `最低折扣：${filters.minDiscount}`,
+        `只看類別最優惠：${filters.bestOnly ? "是" : "否"}`,
+        `排序：${filters.sort}`,
+      ],
+    },
+    active
+  )
   // 一期只有幾十個品項，整份在手機上篩選，打字時不必等網路
   const keyword = filters.query.trim()
   const hasItemFilters = Boolean(
@@ -150,7 +174,10 @@ export function PromotionsPanel({ heading, navigation, active = true }: { headin
   }
 
   return (
-    <div className="flex min-h-svh flex-col">
+    <div
+      aria-busy={state.status === "loading"}
+      className="flex min-h-svh flex-col"
+    >
       <CatalogHeader heading={heading} navigation={navigation} active={active}>
         {current && (
           <div className="relative mt-3">
@@ -368,7 +395,9 @@ export function PromotionsPanel({ heading, navigation, active = true }: { headin
             )}
 
             {groups.length > 0 && (
-              <div className="mt-4 flex items-center justify-between"><h2 className="text-base font-semibold">促銷品項</h2></div>
+              <div className="mt-4 flex items-center justify-between">
+                <h2 className="text-base font-semibold">促銷品項</h2>
+              </div>
             )}
             {groups.map((group) => (
               <section key={group.name} className="mt-4">

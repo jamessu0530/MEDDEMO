@@ -1,6 +1,7 @@
 import { Moon, PanelLeftClose, PanelLeftOpen, Settings, Sun, UserRound } from "@/components/icons"
 import { Link, useLocation } from "react-router"
 
+import { WorkdaySidebar } from "@/components/me/workday-chrome"
 import { CompanyLogo } from "@/components/company-logo"
 import { MyStatusButton } from "@/components/my-status"
 import { SidebarNav } from "@/components/sidebar-nav"
@@ -15,7 +16,7 @@ import { useSkin } from "@/lib/skin"
 import { cn } from "@/lib/utils"
 
 type Counts = Partial<Record<SidebarBadge, number>>
-type SidebarProps = { user: AuthUser; collapsed: boolean; onToggle: () => void }
+type SidebarProps = { user: AuthUser; collapsed: boolean; onToggle: () => void; appearance?: "workday" }
 
 /**
  * 電腦版左邊的側邊欄（docs/superpowers/specs/2026-10-09-desktop-layout-design.md）：最上面是自己的頭像（點了換狀態）與名字，
@@ -40,9 +41,10 @@ function ManagerSidebar(props: SidebarProps) {
   return <Sidebar {...props} counts={{ channels, oa }} />
 }
 
-function Sidebar({ user, counts, collapsed, onToggle }: SidebarProps & { counts: Counts }) {
+function Sidebar({ user, counts, collapsed, onToggle, appearance }: SidebarProps & { counts: Counts }) {
   // 外框在 <Routes> 裡面：換頁時墨還沒蓋滿，這裡拿到的還是舊的那一頁，選中的那一列跟著畫面一起換
   const { pathname, search } = useLocation()
+  if (appearance === "workday") return <WorkdaySidebar user={user} collapsed={collapsed} counts={counts} pathname={pathname} search={search} />
   return (
     <>
     <aside

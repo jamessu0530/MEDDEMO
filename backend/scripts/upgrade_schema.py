@@ -13,6 +13,8 @@ from app.db import make_engine, schema_version, SEMANTIC_LAYER, PRODUCT_CATALOG 
 from app.models import AppSetting, LearningCompletion, SapEmployee, MascotCollectible, MascotEncounter, MascotWardrobe, SalesOrder, ReportDataset, ProductBrowseProfile, ProductPhoto, PublicOutlet, OutletStorefront, PLANNER_TABLES  # noqa: E402
 from app.services.product_photos import ensure_photo_table  # noqa: E402
 from app.models import AssistantMemoryEntry, AssistantMemoryNode, AssistantTaskExecution  # noqa: E402
+from app.models import ProductQueryEvent  # noqa: E402
+from app.models import AttendanceEvent, WorkGoal  # noqa: E402
 
 # 保留前一輪的升級起點，同時支援目前已部署版本新增訂單工作區。
 # 未知版本不得自動重灌：新增升級路徑，或由維運明確選擇 workflow 的 reseed。
@@ -30,8 +32,12 @@ PRE_PRODUCT_PHOTOS_VERSION = "3789bb963999"
 PRE_DEMO_PHOTOS_VERSION = "d81d24554fa4"
 PRE_ACCOUNT_MEMORY_VERSION = "5f7bf8fd171e"
 PRE_GHOST_VERSION = "c6e724970b10"
-PRE_TASKS_VERSION = "dfd34c52f1f0"
-TO_VERSION = "4804e87a1e5e"
+PRE_BUSINESS_REPORTS_VERSION = "dfd34c52f1f0"
+PRE_CUSTOMER_INQUIRIES_VERSION = "64a83d29677f"
+PRE_WORKPLACE_VERSION = "d73bdff86947"
+PRE_TASKS_VERSION = "e1fbd025761b"
+PRE_DEPLOYED_TASKS_VERSION = "4804e87a1e5e"
+TO_VERSION = "dc5261b3e8e6"
 
 
 def upgrade_customer_columns(connection: Connection) -> None:
@@ -45,6 +51,12 @@ def upgrade_customer_columns(connection: Connection) -> None:
         ADD COLUMN IF NOT EXISTS payment_term VARCHAR;
     """)
     PublicOutlet.__table__.create(connection, checkfirst=True)
+
+
+def upgrade_customer_inquiries(connection: Connection) -> None:
+    """只新增可空的客戶關聯，舊問題不回溯公開。"""
+    if inspect(connection).has_table("ask_record"):
+        connection.exec_driver_sql("ALTER TABLE ask_record ADD COLUMN IF NOT EXISTS customer_ids JSONB")
 
 
 def upgrade_oa_forms(connection: Connection) -> None:
@@ -88,13 +100,17 @@ def upgrade(connection: Connection, target: str | None = None) -> str:
     current = connection.scalar(select(AppSetting.value).where(AppSetting.key == "schema_version").with_for_update())
     if current == expected:
         return "資料表已是目前版本，無須更新。"
-    if current not in {FROM_VERSION, PREVIOUS_VERSION, ORDERS_VERSION, REPORTS_VERSION, PRODUCT_BROWSING_VERSION, PUBLIC_OUTLETS_VERSION, PRE_CALENDAR_VERSION, PRE_OA_VERSION, PRE_CATALOG_CLEANUP_VERSION, PRE_STOREFRONT_VERSION, PRE_PRODUCT_PHOTOS_VERSION, PRE_DEMO_PHOTOS_VERSION, PRE_ACCOUNT_MEMORY_VERSION, PRE_GHOST_VERSION, PRE_TASKS_VERSION} or expected != TO_VERSION:
+    if current not in {FROM_VERSION, PREVIOUS_VERSION, ORDERS_VERSION, REPORTS_VERSION, PRODUCT_BROWSING_VERSION, PUBLIC_OUTLETS_VERSION, PRE_CALENDAR_VERSION, PRE_OA_VERSION, PRE_CATALOG_CLEANUP_VERSION, PRE_STOREFRONT_VERSION, PRE_PRODUCT_PHOTOS_VERSION, PRE_DEMO_PHOTOS_VERSION, PRE_ACCOUNT_MEMORY_VERSION, PRE_GHOST_VERSION, PRE_BUSINESS_REPORTS_VERSION, PRE_CUSTOMER_INQUIRIES_VERSION, PRE_WORKPLACE_VERSION, PRE_TASKS_VERSION, PRE_DEPLOYED_TASKS_VERSION} or expected != TO_VERSION:
         raise RuntimeError(f"沒有保留資料的升級路徑：{current or '未記錄版本'} → {expected}；停止部署，不重灌。")
     for model in (LearningCompletion, MascotWardrobe, MascotCollectible, MascotEncounter, SalesOrder, ReportDataset, ProductBrowseProfile, ProductPhoto, PublicOutlet, OutletStorefront, AssistantMemoryEntry, AssistantMemoryNode, AssistantTaskExecution):
         model.__table__.create(connection, checkfirst=True)
+    ProductQueryEvent.__table__.create(connection, checkfirst=True)
+    AttendanceEvent.__table__.create(connection, checkfirst=True)
+    WorkGoal.__table__.create(connection, checkfirst=True)
     ensure_photo_table(connection)
     if inspect(connection).has_table("ask_record"):
         connection.exec_driver_sql("ALTER TABLE ask_record ADD COLUMN IF NOT EXISTS ghost boolean NOT NULL DEFAULT false")
+    upgrade_customer_inquiries(connection)
     for model in PLANNER_TABLES:
         model.__table__.create(connection, checkfirst=True)
     # 只有新匯入的公開通路允許缺業務、評級、付款條件；既有客戶的必要欄位以 CHECK 繼續保護。
@@ -126,14 +142,18 @@ def upgrade(connection: Connection, target: str | None = None) -> str:
         END IF;
     END $$;""")
     connection.execute(update(AppSetting).where(AppSetting.key == "schema_version").values(value=expected))
-    return f"已升級 OA 模擬表單、一般日曆、公開通路、商品偏好、匯入資料、訂單、助理任務、課程與收藏表：{current} → {expected}；既有資料保留。"
+    return f"已升級藥品查詢統計、OA 模擬表單、一般日曆、公開通路、商品偏好、匯入資料、訂單、課程與收藏表：{current} → {expected}；既有資料保留。"
 
 
 if __name__ == "__main__":
     engine = make_engine()
     try:
         with engine.begin() as connection:
-            if "--customer-columns-only" in sys.argv:
+            if "--customer-inquiries-only" in sys.argv:
+                connection.execute(text("SELECT pg_advisory_xact_lock(hashtext('meddemo-schema-upgrade'))"))
+                upgrade_customer_inquiries(connection)
+                print("已新增客戶提問關聯，舊提問與全站 schema_version 保留，不回溯公開。")
+            elif "--customer-columns-only" in sys.argv:
                 connection.execute(text("SELECT pg_advisory_xact_lock(hashtext('meddemo-schema-upgrade'))"))
                 upgrade_customer_columns(connection)
                 print("已補齊客戶欄位；未知資料保留空白，全站版本與既有內容保留。")

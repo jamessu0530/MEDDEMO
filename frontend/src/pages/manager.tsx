@@ -1,13 +1,13 @@
 import { useAskPageContext } from "@/ask/use-page-context"
 import { useEffect, useState, type ReactNode } from "react"
-import { ChartNoAxesCombined, ChevronRight, Network, Settings } from "@/components/icons"
+import { ChartNoAxesCombined, ChevronRight, Clock, Network, Settings } from "@/components/icons"
 import { Link, useNavigate, useSearchParams } from "react-router"
 
 import { customerTypeLabel, listMyMethods, updateMethod, type MethodCard } from "@/api/methods"
 import { listAutoApproved, listOaInbox, type OaFormDetail, type OaFormItem } from "@/api/oa"
 import { ChannelsLink } from "@/components/channels-link"
 import { ListRow, MasterDetail } from "@/components/manager/master-detail"
-import { RoutesPanel } from "@/components/manager/routes-panel"
+import { CustomerInquiriesPanel } from "@/components/manager/customer-inquiries-panel"
 import { CustomerPriorityPanel } from "@/components/manager/customer-priority-panel"
 import { FeaturedProductsPanel } from "@/components/manager/featured-products-panel"
 import { MethodCardForm } from "@/components/method-card-form"
@@ -29,18 +29,18 @@ import { tagLabel } from "@/lib/methods"
 import { useIsDesktop } from "@/lib/use-media-query"
 import { cn } from "@/lib/utils"
 
-// 主管端的分頁：團隊行程（預設）、客戶策略、主推品項、簽核、方法卡。
+// 主管端的分頁：客戶提問（預設）、客戶策略、主推品項、簽核、方法卡。
 // 記在網址上，從客戶檔案回來還停在同一頁
-const VIEWS = ["routes", "priority", "featured", "oa", "methods"] as const
+const VIEWS = ["inquiries", "priority", "featured", "oa", "methods"] as const
 type View = (typeof VIEWS)[number]
 const VIEW_TITLE: Record<View, string> = {
-  routes: "團隊行程",
+  inquiries: "客戶提問",
   priority: "客戶策略",
   featured: "主推品項",
   oa: "OA 簽核",
   methods: "方法卡",
 }
-const VIEW_TAB: Record<View, string> = { routes: "行程", priority: "客戶策略", featured: "主推品項", oa: "簽核", methods: "方法卡" }
+const VIEW_TAB: Record<View, string> = { inquiries: "客戶提問", priority: "客戶策略", featured: "主推品項", oa: "簽核", methods: "方法卡" }
 // 標頭的圖示按鈕用固定的 44px，不跟著放大字體變大，標題才不會被擠掉（components/channels-link.tsx 同）
 const HEADER_BUTTON = "flex size-[44px] shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
 
@@ -60,11 +60,11 @@ function useItemParam(): [number | null, (id: number | null) => void] {
   return [itemParam(params.get("item")), select]
 }
 
-/** 主管端：看團隊今天的行程、簽申請單（出差單、優惠、合約）、寫方法卡。主管看自己底下的人，IT 看全公司 */
+/** 主管端：了解團隊的客戶提問、簽申請單、寫方法卡。主管看自己底下的人，IT 看全公司 */
 export function ManagerPage() {
   const user = useAuth()?.user
   const [params, setParams] = useSearchParams()
-  const view: View = VIEWS.find((value) => value === params.get("view")) ?? "routes"
+  const view: View = VIEWS.find((value) => value === params.get("view")) ?? "inquiries"
   useAskPageContext({ facts: [
     ...(params.get("rep") ? [`選取的業務編號：${params.get("rep")}`] : []),
     ...(params.get("item") ? [`選取項目編號：${params.get("item")}`] : []),
@@ -76,7 +76,7 @@ export function ManagerPage() {
   }, [view])
 
   function switchView(next: View) {
-    setParams(next === "routes" ? {} : { view: next }, { replace: true })
+    setParams(next === "inquiries" ? {} : { view: next }, { replace: true })
   }
 
   return (
@@ -95,6 +95,9 @@ export function ManagerPage() {
                 <Network className="size-5" />
               </Link>
             )}
+            <Link to="/me" aria-label="個人主頁" className={HEADER_BUTTON}>
+              <Clock className="size-5" />
+            </Link>
             <Link to="/settings" aria-label="帳號設定" className={HEADER_BUTTON}>
               <Settings className="size-5" />
             </Link>
@@ -138,8 +141,8 @@ export function ManagerPage() {
           <span className="min-w-0 flex-1 text-sm font-semibold">我的報表<span className="ml-2 text-xs font-normal text-muted-foreground">團隊數字 · AI 調整</span></span>
           <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
         </Link>
-        {view === "routes" ? (
-          <RoutesPanel />
+        {view === "inquiries" ? (
+          <CustomerInquiriesPanel />
         ) : view === "priority" ? (
           <CustomerPriorityPanel />
         ) : view === "featured" ? (
@@ -203,7 +206,7 @@ function OaInboxPanel() {
               setAttempt((n) => n + 1)
             },
           }}
-          secondary={{ label: "回團隊行程", onClick: () => navigate("/manager") }}
+          secondary={{ label: "回客戶提問", onClick: () => navigate("/manager") }}
         />
       )}
       {state.status === "ready" && state.items.length === 0 && (
@@ -382,7 +385,7 @@ function MethodsPanel() {
               setAttempt((n) => n + 1)
             },
           }}
-          secondary={{ label: "回團隊行程", onClick: () => navigate("/manager") }}
+          secondary={{ label: "回客戶提問", onClick: () => navigate("/manager") }}
         />
       )}
       {state.status === "ready" && state.cards.length === 0 && (

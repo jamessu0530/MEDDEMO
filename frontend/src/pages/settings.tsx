@@ -15,7 +15,6 @@ import { ApiError } from "@/api/client"
 import { getTravelMode, setTravelMode, type TravelMode } from "@/api/route"
 import { MyStatusSection } from "@/components/my-status"
 import { ProfilePhotoSection } from "@/components/profile-photo"
-import { LocationShareSection } from "@/components/route/location-share"
 import { TravelModeIcon } from "@/components/route/travel-mode-icon"
 import { NotReadyButton, RedirectButton } from "@/components/oauth-buttons"
 import { PageHeader } from "@/components/page-header"
@@ -510,6 +509,7 @@ export function SettingsPage() {
     <div className="flex min-h-svh flex-col">
       <PageHeader title="帳號設定" backTo={homePath(user.role)} />
       <main className="flex flex-1 flex-col gap-5 px-4 pt-4 pb-10">
+        <Link to="/me" className="flex min-h-14 items-center justify-between rounded-2xl border bg-card px-4 text-sm font-medium hover:bg-muted"><span>個人主頁 · 打卡與目標</span><ChevronRight className="size-4" /></Link>
         {user.role !== "sales" && <><PersonalMemory /><Link to="/conversations" className="rounded-xl border bg-card px-4 py-3 text-sm font-medium hover:bg-muted">對話紀錄</Link></>}
         <section className="rounded-2xl border-2 bg-card p-4 shadow-lip">
           <NameEditor key={account.id} user={account} />
@@ -560,8 +560,6 @@ export function SettingsPage() {
         )}
 
         {user.role === "sales" && <TravelModePicker userId={user.id} />}
-        {/* 首頁只有第一次的說明，暫停、繼續、沒有權限怎麼開都在這裡 */}
-        {user.role === "sales" && <LocationShareSection />}
         <SkinPicker />
         <TextSizePicker />
 

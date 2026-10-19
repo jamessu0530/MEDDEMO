@@ -34,6 +34,12 @@ export function pagePromptsFor(pathname: string, search = ""): PagePrompts {
       )
     const view =
       section === "promotions" ? "promotions" : params.get("view") || section
+    if (view === "opportunities")
+      return prompts(
+        "可以比較本月與上月進貨，或準備月底向客戶確認補貨需求的問題。",
+        ["哪些客戶本月訂貨比上月少？", "跟進大客戶前要確認哪些補貨需求？", "如何看這份潛在銷售名單？"],
+        ["可以按客戶比較進貨差額嗎？", "這些客戶上月常訂哪些品項？", "幫我整理一段月底補貨的開場白。"]
+      )
     if (view === "products")
       return prompts(
         "可以問商品分類、規格，或比較適合向客戶介紹的品項。",
@@ -385,16 +391,16 @@ export function pagePromptsFor(pathname: string, search = ""): PagePrompts {
     return (
       views[params.get("view") ?? ""] ??
       prompts(
-        "可以問團隊行程、拜訪進度與需要跟進的客戶。",
+        "可以了解客戶提問的查看方式，以及如何協助業務處理客戶問題。",
         [
-          "團隊今天的拜訪行程怎麼安排？",
-          "哪些客戶近期需要再跟進？",
-          "怎麼查看個別業務的行程？",
+          "怎麼查看業務問了哪間客戶的問題？",
+          "如何找出 AI 尚未解決的客戶提問？",
+          "怎麼依業務篩選客戶提問？",
         ],
         [
-          "可以按業務整理剛才的資料嗎？",
-          "有哪些拜訪事項需要主管協助？",
-          "幫我整理今天的團隊跟進重點。",
+          "如何從提問打開客戶檔案？",
+          "客戶提問會顯示哪些內容？",
+          "如何搜尋特定客戶的問題？",
         ]
       )
     )

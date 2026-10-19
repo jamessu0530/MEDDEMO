@@ -5,7 +5,7 @@ import logging
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import and_, select
 from sqlalchemy.dialects.postgresql import insert
@@ -15,8 +15,8 @@ from app.db import get_session
 from app.api.auth import CurrentUser
 from app.config import NotConfigured
 from app.embeddings import optional_embedder
-from app.models import Product, ProductBrowseProfile, ProductPhoto
-from app.services import product_appearance, product_photos
+from app.models import Product, ProductBrowseProfile, ProductPhoto, ProductQueryEvent
+from app.services import product_appearance, product_photos, product_search
 from app.services.product_catalog import visible_catalog_products
 
 router = APIRouter(prefix="/api/products", tags=["products"])
@@ -54,6 +54,15 @@ def list_products(session: Annotated[Session, Depends(get_session)]):
         **{key: getattr(product, key) for key in ("sku", "name", "category", "spec", "unit", "aliases", "common")},
         photo=product_photos.photo_metadata(photo) if photo else None,
     ) for product, photo in rows]
+
+
+@router.get("/search")
+def search_products(session: Annotated[Session, Depends(get_session)], user: CurrentUser,
+                    q: str = Query(min_length=1, max_length=200), category: str | None = None):
+    query = q.strip()
+    if not query:
+        raise HTTPException(422, "請輸入商品名稱、料號或規格")
+    return {"skus": product_search.matching_skus(session, query, category)}
 
 
 @router.get("/{sku}/photo/{version}.webp")
@@ -131,6 +140,12 @@ def record_browsing(body: BrowseEvents, session: Annotated[Session, Depends(get_
         event_id = str(event.id)
         if event_id in seen or event.sku not in known:
             continue
+        if event.kind == "detail":
+            # 與個人偏好一起提交；網路重送或超過 recent_events 的舊事件仍只計一次。
+            recorded = session.scalar(insert(ProductQueryEvent).values(id=event_id, sku=event.sku)
+                .on_conflict_do_nothing(index_elements=[ProductQueryEvent.id]).returning(ProductQueryEvent.id))
+            if recorded is None:
+                continue
         seen.add(event_id)
         recent.append(event_id)
         signal = signals.setdefault(event.sku, {"active_ms": 0, "opens": 0, "last_seen": now})

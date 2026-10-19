@@ -287,12 +287,16 @@ function OrderEditor({
     update({
       items: [
         ...draft.items,
-        ...chosen.map(({ sku, unit_price }) => ({ sku, qty: 1, unit_price })),
+        ...chosen.map(({ sku, unit_price, last_qty }) => ({
+          sku,
+          qty: last_qty ?? 1,
+          unit_price,
+        })),
       ],
     })
     setPicker(false)
     setEditingItems(true)
-    setNotice("產品已加入，請調整數量後儲存草稿。")
+    setNotice("產品已加入，請確認數量與單價後儲存草稿。")
   }
   const total = readonly ? order.amount : orderAmount(draft.items)
   const itemRows = draft.items.map((item, index) => {
@@ -615,7 +619,10 @@ function OrderEditor({
                                     <input
                                       type="number"
                                       aria-label={`${item.product?.name ?? item.sku}數量`}
-                                      className={`${FIELD} w-24`}
+                                      className={cn(
+                                        FIELD,
+                                        "w-28 min-w-28 tabular-nums"
+                                      )}
                                       min={1}
                                       max={100000}
                                       step={1}
@@ -636,7 +643,10 @@ function OrderEditor({
                                     <input
                                       type="number"
                                       aria-label={`${item.product?.name ?? item.sku}單價`}
-                                      className={`${FIELD} w-28`}
+                                      className={cn(
+                                        FIELD,
+                                        "w-32 min-w-32 tabular-nums"
+                                      )}
                                       min={0}
                                       step="0.01"
                                       value={item.unit_price}
@@ -966,6 +976,7 @@ function OrderEditor({
       </main>
       {picker && (
         <OrderProducts
+          key={draft.customer_id}
           practice={practice}
           customerId={draft.customer_id}
           existing={draft.items}

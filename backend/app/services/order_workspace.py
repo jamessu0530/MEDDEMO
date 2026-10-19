@@ -7,12 +7,12 @@ import uuid
 from decimal import Decimal, ROUND_HALF_UP
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from sqlalchemy import func, literal, select
+from sqlalchemy import case, func, literal, select
 from sqlalchemy.orm import Session
 
 from app.models import AppUser, Customer, PAYMENT_TERM_CODES, Product, PublicOutlet, SalesOrder, SalesTransaction, SapQuotationDraft
 from app.pricing import supply_price
-from app.services import customer_profile, orders, writeback
+from app.services import customer_profile, orders, product_search, writeback
 from app.services.scope import SHARING_LEVEL, Scope
 from app.services.product_catalog import visible_catalog_products
 
@@ -276,11 +276,12 @@ def list_orders(session: Session, user: AppUser, q="", status="all", page=1, pag
 def catalog(session: Session, user: AppUser, customer_id: str, q="", page=1):
     target = customer(session, user, customer_id)
     query = select(Product).where(visible_catalog_products())
-    if q:
-        pattern = "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
-        query = query.where(Product.name.ilike(pattern, escape="\\") | Product.sku.ilike(pattern, escape="\\") | Product.category.ilike(pattern, escape="\\"))
+    matches = product_search.matching_skus(session, q) if q.strip() else None
+    if matches is not None:
+        query = query.where(Product.sku.in_(matches))
     total = session.scalar(select(func.count()).select_from(query.subquery()))
-    products = session.scalars(query.order_by(Product.common.desc(), Product.sku).offset((page - 1) * 25).limit(25))
+    order = [case({sku: rank for rank, sku in enumerate(matches)}, value=Product.sku)] if matches else []
+    products = session.scalars(query.order_by(*order, Product.common.desc(), Product.sku).offset((page - 1) * 25).limit(25))
     return {"items": [{"sku": product.sku, "name": product.name, "category": product.category, "spec": product.spec, "unit": product.unit,
         "unit_price": supply_price(product.unit_price, target.type)} for product in products], "total": total, "page": page, "page_size": 25}
 

@@ -28,6 +28,17 @@ afterEach(() => {
 })
 
 describe("頁面背景運算", () => {
+  it("遠端錯字搜尋保留相關度與類別篩選，空結果不退回本機匹配", () => {
+    for (const matchedSkus of [["P19", "deleted", "P2", "P1"], []]) {
+      const result = finishWork(pageWork({
+        kind: "products", source: products,
+        query: { query: "錯字", category: "醫材", matchedSkus, discovery: null },
+      }))
+      if (result.kind !== "products") throw new Error("wrong result")
+      expect(result.value.indices.map((at) => products[at].sku)).toEqual(matchedSkus.length ? ["P19", "P1"] : [])
+      expect(result.value.categories).toHaveLength(2)
+    }
+  })
   it("型錄多詞搜尋、分類和完整結果與原本相同，重用索引不會殘留舊搜尋", () => {
     for (const query of ["", "口語 large", "P19", "不存在"]) {
       const result = finishWork(

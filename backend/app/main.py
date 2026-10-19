@@ -21,6 +21,8 @@ from app.api import mascot
 from app.api import orders as orders_api
 from app.api import assistant_memory
 from app.api import assistant_tasks
+from app.api import sales_opportunities
+from app.api import workplace
 from app.config import settings
 from app.db import get_session
 from app.observability import install_metrics
@@ -69,6 +71,8 @@ app.include_router(mascot.router)
 app.include_router(preferences.router)
 app.include_router(reports.router)
 app.include_router(orders_api.router)
+app.include_router(sales_opportunities.router)
+app.include_router(workplace.router)
 
 
 @app.get("/health")

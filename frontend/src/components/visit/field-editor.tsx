@@ -21,6 +21,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { formatMoney } from "@/lib/format"
 import { productOptions } from "@/lib/product-search"
+import { useProductSearch } from "@/lib/use-product-search"
 import { packDeal } from "@/lib/quote"
 import { cn } from "@/lib/utils"
 
@@ -365,11 +366,13 @@ function IntentEditor({ initial, saving, onSave }: EditorProps<IntentItem[]>) {
 /** 品項選單：預設只列常用品項，上面的搜尋框打品名、料號或口語叫法，就從整份真實型錄找 */
 function ProductPicker({ products, sku, onChoose }: { products: Product[]; sku: string | null; onChoose: (sku: string) => void }) {
   const [query, setQuery] = useState("")
-  const options = productOptions(products, query, sku)
+  const search = useProductSearch(query)
+  const options = productOptions(products, query, sku, search.skus)
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-2">
       <Input
         type="search"
+        maxLength={200}
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder="搜尋品名或料號"
@@ -385,7 +388,7 @@ function ProductPicker({ products, sku, onChoose }: { products: Product[]; sku: 
           !sku && "border-destructive text-muted-foreground"
         )}
       >
-        <option value="">{query.trim() && options.length === 0 ? "找不到這個品項" : "請選品項"}</option>
+        <option value="">{search.pending ? "搜尋中…" : query.trim() && options.length === 0 ? "找不到這個品項" : "請選品項"}</option>
         {options.map((p) => (
           <option key={p.sku} value={p.sku}>
             {p.name}

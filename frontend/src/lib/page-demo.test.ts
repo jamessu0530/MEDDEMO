@@ -3,6 +3,7 @@ import {
   buildPageDemoSteps,
   canTourPage,
   pageDemoCanClick,
+  pageDemoLoadingText,
   requestedPageDemoPath,
   wantsPageDemo,
   type PageDemoControl,
@@ -11,6 +12,7 @@ import {
   createUiDemo,
   requestedUiDemo,
   uiDemoKindForPage,
+  UI_DEMOS,
   type DemoStep,
 } from "@/lib/ui-demo"
 
@@ -21,6 +23,66 @@ const control = (
 ): PageDemoControl => ({ target: label, label, kind, opens })
 
 describe("目前畫面的操作教學", () => {
+  it("所有指引都以雙擊與 Esc 說明接手方式", () => {
+    for (const preset of Object.values(UI_DEMOS)) {
+      const text = preset.description + preset.note
+      expect(text).toContain("點兩下")
+      expect(text).toContain("Esc")
+      expect(text).not.toMatch(/碰一下|捲動或按鍵/)
+    }
+  })
+  it("等候真正的載入畫面，錯誤與說明文字仍可開始導覽", () => {
+    for (const text of [
+      "載入今日路線中…",
+      "載入客戶中…",
+      "正在準備你的報表…",
+      "載入品類練習中…",
+      "整理談判資料中…",
+    ])
+      expect(pageDemoLoadingText(text)).toBe(true)
+    for (const text of [
+      "今日路線尚未載入",
+      "連不上伺服器，客戶清單沒有載入。",
+      "載入失敗，請重試",
+      "尚未載入",
+      "資料已載入完成。",
+    ])
+      expect(pageDemoLoadingText(text)).toBe(false)
+  })
+  it("優先介紹頁面主要內容的入口，仍保留原本安全展開的操作", () => {
+    const steps = buildPageDemoSteps("/customers", [
+      control("使用說明"),
+      control("換成深色"),
+      control("主管端", "navigation"),
+      { ...control("顯示更多客戶"), primary: true },
+      { ...control("安心藥局", "navigation"), primary: true },
+      control("新增行程", "action", "dialog"),
+    ])
+    expect(
+      steps.find((step) => step.text.includes("前往對應內容"))?.target
+    ).toBe("安心藥局")
+    expect(steps.find((step) => step.action === "click")?.target).toBe(
+      "新增行程"
+    )
+    expect(
+      steps.findIndex((step) => step.target === "顯示更多客戶")
+    ).toBeLessThan(steps.findIndex((step) => step.target === "使用說明"))
+  })
+  it.each([
+    ["帶我操作商品", "/orders?view=products&category=OTC"],
+    ["帶我操作促銷", "/orders?view=promotions&month=2026-10"],
+  ])("已在銷售分頁時保留目前的查詢與頁面：%s", (question, path) => {
+    expect(requestedPageDemoPath(question, path)).toBe(path)
+  })
+  it("商品與促銷同屬型錄時，仍會前往使用者指定的分頁", () => {
+    expect(requestedPageDemoPath("帶我操作促銷", "/products")).toBe(
+      "/products?view=promotions"
+    )
+    expect(
+      requestedPageDemoPath("帶我操作商品", "/products?view=promotions")
+    ).toBe("/products")
+    expect(requestedPageDemoPath("帶我操作商品", "/orders")).toBe("/products")
+  })
   it("保留欄位與選項，只代點明確標記的展開入口", () => {
     const steps = buildPageDemoSteps("/calendar", [
       control("日曆", "heading"),
@@ -138,9 +200,9 @@ describe("全站操作求助與目的頁面", () => {
     expect(requestedPageDemoPath("教我用對話紀錄", "/orders")).toBe(
       "/conversations"
     )
-    expect(requestedPageDemoPath("歷史對話怎麼搜尋？", "/conversations?q=訂單")).toBe(
-      "/conversations?q=訂單"
-    )
+    expect(
+      requestedPageDemoPath("歷史對話怎麼搜尋？", "/conversations?q=訂單")
+    ).toBe("/conversations?q=訂單")
     expect(
       requestedPageDemoPath("操作給我看", "/auth/google/callback?code=secret")
     ).toBeNull()

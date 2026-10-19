@@ -22,6 +22,7 @@ import { horizontalSwap, PRODUCT_BATCH } from "@/lib/product-discovery"
 import type { ProductCatalogQuery } from "@/lib/product-catalog-work"
 import { usePageWork } from "@/lib/use-page-work"
 import { useProductBrowsing } from "@/lib/use-product-browsing"
+import { useProductSearch } from "@/lib/use-product-search"
 import { FIXED_COLUMN } from "@/lib/desktop-layout"
 import { cn } from "@/lib/utils"
 import "./product-discovery.css"
@@ -78,6 +79,7 @@ export function ProductsPanel({
     () => (state.status === "ready" ? state.products : []),
     [state]
   )
+  const search = useProductSearch(query, active && state.status === "ready")
   const workInput = useMemo(
     () => ({
       kind: "products" as const,
@@ -85,10 +87,11 @@ export function ProductsPanel({
       query: {
         query,
         category,
+        matchedSkus: search.skus,
         discovery: selection?.key === filterKey ? selection.discovery : null,
       },
     }),
-    [products, query, category, selection, filterKey]
+    [products, query, category, search.skus, selection, filterKey]
   )
   const task = usePageWork(
     workInput,
@@ -230,13 +233,18 @@ export function ProductsPanel({
   }
 
   return (
-    <div data-product-panel className="flex min-h-svh flex-col">
+    <div
+      data-product-panel
+      aria-busy={state.status === "loading" || search.pending || task.pending}
+      className="flex min-h-svh flex-col"
+    >
       <CatalogHeader heading={heading} navigation={navigation} active={active}>
         {state.status === "ready" && (
           <div className="relative mt-3">
             <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={query}
+              maxLength={200}
               onChange={(event) => {
                 anchor.current = null
                 setQuery(event.target.value)
@@ -301,13 +309,13 @@ export function ProductsPanel({
         )}
         {state.status === "ready" && products.length > 0 && (
           <>
-            {task.pending && (
+            {(task.pending || search.pending) && (
               <p role="status" className="text-xs text-muted-foreground">
-                正在整理商品…
+                {search.pending ? "正在搜尋商品…" : "正在整理商品…"}
               </p>
             )}
             {task.error && <Notice text={task.error} />}
-            {!task.pending && !task.error && found.length === 0 && (
+            {!task.pending && !search.pending && !task.error && found.length === 0 && (
               <Notice
                 text="沒有符合搜尋條件的商品。"
                 action={{ label: "清除篩選", onClick: clear }}

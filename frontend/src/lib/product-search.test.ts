@@ -49,6 +49,12 @@ describe("商品頁的完整型錄", () => {
 })
 
 describe("productOptions", () => {
+  it("採用遠端錯字搜尋的排序，不再用原始文字排除命中，保留已選品項", () => {
+    expect(productOptions(PRODUCTS, "海藻改", "F762718", ["F762505", "M484974", "deleted"]).map((p) => p.sku))
+      .toEqual(["F762505", "M484974", "F762718"])
+    expect(productOptions(PRODUCTS, "海藻", null, [])).toEqual([])
+    expect(productOptions(PRODUCTS, "海藻", null, null).map((p) => p.sku)).toEqual(["F762505"])
+  })
   it("沒打字只列常用品項", () => {
     expect(productOptions(PRODUCTS, "", null).map((p) => p.sku)).toEqual(["F762718", "HS-FO30"])
   })

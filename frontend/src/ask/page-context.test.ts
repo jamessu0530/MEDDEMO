@@ -13,6 +13,7 @@ describe("頁面情境", () => {
     "/orders/O01",
     "/orders?view=products",
     "/orders?view=promotions",
+    "/orders?view=opportunities",
     "/customers",
     "/customers/C01",
     "/customers/C01/quote",
@@ -64,6 +65,7 @@ describe("頁面情境", () => {
     ).toBe(true)
   })
   it("新開放的頁面有正確名稱，授權憑證不會進入提問情境", () => {
+    expect(pageContextFor("/orders", "?view=opportunities").title).toBe("潛在銷售")
     expect(pageContextFor("/channels/2/threads").title).toBe("客戶討論串清單")
     expect(pageContextFor("/channels/search").suggestions).toContain(
       "可以用照片找相似圖片嗎？"
@@ -87,7 +89,7 @@ describe("頁面情境", () => {
     expect(pageContextFor("/orders", "?view=promotions").title).toBe("促銷方案")
     expect(pageContextFor("/customers/C01").facts).toEqual(["客戶編號：C01"])
     expect(pageContextFor("/manager", "?view=oa").title).toBe("簽核")
-    expect(pageContextFor("/manager", "?view=asks").title).toBe("團隊行程")
+    expect(pageContextFor("/manager", "?view=asks").title).toBe("客戶提問")
   })
   it("OA 目錄、填寫與明細有各自的頁面情境及建議問題", () => {
     expect(pageContextFor("/oa/apps").title).toBe("OA 表單中心")

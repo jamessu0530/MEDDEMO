@@ -5,6 +5,7 @@ import { discoverProductsWork } from "@/lib/product-discovery"
 export type ProductCatalogQuery = {
   query: string
   category: string | null
+  matchedSkus?: string[] | null
   discovery: null | {
     seed: string
     profile: BrowseProfile
@@ -20,6 +21,7 @@ export type ProductCatalogResult = {
 type CatalogIndex = {
   text: string[]
   indices: Map<Product, number>
+  bySku: Map<string, number>
   categories: ProductCatalogResult["categories"]
 }
 const indexes = new WeakMap<Product[], CatalogIndex>()
@@ -57,6 +59,7 @@ export function* productCatalogWork(
     index = {
       text,
       indices,
+      bySku: new Map(products.map((product, at) => [product.sku, at])),
       categories: [...categories]
         .map(([name, count]) => ({ name, count }))
         .sort((a, b) => a.name.localeCompare(b.name, "zh-TW")),
@@ -65,11 +68,17 @@ export function* productCatalogWork(
   }
   const terms = query.query.trim().toLowerCase().split(/\s+/).filter(Boolean)
   const found: Product[] = []
-  for (let at = 0; at < products.length; at++) {
+  const candidates = query.matchedSkus
+    ? query.matchedSkus.flatMap((sku) => {
+        const at = index.bySku.get(sku)
+        return at === undefined ? [] : [at]
+      })
+    : products.map((_, at) => at)
+  for (const at of candidates) {
     const product = products[at]
     if (
       (!query.category || product.category === query.category) &&
-      terms.every((term) => index.text[at].includes(term))
+      (query.matchedSkus != null || terms.every((term) => index.text[at].includes(term)))
     )
       found.push(product)
     if (++work % 128 === 0) yield

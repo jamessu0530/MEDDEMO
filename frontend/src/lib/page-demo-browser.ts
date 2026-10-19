@@ -2,6 +2,7 @@ import { pageContextFor } from "@/ask/page-context"
 import {
   buildPageDemoSteps,
   pageDemoCanClick,
+  pageDemoLoadingText,
   type PageDemoControl,
 } from "@/lib/page-demo"
 
@@ -68,7 +69,7 @@ function describe(
   let kind: PageDemoControl["kind"] = "action"
   if (
     element.matches(
-      'select, [role="tab"], [role="combobox"], [role="switch"], [role="checkbox"], input[type="checkbox"], input[type="radio"]'
+      'select, [role="tab"], [role="combobox"], [role="switch"], [role="checkbox"], button[aria-pressed], input[type="checkbox"], input[type="radio"]'
     )
   )
     kind = "choice"
@@ -91,7 +92,14 @@ function describe(
       : canOpen && element.matches('button[data-ui-demo-open="dialog"]')
         ? "dialog"
         : undefined
-  return { target, label, kind, opens, disabled }
+  return {
+    target,
+    label,
+    kind,
+    opens,
+    disabled,
+    primary: Boolean(element.closest("main")),
+  }
 }
 
 /** 僅讀目前可見的應用控制項；不讀輸入值、不呼叫 AI，也不操作側邊欄或助理本身。 */
@@ -111,12 +119,26 @@ export function preparePageDemo() {
     )
   )
     return []
+  const textNodes = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  for (let node = textNodes.nextNode(); node; node = textNodes.nextNode()) {
+    if (
+      node.parentElement &&
+      pageDemoLoadingText(node.textContent ?? "") &&
+      pageDemoVisible(node.parentElement)
+    )
+      return []
+  }
   const heading = [
     ...root.querySelectorAll<HTMLElement>('h1, h2, [role="heading"]'),
   ].find(pageDemoVisible)
   const elements = [
     ...root.querySelectorAll<HTMLElement>(CONTROL_SELECTOR),
-  ].filter((element) => pageDemoVisible(element) && !element.closest(EXCLUDED))
+  ].filter(
+    (element) =>
+      pageDemoVisible(element) &&
+      !element.closest(EXCLUDED) &&
+      !element.matches('a[aria-label*="圖片來源"]')
+  )
   if (
     !heading &&
     !elements.length &&

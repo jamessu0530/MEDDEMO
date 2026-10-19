@@ -19,6 +19,10 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { formatDate } from "@/lib/format"
 import { openGuide } from "@/lib/onboarding"
+import {
+  matchesPurchasedProduct,
+  purchaseKeywordPreview,
+} from "@/lib/customer-purchases"
 
 type LoadState =
   | { status: "loading" }
@@ -151,12 +155,15 @@ export function CustomerPicker() {
           <Input
             value={query}
             onChange={(event) => search(event.target.value)}
-            placeholder="搜尋名稱、地址或電話（支援錯字）"
-            aria-label="搜尋名稱、地址或電話（支援錯字）"
+            placeholder="搜尋店名、地址、電話或叫過的品項"
+            aria-label="搜尋店名、地址、電話或叫過的品項"
             maxLength={100}
             className="h-11 bg-card pl-9"
           />
         </div>
+        <p className="mt-2 text-xs text-muted-foreground">
+          輸入品名或料號，找出曾叫貨的商家。
+        </p>
       </header>
 
       <main className="flex-1 px-4 pt-3 pb-20">
@@ -193,6 +200,7 @@ export function CustomerPicker() {
                   key={customer.id}
                   customer={customer}
                   priority={index < 4}
+                  query={keyword}
                 />
               ))}
             </ul>
@@ -223,10 +231,14 @@ export function CustomerPicker() {
 const CustomerRow = memo(function CustomerRow({
   customer,
   priority,
+  query,
 }: {
   customer: Customer
   priority: boolean
+  query: string
 }) {
+  const products = customer.purchased_products
+  const keywords = purchaseKeywordPreview(products ?? [], query)
   return (
     <li className="flex items-start gap-3 rounded-xl border-2 bg-card p-3 shadow-lip">
       <CustomerStorefrontThumbnail
@@ -261,6 +273,37 @@ const CustomerRow = memo(function CustomerRow({
             <p className="mt-1 text-xs text-muted-foreground">
               {customer.address}
             </p>
+          )}
+          {products && (
+            <div className="mt-2">
+              <p className="text-xs text-muted-foreground">
+                {products.length
+                  ? query
+                    ? "叫過的品項"
+                    : "叫貨量最多"
+                  : "尚無成交叫貨紀錄"}
+              </p>
+              {products.length > 0 && (
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {keywords.map((product) => (
+                    <span
+                      key={product.sku}
+                      className={`max-w-full rounded-md px-2 py-1 text-xs break-words ${query && matchesPurchasedProduct(product, query) ? "bg-primary/15 font-medium text-primary" : "bg-muted text-muted-foreground"}`}
+                    >
+                      {product.name}
+                      <span className="ml-1 opacity-80">
+                        {product.total_qty} {product.unit}
+                      </span>
+                    </span>
+                  ))}
+                  {products.length > keywords.length && (
+                    <span className="py-1 text-xs text-muted-foreground">
+                      +{products.length - keywords.length} 項
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
           )}
         </div>
         <ChevronRight className="size-4 shrink-0 text-muted-foreground" />

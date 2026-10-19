@@ -3,6 +3,19 @@ import type { MethodCard } from "@/api/methods"
 import { readUser } from "@/lib/auth"
 import type { StoredStorefrontPhoto } from "@/lib/storefront"
 import { CUSTOMER_PAGE_SIZE, orderPickerCustomers } from "@/lib/customer-picker"
+import { matchesCustomerKeyword } from "@/lib/customer-purchases"
+
+export type PurchasedProduct = {
+  sku: string
+  name: string
+  category: string
+  spec: string
+  unit: string
+  aliases: string[]
+  order_count: number
+  total_qty: number
+  last_order_date: string
+}
 
 export type Customer = {
   id: string
@@ -22,6 +35,8 @@ export type Customer = {
   storefront_photo?: StoredStorefrontPhoto | null
   google_place_id?: string | null
   last_visit_date: string | null
+  // 分頁商家清單才載入；舊離線快取或行事曆的完整清單可能沒有此欄位。
+  purchased_products?: PurchasedProduct[]
 }
 
 export const CUSTOMER_TYPE_LABEL: Record<Customer["type"], string> = {
@@ -137,15 +152,8 @@ export async function listPickerCustomers(
         ? null
         : readCachedCustomers()
     if (!saved) throw error
-    const keyword = query.trim().toLowerCase()
     const matches = orderPickerCustomers(
-      saved.filter(
-        (customer) =>
-          !keyword ||
-          [customer.name, customer.address, customer.phone].some((value) =>
-            value?.toLowerCase().includes(keyword)
-          )
-      ),
+      saved.filter((customer) => matchesCustomerKeyword(customer, query)),
       query
     )
     return {
@@ -169,6 +177,13 @@ export function getCustomer(id: string, signal?: AbortSignal) {
   })
 }
 
+export function getPurchasedProducts(id: string, signal?: AbortSignal) {
+  return request<PurchasedProduct[]>(
+    `/api/customers/${encodeURIComponent(id)}/purchased-products`,
+    { signal }
+  )
+}
+
 export type ProfileStats = {
   amount_last_90d: number
   amount_prev_90d: number
@@ -188,6 +203,11 @@ export type ProfileStats = {
 }
 
 // 客戶檔案（FR-2）：交易概況、待處理事項、競品紀錄
+export type MonthlyPurchases = {
+  month: string
+  daily: { date: string; amount: number }[]
+}
+
 export type CustomerProfile = {
   customer: Customer
   city: string
@@ -196,6 +216,8 @@ export type CustomerProfile = {
   highlights: string[]
   stats: ProfileStats
   intervals: { month: string; gap_days: number | null }[]
+  // 上月整月、本月至今，依月份排序；未發生進貨的日期金額為 0。
+  monthly_purchases: MonthlyPurchases[]
   // 在客戶檔案直接開的報價沒有拜訪，visit_id 是 null。折扣還在等簽核的也列出來（pending_approval），被駁回的不列
   open_quotes: {
     quote_no: string
