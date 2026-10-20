@@ -13,7 +13,7 @@ export function SalesNav({
   return (
     <nav
       aria-label="銷售分頁"
-      className="mt-3 flex gap-1 rounded-xl bg-muted p-1"
+      className="mt-3 flex gap-1 overflow-x-auto rounded-xl bg-muted p-1"
     >
       {(
         [
@@ -29,13 +29,13 @@ export function SalesNav({
           aria-pressed={view === value}
           onClick={() => onChange(value)}
           className={cn(
-            "flex min-h-11 min-w-0 flex-1 flex-wrap items-center justify-center gap-x-1.5 rounded-lg px-1 py-1 text-sm font-semibold",
+            "flex min-h-11 min-w-max flex-1 flex-col items-center justify-center gap-1 rounded-lg px-1 py-2 text-sm font-semibold whitespace-nowrap sm:flex-row sm:gap-1.5 sm:py-1",
             view === value
               ? "bg-card text-foreground shadow-sm"
               : "text-muted-foreground"
           )}
         >
-          <Icon className="size-4" />
+          <Icon className="size-4 shrink-0" />
           {label}
         </button>
       ))}
