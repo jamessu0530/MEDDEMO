@@ -1,14 +1,15 @@
 import { jsonBody, request } from "@/api/client"
+import type { Turn } from "@/api/asks"
 import type { AskPageContext } from "@/ask/page-context"
 import type { AssistantTask, RouteOrderBatch, TaskPlan } from "@/ask/task-queue"
 
 export const TASK_CAPABILITIES = ["report.create", "order.create", "order.route_repeat", "data.query", "knowledge.query", "memory.query", "page.open"] as const
 export const TASK_PAGES = ["/orders", "/reports", "/route", "/calendar", "/channels", "/customers", "/products", "/promotions", "/manager", "/settings", "/conversations"] as const
 
-export function planAssistantTasks(question: string, tasks: AssistantTask[], activeId: string | null, page?: AskPageContext, signal?: AbortSignal) {
+export function planAssistantTasks(question: string, tasks: AssistantTask[], activeId: string | null, page?: AskPageContext, signal?: AbortSignal, earlier: Turn[] = []) {
   return request<TaskPlan>("/api/assistant-tasks/plan", {
     ...jsonBody("POST", { question, tasks: tasks.map(({ id, capability, title, instruction, status, message }) =>
-      ({ id, capability, title, instruction, status, message: message.slice(0, 8000) })), active_id: activeId, page }), signal,
+      ({ id, capability, title, instruction, status, message: message.slice(0, 8000) })), active_id: activeId, page, earlier }), signal,
   })
 }
 

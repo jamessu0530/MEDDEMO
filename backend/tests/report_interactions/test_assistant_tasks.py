@@ -88,6 +88,45 @@ def test_order_task_retries_create_one_draft_and_never_submit(tasks_db, monkeypa
     assert "草稿" in first["message"]
 
 
+def test_customer_only_order_creates_a_visible_empty_draft_once(tasks_db, monkeypatch):
+    user = tasks_db.get(AppUser, "S1")
+    monkeypatch.setattr(actions, "get_llm", lambda: SimpleNamespace(json=lambda **_: order_json(items=[])))
+    first = actions.execute(tasks_db, user, user, "customer-only", "order.create", "幫 C1 開單")
+    second = actions.execute(tasks_db, user, user, "customer-only", "order.create", "幫 C1 開單")
+    assert first == second and first["status"] == "completed"
+    order = tasks_db.get(SalesOrder, first["resource"]["id"])
+    assert order.items == [] and order.status == "draft" and order.sap_order_no is None
+    assert first["resource"]["path"] == f"/orders/{order.id}"
+    assert "新增商品" in first["message"]
+    listing = actions.orders.list_orders(tasks_db, user)
+    assert [item["id"] for item in listing["items"]] == [order.id]
+    assert tasks_db.scalar(select(func.count()).select_from(SalesOrder)) == 1
+
+
+def test_named_product_without_quantity_still_requires_clarification(tasks_db, monkeypatch):
+    user = tasks_db.get(AppUser, "S1")
+    monkeypatch.setattr(actions, "get_llm", lambda: SimpleNamespace(json=lambda **_: order_json(items=[{"product": "P1", "qty": 0, "unit": "盒"}])))
+    result = actions.execute(tasks_db, user, user, "missing-qty", "order.create", "幫 C1 開 P1")
+    assert result["status"] == "waiting" and result["resource"] is None
+    assert tasks_db.scalar(select(func.count()).select_from(SalesOrder)) == 0
+
+
+def test_task_plan_api_passes_previous_store_answer_to_planner(tasks_db, monkeypatch):
+    user = tasks_db.get(AppUser, "S1")
+    captured = {}
+
+    def plan(question, **values):
+        captured.update(values)
+        return {"handled": True, "message": "已安排建立 C1 的草稿", "commands": [command("order", capability="order.create", instruction="幫 C1 開單")]}
+
+    monkeypatch.setattr(planner, "plan", plan)
+    earlier = [{"question": "剛剛查到哪家店？", "answer": "康泰忠孝店，編號 C1。"}]
+    response = TestClient(app).post("/api/assistant-tasks/plan", headers={"Authorization": f"Bearer {auth.create_token(user)}"},
+                                    json={"question": "幫我開那家店", "earlier": earlier})
+    assert response.status_code == 200, response.text
+    assert captured["earlier"] == earlier
+
+
 def test_missing_ambiguous_and_unknown_customers_do_not_create_orders(tasks_db, monkeypatch):
     user = tasks_db.get(AppUser, "S1")
     monkeypatch.setattr(actions, "get_llm", lambda: SimpleNamespace(json=lambda **_: order_json(customer="")))
@@ -117,6 +156,17 @@ def test_refining_existing_order_updates_its_draft_instead_of_creating_again(tas
     assert float(stored.items[0]["unit_price"]) == 88
     assert float(stored.amount) == 1760
     assert (stored.recipient, stored.shipping_address, stored.purchase_no) == ("原收件人", "已修改的收貨地址", "PO-KEEP")
+
+
+def test_refining_with_missing_items_does_not_clear_existing_draft(tasks_db, monkeypatch):
+    user = tasks_db.get(AppUser, "S1")
+    monkeypatch.setattr(actions, "get_llm", lambda: SimpleNamespace(json=lambda **_: order_json()))
+    first = actions.execute(tasks_db, user, user, "keep-items", "order.create", "C1 P1 十盒")
+    monkeypatch.setattr(actions, "get_llm", lambda: SimpleNamespace(json=lambda **_: order_json(items=[])))
+    revised = actions.execute(tasks_db, user, user, "keep-items", "order.create", "C1 的草稿補上備註")
+    assert revised["status"] == "waiting" and revised["resource"] == first["resource"]
+    order = tasks_db.get(SalesOrder, first["resource"]["id"])
+    assert order.items[0]["sku"] == "P1" and order.items[0]["qty"] == 10
 
 
 def test_report_tasks_keep_separate_documents_and_refine_the_original(tasks_db, monkeypatch):

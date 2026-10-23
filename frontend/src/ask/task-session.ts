@@ -2,6 +2,7 @@ import { ApiError } from "@/api/client"
 import { controlRouteOrders, executeAssistantTask, planAssistantTasks, TASK_CAPABILITIES, TASK_PAGES, type TaskResult } from "@/api/assistant-tasks"
 import { getAsk, type AskKind } from "@/api/asks"
 import type { Conversation, UtteranceSource } from "@/ask/conversation"
+import { recentConversationTurns } from "@/ask/conversation-context"
 import type { AskPageContext } from "@/ask/page-context"
 import { runAsk } from "@/ask/run-ask"
 import { createTaskQueue, type AssistantTask } from "@/ask/task-queue"
@@ -196,7 +197,8 @@ export function createTaskSession(userId: string, signal: AbortSignal, persisten
       const state = queue.getSnapshot()
       let plan
       try {
-        plan = await planAssistantTasks(question, state.tasks, state.activeId, target.page, signal)
+        plan = await planAssistantTasks(question, state.tasks, state.activeId, target.page, signal,
+          recentConversationTurns(target.conversation.getSnapshot()))
       } catch (error) {
         // Existing query/help features remain usable on installations without AI tasks.
         if (error instanceof ApiError && [404, 503].includes(error.status) && !state.tasks.length &&

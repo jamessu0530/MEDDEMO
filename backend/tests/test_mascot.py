@@ -44,7 +44,9 @@ def test_collection_requires_login_and_starts_with_daily_outfits(tx, client):
     state = client.get("/api/mascot", headers=headers).json()
     assert state["equipped"] == {"color": "classic", "outfit": "none"}
     assert [item["id"] for item in state["colors"] if item["owned"]] == ["classic"]
-    assert [item["id"] for item in state["outfits"] if item["owned"]] == ["none", "scarf", "beret"]
+    assert [item["id"] for item in state["outfits"] if item["owned"]] == [
+        "none", "scarf", "beret", "nurse", "syringe", "pill", "tie", "briefcase", "wrench",
+    ]
     assert state["encounters"] == 0
 
 

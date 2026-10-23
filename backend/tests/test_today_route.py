@@ -2,9 +2,10 @@
 
 import datetime as dt
 
+import pytest
 from sqlalchemy.orm import Session
 
-from app.models import Customer, RouteSignalWeight, RouteSnooze
+from app.models import Customer, RouteSignalWeight, RouteSnooze, SapQuotationDraft
 from app.services import route_model, today_route
 
 TODAY = dt.date(2026, 10, 28)
@@ -98,6 +99,31 @@ def test_growing_clinics_are_opportunities(engine):
         found = today_route._opportunities(session, "U01", TODAY)
     # 杏林診所（C061）是刻意設計的「慢箋成長」：慢性處方每次多進五成
     assert "單次進貨金額從" in found["C061"] and "學名藥比價表" in found["C061"]
+
+
+@pytest.mark.parametrize("reverse_rows", [False, True])
+def test_quote_opportunity_is_stable_regardless_of_storage_order(tx, reverse_rows):
+    from app.timeutil import TAIPEI
+
+    quoted_at = dt.datetime(2026, 10, 28, 9, tzinfo=TAIPEI)
+    rows = [
+        ("Q-SORT-Z", 1, 50, quoted_at - dt.timedelta(days=1)),
+        ("Q-SORT-A", 1, 10, quoted_at),
+        ("Q-SORT-A", 2, 20, quoted_at),
+        ("Q-SORT-B", 2, 40, quoted_at),
+        ("Q-SORT-B", 1, 30, quoted_at),
+    ]
+    tx.add_all([
+        SapQuotationDraft(
+            quote_no=quote_no, line_no=line_no, customer_id="C001", sku="HS-FO30",
+            qty=qty, unit_price=405, amount=405 * qty, created_by="U01", created_at=created_at,
+        )
+        for quote_no, line_no, qty, created_at in (reversed(rows) if reverse_rows else rows)
+    ])
+    tx.flush()
+
+    found = today_route._opportunities(tx, "U01", TODAY)
+    assert found["C001"] == "10/28 想進魚油 30 入 × 30，報價草稿還沒成交"
 
 
 def test_every_rep_with_an_opportunity_gets_one_picked(engine):

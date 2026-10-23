@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from app.api.auth import CurrentAccount, CurrentUser
+from app.api.asks import Turn
 from app.config import NotConfigured
 from app.db import get_session
 from app.llm import LLMOutputError
@@ -37,6 +38,7 @@ class PlanInput(BaseModel):
     tasks: list[TaskContext] = Field(default_factory=list)
     active_id: str | None = Field(default=None, max_length=100)
     page: PageContext | None = None
+    earlier: list[Turn] = Field(default_factory=list, max_length=6)
 
 
 class ExecuteInput(BaseModel):
@@ -63,7 +65,8 @@ def action(call):
 @router.post("/plan")
 def plan_tasks(body: PlanInput, user: CurrentUser):
     return action(lambda: planner.plan(body.question, tasks=[task.model_dump() for task in body.tasks],
-                                     active_id=body.active_id, page=body.page.model_dump() if body.page else None))
+                                     active_id=body.active_id, page=body.page.model_dump() if body.page else None,
+                                     earlier=[turn.model_dump(exclude_none=True, exclude_defaults=True) for turn in body.earlier]))
 
 
 @router.post("/execute")

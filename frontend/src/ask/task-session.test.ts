@@ -19,6 +19,49 @@ beforeEach(() => { api.plan.mockReset(); api.execute.mockReset(); api.control.mo
 afterEach(() => vi.unstubAllGlobals())
 
 describe("助理任務執行", () => {
+  it("從前一輪找到剛剛查到的店家，將前文交給開單規劃", async () => {
+    const conversation = createConversation()
+    conversation.addUtterance("user", "typed", "剛剛查到哪一家店？")
+    conversation.addUtterance("model", "typed", "康泰忠孝店，客戶編號 C1。")
+    conversation.addUtterance("user", "typed", "幫我開那家店")
+    api.plan.mockResolvedValue({ handled: true, message: "請確認商品", commands: [] })
+    const session = createTaskSession("U01", new AbortController().signal, false)
+    await session.handle("幫我開那家店", { conversation, source: "typed" })
+    expect(api.plan.mock.calls[0][5]).toEqual([
+      { question: "剛剛查到哪一家店？", answer: "康泰忠孝店，客戶編號 C1。" },
+    ])
+  })
+
+  it.each(["typed", "voice"] as const)("%s 開單只在草稿儲存成功後跳到該張訂單", async (source) => {
+    let finish!: (result: TaskResult) => void
+    api.plan.mockResolvedValue(plan({ ...command("開康泰訂單"), capability: "order.create" }))
+    api.execute.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve }))
+    const session = createTaskSession("U01", new AbortController().signal, false)
+    await session.handle("幫我開那家店", { conversation: createConversation(), source })
+    expect(session.getNavigation()).toBeNull()
+    finish({ status: "completed", message: "草稿已儲存", resource: { path: "/orders/saved", id: "saved" } })
+    await vi.waitFor(() => expect(session.getNavigation()?.path).toBe("/orders/saved"))
+    const navigation = session.getNavigation()!
+    session.acknowledgeNavigation(navigation.key)
+    expect(session.getNavigation()).toBeNull()
+    expect(session.queue.getSnapshot().tasks[0].resource?.id).toBe("saved")
+  })
+
+  it("資料不足或建立失敗時保留提示，不導覽或宣稱已完成", async () => {
+    api.plan.mockResolvedValue(plan({ ...command("order"), capability: "order.create" }))
+    api.execute.mockResolvedValueOnce({ status: "waiting", message: "請指定店家", resource: null })
+    const session = createTaskSession("U01", new AbortController().signal, false)
+    const target = { conversation: createConversation(), source: "typed" as const }
+    await session.handle("開單", target)
+    await vi.waitFor(() => expect(session.queue.getSnapshot().tasks[0].status).toBe("waiting"))
+    expect(session.getNavigation()).toBeNull()
+    api.execute.mockRejectedValueOnce(new Error("草稿未能儲存"))
+    session.resume(session.queue.getSnapshot().tasks[0].id, target)
+    await vi.waitFor(() => expect(session.queue.getSnapshot().tasks[0].status).toBe("error"))
+    expect(session.getNavigation()).toBeNull()
+    expect(session.queue.getSnapshot().tasks[0].resource).toBeNull()
+  })
+
   it("連續處理八項工作，返回既有工作不會再次建立", async () => {
     api.plan.mockResolvedValue(plan(...Array.from({ length: 8 }, (_, n) => command(`r${n}`))))
     api.execute.mockImplementation(async (task) => result(task.title))

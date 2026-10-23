@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils"
 /**
  * 吉祥物「熊熊滾」（docs/superpowers/specs/2026-09-30-mascot-design.md）。
  * 一隻紫色、站著的小熊，AI 在聽、在想、在回答、在處理的時候，用牠的動作告訴使用者。
- * 基本輪廓只有七個形狀，不描邊也沒有漸層；沒有手，每個狀態靠身體、耳朵、眼睛和嘴表現。look 可換異色與服裝。
+ * 基本輪廓只有七個形狀，不描邊也沒有漸層；每個狀態靠身體、耳朵、眼睛和嘴表現。look 可換異色與服裝，手持款加上小熊掌。
  * 動畫在 mascot.css，每個狀態一組；狀態的清單在 lib/mascot.ts。
  */
 type Eyes = "open" | "up" | "happy" | "closed"
@@ -87,7 +87,7 @@ export function MascotFigure({ state = "idle", props = true, look }: { state?: M
           d="M56 118 C56 80 84 56 120 56 C156 56 184 80 184 118 V188 C184 204 173 215 159 215 C147 215 139 209 135 200 H105 C101 209 93 215 81 215 C67 215 56 204 56 188 Z"
           fill={base}
         />
-        <MascotCostume outfit={outfit} />
+        <MascotCostume outfit={outfit} base={base} light={light} />
         <g transform="translate(120 120)">
           <g className="mascot-face">
             <g className="mascot-eyes" data-eyes={eyes}>

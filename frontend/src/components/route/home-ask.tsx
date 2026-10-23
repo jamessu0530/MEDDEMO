@@ -1,6 +1,7 @@
 import type { TodayRoute } from "@/api/route"
 import { useState } from "react"
 import { askSessionFor } from "@/ask/ask-session"
+import { openAssistantVoice } from "@/ask/assistant-voice"
 import { useCurrentPageContext } from "@/ask/use-page-context"
 import { AskBar } from "@/components/route/ask-bar"
 import { ProposalSheet } from "@/components/route/proposal-sheet"
@@ -60,6 +61,7 @@ export function HomeAsk({ userId, onApplied }: { userId: string; onApplied: (rou
           inputLabel="交辦路線與開單工作"
           maxLength={8000}
           earlier={flow.turns}
+          onStartVoice={openAssistantVoice}
         />
       </div>
       {state.status === "open" && (

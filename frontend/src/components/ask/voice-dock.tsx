@@ -68,10 +68,13 @@ export default function VoiceDock({
   }
   if (voice.status === "connecting") {
     return (
-      <Button className="h-14 w-full gap-2 text-base" disabled>
-        <Loader2 className="size-5 animate-spin" />
-        連線中…
-      </Button>
+      <div className="flex gap-2">
+        <Button className="h-14 flex-1 gap-2 text-base" disabled>
+          <Loader2 className="size-5 animate-spin" />
+          連線中…
+        </Button>
+        <Button variant="ghost" className="h-14 shrink-0" onClick={() => { voice.stop(); onClose() }}>取消</Button>
+      </div>
     )
   }
   const speaking = voice.status === "speaking"

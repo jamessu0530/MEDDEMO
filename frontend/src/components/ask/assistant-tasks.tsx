@@ -1,5 +1,5 @@
-import { useEffect, useSyncExternalStore } from "react"
-import { Link, useNavigate } from "react-router"
+import { useSyncExternalStore } from "react"
+import { Link } from "react-router"
 import type { Conversation } from "@/ask/conversation"
 import type { TaskSession } from "@/ask/task-session"
 import type { TaskStatus } from "@/ask/task-queue"
@@ -12,13 +12,6 @@ const labels: Record<TaskStatus, string> = {
 
 export function AssistantTasks({ session, conversation }: { session: TaskSession; conversation: Conversation }) {
   const state = useSyncExternalStore(session.queue.subscribe, session.queue.getSnapshot, session.queue.getSnapshot)
-  const navigation = useSyncExternalStore(session.subscribe, session.getNavigation, session.getNavigation)
-  const navigate = useNavigate()
-  useEffect(() => {
-    if (!navigation) return
-    session.acknowledgeNavigation(navigation.key)
-    void navigate(navigation.path)
-  }, [navigation, navigate, session])
   if (!state.tasks.length) return null
   const remaining = state.tasks.filter((task) => !["completed", "cancelled"].includes(task.status)).length
   return (

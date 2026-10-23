@@ -6,8 +6,11 @@ import { fetchMe } from "@/api/auth"
 import { AppShell } from "@/components/app-shell"
 import { CompletionCelebrationHost } from "@/components/completion-celebration"
 import { Assistant } from "@/components/ask/assistant"
+import { AssistantTaskNavigation } from "@/components/ask/assistant-task-navigation"
+import { AssistantVoiceHost } from "@/components/ask/assistant-voice-host"
 import { ConversationHistoryPage } from "@/pages/conversation-history"
 import { openAssistant } from "@/ask/assistant-window"
+import { openAssistantVoice } from "@/ask/assistant-voice"
 import { InkOverlay, InkRoutes } from "@/components/ink-transition"
 import { Mascot } from "@/components/mascot"
 import { Notice } from "@/components/notice"
@@ -182,8 +185,11 @@ function Home() {
 }
 
 /** 舊書籤仍會打開助理，問答不再是獨立頁面。 */
-function AssistantEntry() {
-  useEffect(() => openAssistant(), [])
+function AssistantEntry({ voice = false }: { voice?: boolean }) {
+  useEffect(() => {
+    if (voice) openAssistantVoice()
+    else openAssistant()
+  }, [voice])
   return <Home />
 }
 
@@ -277,8 +283,8 @@ function ApplicationRoutes() {
             <Route path="/mascots" element={<MascotsPage />} />
             {/* 工作區由 RequireAuth 保留，換頁回來不會重新建立。 */}
             <Route path="/reports" element={null} />
-            {/* 舊語音書籤改為開啟全站助理 */}
-            <Route path="/voice" element={<AssistantEntry />} />
+            {/* 語音書籤直接啟動全站語音問答。 */}
+            <Route path="/voice" element={<AssistantEntry voice />} />
             <Route path="/customers/:customerId" element={<CustomerPage />} />
             <Route path="/customers/:customerId/negotiation" element={<NegotiationPage />} />
             <Route path="/customers/:customerId/quote" element={<QuotePage />} />
@@ -321,6 +327,8 @@ function ApplicationRoutes() {
         </InkRoutes>
       </div>
       <Assistant key={session?.user.id ?? "guest"} />
+      <AssistantTaskNavigation key={`task-navigation-${session?.user.id ?? "guest"}`} />
+      <AssistantVoiceHost key={`voice-${session?.user.id ?? "guest"}`} />
       <InkOverlay />
       <UiDemoOverlay />
     </>

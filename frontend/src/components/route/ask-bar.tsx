@@ -24,6 +24,7 @@ type AskBarProps = {
   maxLength?: number
   suggestions?: string[]
   earlier?: Turn[]
+  onStartVoice?: () => void
 }
 
 /**
@@ -38,6 +39,7 @@ export function AskBar({
   placeholder,
   inputLabel = "跟熊熊滾說要怎麼排",
   maxLength = 300,
+  onStartVoice,
 }: AskBarProps) {
   const page = useCurrentPageContext()
   const [text, setText] = useState("")
@@ -124,6 +126,9 @@ export function AskBar({
   const shown = error ?? micError
   return (
     <form onSubmit={submit} className={cn("flex flex-col gap-1", className)}>
+      {onStartVoice && <Button type="button" variant="outline" className="mb-1 h-10 self-end gap-2 bg-card" onClick={() => { stopRef.current?.(); onStartVoice() }}>
+        <Mic className="size-4" />語音問答
+      </Button>}
       {busy ? (
         <div
           className="flex h-12 items-center gap-2 rounded-2xl border-2 bg-card px-3 shadow-lip"
@@ -148,7 +153,8 @@ export function AskBar({
             variant="outline"
             size="icon"
             className={cn("size-12 shrink-0", listening && "text-destructive")}
-            aria-label={listening ? "講完了" : "用說的"}
+            aria-label={listening ? "結束語音輸入" : "語音輸入文字"}
+            title="把說話轉成文字，確認後再送出"
             aria-pressed={listening}
             onClick={() =>
               listening ? stopRef.current?.() : void startListening()

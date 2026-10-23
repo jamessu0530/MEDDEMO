@@ -135,7 +135,8 @@ def _opportunities(session: Session, owner_id: str, today: dt.date) -> dict[str,
         .outerjoin(PromotionItem, PromotionItem.code == SapQuotationDraft.promo_code)
         .outerjoin(Visit, Visit.id == SapQuotationDraft.visit_id)
         .where(Customer.owner_user_id == owner_id, SapQuotationDraft.status == "draft")
-        .order_by(text("quoted_at DESC"))
+        # 同時間的報價先按單號固定順序；同張報價依行號挑第一個未成交品項。
+        .order_by(text("quoted_at DESC"), SapQuotationDraft.quote_no.desc(), SapQuotationDraft.line_no)
     ).all()
     for q in quotes:
         quoted_on = local_date(q.quoted_at)

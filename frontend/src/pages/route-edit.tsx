@@ -30,6 +30,7 @@ import { Mascot } from "@/components/mascot"
 import { Notice } from "@/components/notice"
 import { PageHeader } from "@/components/page-header"
 import { AskBar } from "@/components/route/ask-bar"
+import { openAssistantVoice } from "@/ask/assistant-voice"
 import { DriveSource } from "@/components/route/drive-source"
 import { HabitPrompt, type HabitChoice } from "@/components/route/habit-prompt"
 import { SkippedHabitsNote } from "@/components/route/home-extras"
@@ -509,7 +510,7 @@ export function RouteEditPage() {
             </Button>
           </div>
         </div>
-        <AskBar className="mt-3" busy={asking} error={flow.error} onAsk={ask} earlier={flow.turns} />
+        <AskBar className="mt-3" busy={asking} error={flow.error} onAsk={ask} earlier={flow.turns} onStartVoice={openAssistantVoice} />
       </main>
 
       {flow.state.status === "open" && (

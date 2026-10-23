@@ -6,7 +6,16 @@ import { canWear, DEFAULT_MASCOT_LOOK, MASCOT_COLORS, MASCOT_OUTFITS, type Masco
 
 const KEY = "meddemo:mascot-wardrobe-preview:v1"
 function initial(): MascotCollection {
-  try { const saved = JSON.parse(localStorage.getItem(KEY) ?? "null"); if (saved?.colors && saved?.outfits) return saved } catch { /* 存壞的示範紀錄重新開始 */ }
+  try {
+    const saved: MascotCollection | null = JSON.parse(localStorage.getItem(KEY) ?? "null")
+    if (saved?.colors && saved?.outfits) return {
+      ...saved,
+      outfits: MASCOT_OUTFITS.map((item) => {
+        const previous = saved.outfits.find((outfit) => outfit.id === item.id)
+        return { ...item, owned: !item.city || Boolean(previous?.owned), unlocked_at: previous?.unlocked_at ?? null }
+      }),
+    }
+  } catch { /* 存壞的示範紀錄重新開始 */ }
   return { colors: MASCOT_COLORS.map((item) => ({ ...item, owned: item.id === "classic", unlocked_at: null })), outfits: MASCOT_OUTFITS.map((item) => ({ ...item, owned: !item.city, unlocked_at: null })), equipped: DEFAULT_MASCOT_LOOK, use_as_avatar: false, encounters: 0, shiny_odds: 8, guaranteed_in: 8 }
 }
 

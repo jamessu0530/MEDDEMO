@@ -3,7 +3,7 @@ import { useLocation } from "react-router"
 import { assistantLayout } from "@/ask/assistant-layout"
 
 /** 底部助理避開固定操作列，並將回覆與輸入欄一起限制在鍵盤上方。 */
-export function useAssistantLayout(active = true) {
+export function useAssistantLayout(active = true, footerSelector = "[data-page-footer]") {
   const { pathname, search } = useLocation()
   const [layout, setLayout] = useState<{
     inset: number
@@ -16,7 +16,7 @@ export function useAssistantLayout(active = true) {
     const update = () => {
       const footers: DOMRect[] = []
       document
-        .querySelectorAll<HTMLElement>("[data-page-footer]")
+        .querySelectorAll<HTMLElement>(footerSelector)
         .forEach((element) => {
           if (element.closest('[role="dialog"]')) return
           resize.observe(element)
@@ -59,6 +59,6 @@ export function useAssistantLayout(active = true) {
       window.visualViewport?.removeEventListener("resize", schedule)
       window.visualViewport?.removeEventListener("scroll", schedule)
     }
-  }, [pathname, search, active])
+  }, [pathname, search, active, footerSelector])
   return layout
 }

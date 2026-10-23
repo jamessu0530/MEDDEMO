@@ -22,7 +22,7 @@ function release(group: THREE.Object3D) {
   materials.forEach((material) => material.dispose())
 }
 
-/** 同一份 SVG 輪廓、表情和服裝轉成有厚度與圓角的模型；沒有另外畫一隻長手的熊。 */
+/** 同一份 SVG 輪廓、表情、服裝與手持道具轉成有厚度與圓角的模型。 */
 function figure(svg: string, color: string) {
   const palette = mascotPalette(color)
   const art = new THREE.Group()

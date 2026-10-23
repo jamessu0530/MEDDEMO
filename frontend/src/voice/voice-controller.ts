@@ -22,6 +22,7 @@ import { runAsk } from "@/ask/run-ask"
 import { askSessionFor } from "@/ask/ask-session"
 import { readUser } from "@/lib/auth"
 import type { TaskSession } from "@/ask/task-session"
+import { taskToolResult } from "@/voice/task-result"
 import { TABLE_PREVIEW_ROWS } from "@/components/ask/ask-result"
 import { CueLoop, INPUT_MIME_TYPE, PcmPlayer, openMicrophone, startCapture, toBase64 } from "@/voice/audio"
 
@@ -371,9 +372,10 @@ export class VoiceController {
       if (!askKind) throw new Error(`沒有這個查詢工具：${call.name}`)
       if (!question) throw new Error("模型沒有給要查的問題")
       if (question.length > 8000) throw new Error("這次交辦內容太長，請分幾次補充工作。")
+      const beforeTasks = this.conversation.getSnapshot().length
       if (await this.tasks.handle(question, { conversation: this.conversation, source: "voice", page })) {
         this.conversation.completeWithMessage(entryId, "voice", "")
-        response = { output: { status: "已更新工作安排", answer: "已安排工作，執行結果或待補資料會顯示在工作清單。", instruction: "尚未完成的工作只能說已安排，不得宣稱已完成。" } }
+        response = taskToolResult(this.conversation.getSnapshot().slice(beforeTasks))
       } else if (askKind === "tasks") {
         const clarification = "請說明要執行哪些工作，或指定要繼續的任務。"
         this.conversation.replace(entryId, { clarification })

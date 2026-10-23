@@ -1,19 +1,16 @@
 import {
-  Component,
-  lazy,
-  Suspense,
   useEffect,
   useLayoutEffect,
   useRef,
   useState,
   useSyncExternalStore,
   type CSSProperties,
-  type ReactNode,
 } from "react"
 import { ChevronDown, Loader2, Mic, SendHorizontal } from "@/components/icons"
 import { useLocation } from "react-router"
 
 import { askSessionFor } from "@/ask/ask-session"
+import { assistantVoice, closeAssistantVoice, openAssistantVoice } from "@/ask/assistant-voice"
 import {
   assistantWindow,
   closeAssistant,
@@ -30,7 +27,6 @@ import { AssistantModeTransition } from "@/components/ask/assistant-mode-transit
 import { EntryView } from "@/components/ask/entry-view"
 import { AccountMemoryStatus } from "@/components/ask/memory-status"
 import { AssistantTasks } from "@/components/ask/assistant-tasks"
-import type { VoiceSession } from "@/components/ask/voice-dock"
 import { AttachButton, DraftFiles } from "@/components/attachments/draft-files"
 import { Mascot } from "@/components/mascot"
 import { Notice } from "@/components/notice"
@@ -52,8 +48,6 @@ import {
 } from "@/ask/customer-priority-assistant"
 import { CustomerPriorityAssistantPreview } from "@/components/manager/customer-priority-assistant-preview"
 
-const loadVoiceDock = () => import("@/components/ask/voice-dock")
-
 /** 共用對話與草稿；路線頁使用原有的 AI 輸入列，頻道內透過 @熊熊滾 提問。 */
 export function Assistant() {
   const user = useAuth()?.user
@@ -72,6 +66,7 @@ export function Assistant() {
   }, [thread.id])
   function changeMode(action: AssistantTransitionAction) {
     if (!user || sending) return
+    closeAssistantVoice()
     restoreInputFocus.current = document.activeElement?.id === "page-assistant-input"
     if (action === "ghost") asking.threads.enterGhost()
     else asking.threads.startNew()
@@ -242,7 +237,7 @@ export function Assistant() {
             </div>
           </CardHeader>
         )}
-        <AssistantContent key={`${user?.id}:${thread.id}`} open={open && active} active={active} />
+        <AssistantContent key={`${user?.id}:${thread.id}`} open={open && active} />
       </AssistantSwipeCard>
       <div
         id="page-assistant-resize"
@@ -265,10 +260,8 @@ export function Assistant() {
 
 function AssistantContent({
   open,
-  active,
 }: {
   open: boolean
-  active: boolean
 }) {
   const user = useAuth()?.user
   const page = useCurrentPageContext()
@@ -299,10 +292,7 @@ function AssistantContent({
   const [pickError, setPickError] = useState<string | null>(null)
   const [preparing, setPreparing] = useState(false)
   const preparingRef = useRef(false)
-  const [voiceOn, setVoiceOn] = useState(false)
-  if (!active && voiceOn) setVoiceOn(false)
-  const [session, setSession] = useState<VoiceSession | null>(null)
-  const [VoiceDock, setVoiceDock] = useState(() => lazy(loadVoiceDock))
+  const { active: voiceOn, session } = useSyncExternalStore(assistantVoice.subscribe, assistantVoice.getSnapshot, assistantVoice.getSnapshot)
   const [notice, setNotice] = useState<{
     text: string
     retryByReload?: boolean
@@ -365,7 +355,6 @@ function AssistantContent({
     setQuestion("")
     if (
       session &&
-      open &&
       !requestedUiDemo(trimmed, snapshot.path) &&
       !reportAssistant.handles(trimmed, snapshot) &&
       !customerPriorityAssistant.handles(trimmed, snapshot)
@@ -373,7 +362,7 @@ function AssistantContent({
       session.sendText(trimmed)
       return
     }
-    if (session) setVoiceOn(false)
+    if (session) closeAssistantVoice()
     const file = files[0]?.file
     setFiles([])
     setPickError(null)
@@ -404,14 +393,6 @@ function AssistantContent({
     const result = addDraftFiles([], picked.slice(0, 1), 1)
     if (result.files.length) setFiles(result.files)
     setPickError(result.error)
-  }
-  const failVoice = () => {
-    setVoiceOn(false)
-    setNotice({
-      text: "語音載入失敗，請重新整理後再試。打字仍可使用。",
-      retryByReload: true,
-    })
-    setVoiceDock(() => lazy(loadVoiceDock))
   }
   return (
     <>
@@ -479,27 +460,6 @@ function AssistantContent({
       >
         {open && user?.role === "sales" && !asking.threads.getSnapshot().ghost && (
           <p className="px-2 pt-1 text-xs leading-relaxed text-muted-foreground">提問時定位一次，供主管查看提問地圖。</p>
-        )}
-        {active && voiceOn && (
-          <VoiceBoundary onFail={failVoice}>
-            <Suspense
-              fallback={
-                <p className="text-sm text-muted-foreground">載入語音中…</p>
-              }
-            >
-              <VoiceDock
-                conversation={conversation}
-                polls={asking.polls}
-                page={page}
-                onClose={() => {
-                  setVoiceOn(false)
-                  setNotice(null)
-                }}
-                onSession={setSession}
-                onNotice={(text) => setNotice(text ? { text } : null)}
-              />
-            </Suspense>
-          </VoiceBoundary>
         )}
         <form
           onSubmit={(event) => {
@@ -575,7 +535,7 @@ function AssistantContent({
             aria-label="輸入問題"
             className="h-9 field-sizing-fixed max-h-9 min-h-9 min-w-0 flex-1 resize-none overflow-y-auto rounded-lg border-0 bg-transparent px-1 py-1.5 text-base leading-6 shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0"
           />
-          <div className="flex shrink-0 items-center [&>button]:size-9 [&>button]:min-h-0 [&>button]:p-0">
+          <div className="flex shrink-0 items-center [&>button]:h-9 [&>button]:min-h-0 [&>button]:px-2">
             {!session && (
               <AttachButton onPick={pick} disabled={busy} multiple={false} />
             )}
@@ -583,23 +543,22 @@ function AssistantContent({
               <Button
                 type="button"
                 variant="ghost"
-                size="icon"
-                className="size-9 shrink-0"
+                className="h-9 shrink-0 gap-1 px-2 text-xs"
                 disabled={busy}
                 onClick={() => {
                   setNotice(null)
-                  setVoiceOn(true)
-                  openAssistant()
+                  openAssistantVoice()
                 }}
-                aria-label="用說的問"
+                aria-label="啟動語音問答"
               >
                 <Mic className="size-4" />
+                語音問答
               </Button>
             )}
             <Button
               type="submit"
               size="icon"
-              className="ml-auto size-9 shrink-0 rounded-xl shadow-none active:transform-none"
+              className="ml-auto size-9 min-h-0 shrink-0 rounded-xl p-0 shadow-none active:transform-none"
               disabled={busy || !question.trim()}
               aria-label="送出"
             >
@@ -618,20 +577,4 @@ function AssistantContent({
 
 function pathnameIsReport(path: string) {
   return path.split("?")[0].replace(/\/$/, "") === "/reports"
-}
-
-class VoiceBoundary extends Component<
-  { onFail: () => void; children: ReactNode },
-  { failed: boolean }
-> {
-  state = { failed: false }
-  static getDerivedStateFromError() {
-    return { failed: true }
-  }
-  componentDidCatch() {
-    this.props.onFail()
-  }
-  render() {
-    return this.state.failed ? null : this.props.children
-  }
 }
