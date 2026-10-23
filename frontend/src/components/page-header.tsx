@@ -7,19 +7,21 @@ type PageHeaderProps = {
   hideTitle?: boolean
   subtitle?: string
   backTo?: string
+  backState?: unknown
   // 取代返回鍵的左側按鈕，例如錄音中的「取消」
   leading?: ReactNode
   // 標頭右側的按鈕，例如主管端的「帳號設定」
   trailing?: ReactNode
 }
 
-export function PageHeader({ title, hideTitle = false, subtitle, backTo, leading, trailing }: PageHeaderProps) {
+export function PageHeader({ title, hideTitle = false, subtitle, backTo, backState, leading, trailing }: PageHeaderProps) {
   return (
     <header className="sticky top-0 z-10 flex items-center gap-1 border-b bg-background/95 px-1 py-1.5 backdrop-blur">
       {leading ??
         (backTo ? (
           <Link
             to={backTo}
+            state={backState}
             aria-label="返回"
             className="flex size-11 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
           >

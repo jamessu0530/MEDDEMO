@@ -222,10 +222,12 @@ export function CustomerPage() {
     profile.monthly_purchases,
     profile.today
   )
-  const toRecord = () => navigate(`/customers/${customer.id}/record`)
+  const toRecord = () => navigate(`/customers/${customer.id}/record`, { state: { backTo } })
   const toOrder = () =>
-    navigate(`/orders/new?${new URLSearchParams({ customer_id: customer.id })}`)
-  const toNegotiation = () => navigate(`/customers/${customer.id}/negotiation`)
+    navigate(`/orders/new?${new URLSearchParams({ customer_id: customer.id })}`, {
+      state: { returnTo: `/customers/${customer.id}`, customerBackTo: backTo },
+    })
+  const toNegotiation = () => navigate(`/customers/${customer.id}/negotiation`, { state: { backTo } })
 
   const alerts = (
     <>

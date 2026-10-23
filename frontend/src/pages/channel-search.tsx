@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react"
+import { useEffect, useState, type FormEvent } from "react"
 import { FileText, Search } from "@/components/icons"
 import { useLocation, useNavigate, useSearchParams } from "react-router"
 
@@ -21,8 +21,11 @@ export function ChannelSearchPage() {
   const [params] = useSearchParams()
   const navigate = useNavigate()
   const fromChannel = Number(params.get("channel")) || null
-  const [onlyHere, setOnlyHere] = useState(fromChannel !== null)
-  const [text, setText] = useState("")
+  const restoredText = params.get("q") ?? ""
+  const restoredOnlyHere = fromChannel !== null && params.get("scope") !== "all"
+  const [onlyHere, setOnlyHere] = useState(restoredOnlyHere)
+  const [text, setText] = useState(restoredText)
+  const [searched, setSearched] = useState({ text: restoredText, onlyHere: restoredOnlyHere })
   const [photo, setPhoto] = useState<DraftFile[]>([])
   const [pickError, setPickError] = useState<string | null>(null)
   const [state, setState] = useState<State>({ status: "idle" })
@@ -31,6 +34,20 @@ export function ChannelSearchPage() {
   const backState = (useLocation().state as { backTo?: string } | null)?.backTo
   const backTo = backState ?? (fromChannel ? `/channels/${fromChannel}` : "/channels")
 
+  // 從原訊息返回或重新整理搜尋網址時，還原已送出的文字與範圍。
+  useEffect(() => {
+    if (!restoredText.trim()) return
+    const controller = new AbortController()
+    searchAttachments({ q: restoredText.trim(), channelId: restoredOnlyHere ? fromChannel : null }, controller.signal)
+      .then((hits) => {
+        if (!controller.signal.aborted) setState({ status: "ready", hits })
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted) setState({ status: "error", message: error instanceof ApiError ? error.message : "連不上伺服器，請再試一次" })
+      })
+    return () => controller.abort()
+  }, [restoredText, restoredOnlyHere, fromChannel])
+
   async function submit(event?: FormEvent) {
     event?.preventDefault()
     if (!text.trim() && !photo.length) return
@@ -38,6 +55,7 @@ export function ChannelSearchPage() {
     try {
       const image = photo[0] ? await shrinkPhoto(photo[0].file) : undefined
       const hits = await searchAttachments({ q: text.trim(), image, channelId: onlyHere ? fromChannel : null })
+      setSearched({ text: text.trim(), onlyHere })
       setState({ status: "ready", hits })
     } catch (error) {
       setState({ status: "error", message: error instanceof ApiError ? error.message : "連不上伺服器，請再試一次" })
@@ -46,7 +64,11 @@ export function ChannelSearchPage() {
 
   function open(hit: SearchHit) {
     if (hit.reachable) {
-      navigate(`/channels/${hit.channel_id}`, { state: { jumpTo: hit.message_id, backTo: `/channels/search${fromChannel ? `?channel=${fromChannel}` : ""}` } })
+      const query = new URLSearchParams()
+      if (fromChannel) query.set("channel", String(fromChannel))
+      if (searched.text) query.set("q", searched.text)
+      if (fromChannel && !searched.onlyHere) query.set("scope", "all")
+      navigate(`/channels/${hit.channel_id}`, { state: { jumpTo: hit.message_id, backTo: `/channels/search${query.size ? `?${query}` : ""}` } })
       return
     }
     // 靠往上傳才看得到的：只開大圖（PDF 在新分頁開），點不回原訊息

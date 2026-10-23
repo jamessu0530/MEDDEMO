@@ -1,4 +1,5 @@
-.report-fixed-visual svg[role="img"] {
+.report-fixed-visual svg[role="img"],
+.report-fixed-visual svg[role="group"] {
   max-height: var(--report-plot-height);
 }
 
@@ -27,6 +28,26 @@
 .report-visual[data-widget-size="small"] .report-summary-value {
   font-size: clamp(1.25rem, 13cqi, 2rem);
   overflow-wrap: anywhere;
+}
+.report-fixed-visual .report-visual-heading {
+  flex-shrink: 0;
+}
+.report-fixed-visual .report-visual-title {
+  display: -webkit-box;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+/* Use the card's available space, including side panels and enlarged text. */
+@container (max-width: 20rem) {
+  .report-fixed-visual .report-visual-heading {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .report-visual-actions {
+    justify-self: end;
+  }
 }
 .report-widget-comparison {
   color: var(--primary);

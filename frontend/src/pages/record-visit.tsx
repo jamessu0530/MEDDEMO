@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { useAskPageContext } from "@/ask/use-page-context"
 import { CloudOff, Loader2, Mic, X } from "@/components/icons"
-import { useNavigate, useParams } from "react-router"
+import { useLocation, useNavigate, useParams } from "react-router"
 
 import { ApiError } from "@/api/client"
 import { cachedCustomer, getCustomer } from "@/api/customers"
@@ -75,6 +75,7 @@ function extensionFor(mimeType: string) {
 export function RecordVisit() {
   const { customerId = "" } = useParams()
   const navigate = useNavigate()
+  const returnState = useLocation().state
   const [customerName, setCustomerName] = useState<string | null>(null)
   const [phase, setPhase] = useState<Phase>({ name: "idle" })
   const [elapsed, setElapsed] = useState(0)
@@ -265,7 +266,7 @@ export function RecordVisit() {
   function cancel() {
     discardRef.current = true
     if (recorderRef.current?.state === "recording") recorderRef.current.stop()
-    navigate(`/customers/${customerId}`)
+    navigate(`/customers/${customerId}`, { state: returnState })
   }
 
   const recording = phase.name === "recording"
@@ -275,6 +276,7 @@ export function RecordVisit() {
         title="口述拜訪紀錄"
         subtitle={customerName ?? undefined}
         backTo={`/customers/${customerId}`}
+        backState={returnState}
         leading={
           recording ? (
             <button

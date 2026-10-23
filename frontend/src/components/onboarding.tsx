@@ -56,29 +56,31 @@ export function Onboarding() {
       aria-labelledby="guide-title"
       className="fixed inset-0 z-50 mx-auto flex max-w-md flex-col bg-background px-6 pt-3 pb-[max(env(safe-area-inset-bottom),1.5rem)] lg:inset-auto lg:top-1/2 lg:left-1/2 lg:h-[min(40rem,calc(100svh-4rem))] lg:w-full lg:-translate-x-1/2 lg:-translate-y-1/2 lg:rounded-3xl lg:border-2 lg:shadow-lip"
     >
-      <div className="flex h-11 justify-end">
+      <div className="flex h-11 shrink-0 justify-end">
         {!last && (
           <Button variant="ghost" className="h-11 text-muted-foreground" onClick={close}>
             略過
           </Button>
         )}
       </div>
-      <div className="flex flex-1 flex-col items-center justify-center gap-5 text-center">
-        <p className="text-xs font-semibold tracking-wide text-primary">
-          三個主要操作 · {step + 1}／{STEPS.length}
-        </p>
-        <div className="relative">
-          <Mascot state={mascot} size={128} />
-          <span className="absolute right-0 bottom-1 flex size-10 items-center justify-center rounded-full bg-primary text-primary-foreground ring-4 ring-background">
-            <Icon className="size-5" />
-          </span>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="flex min-h-full flex-col items-center justify-center gap-5 py-4 text-center">
+          <p className="text-xs font-semibold tracking-wide text-primary">
+            三個主要操作 · {step + 1}／{STEPS.length}
+          </p>
+          <div className="relative">
+            <Mascot state={mascot} size={128} />
+            <span className="absolute right-0 bottom-1 flex size-10 items-center justify-center rounded-full bg-primary text-primary-foreground ring-4 ring-background">
+              <Icon className="size-5" />
+            </span>
+          </div>
+          <h2 id="guide-title" className="text-xl font-semibold">
+            {title}
+          </h2>
+          <p className="text-[0.9375rem] leading-relaxed text-foreground/80">{body}</p>
         </div>
-        <h2 id="guide-title" className="text-xl font-semibold">
-          {title}
-        </h2>
-        <p className="text-[0.9375rem] leading-relaxed text-foreground/80">{body}</p>
       </div>
-      <div className="flex flex-col items-center gap-5">
+      <div className="flex shrink-0 flex-col items-center gap-5 pt-3">
         <div className="flex gap-2" aria-hidden>
           {STEPS.map((item, index) => (
             <span

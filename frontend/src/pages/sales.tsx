@@ -1,4 +1,4 @@
-import { useNavigate, useSearchParams } from "react-router"
+import { useLocation, useNavigate, useSearchParams } from "react-router"
 
 import { BottomNav } from "@/components/bottom-nav"
 import { SalesNav, type SalesView } from "@/components/sales-nav"
@@ -14,6 +14,7 @@ export function SalesPage({ newOrder = false }: { newOrder?: boolean }) {
   const user = useAuth()?.user
   const [params, setParams] = useSearchParams()
   const navigate = useNavigate()
+  const location = useLocation()
   const requestedView = params.get("view")
   const view: SalesView =
     !newOrder &&
@@ -36,7 +37,9 @@ export function SalesPage({ newOrder = false }: { newOrder?: boolean }) {
 
   const navigation = <SalesNav view={view} onChange={changeView} />
   const heading = (
-    <SalesHeader hideTitle onCreate={() => navigate("/orders/new")} />
+    <SalesHeader hideTitle onCreate={() => navigate("/orders/new", {
+      state: { returnTo: `${location.pathname}${location.search}` },
+    })} />
   )
 
   return (

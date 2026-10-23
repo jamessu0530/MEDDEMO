@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { useAskPageContext } from "@/ask/use-page-context"
-import { useNavigate, useParams } from "react-router"
+import { useLocation, useNavigate, useParams } from "react-router"
 
 import { ApiError } from "@/api/client"
 import { getNegotiationCard, type NegotiationCard } from "@/api/customers"
@@ -44,6 +44,7 @@ const ORIENTATION_LABEL: Record<NegotiationCard["orientation"], string> = { cust
 export function NegotiationPage() {
   const { customerId = "" } = useParams()
   const navigate = useNavigate()
+  const returnState = useLocation().state
   const user = useAuth()?.user
   const [state, setState] = useState<LoadState>({ status: "loading" })
   const [attempt, setAttempt] = useState(0)
@@ -82,6 +83,7 @@ export function NegotiationPage() {
         title="談判卡"
         subtitle={card ? `${card.customer.name}｜${ORIENTATION_LABEL[card.orientation]}` : undefined}
         backTo={profilePath}
+        backState={returnState}
       />
       <main className="flex flex-1 flex-col gap-4 px-4 pt-4 pb-28">
         {state.status === "loading" && <p className="py-10 text-center text-sm text-muted-foreground">整理談判資料中…</p>}
@@ -98,7 +100,7 @@ export function NegotiationPage() {
                 setAttempt((n) => n + 1)
               },
             }}
-            secondary={{ label: "回客戶檔案", onClick: () => navigate(profilePath) }}
+            secondary={{ label: "回客戶檔案", onClick: () => navigate(profilePath, { state: returnState }) }}
           />
         )}
         {card && (
@@ -135,10 +137,10 @@ export function NegotiationPage() {
       </main>
 
       <div className={cn(FIXED_COLUMN, "bottom-0 z-10 flex gap-2 border-t bg-card px-4 pt-3 pb-[max(env(safe-area-inset-bottom),0.75rem)]")}>
-        <Button variant="outline" className="h-12 w-28 shrink-0" onClick={() => navigate(profilePath)}>
+        <Button variant="outline" className="h-12 w-28 shrink-0" onClick={() => navigate(profilePath, { state: returnState })}>
           客戶檔案
         </Button>
-        <Button className="h-12 flex-1" onClick={() => navigate(`/customers/${customerId}/record`)}>
+        <Button className="h-12 flex-1" onClick={() => navigate(`/customers/${customerId}/record`, { state: returnState })}>
           開始拜訪
         </Button>
       </div>

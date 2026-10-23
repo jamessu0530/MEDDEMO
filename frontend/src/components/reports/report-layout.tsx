@@ -30,10 +30,12 @@ import { ReportWidgetResizeHandle } from "@/components/reports/report-widget"
 import {
   automaticReportRects,
   automaticReportSizes,
+  automaticReportWidth,
   resizeAutomaticReportCard,
   setAutomaticReportSize,
   setAutomaticReportPreset,
   type ReportCardSize,
+  type ReportLayoutViewport,
 } from "@/lib/report-auto-layout"
 import { REPORT_COLUMNS, REPORT_ROW } from "@/lib/report-layout"
 import {
@@ -116,6 +118,7 @@ function ReportLayoutBoard({
   renderCard,
 }: Props) {
   const [compact, setCompact] = useState(!isDesktop)
+  const [viewport, setViewport] = useState<ReportLayoutViewport>()
   const cards = config.cards.filter(
     (card) =>
       (card.page_id ?? "overview") === pageId && (editing || !card.hidden)
@@ -123,16 +126,35 @@ function ReportLayoutBoard({
   const baseSizes = automaticReportSizes(cards)
   const [resizingId, setResizingId] = useState<string | null>(null)
   const [announcement, setAnnouncement] = useState("")
-  const rects = automaticReportRects(cards, compact, baseSizes)
+  const rects = automaticReportRects(cards, compact, baseSizes, viewport)
   const board = useRef<HTMLDivElement>(null)
   useLayoutEffect(() => {
     const element = board.current
     if (!element) return
-    const measure = () => setCompact(element.clientWidth < 560)
+    const measure = () => {
+      const width = element.clientWidth
+      const rootFontSize = parseFloat(
+        getComputedStyle(document.documentElement).fontSize
+      )
+      setCompact(width < 560)
+      setViewport((current) =>
+        current?.width === width && current.rootFontSize === rootFontSize
+          ? current
+          : { width, rootFontSize }
+      )
+    }
     measure()
     const observer = new ResizeObserver(measure)
     observer.observe(element)
-    return () => observer.disconnect()
+    const textSize = new MutationObserver(measure)
+    textSize.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-text-size", "style", "class"],
+    })
+    return () => {
+      observer.disconnect()
+      textSize.disconnect()
+    }
   }, [])
   const gesture = useRef<{
     pointer: number
@@ -173,7 +195,10 @@ function ReportLayoutBoard({
     gesture.current = null
     setResizingId(null)
   }, [])
-  useEffect(() => cancel, [editing, readonly, config, compact, cancel])
+  useEffect(
+    () => cancel,
+    [editing, readonly, config, compact, viewport, cancel]
+  )
   useEffect(() => {
     if (readonly) return
     const escape = (event: globalThis.KeyboardEvent) => {
@@ -245,11 +270,14 @@ function ReportLayoutBoard({
       dx,
       dy,
       active.width,
-      compact
+      compact,
+      viewport
     )
     active.preview = {
       width: Math.max(
-        active.width * (compact ? 0.5 : 4 / REPORT_COLUMNS),
+        (active.width *
+          automaticReportWidth({ w: 4, h: 8 }, compact, viewport)) /
+          REPORT_COLUMNS,
         Math.min(active.width, active.bounds.width + dx)
       ),
       height: Math.max(
@@ -307,7 +335,8 @@ function ReportLayoutBoard({
           ? -REPORT_ROW * step
           : 0,
       width,
-      compact
+      compact,
+      viewport
     )
     onChange(setAutomaticReportSize(config, card.id, next))
     setAnnouncement(`已調整大小並自動整理：${card.title}`)
@@ -335,11 +364,12 @@ function ReportLayoutBoard({
           items={cards.map((card) => card.id)}
           strategy={rectSortingStrategy}
         >
+          {/* 將拖曳卡片與毛玻璃把手的層級限制在畫布內，避免蓋住固定工具列。 */}
           <div
             ref={board}
             aria-label="報表畫布"
             data-report-layout="automatic"
-            className="grid w-full min-w-0"
+            className="isolate grid w-full min-w-0"
             style={{
               gridTemplateColumns: `repeat(${REPORT_COLUMNS}, minmax(0, 1fr))`,
               gridAutoRows: REPORT_ROW,
@@ -350,7 +380,7 @@ function ReportLayoutBoard({
               return (
                 <div
                   key={card.id}
-                  className="relative min-w-0 self-start p-1"
+                  className="relative min-w-0 self-start p-[4px]"
                   data-layout-card={card.id}
                   data-layout-rect={`${rect.x},${rect.y},${rect.w},${rect.h}`}
                   data-resizing={resizingId === card.id ? "both" : undefined}

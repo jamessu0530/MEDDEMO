@@ -376,6 +376,7 @@ function OpportunityCard({ item }: { item: SalesOpportunity }) {
         <div>
           <Link
             to={customerPath}
+            state={{ backTo: "/orders?view=opportunities" }}
             className="group flex items-start justify-between gap-2 text-lg font-semibold hover:text-primary"
           >
             <span>{item.name}</span>
@@ -468,11 +469,12 @@ function OpportunityCard({ item }: { item: SalesOpportunity }) {
       </div>
       <div className="flex gap-2 border-t px-4 py-3 sm:px-5">
         <Button variant="outline" asChild className="flex-1">
-          <Link to={customerPath}>客戶資料</Link>
+          <Link to={customerPath} state={{ backTo: "/orders?view=opportunities" }}>客戶資料</Link>
         </Button>
         <Button asChild className="flex-1">
           <Link
             to={`/orders/new?customer_id=${encodeURIComponent(item.customer_id)}`}
+            state={{ returnTo: "/orders?view=opportunities" }}
           >
             開訂單
             <ChevronRight className="size-4" />

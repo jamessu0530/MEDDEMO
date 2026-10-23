@@ -11,7 +11,7 @@ import {
   LoaderCircle,
   RotateCw,
 } from "@/components/icons"
-import { Link, useNavigate, useSearchParams } from "react-router"
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router"
 import {
   createOrder,
   getOrderCustomer,
@@ -58,6 +58,8 @@ export function OrdersPage({
   active?: boolean
 }) {
   const navigate = useNavigate()
+  const location = useLocation()
+  const returnState = location.state as { returnTo?: string; customerBackTo?: string } | null
   const [searchParams] = useSearchParams()
   const customerId = newOrder
     ? searchParams.get("customer_id") || undefined
@@ -121,7 +123,7 @@ export function OrdersPage({
             if (demonstrating) {
               setPractice(true)
               setCreating(true)
-            } else navigate("/orders/new")
+            } else navigate("/orders/new", { state: { returnTo: `${location.pathname}${location.search}` } })
           }}
         />
         {navigation}
@@ -356,10 +358,10 @@ export function OrdersPage({
           onClose={() => {
             if (newOrder)
               navigate(
-                customerId
+                returnState?.returnTo ?? (customerId
                   ? `/customers/${encodeURIComponent(customerId)}`
-                  : "/orders",
-                { replace: true }
+                  : "/orders"),
+                { replace: true, state: { backTo: returnState?.customerBackTo } }
               )
             else {
               setCreating(false)

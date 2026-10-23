@@ -133,7 +133,7 @@ export function searchAttachments(params: {
   q: string
   image?: File
   channelId?: number | null
-}) {
+}, signal?: AbortSignal) {
   const form = new FormData()
   if (params.q) form.append("q", params.q)
   if (params.image) form.append("image", params.image, params.image.name)
@@ -141,6 +141,7 @@ export function searchAttachments(params: {
   return request<SearchHit[]>("/api/channels/search", {
     method: "POST",
     body: form,
+    signal,
   })
 }
 

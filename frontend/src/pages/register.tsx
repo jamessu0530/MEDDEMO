@@ -21,6 +21,7 @@ export function RegisterPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const session = useAuth()
+  const from = (location.state as { from?: string } | null)?.from
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -29,7 +30,7 @@ export function RegisterPage() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  if (session) return <Navigate to={homePath(session.user.role)} replace />
+  if (session) return <Navigate to={from ?? homePath(session.user.role)} replace />
 
   async function submit(event: FormEvent) {
     event.preventDefault()
@@ -43,7 +44,6 @@ export function RegisterPage() {
       // 等墨蓋滿才登入，理由同登入頁（pages/login.tsx 的 enter）
       playInk("splat", () => {
         signIn(result)
-        const from = (location.state as { from?: string } | null)?.from
         navigate(from ?? "/", { replace: true })
       })
     } catch (err) {

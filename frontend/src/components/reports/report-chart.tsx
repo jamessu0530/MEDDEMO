@@ -1258,7 +1258,7 @@ function ColumnChart(props: PlotProps) {
     expanded,
     false,
     data,
-    props.summary ? plotWidth : undefined
+    props.summary || props.widgetSize ? plotWidth : undefined
   )
   const rows = stackRows(data.points, series, percentage)
   const values = stacked
@@ -1581,7 +1581,7 @@ function TrendChart(props: PlotProps) {
     expanded,
     false,
     data,
-    props.summary || props.plotOnly ? plotWidth : undefined
+    props.summary || props.widgetSize || props.plotOnly ? plotWidth : undefined
   )
   const domain = chartDomain(
     series.flatMap((item) => item.points.map((point) => point.value)),

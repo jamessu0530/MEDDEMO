@@ -41,8 +41,8 @@ export function LoginPage() {
   // 被擋下來之前要去的那一頁：登入後回去。Google、GitHub 是整頁導走，也帶著它走（lib/oauth.ts）
   const from = (location.state as { from?: string } | null)?.from
 
-  // 已經登入了還打開 /login（例如用書籤進來）：直接回自己的首頁
-  if (session) return <Navigate to={homePath(session.user.role)} replace />
+  // 登入完成時也可能先走到這裡，必須和 enter 保留相同的目的頁。
+  if (session) return <Navigate to={from ?? homePath(session.user.role)} replace />
 
   async function submit(event: FormEvent) {
     event.preventDefault()

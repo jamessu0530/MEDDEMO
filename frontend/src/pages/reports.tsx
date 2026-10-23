@@ -2527,7 +2527,10 @@ function CanvasVisual({
     >
       <div className="report-visual-heading flex items-start gap-1">
         <div className="min-w-0 flex-1">
-          <h3 className="report-visual-title leading-snug wrap-break-word">
+          <h3
+            className="report-visual-title leading-snug wrap-break-word"
+            title={card.title}
+          >
             <span
               ref={setActivatorNodeRef}
               {...(layout.draggable ? attributes : {})}
@@ -2555,24 +2558,26 @@ function CanvasVisual({
             </p>
           ) : null}
         </div>
-        {widgetSize && (
-          <ReportWidgetSizeMenu
-            card={card}
-            size={widgetSize}
-            onChange={layout.onSize}
-          />
-        )}
-        {layout.draggable && (
-          <button
-            type="button"
-            aria-label={`調整圖表：${card.title}`}
-            data-ui-demo="report-visual-edit"
-            onClick={onSelect}
-            className="flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted"
-          >
-            <Settings2 className="size-3.5" />
-          </button>
-        )}
+        <div className="report-visual-actions flex shrink-0 items-center gap-1">
+          {widgetSize && (
+            <ReportWidgetSizeMenu
+              card={card}
+              size={widgetSize}
+              onChange={layout.onSize}
+            />
+          )}
+          {layout.draggable && (
+            <button
+              type="button"
+              aria-label={`調整圖表：${card.title}`}
+              data-ui-demo="report-visual-edit"
+              onClick={onSelect}
+              className="flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted"
+            >
+              <Settings2 className="size-3.5" />
+            </button>
+          )}
+        </div>
       </div>
       <div
         className={

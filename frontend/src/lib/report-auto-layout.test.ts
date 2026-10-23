@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import {
   automaticReportRects,
   automaticReportSizes,
+  automaticReportWidth,
   resizeAutomaticReportCard,
   setAutomaticReportSize,
   setAutomaticReportPreset,
@@ -45,8 +46,14 @@ function document(): ReportConfig {
     ],
   }
 }
-function expectNoOverlap(cards: ReportCard[], compact: boolean) {
-  const rects = Object.values(automaticReportRects(cards, compact))
+function expectNoOverlap(
+  cards: ReportCard[],
+  compact: boolean,
+  viewport?: { width: number; rootFontSize: number }
+) {
+  const rects = Object.values(
+    automaticReportRects(cards, compact, undefined, viewport)
+  )
   for (let i = 0; i < rects.length; i++) {
     const a = rects[i]
     expect(a.x).toBeGreaterThanOrEqual(0)
@@ -65,6 +72,64 @@ function expectNoOverlap(cards: ReportCard[], compact: boolean) {
 }
 
 describe("自動排列報表卡片", () => {
+  it("手機的小卡在半欄放不下時改用整欄，並隨字級調整", () => {
+    const small = { w: 6, h: 10 }
+    expect(
+      automaticReportWidth(small, true, { width: 358, rootFontSize: 16 })
+    ).toBe(24)
+    expect(
+      automaticReportWidth(small, true, { width: 500, rootFontSize: 16 })
+    ).toBe(12)
+    expect(
+      automaticReportWidth(small, true, { width: 500, rootFontSize: 20 })
+    ).toBe(24)
+  })
+  it("水平縮放從實際呈現寬度開始，僅調高度仍保留儲存的寬度", () => {
+    const size = { w: 6, h: 10 }
+    const viewport = { width: 704, rootFontSize: 16 }
+    expect(automaticReportWidth(size, false, viewport)).toBe(8)
+    expect(
+      resizeAutomaticReportCard(size, 704 / 24, 0, 704, false, viewport)
+    ).toEqual({ w: 9, h: 10 })
+    expect(
+      resizeAutomaticReportCard(size, 0, 48, 704, false, viewport)
+    ).toEqual({ w: 6, h: 12 })
+  })
+  it("各種畫布寬度、字級及舊卡片尺寸保留可讀寬度，重排後不重疊", () => {
+    const cards = Array.from({ length: 20 }, (_, i) =>
+      card(String(i), [4, 6, 8, 12, 24][i % 5], [8, 10, 18, 28][i % 4])
+    )
+    const original = JSON.stringify(cards)
+    for (const rootFontSize of [16, 18, 20]) {
+      for (const width of [
+        225, 280, 288, 358, 486, 559, 560, 704, 976, 1144, 1600,
+      ]) {
+        const viewport = { width, rootFontSize }
+        const compact = width < 560
+        const rects = automaticReportRects(cards, compact, undefined, viewport)
+        expectNoOverlap(cards, compact, viewport)
+        for (const rect of Object.values(rects)) {
+          expect((width * rect.w) / 24 - 8).toBeGreaterThanOrEqual(
+            Math.min(width - 8, 14 * rootFontSize) - 0.001
+          )
+        }
+        for (const size of ["small", "medium", "large"] as const) {
+          const config = setAutomaticReportPreset(document(), "a", size)
+          const entry = config.cards[0]
+          const rect = automaticReportRects(
+            [entry],
+            compact,
+            undefined,
+            viewport
+          ).a
+          expect(
+            reportWidgetSize((width * rect.w) / 24 - 8, rect.h * 24 - 8)
+          ).toBe(size)
+        }
+      }
+    }
+    expect(JSON.stringify(cards)).toBe(original)
+  })
   it("大中小預設在手機、平板與桌面保留相同資訊層級，不改資料查詢", () => {
     const original = document()
     for (const size of ["small", "medium", "large"] as const) {

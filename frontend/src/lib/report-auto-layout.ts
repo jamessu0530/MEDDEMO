@@ -11,6 +11,27 @@ import {
 } from "@/lib/report-widget"
 
 export type ReportCardSize = { w: number; h: number }
+export type ReportLayoutViewport = { width: number; rootFontSize: number }
+
+/** Keep saved sizes, but give the rendered card enough room to read its content. */
+export function automaticReportWidth(
+  size: ReportCardSize,
+  compact: boolean,
+  viewport?: ReportLayoutViewport
+) {
+  const preferred = compact ? (size.w <= 6 ? 12 : REPORT_COLUMNS) : size.w
+  if (!viewport || viewport.width <= 0) return preferred
+  // The grid cell includes 8px of padding around the card.
+  const minimum = Math.min(
+    REPORT_COLUMNS,
+    Math.ceil(
+      ((14 * viewport.rootFontSize + 8) * REPORT_COLUMNS) / viewport.width
+    )
+  )
+  return compact && preferred < minimum
+    ? REPORT_COLUMNS
+    : Math.max(preferred, minimum)
+}
 
 export function setAutomaticReportPreset(
   config: ReportConfig,
@@ -51,13 +72,14 @@ export function automaticReportSizes(
 export function automaticReportRects(
   cards: ReportCard[],
   compact: boolean,
-  sizes = automaticReportSizes(cards)
+  sizes = automaticReportSizes(cards),
+  viewport?: ReportLayoutViewport
 ): DesktopRects {
   const rects: DesktopRects = {}
   const skyline = Array<number>(REPORT_COLUMNS).fill(0)
   for (const card of cards) {
     const size = sizes[card.id]
-    const w = compact ? (size.w <= 6 ? 12 : REPORT_COLUMNS) : size.w
+    const w = automaticReportWidth(size, compact, viewport)
     let y = Infinity,
       x = 0
     for (let column = 0; column <= REPORT_COLUMNS - w; column++) {
@@ -78,7 +100,8 @@ export function resizeAutomaticReportCard(
   dx: number,
   dy: number,
   width: number,
-  compact: boolean
+  compact: boolean,
+  viewport?: ReportLayoutViewport
 ): ReportCardSize {
   let w = size.w
   if (width > 0) {
@@ -88,7 +111,10 @@ export function resizeAutomaticReportCard(
       if (nextHalf !== half) w = nextHalf ? 6 : 12
     } else
       w = clamp(
-        Math.round(size.w + (dx * REPORT_COLUMNS) / width),
+        Math.round(
+          (dx ? automaticReportWidth(size, compact, viewport) : size.w) +
+            (dx * REPORT_COLUMNS) / width
+        ),
         4,
         REPORT_COLUMNS
       )
