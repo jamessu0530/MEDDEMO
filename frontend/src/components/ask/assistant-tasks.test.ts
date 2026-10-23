@@ -16,7 +16,7 @@ describe("助理工作清單", () => {
     session.queue.wait(ids[1], "請指定期間")
     const markup = renderToStaticMarkup(createElement(MemoryRouter, null,
       createElement(AssistantTasks, { session, conversation: createConversation() })))
-    expect(markup).toContain("共 8 項")
+    expect(markup).toContain("7 項待處理")
     expect(markup).toContain("返回工作")
     expect(markup).toContain("請指定期間")
     expect(markup).toContain("報表 8")
@@ -35,8 +35,9 @@ describe("助理工作清單", () => {
     session.queue.pause(id)
     const markup = renderToStaticMarkup(createElement(MemoryRouter, null,
       createElement(AssistantTasks, { session, conversation: createConversation() })))
-    for (const text of ["康泰", "仁愛", "OLD-1", "沒有歷史訂單", "單價：100 → 120", "跳過這家", "重試這家", "檢查草稿", "2031-04-17", "第 2 版"])
+    for (const text of ["康泰", "仁愛", "OLD-1", "沒有歷史訂單", "單價：100 → 120", "跳過", "重試", "檢查草稿", "2031-04-17"])
       expect(markup).toContain(text)
     expect(markup).toContain('href="/orders/saved"')
+    expect(markup).toContain('max="2" value="1"')
   })
 })
