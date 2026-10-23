@@ -519,6 +519,7 @@ function AssistantContent({
               }
             }}
             rows={1}
+            wrap="off"
             placeholder={
               session
                 ? "打字也能問"
@@ -533,7 +534,7 @@ function AssistantContent({
                         : "輸入問題…"
             }
             aria-label="輸入問題"
-            className="h-9 field-sizing-fixed max-h-9 min-h-9 min-w-0 flex-1 resize-none overflow-y-auto rounded-lg border-0 bg-transparent px-1 py-1.5 text-base leading-6 shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0"
+            className="h-9 field-sizing-fixed max-h-9 min-h-9 min-w-0 flex-1 resize-none overflow-hidden rounded-lg border-0 bg-transparent px-1 py-1.5 text-base leading-6 shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0"
           />
           <div className="flex shrink-0 items-center [&>button]:h-9 [&>button]:min-h-0 [&>button]:px-2">
             {!session && (
