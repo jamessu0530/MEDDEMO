@@ -544,7 +544,8 @@ function AssistantContent({
               <Button
                 type="button"
                 variant="ghost"
-                className="h-9 shrink-0 gap-1 px-2 text-xs"
+                size="icon"
+                className="size-9 shrink-0"
                 disabled={busy}
                 onClick={() => {
                   setNotice(null)
@@ -553,7 +554,6 @@ function AssistantContent({
                 aria-label="啟動語音問答"
               >
                 <Mic className="size-4" />
-                語音問答
               </Button>
             )}
             <Button

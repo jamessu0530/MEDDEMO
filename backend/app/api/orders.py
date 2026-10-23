@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.api.auth import CurrentUser
 from app.db import get_session
 from app.services import order_workspace as service
+from app.services import order_recommendations
 
 router = APIRouter(prefix="/api/orders", tags=["orders"])
 SessionDep = Annotated[Session, Depends(get_session)]
@@ -39,6 +40,13 @@ def order_customer_defaults(session: SessionDep, user: CurrentUser, customer_id:
 @router.get("/customers/{customer_id}/last-purchase")
 def order_last_purchase(session: SessionDep, user: CurrentUser, customer_id: str):
     return action(lambda: service.last_purchase(session, user, customer_id))
+
+
+@router.get("/customers/{customer_id}/recommendations")
+def customer_product_recommendations(session: SessionDep, user: CurrentUser, customer_id: str,
+    limit: int = Query(default=12, ge=1, le=25),
+    exclude_sku: list[Annotated[str, Field(min_length=1, max_length=80)]] | None = Query(default=None, max_length=100)):
+    return action(lambda: order_recommendations.recommend(session, user, customer_id, limit, exclude_sku))
 
 
 @router.get("/products")

@@ -9,10 +9,12 @@ import {
 import {
   getOrderLastPurchase,
   getOrderProducts,
+  getOrderRecommendations,
   type OrderLastPurchase,
   type OrderProduct,
   type OrderProductList,
   type OrderItemInput,
+  type OrderRecommendations,
 } from "@/api/orders"
 import { ProductPhoto } from "@/components/product-photo"
 import { Button } from "@/components/ui/button"
@@ -27,7 +29,7 @@ import { orderMoney } from "@/lib/orders"
 import { formatDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
-type ProductTab = "catalog" | "last" | "selected"
+type ProductTab = "recommended" | "catalog" | "last" | "selected"
 
 export function OrderProducts({
   practice = false,
@@ -55,9 +57,49 @@ export function OrderProducts({
   const [busy, setBusy] = useState(true),
     [error, setError] = useState(""),
     [retry, setRetry] = useState(0)
-  const [tab, setTab] = useState<ProductTab>("catalog")
+  const [recommendationState, setRecommendationState] = useState<{
+    key: string
+    data?: OrderRecommendations
+    error?: string
+  }>({ key: "" })
+  const [recommendationRetry, setRecommendationRetry] = useState(0)
+  const excludedSkus = JSON.stringify(existing.map((item) => item.sku).sort())
+  const recommendationKey = JSON.stringify([
+    customerId,
+    excludedSkus,
+    recommendationRetry,
+  ])
+  const recommendationBusy = recommendationState.key !== recommendationKey
+  const recommendationError = recommendationBusy
+    ? ""
+    : (recommendationState.error ?? "")
+  const [tab, setTab] = useState<ProductTab>(
+    practice ? "catalog" : "recommended"
+  )
   const selectedOnly = tab === "selected",
-    lastOnly = tab === "last"
+    lastOnly = tab === "last",
+    recommendedOnly = tab === "recommended"
+  useEffect(() => {
+    if (tab !== "recommended") return
+    const controller = new AbortController()
+    getOrderRecommendations(
+      customerId,
+      JSON.parse(excludedSkus) as string[],
+      controller.signal
+    )
+      .then((value) => {
+        if (!controller.signal.aborted)
+          setRecommendationState({ key: recommendationKey, data: value })
+      })
+      .catch((err) => {
+        if (!controller.signal.aborted)
+          setRecommendationState({
+            key: recommendationKey,
+            error: err instanceof Error ? err.message : "客戶推薦沒有載入",
+          })
+      })
+    return () => controller.abort()
+  }, [customerId, excludedSkus, recommendationKey, tab])
   useEffect(() => {
     if (tab !== "catalog") return
     const controller = new AbortController()
@@ -103,9 +145,24 @@ export function OrderProducts({
       })
     return () => controller.abort()
   }, [customerId, purchaseRetry, tab])
-  const source = lastOnly ? (purchase?.items ?? []) : (result?.items ?? []),
-    sourceBusy = lastOnly ? purchaseBusy : busy,
-    sourceError = lastOnly ? purchaseError : error
+  const currentRecommendations = recommendationBusy
+    ? null
+    : recommendationState.data
+  const source = recommendedOnly
+      ? (currentRecommendations?.items ?? [])
+      : lastOnly
+        ? (purchase?.items ?? [])
+        : (result?.items ?? []),
+    sourceBusy = recommendedOnly
+      ? recommendationBusy
+      : lastOnly
+        ? purchaseBusy
+        : busy,
+    sourceError = recommendedOnly
+      ? recommendationError
+      : lastOnly
+        ? purchaseError
+        : error
   const chosen = Object.values(selected),
     existingSkus = new Set(existing.map((item) => item.sku))
   const capacity = Math.max(0, 100 - existing.length)
@@ -117,14 +174,16 @@ export function OrderProducts({
     pageItems.length - pageSelected
   )
   const pageSelectionLabel = allPage
-    ? lastOnly
-      ? "取消上次購買選取"
-      : "取消本頁選取"
+    ? recommendedOnly
+      ? "取消推薦產品選取"
+      : lastOnly
+        ? "取消上次購買選取"
+        : "取消本頁選取"
     : chosen.length >= capacity
       ? "已達 100 項產品上限"
       : pageAddCount < pageItems.length - pageSelected
-        ? `選取前 ${pageAddCount} 項${lastOnly ? "上次購買" : "本頁"}產品`
-        : `選取${lastOnly ? "上次購買" : "本頁"}產品`
+        ? `選取前 ${pageAddCount} 項${recommendedOnly ? "推薦" : lastOnly ? "上次購買" : "本頁"}產品`
+        : `選取${recommendedOnly ? "推薦" : lastOnly ? "上次購買" : "本頁"}產品`
   useEffect(() => {
     if (pageCheckbox.current)
       pageCheckbox.current.indeterminate = pageSelected > 0 && !allPage
@@ -137,6 +196,8 @@ export function OrderProducts({
     } else if (value === "last") {
       setPurchaseBusy(true)
       setPurchaseError("")
+    } else if (value === "recommended") {
+      setRecommendationRetry((n) => n + 1)
     }
     setTab(value)
   }
@@ -199,6 +260,19 @@ export function OrderProducts({
             )}
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="inline-flex max-w-full flex-wrap gap-1 rounded-xl bg-muted p-1 text-sm">
+                {!practice && (
+                  <button
+                    type="button"
+                    aria-pressed={recommendedOnly}
+                    onClick={() => changeTab("recommended")}
+                    className={cn(
+                      "min-h-10 rounded-lg px-3",
+                      recommendedOnly && "bg-card font-semibold shadow-sm"
+                    )}
+                  >
+                    為客戶推薦
+                  </button>
+                )}
                 <button
                   type="button"
                   aria-pressed={tab === "catalog"}
@@ -234,6 +308,23 @@ export function OrderProducts({
                 </button>
               </div>
             </div>
+            {recommendedOnly &&
+              !recommendationBusy &&
+              !recommendationError &&
+              currentRecommendations && (
+                <div className="space-y-1 rounded-xl border bg-primary/5 px-3 py-2.5 text-xs">
+                  <p className="font-medium">
+                    {currentRecommendations.customer_name} · 選品參考
+                  </p>
+                  <p className="text-muted-foreground">
+                    {currentRecommendations.message}
+                  </p>
+                  <p className="text-muted-foreground">
+                    截至 {formatDate(currentRecommendations.as_of)} · 近一年{" "}
+                    {currentRecommendations.history_orders} 張成交單
+                  </p>
+                </div>
+              )}
             {lastOnly && !purchaseBusy && !purchaseError && purchase && (
               <div className="space-y-1 rounded-xl border bg-muted/30 px-3 py-2.5 text-xs">
                 <p className="font-medium">
@@ -298,7 +389,13 @@ export function OrderProducts({
                   <input
                     ref={pageCheckbox}
                     type="checkbox"
-                    aria-label={lastOnly ? "選取上次購買產品" : "選取本頁產品"}
+                    aria-label={
+                      recommendedOnly
+                        ? "選取推薦產品"
+                        : lastOnly
+                          ? "選取上次購買產品"
+                          : "選取本頁產品"
+                    }
                     checked={allPage}
                     disabled={
                       sourceBusy ||
@@ -327,7 +424,9 @@ export function OrderProducts({
                   <Button
                     variant="outline"
                     onClick={() => {
-                      if (lastOnly) {
+                      if (recommendedOnly) {
+                        setRecommendationRetry((n) => n + 1)
+                      } else if (lastOnly) {
                         setPurchaseBusy(true)
                         setPurchaseError("")
                         setPurchaseRetry((n) => n + 1)
@@ -346,7 +445,11 @@ export function OrderProducts({
                   role="status"
                   className="py-16 text-center text-sm text-muted-foreground"
                 >
-                  {lastOnly ? "正在載入上次購買紀錄…" : "正在搜尋產品…"}
+                  {recommendedOnly
+                    ? "正在整理這位客戶的推薦品項…"
+                    : lastOnly
+                      ? "正在載入上次購買紀錄…"
+                      : "正在搜尋產品…"}
                 </p>
               ) : visible.length ? (
                 <ul
@@ -354,9 +457,11 @@ export function OrderProducts({
                   aria-label={
                     selectedOnly
                       ? "已選產品"
-                      : lastOnly
-                        ? "上次購買產品"
-                        : "產品搜尋結果"
+                      : recommendedOnly
+                        ? "客戶推薦產品"
+                        : lastOnly
+                          ? "上次購買產品"
+                          : "產品搜尋結果"
                   }
                 >
                   {visible.map((product) => {
@@ -409,6 +514,16 @@ export function OrderProducts({
                                 .filter(Boolean)
                                 .join(" · ")}
                             </span>
+                            {"reasons" in product &&
+                              Array.isArray(product.reasons) && (
+                                <span className="mt-2 block space-y-1 text-xs leading-relaxed text-muted-foreground">
+                                  {product.reasons.map((reason: string) => (
+                                    <span key={reason} className="block">
+                                      {reason}
+                                    </span>
+                                  ))}
+                                </span>
+                              )}
                             {product.last_qty !== undefined && (
                               <span className="mt-2 block text-xs font-medium text-primary">
                                 上次買{" "}
@@ -448,21 +563,25 @@ export function OrderProducts({
                   <p className="text-sm font-medium">
                     {selectedOnly
                       ? "尚未選取產品"
-                      : lastOnly
-                        ? purchase
-                          ? "上次購買的商品目前皆無法加入"
-                          : "這位客戶尚無購買紀錄"
-                        : "找不到符合條件的產品"}
+                      : recommendedOnly
+                        ? "目前沒有其他推薦品項"
+                        : lastOnly
+                          ? purchase
+                            ? "上次購買的商品目前皆無法加入"
+                            : "這位客戶尚無購買紀錄"
+                          : "找不到符合條件的產品"}
                   </p>
                   <Button
                     variant="outline"
                     onClick={() =>
-                      selectedOnly || lastOnly
+                      selectedOnly || lastOnly || recommendedOnly
                         ? changeTab("catalog")
                         : changeQuery("")
                     }
                   >
-                    {selectedOnly || lastOnly ? "瀏覽商品型錄" : "清除搜尋"}
+                    {selectedOnly || lastOnly || recommendedOnly
+                      ? "瀏覽商品型錄"
+                      : "清除搜尋"}
                   </Button>
                 </div>
               )}

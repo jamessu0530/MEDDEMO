@@ -86,10 +86,10 @@ function render(
 }
 
 describe("所有頁面的共用 AI 助理", () => {
-  it("收合時也有具文字標籤的語音問答入口", () => {
+  it("收合時保留語音問答入口的輔助標籤，不顯示按鈕文字", () => {
     const html = render("/orders", false)
     expect(html).toContain('aria-label="啟動語音問答"')
-    expect(html).toContain("語音問答")
+    expect(html).not.toContain("語音問答</button>")
   })
   it("暫存對話保留虛線與圖示，不顯示模式名稱或保存狀態", () => {
     state.ghost = true

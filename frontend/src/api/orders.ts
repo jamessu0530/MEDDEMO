@@ -92,6 +92,37 @@ export type OrderProductList = {
   page: number
   page_size: number
 }
+export type OrderRecommendation = OrderProduct & {
+  rank: number
+  score: number
+  source: "related" | "replenishment" | "content" | "popular"
+  reasons: string[]
+}
+export type OrderRecommendations = {
+  items: OrderRecommendation[]
+  customer_id: string
+  customer_name: string
+  as_of: string
+  channel: string
+  history_days: number
+  history_orders: number
+  peer_customers: number
+  model_version: string
+  message: string
+}
+
+export function getOrderRecommendations(
+  customerId: string,
+  excludedSkus: string[],
+  signal?: AbortSignal
+) {
+  const params = new URLSearchParams()
+  excludedSkus.forEach((sku) => params.append("exclude_sku", sku))
+  return request<OrderRecommendations>(
+    `/api/orders/customers/${encodeURIComponent(customerId)}/recommendations${params.size ? `?${params}` : ""}`,
+    { signal }
+  )
+}
 
 export function getOrders(
   params: { q: string; status: string; page: number; sort: string },
